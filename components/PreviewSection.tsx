@@ -1,0 +1,334 @@
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
+import { ChevronDown, Check, MoreHorizontal } from './Icons';
+import DatePicker from './DatePicker';
+
+const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['details']> }> = ({ appointment }) => (
+    <div className="bg-white rounded-lg shadow-2xl p-4 w-64 border border-gray-200 text-sm z-50">
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
+            <div>
+                <p className="font-bold text-gray-800 uppercase">{appointment.service}</p>
+                <p className="text-gray-500">{appointment.date}</p>
+                <p className="font-semibold text-blue-600">{appointment.time}</p>
+            </div>
+            <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+        </div>
+        <div className="flex items-center">
+            <img src={`https://i.pravatar.cc/150?u=${appointment.agentEmail}`} alt={appointment.agentName} className="w-10 h-10 rounded-full object-cover" />
+            <div className="ml-3">
+                <p className="font-bold text-gray-800">{appointment.agentName}</p>
+                <p className="text-gray-500">Telefone: {appointment.agentPhone || 'N/A'}</p>
+                <p className="text-gray-500">E-mail: {appointment.agentEmail}</p>
+            </div>
+        </div>
+    </div>
+);
+
+
+interface FilterDropdownProps {
+    label: string;
+    options: { value: string; label: string }[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+}
+
+const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selectedValue, onSelect }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+    
+    const selectedOptionLabel = options.find(opt => opt.value === selectedValue)?.label || options[0]?.label;
+
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 min-w-[160px] justify-between"
+            >
+                <span>{selectedOptionLabel}</span>
+                <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 py-1">
+                    {options.map(option => (
+                        <a
+                            key={option.value}
+                            href="#"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                onSelect(option.value);
+                                setIsOpen(false);
+                            }}
+                            className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                            {selectedValue === option.value && <Check className="w-4 h-4 mr-2 text-blue-600" />}
+                            <span className={selectedValue !== option.value ? 'ml-6' : ''}>{option.label}</span>
+                        </a>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const ToggleButton: React.FC<{ children: React.ReactNode; active?: boolean, onClick?: () => void }> = ({ children, active, onClick }) => (
+  <button onClick={onClick} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>
+    {children}
+  </button>
+);
+
+
+interface PreviewSectionProps {
+  schedules: AgentSchedule[];
+  locations: Location[];
+  services: {id: string, name: string}[];
+  selectedLocation: string;
+  setSelectedLocation: (id: string) => void;
+  selectedService: string;
+  setSelectedService: (id: string) => void;
+  viewMode: 'compromissos' | 'disponibilidade';
+  setViewMode: (mode: 'compromissos' | 'disponibilidade') => void;
+  onAppointmentClick: (details: ScheduleSlot['details']) => void;
+  onSlotClick: (slotInfo: { agent: Agent, start: number, date: Date }) => void;
+}
+
+const PreviewSection: React.FC<PreviewSectionProps> = ({ 
+    schedules,
+    locations,
+    services,
+    selectedLocation,
+    setSelectedLocation,
+    selectedService,
+    setSelectedService,
+    viewMode,
+    setViewMode,
+    onAppointmentClick,
+    onSlotClick
+}) => {
+  const [selectedDate, setSelectedDate] = useState(new Date(2025, 8, 30));
+  const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
+  const [hoveredSlot, setHoveredSlot] = useState<{ agentIndex: number; start: number; end: number } | null>(null);
+  const scheduleContainerRef = useRef<HTMLDivElement>(null);
+  const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+
+  const filteredSchedules = useMemo(() => {
+    if (selectedLocation === 'all' && selectedService === 'all') {
+        return schedules;
+    }
+    
+    return schedules.map(schedule => ({
+        ...schedule,
+        appointments: schedule.appointments.filter(appointment => {
+            if (appointment.type !== 'booked' || !appointment.details) {
+                return true; 
+            }
+            const locationMatch = selectedLocation === 'all' || appointment.details.locationId === selectedLocation;
+            const serviceMatch = selectedService === 'all' || appointment.details.serviceId === selectedService;
+            return locationMatch && serviceMatch;
+        })
+    }));
+  }, [schedules, selectedLocation, selectedService]);
+
+  const hours = Array.from({ length: 13 }, (_, i) => i + 9); // 9 AM to 9 PM (21h)
+
+  const getSlotStyle = (start: number, end: number) => {
+    const totalHours = 21 - 9;
+    const left = ((start - 9) / totalHours) * 100;
+    const width = ((end - start) / totalHours) * 100;
+    return { left: `${left}%`, width: `${width}%` };
+  };
+
+  const getSlotColor = (type: ScheduleSlot['type']) => {
+    switch(type) {
+      case 'booked': return 'bg-blue-600';
+      case 'tentative': return 'bg-gray-400';
+      case 'unavailable': return 'bg-transparent'; // Will use pattern for this one
+    }
+  }
+  
+  const handleSlotMouseEnter = (e: React.MouseEvent, slot: ScheduleSlot) => {
+    if (viewMode !== 'compromissos' || slot.type !== 'booked' || !slot.details) return;
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const POPOVER_ESTIMATED_HEIGHT = 156;
+    const POPOVER_MARGIN = 8;
+    
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const hasSpaceBelow = spaceBelow >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+    const hasSpaceAbove = rect.top >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+
+    const positionAbove = !hasSpaceBelow && hasSpaceAbove;
+
+    const style: React.CSSProperties = {
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: positionAbove ? `${rect.top - POPOVER_MARGIN}px` : `${rect.bottom + POPOVER_MARGIN}px`,
+        transform: positionAbove ? 'translateY(-100%)' : 'translateY(0)',
+        zIndex: 50,
+    };
+
+    setPopover({
+      visible: true,
+      content: slot.details,
+      style: style,
+    });
+  };
+
+  const handleSlotMouseLeave = () => {
+    setPopover(null);
+  };
+  
+  const availableSlots = useMemo(() => {
+    return filteredSchedules.map(schedule => {
+        const busySlots = [...schedule.appointments].sort((a, b) => a.start - b.start);
+        const available = [];
+        let lastEnd = 9;
+        
+        busySlots.forEach(slot => {
+            if (slot.start > lastEnd) {
+                available.push({ type: 'available', start: lastEnd, end: slot.start });
+            }
+            lastEnd = slot.end;
+        });
+
+        if (lastEnd < 21) {
+            available.push({ type: 'available', start: lastEnd, end: 21 });
+        }
+        return available;
+    });
+  }, [filteredSchedules]);
+
+  const locationOptions = [
+      { value: 'all', label: 'Todos Os Locais' },
+      ...locations.map(loc => ({ value: loc.id, label: loc.name }))
+  ];
+
+  const serviceOptions = [
+      { value: 'all', label: 'Todos Os Serviços' },
+      ...services.map(service => ({ value: service.id, label: service.name }))
+  ];
+  
+  return (
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">Dia de Pré-Visualização</h2>
+          <div className="hidden lg:flex items-center gap-2 mt-2 flex-wrap">
+            <DatePicker 
+                mode="single" 
+                selectedDate={selectedDate} 
+                onDateChange={(date) => setSelectedDate(date as Date)} 
+            />
+            <FilterDropdown 
+                label="Locais" 
+                options={locationOptions} 
+                selectedValue={selectedLocation} 
+                onSelect={setSelectedLocation} 
+            />
+            <FilterDropdown 
+                label="Serviços" 
+                options={serviceOptions} 
+                selectedValue={selectedService} 
+                onSelect={setSelectedService} 
+            />
+          </div>
+        </div>
+        <div className="hidden lg:flex bg-gray-100 p-1 rounded-lg items-center">
+          <ToggleButton active={viewMode === 'compromissos'} onClick={() => setViewMode('compromissos')}>Mostrar Compromissos</ToggleButton>
+          <ToggleButton active={viewMode === 'disponibilidade'} onClick={() => setViewMode('disponibilidade')}>Mostrar Disponibilidade</ToggleButton>
+        </div>
+         <button className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden">
+            <MoreHorizontal className="h-5 w-5" />
+        </button>
+      </div>
+      
+      <div className="relative" ref={scheduleContainerRef}>
+        <div className="grid text-center text-sm text-gray-500 mb-4" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
+          {hours.map(hour => <div key={hour}>{hour}</div>)}
+        </div>
+        
+        <div className="space-y-4">
+          {filteredSchedules.map((schedule, agentIndex) => (
+            <div key={agentIndex} className={`flex items-center gap-4 h-12 ${agentIndex > 0 ? 'hidden lg:flex' : 'flex'}`}>
+              <img src={schedule.agent.avatar} alt={schedule.agent.name} className="w-10 h-10 rounded-full object-cover"/>
+              <div className="flex-1 bg-gray-100 h-full rounded relative overflow-hidden">
+                <div className="absolute inset-0 flex justify-around">
+                   {hours.slice(0, -1).map(h => (
+                     <div key={`line-${h}`} className="w-px h-full border-r border-dashed border-gray-300"></div>
+                   ))}
+                </div>
+                
+                {viewMode === 'disponibilidade' && availableSlots[agentIndex].map((slot, i) => {
+                    const isHovered = hoveredSlot?.agentIndex === agentIndex && hoveredSlot.start === slot.start;
+                    return (
+                        <div 
+                            key={`avail-${i}`}
+                            className={`absolute h-full rounded transition-colors cursor-pointer group`}
+                            style={getSlotStyle(slot.start, slot.end)}
+                            onMouseEnter={() => setHoveredSlot({ agentIndex, start: slot.start, end: slot.end })}
+                            onMouseLeave={() => setHoveredSlot(null)}
+                            onClick={() => onSlotClick({ agent: schedule.agent, start: slot.start, date: selectedDate })}
+                        >
+                            {isHovered && 
+                                <div className="absolute inset-0 bg-green-400 opacity-80"></div>
+                            }
+                            {isHovered && (
+                                <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-semibold px-2 py-1 rounded-md whitespace-nowrap">
+                                    {selectedDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}, {slot.start}:00
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+
+                {schedule.appointments.map((slot, i) => (
+                  <div 
+                    key={i} 
+                    className={`absolute h-full rounded transition-all duration-200 
+                        ${getSlotColor(slot.type)} 
+                        ${slot.type === 'booked' && viewMode === 'compromissos' ? 'cursor-pointer hover:scale-105 hover:shadow-lg' : ''}
+                        ${viewMode === 'disponibilidade' && slot.type !== 'unavailable' ? 'opacity-70' : ''}
+                    `}
+                    style={getSlotStyle(slot.start, slot.end)}
+                    onMouseEnter={(e) => handleSlotMouseEnter(e, slot)}
+                    onMouseLeave={handleSlotMouseLeave}
+                    onClick={() => slot.type === 'booked' && slot.details && viewMode === 'compromissos' && onAppointmentClick(slot.details)}
+                  >
+                     {slot.type === 'unavailable' && (
+                       <div 
+                         className="w-full h-full"
+                         style={{ 
+                            backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)',
+                         }}
+                       ></div>
+                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {popover?.visible && popover.content && portalRoot && createPortal(
+          <div style={popover.style}>
+              <AppointmentPopover appointment={popover.content} />
+          </div>,
+          portalRoot
+      )}
+    </div>
+  );
+};
+
+export default PreviewSection;

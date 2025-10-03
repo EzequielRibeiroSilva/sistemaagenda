@@ -1,0 +1,116 @@
+
+import React, { useState } from 'react';
+import { Mail, Lock, Eye, EyeOff, Check } from './Icons';
+
+interface LoginPageProps {
+    onLoginSuccess: (email: string) => void;
+}
+
+const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onLoginSuccess(email);
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+            <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+                <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-800">Painel de Agendamento</h1>
+                    <p className="text-gray-500 mt-2">Faça login na sua conta</p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                        <label htmlFor="email" className="text-sm font-medium text-gray-700">Email</label>
+                        <div className="mt-1 relative">
+                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Mail className="w-5 h-5 text-gray-400" />
+                            </div>
+                            <input
+                                id="email"
+                                name="email"
+                                type="email"
+                                autoComplete="email"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="seu@email.com"
+                                className="w-full bg-white pl-10 pr-3 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                         <label htmlFor="password" className="text-sm font-medium text-gray-700">Senha</label>
+                        <div className="mt-1 relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Lock className="w-5 h-5 text-gray-400" />
+                            </div>
+                            <input
+                                id="password"
+                                name="password"
+                                type={showPassword ? 'text' : 'password'}
+                                autoComplete="current-password"
+                                required
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Sua senha"
+                                className="w-full bg-white pl-10 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                            >
+                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                        <label className="flex items-center cursor-pointer select-none" htmlFor="remember-me">
+                            <input
+                                id="remember-me"
+                                name="remember-me"
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={() => setRememberMe(!rememberMe)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center border-2 border-gray-300 rounded-sm bg-white peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-colors">
+                                {rememberMe && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                            </div>
+                            <span className="ml-2 block text-gray-700">
+                                Lembrar-me
+                            </span>
+                        </label>
+
+                        <div className="font-medium">
+                            <a href="#" className="text-blue-600 hover:text-blue-500">
+                                Esqueceu a senha?
+                            </a>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button
+                            type="submit"
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                        >
+                            Entrar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+export default LoginPage;

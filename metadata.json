@@ -1,0 +1,5 @@
+{
+  "name": "Painel de Agendamento",
+  "description": "Um aplicativo de painel de agendamento abrangente construído com React, TypeScript e Tailwind CSS, inspirado em um design de interface do usuário moderno. Possui métricas de desempenho, uma visão de linha do tempo diária e uma lista de compromissos futuros.",
+  "requestFramePermissions": []
+}
