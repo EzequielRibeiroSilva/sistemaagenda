@@ -1,19 +1,18 @@
-
 import React, { useState, useMemo } from 'react';
 import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX } from './Icons';
 import type { AppointmentDetail, AppointmentStatus } from '../types';
 
 const mockAppointments: AppointmentDetail[] = [
-  { id: 4172, service: 'CORTE', dateTime: '27 Setembro, 2025 - 18:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 23:56', paymentMethod: 'N/A'},
-  { id: 4171, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Pendente', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 23:55', paymentMethod: 'N/A'},
-  { id: 4170, service: 'CORTE', dateTime: '27 Setembro, 2025 - 15:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 19:04', paymentMethod: 'N/A'},
-  { id: 4169, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 17:35', paymentMethod: 'N/A'},
-  { id: 4168, service: 'CORTE', dateTime: '25 Setembro, 2025 - 17:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Charles Gesso', avatar: 'https://i.pravatar.cc/150?img=4' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Sep, 2025 16:55', paymentMethod: 'Cartão'},
-  { id: 4167, service: 'CORTE', dateTime: '25 Setembro, 2025 - 18:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Cancelado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 16:55', paymentMethod: 'N/A'},
-  { id: 4166, service: 'CORTE', dateTime: '25 Setembro, 2025 - 16:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Sep, 2025 15:09', paymentMethod: 'Cartão'},
-  { id: 4165, service: 'CORTE + BARBA', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '17 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'José Raine', avatar: 'https://i.pravatar.cc/150?img=5' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 13:55', paymentMethod: 'N/A'},
-  { id: 4164, service: 'CORTE', dateTime: '26 Setembro, 2025 - 09:00', timeRemaining: '7 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 12:56', paymentMethod: 'N/A'},
-  { id: 4163, service: 'CORTE', dateTime: '25 Setembro, 2025 - 14:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Ângelo Paixão', avatar: 'https://i.pravatar.cc/150?img=6' }, client: { name: 'Pedro Hugo', avatar: 'https://i.pravatar.cc/150?img=7' }, status: 'Não Compareceu', paymentStatus: 'Não Pago', createdAt: '25 Sep, 2025 12:45', paymentMethod: 'N/A'},
+  { id: 4172, service: 'CORTE', dateTime: '27 Setembro, 2025 - 18:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 23:56', paymentMethod: 'Não definido'},
+  { id: 4171, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 23:55', paymentMethod: 'Não definido'},
+  { id: 4170, service: 'CORTE', dateTime: '27 Setembro, 2025 - 15:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 19:04', paymentMethod: 'Não definido'},
+  { id: 4169, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 17:35', paymentMethod: 'Não definido'},
+  { id: 4168, service: 'CORTE', dateTime: '25 Setembro, 2025 - 17:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Charles Gesso', avatar: 'https://i.pravatar.cc/150?img=4' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Setembro, 2025 - 16:55', paymentMethod: 'Cartão Crédito'},
+  { id: 4167, service: 'CORTE', dateTime: '25 Setembro, 2025 - 18:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Cancelado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 16:55', paymentMethod: 'Não definido'},
+  { id: 4166, service: 'CORTE', dateTime: '25 Setembro, 2025 - 16:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Setembro, 2025 - 15:09', paymentMethod: 'PIX'},
+  { id: 4165, service: 'CORTE + BARBA', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '17 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'José Raine', avatar: 'https://i.pravatar.cc/150?img=5' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 13:55', paymentMethod: 'Dinheiro'},
+  { id: 4164, service: 'CORTE', dateTime: '26 Setembro, 2025 - 09:00', timeRemaining: '7 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 12:56', paymentMethod: 'Cartão Débito'},
+  { id: 4163, service: 'CORTE', dateTime: '25 Setembro, 2025 - 14:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Ângelo Paixão', avatar: 'https://i.pravatar.cc/150?img=6' }, client: { name: 'Pedro Hugo', avatar: 'https://i.pravatar.cc/150?img=7' }, status: 'Não Compareceu', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 12:45', paymentMethod: 'Não definido'},
 ];
 const TOTAL_APPOINTMENTS = 4087;
 
@@ -85,14 +84,13 @@ const StyledCheckbox: React.FC<{
 
 const StatusBadge: React.FC<{ status: AppointmentStatus }> = ({ status }) => {
     const statusStyles: { [key in AppointmentStatus]: { icon: React.ReactNode; text: string; className: string } } = {
-        'Pendente': { icon: <RotateCw className="w-3 h-3" />, text: 'Pendente', className: 'bg-yellow-100 text-yellow-800' },
         'Aprovado': { icon: <CheckCircle className="w-3 h-3" />, text: 'Aprovado', className: 'bg-green-100 text-green-800' },
         'Concluído': { icon: <Check className="w-3 h-3" />, text: 'Concluído', className: 'bg-blue-100 text-blue-800' },
         'Cancelado': { icon: <X className="w-3 h-3" />, text: 'Cancelado', className: 'bg-red-100 text-red-800' },
         'Não Compareceu': { icon: <UserX className="w-3 h-3" />, text: 'Não Compareceu', className: 'bg-gray-200 text-gray-700' },
     };
 
-    const style = statusStyles[status] || statusStyles['Pendente'];
+    const style = statusStyles[status];
 
     return (
         <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${style.className}`}>
@@ -143,7 +141,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
 
     const [filters, setFilters] = useState(initialFilters);
-    const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     
     const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -155,14 +152,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleApplyFilters = () => {
-        setAppliedFilters(filters);
-    };
-
     const serviceOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.service))], []);
     const agentOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.agent.name))], []);
     const paymentStatusOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.paymentStatus))], []);
-    const paymentMethodOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.paymentMethod).filter(Boolean))] as string[], []);
+    const paymentMethodOptions = ['Não definido', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'PIX'];
 
     const getRemainingTimeClass = (status: AppointmentDetail['timeRemainingStatus']) => {
         switch (status) {
@@ -181,10 +174,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                 return false;
             }
 
-            const { id, service, dateTime, timeRemainingStatus, agent, client, status, paymentStatus, createdAt, paymentMethod } = appliedFilters;
+            const { id, service, dateTime, timeRemainingStatus, agent, client, status, paymentStatus, createdAt, paymentMethod } = filters;
             
-            if (id && !String(app.id).includes(id)) return false;
+            if (id && !String(app.id).toLowerCase().includes(id.toLowerCase())) return false;
             if (service !== 'all' && app.service !== service) return false;
+            if (dateTime && !app.dateTime.toLowerCase().includes(dateTime.toLowerCase())) return false;
+
             if (status !== 'all' && app.status !== status) return false;
             if (agent !== 'all' && app.agent.name !== agent && !loggedInAgentId) return false;
             if (paymentStatus !== 'all' && app.paymentStatus !== paymentStatus) return false;
@@ -192,12 +187,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             if (timeRemainingStatus !== 'all' && app.timeRemainingStatus !== timeRemainingStatus) return false;
 
             if (client && !app.client.name.toLowerCase().includes(client.toLowerCase())) return false;
-            if (dateTime && !app.dateTime.toLowerCase().includes(dateTime.toLowerCase())) return false;
             if (createdAt && !app.createdAt.toLowerCase().includes(createdAt.toLowerCase())) return false;
             
             return true;
         });
-    }, [appliedFilters, loggedInAgentId]);
+    }, [filters, loggedInAgentId]);
 
     const allSelected = useMemo(() => 
         filteredAppointments.length > 0 && filteredAppointments.every(app => selectedAppointments[app.id]),
@@ -224,6 +218,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             [id]: !prev[id]
         }));
     };
+    
+    const handleClearFilters = () => {
+        setFilters(initialFilters);
+    };
 
     return (
         <div className="space-y-6">
@@ -233,10 +231,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                     <p className="text-sm text-gray-500">Mostrando {filteredAppointments.length} de {TOTAL_APPOINTMENTS}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                        <Table className="w-4 h-4" />
-                        Tabela De Configurações
-                    </button>
                     <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                         <Download className="w-4 h-4" />
                         Baixar .csv
@@ -266,7 +260,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 {visibleColumns.statusPagamento && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
                                 {visibleColumns.criadoEm && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
                                 {visibleColumns.metodoPagamento && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
-                                <th className="p-3 w-28 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
                             </tr>
                             <tr>
                                 <td className="p-3 border-t border-gray-200 sticky left-0 bg-gray-50 z-10"></td>
@@ -280,7 +273,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                     <td className="p-3 border-t border-gray-200">
                                         <FilterSelect name="status" value={filters.status} onChange={handleFilterChange}>
                                             <option value="all">Mostrar Todos Os</option>
-                                            <option value="Pendente">Pendente</option>
                                             <option value="Aprovado">Aprovado</option>
                                             <option value="Concluído">Concluído</option>
                                             <option value="Cancelado">Cancelado</option>
@@ -290,8 +282,23 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 )}
                                 {visibleColumns.statusPagamento && <td className="p-3 border-t border-gray-200"><FilterSelect name="paymentStatus" value={filters.paymentStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos Os</option>{paymentStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
                                 {visibleColumns.criadoEm && <td className="p-3 border-t border-gray-200"><FilterInput type="text" name="createdAt" value={filters.createdAt} onChange={handleFilterChange} placeholder="Pesquisar Data Criação" /></td>}
-                                {visibleColumns.metodoPagamento && <td className="p-3 border-t border-gray-200"><FilterSelect name="paymentMethod" value={filters.paymentMethod} onChange={handleFilterChange}><option value="all">Método De Pagamento</option>{paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}</FilterSelect></td>}
-                                <td className="p-3 border-t border-gray-200"><button onClick={handleApplyFilters} className="w-full px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Mostrar</button></td>
+                                {visibleColumns.metodoPagamento && 
+                                    <td className="p-3 border-t border-gray-200">
+                                        <FilterSelect name="paymentMethod" value={filters.paymentMethod} onChange={handleFilterChange}>
+                                            <option value="all">Método De Pagamento</option>
+                                            {paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                                        </FilterSelect>
+                                    </td>
+                                }
+                                <td className="p-3 border-t border-gray-200" colSpan={visibleColumns.metodoPagamento ? 1 : 2}>
+                                     <button
+                                        onClick={handleClearFilters}
+                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                                    >
+                                        <RotateCw className="w-3 h-3" />
+                                        Limpar
+                                    </button>
+                                </td>
                             </tr>
                         </thead>
                         <tbody>
@@ -313,11 +320,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                     {visibleColumns.statusPagamento && <td className="p-3 text-gray-600 whitespace-nowrap">{app.paymentStatus}</td>}
                                     {visibleColumns.criadoEm && <td className="p-3 text-gray-600 whitespace-nowrap">{app.createdAt}</td>}
                                     {visibleColumns.metodoPagamento && <td className="p-3 text-gray-600 whitespace-nowrap">{app.paymentMethod}</td>}
-                                    <td className="p-3">
-                                        <div className="flex items-center gap-2">
-                                            <button className="px-3 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-md hover:bg-green-300 whitespace-nowrap">Aprovar</button>
-                                        </div>
-                                    </td>
                                 </tr>
                             ))}
                         </tbody>

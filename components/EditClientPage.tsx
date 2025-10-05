@@ -37,6 +37,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
+  const [subscriptionStartDate, setSubscriptionStartDate] = useState('');
 
   useEffect(() => {
     if (clientToEdit) {
@@ -44,9 +45,27 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
       setFirstName(nameParts[0] || '');
       setLastName(nameParts.slice(1).join(' '));
       setPhone(clientToEdit.phone.replace('+55', ''));
-      setIsSubscriber(!!clientToEdit.socialAlert);
+      const isSub = !!clientToEdit.socialAlert;
+      setIsSubscriber(isSub);
+      if (isSub) {
+        // In a real app, this date would come from the client data.
+        // For this mock, we default to today's date if they are a subscriber.
+        setSubscriptionStartDate(new Date().toISOString().split('T')[0]);
+      } else {
+        setSubscriptionStartDate('');
+      }
     }
   }, [clientToEdit]);
+
+  const handleSubscriberToggle = () => {
+    const newIsSubscriber = !isSubscriber;
+    setIsSubscriber(newIsSubscriber);
+    if (newIsSubscriber) {
+      setSubscriptionStartDate(new Date().toISOString().split('T')[0]);
+    } else {
+      setSubscriptionStartDate('');
+    }
+  };
 
   if (!clientToEdit) {
     return (
@@ -100,7 +119,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                             className={`${isSubscriber ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none`}
                             role="switch"
                             aria-checked={isSubscriber}
-                            onClick={() => setIsSubscriber(!isSubscriber)}
+                            onClick={handleSubscriberToggle}
                         >
                             <span
                                 aria-hidden="true"
@@ -112,6 +131,21 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                         </span>
                     </div>
                 </div>
+
+                {isSubscriber && (
+                    <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-gray-600 mb-2 block">Data de Início da Assinatura</label>
+                        <input 
+                            type="date" 
+                            value={subscriptionStartDate}
+                            onChange={(e) => setSubscriptionStartDate(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" 
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                            Esta data será usada para calcular o período da assinatura e enviar notificações.
+                        </p>
+                    </div>
+                )}
 
             </div>
         </div>

@@ -1,4 +1,4 @@
-export type AppointmentStatus = 'Pendente' | 'Aprovado' | 'Concluído' | 'Cancelado' | 'Não Compareceu';
+export type AppointmentStatus = 'Aprovado' | 'Concluído' | 'Cancelado' | 'Não Compareceu';
 
 export interface Agent {
     id: string;

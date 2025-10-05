@@ -163,7 +163,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             </FormField>
                             <FormField label="Estado">
                                 <Select value={status} onChange={e => setStatus(e.target.value as AppointmentStatus)}>
-                                    <option value="Pendente">Pendente</option>
                                     <option value="Aprovado">Aprovado</option>
                                     <option value="Concluído">Concluído</option>
                                     <option value="Cancelado">Cancelado</option>

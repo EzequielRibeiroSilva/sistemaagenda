@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import PerformanceSection from './PerformanceSection';
 import PreviewSection from './PreviewSection';
@@ -56,7 +55,7 @@ const agentSchedules: AgentSchedule[] = [
             { type: 'unavailable', start: 8, end: 14 },
             { type: 'booked', start: 14, end: 15, details: { id: 'b1', service: 'CORTE + BARBA', serviceId: 's2', locationId: 'loc2', client: 'Pedro Almeida', agentName: 'Ângelo Paixão', agentEmail: 'angelo@email.com', date: '30 Setembro, 2025', time: '14:00-15:00', status: 'Aprovado' } },
             { type: 'booked', start: 16, end: 17, details: { id: 'b2', service: 'CORTE', serviceId: 's1', locationId: 'loc1', client: 'Lucas Martins', agentName: 'Ângelo Paixão', agentEmail: 'angelo@email.com', date: '30 Setembro, 2025', time: '16:00-17:00', status: 'Aprovado' } },
-            { type: 'booked', start: 18, end: 19, details: { id: 'b3', service: 'CORTE', serviceId: 's1', locationId: 'loc2', client: 'Gabriel Costa', agentName: 'Ângelo Paixão', agentEmail: 'angelo@email.com', date: '30 Setembro, 2025', time: '18:00-19:00', status: 'Pendente' } }
+            { type: 'booked', start: 18, end: 19, details: { id: 'b3', service: 'CORTE', serviceId: 's1', locationId: 'loc2', client: 'Gabriel Costa', agentName: 'Ângelo Paixão', agentEmail: 'angelo@email.com', date: '30 Setembro, 2025', time: '18:00-19:00', status: 'Aprovado' } }
         ]
     },
     {
