@@ -17,6 +17,7 @@ export interface Appointment {
     id: string;
     agentId: string;
     serviceId: string;
+    locationId: string;
     startTime: string; // "HH:mm"
     endTime: string;   // "HH:mm"
 }

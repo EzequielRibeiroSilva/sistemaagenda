@@ -122,7 +122,7 @@ const App: React.FC = () => {
         />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
           {activeView === 'dashboard' && <DashboardPage loggedInAgentId={user.agentId} />}
-          {activeView === 'calendar' && <CalendarPage loggedInAgentId={user.agentId} />}
+          {activeView === 'calendar' && <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />}
           {activeView === 'compromissos' && <AppointmentsPage loggedInAgentId={user.agentId} />}
           {activeView === 'clients-list' && <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />}
           {activeView === 'clients-add' && <AddClientPage />}
