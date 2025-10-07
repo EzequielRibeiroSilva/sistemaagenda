@@ -1,0 +1,10 @@
+
+{
+  "redirects": [
+    {
+      "source": "/reservar",
+      "destination": "/index.html",
+      "type": 301
+    }
+  ]
+}

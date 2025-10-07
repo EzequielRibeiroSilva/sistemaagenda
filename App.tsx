@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -24,6 +25,7 @@ import LoginPage from './components/LoginPage';
 import AdminSidebar from './components/admin/AdminSidebar';
 import AdminDashboardPage from './components/admin/AdminDashboardPage';
 import AdminHeader from './components/admin/AdminHeader';
+import BookingPage from './components/BookingPage';
 
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -36,6 +38,7 @@ const App: React.FC = () => {
   const [editingExtraServiceId, setEditingExtraServiceId] = useState<string | null>(null);
   const [user, setUser] = useState<{ role: 'none' | 'salon' | 'admin' | 'agent', agentId: string | null }>({ role: 'none', agentId: null });
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
 
   const handleEditAgent = (agentId: string) => {
     setEditingAgentId(agentId);
@@ -79,6 +82,13 @@ const App: React.FC = () => {
     setUser({ role: 'none', agentId: null });
   };
 
+  // Simple Router
+  const path = window.location.pathname;
+
+  if (path === '/reservar') {
+    return <BookingPage />;
+  }
+
   if (user.role === 'none') {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
@@ -99,6 +109,41 @@ const App: React.FC = () => {
         </div>
       </div>
     );
+  }
+  
+  const renderMainContent = () => {
+    if (isPreviewingBookingPage) {
+      return <BookingPage isPreview={true} onExitPreview={() => setIsPreviewingBookingPage(false)} />;
+    }
+
+    switch (activeView) {
+      case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
+      case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />;
+      case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
+      case 'clients-list': return <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />;
+      case 'clients-add': return <AddClientPage />;
+      case 'clients-edit': return <EditClientPage setActiveView={setActiveView} clientId={editingClientId} />;
+      case 'services-list':
+      case 'services-extra':
+        return <ServicesPage 
+          initialTab={activeView === 'services-extra' ? 'Serviços Extras' : 'Serviços'} 
+          setActiveView={setActiveView}
+          onEditService={handleEditService}
+          onEditExtraService={handleEditExtraService}
+        />;
+      case 'services-create': return <CreateServicePage />;
+      case 'services-edit': return <EditServicePage setActiveView={setActiveView} serviceId={editingServiceId} />;
+      case 'services-extra-create': return <CreateExtraServicePage setActiveView={setActiveView} />;
+      case 'services-extra-edit': return <EditExtraServicePage setActiveView={setActiveView} extraServiceId={editingExtraServiceId} />;
+      case 'agents-list': return <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />;
+      case 'agents-create': return <CreateAgentPage setActiveView={setActiveView} />;
+      case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'agent' ? user.agentId : editingAgentId} />;
+      case 'locations-list': return <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />;
+      case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
+      case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;
+      case 'settings': return <SettingsPage onShowPreview={() => setIsPreviewingBookingPage(true)} />;
+      default: return <DashboardPage loggedInAgentId={user.agentId} />;
+    }
   }
 
   return (
@@ -121,34 +166,7 @@ const App: React.FC = () => {
           userRole={user.role as 'salon' | 'agent'}
         />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
-          {activeView === 'dashboard' && <DashboardPage loggedInAgentId={user.agentId} />}
-          {activeView === 'calendar' && <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />}
-          {activeView === 'compromissos' && <AppointmentsPage loggedInAgentId={user.agentId} />}
-          {activeView === 'clients-list' && <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />}
-          {activeView === 'clients-add' && <AddClientPage />}
-          {activeView === 'clients-edit' && <EditClientPage setActiveView={setActiveView} clientId={editingClientId} />}
-          {(activeView === 'services-list' || activeView === 'services-extra') && 
-            <ServicesPage 
-              initialTab={
-                activeView === 'services-extra' ? 'Serviços Extras' :
-                'Serviços'
-              } 
-              setActiveView={setActiveView}
-              onEditService={handleEditService}
-              onEditExtraService={handleEditExtraService}
-            />
-          }
-          {activeView === 'services-create' && <CreateServicePage />}
-          {activeView === 'services-edit' && <EditServicePage setActiveView={setActiveView} serviceId={editingServiceId} />}
-          {activeView === 'services-extra-create' && <CreateExtraServicePage setActiveView={setActiveView} />}
-          {activeView === 'services-extra-edit' && <EditExtraServicePage setActiveView={setActiveView} extraServiceId={editingExtraServiceId} />}
-          {activeView === 'agents-list' && <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />}
-          {activeView === 'agents-create' && <CreateAgentPage setActiveView={setActiveView} />}
-          {activeView === 'agents-edit' && <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'agent' ? user.agentId : editingAgentId} />}
-          {activeView === 'locations-list' && <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />}
-          {activeView === 'locations-create' && <CreateLocationPage setActiveView={setActiveView} />}
-          {activeView === 'locations-edit' && <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />}
-          {activeView === 'settings' && <SettingsPage />}
+          {renderMainContent()}
         </main>
       </div>
     </div>

@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { Copy, Check, MessageSquare } from './Icons';
+import { Copy, Check, MessageSquare, Eye } from './Icons';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
@@ -34,16 +35,20 @@ const ToggleSwitch: React.FC<{ enabled: boolean; setEnabled: (enabled: boolean) 
     </button>
 );
 
+interface SettingsPageProps {
+  onShowPreview: () => void;
+}
 
-const SettingsPage: React.FC = () => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     const [copied, setCopied] = useState(false);
     const [allowCancellation, setAllowCancellation] = useState(true);
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
 
+    const bookingLink = `${window.location.origin}/reservar?salao=123`;
+
     const handleCopy = () => {
-      const link = "https://seusalao.agendamento.com/reservar";
-      navigator.clipboard.writeText(link).then(() => {
+      navigator.clipboard.writeText(bookingLink).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       });
@@ -59,7 +64,7 @@ const SettingsPage: React.FC = () => {
                   <input
                       type="text"
                       readOnly
-                      value="https://seusalao.agendamento.com/reservar"
+                      value={bookingLink}
                       className="w-full bg-gray-100 border border-gray-300 text-gray-600 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                       onClick={handleCopy}
                   />
@@ -80,6 +85,22 @@ const SettingsPage: React.FC = () => {
                               Copiar
                           </>
                       )}
+                  </button>
+                  <a
+                    href={bookingLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Visualizar
+                  </a>
+                   <button
+                    onClick={onShowPreview}
+                    className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Ver
                   </button>
               </div>
           </FormRow>
