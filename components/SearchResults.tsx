@@ -1,5 +1,4 @@
 
-
 import React, { useMemo } from 'react';
 import { Calendar, Users, Briefcase, Box, Leaf } from './Icons';
 
