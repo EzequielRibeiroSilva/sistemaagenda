@@ -1,8 +1,10 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, MessageSquare, LineChart, Gift, Plus, Cog, LogOut } from './Icons';
+import { Search, Menu, Plus, Cog, LogOut, MessageSquare, Inbox } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
+import MobileSearchOverlay from './MobileSearchOverlay';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -10,9 +12,11 @@ interface HeaderProps {
   onEditAgent: (agentId: string) => void;
   onEditService: (serviceId: string) => void;
   userRole: 'salon' | 'agent';
+  onToggleMobileSidebar: () => void;
+  loggedInAgentId: string | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, userRole }) => {
+const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -20,6 +24,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -57,43 +62,75 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
   return (
     <>
       <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0">
-        <div className="relative flex-1" ref={searchContainerRef}>
-            <div className="flex items-center w-full max-w-lg">
-                <Search className="h-5 w-5 text-gray-400" />
-                <input
-                    type="text"
-                    placeholder="Comece a digitar para localizar reservas, clientes, agentes ou serviços..."
-                    className="ml-3 w-full bg-transparent focus:outline-none text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                />
+        
+        {/* --- DESKTOP/TABLET HEADER (lg and up) --- */}
+        <div className="hidden lg:flex items-center w-full justify-between">
+            <div className="relative flex-1 max-w-lg" ref={searchContainerRef}>
+                <div className="flex items-center w-full">
+                    <Search className="h-5 w-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Comece a digitar para localizar reservas, clientes, agentes ou serviços..."
+                        className="ml-3 w-full bg-transparent focus:outline-none text-sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => setIsSearchFocused(true)}
+                    />
+                </div>
+                {isSearchFocused && searchQuery && (
+                  <SearchResults 
+                    query={searchQuery} 
+                    onAddNewAppointment={handleAddNewAppointment}
+                    onSelectAgent={handleSelectAgent}
+                    onSelectService={handleSelectService}
+                    userRole={userRole}
+                    loggedInAgentId={loggedInAgentId}
+                  />
+                )}
             </div>
-            {isSearchFocused && searchQuery && (
-              <SearchResults 
-                query={searchQuery} 
-                onAddNewAppointment={handleAddNewAppointment}
-                onSelectAgent={handleSelectAgent}
-                onSelectService={handleSelectService}
-              />
-            )}
+
+            <div className="flex items-center space-x-4">
+              <div className="h-6 w-px bg-gray-200"></div>
+              <button
+                onClick={() => setModalOpen(true)}
+                className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="h-5 w-5 mr-2" />
+                Novas Reservas
+              </button>
+              
+              {/* Avatar will be rendered outside this div but reuse the logic */}
+            </div>
         </div>
 
 
-        <div className="flex items-center space-x-4">
-          
-          
-          
-          <div className="h-6 w-px bg-gray-200"></div>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            Novas Reservas
-          </button>
-          
-          <div className="relative" ref={dropdownRef}>
+        {/* --- MOBILE HEADER (screens smaller than lg) --- */}
+        <div className="flex lg:hidden items-center justify-between w-full">
+            <button 
+              className="p-2 text-blue-600 rounded-md"
+              onClick={onToggleMobileSidebar}
+              aria-label="Abrir menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <button
+              onClick={() => setIsMobileSearchOpen(true)}
+              className="p-2 text-blue-600 rounded-md"
+              aria-label="Pesquisar"
+            >
+              <Search className="h-6 w-6" />
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="p-2 text-blue-600 rounded-md"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
+        </div>
+        
+        {/* --- AVATAR (for all screen sizes) --- */}
+        {/* This is separate to work with both layouts */}
+        <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen(!isDropdownOpen)}
               className="focus:outline-none rounded-full"
@@ -146,10 +183,20 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 </a>
               </div>
             )}
-          </div>
         </div>
+        
       </header>
       <NewAppointmentModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
+      {isMobileSearchOpen && (
+        <MobileSearchOverlay
+          onClose={() => setIsMobileSearchOpen(false)}
+          onAddNewAppointment={handleAddNewAppointment}
+          onSelectAgent={handleSelectAgent}
+          onSelectService={handleSelectService}
+          userRole={userRole}
+          loggedInAgentId={loggedInAgentId}
+        />
+      )}
     </>
   );
 };

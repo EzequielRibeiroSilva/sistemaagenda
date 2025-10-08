@@ -1,5 +1,6 @@
 
-import React from 'react';
+
+import React, { useMemo } from 'react';
 import { Calendar, Users, Briefcase, Box, Leaf } from './Icons';
 
 // Mock data for search results
@@ -28,6 +29,8 @@ interface SearchResultsProps {
     onAddNewAppointment: () => void;
     onSelectAgent: (agentId: string) => void;
     onSelectService: (serviceId: string) => void;
+    userRole: 'salon' | 'agent';
+    loggedInAgentId: string | null;
 }
 
 const highlightMatch = (text: string, query: string) => {
@@ -46,15 +49,22 @@ const highlightMatch = (text: string, query: string) => {
     );
 };
 
-const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointment, onSelectAgent, onSelectService }) => {
+const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointment, onSelectAgent, onSelectService, userRole, loggedInAgentId }) => {
     const lowerCaseQuery = query.toLowerCase();
 
+    const agentsToSearch = useMemo(() => {
+        if (userRole === 'agent' && loggedInAgentId) {
+            return mockAgents.filter(agent => agent.id === loggedInAgentId);
+        }
+        return mockAgents;
+    }, [userRole, loggedInAgentId]);
+
     const filteredClients = mockClients.filter(c => c.name.toLowerCase().includes(lowerCaseQuery));
-    const filteredAgents = mockAgents.filter(a => a.name.toLowerCase().includes(lowerCaseQuery));
+    const filteredAgents = agentsToSearch.filter(a => a.name.toLowerCase().includes(lowerCaseQuery));
     const filteredServices = mockServices.filter(s => s.name.toLowerCase().includes(lowerCaseQuery));
 
     return (
-        <div className="absolute top-full left-0 mt-2 w-[48rem] max-w-2xl bg-white rounded-lg shadow-lg border border-gray-200 z-50 p-6 space-y-6">
+        <div className="lg:absolute lg:top-full lg:left-0 lg:mt-2 lg:w-[48rem] lg:max-w-2xl bg-white lg:rounded-lg lg:shadow-lg lg:border lg:border-gray-200 z-50 p-6 space-y-6">
             {/* Appointments Section */}
             <div>
                 <div className="flex items-center mb-3">

@@ -164,6 +164,8 @@ const App: React.FC = () => {
           onEditAgent={handleEditAgent}
           onEditService={handleEditService}
           userRole={user.role as 'salon' | 'agent'}
+          loggedInAgentId={user.agentId}
+          onToggleMobileSidebar={() => setMobileSidebarOpen(true)}
         />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
           {renderMainContent()}
