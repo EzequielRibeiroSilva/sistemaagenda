@@ -1,9 +1,11 @@
 const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
+const EvolutionApiService = require('../services/EvolutionApiService');
 
 class AgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
+    this.evolutionApi = new EvolutionApiService();
   }
 
   // GET /api/agendamentos - Buscar agendamentos do usuário logado
@@ -224,9 +226,33 @@ class AgendamentoController extends BaseController {
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
 
-      return res.status(201).json({ 
+      // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
+      // Enviar notificação WhatsApp para o cliente
+      try {
+        // Buscar dados completos para a mensagem
+        const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
+
+        if (dadosCompletos && dadosCompletos.cliente.telefone) {
+          const template = this.evolutionApi.getTemplateNovoAgendamento(dadosCompletos);
+          const resultadoWhatsApp = await this.evolutionApi.enviarMensagem(
+            dadosCompletos.cliente.telefone,
+            template
+          );
+
+          if (resultadoWhatsApp.success) {
+            console.log(`✅ WhatsApp enviado para cliente: ${dadosCompletos.cliente.nome}`);
+          } else {
+            console.log(`⚠️ Falha ao enviar WhatsApp para cliente: ${resultadoWhatsApp.error}`);
+          }
+        }
+      } catch (whatsappError) {
+        // Não falhar a criação do agendamento por erro no WhatsApp
+        console.error('❌ Erro ao enviar WhatsApp:', whatsappError.message);
+      }
+
+      return res.status(201).json({
         data: agendamentoCompleto,
-        message: 'Agendamento criado com sucesso' 
+        message: 'Agendamento criado com sucesso'
       });
     } catch (error) {
       console.error('Erro ao criar agendamento:', error);
@@ -303,6 +329,59 @@ class AgendamentoController extends BaseController {
         error: 'Erro interno do servidor',
         message: error.message 
       });
+    }
+  }
+
+  // Método auxiliar para buscar dados completos do agendamento
+  async buscarDadosCompletos(agendamentoId) {
+    try {
+      const resultado = await this.model.db('agendamentos')
+        .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+        .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+        .leftJoin('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
+        .leftJoin('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamentos.id', agendamentoId)
+        .select(
+          'agendamentos.*',
+          'clientes.nome as cliente_nome',
+          'clientes.telefone as cliente_telefone',
+          'clientes.email as cliente_email',
+          'agentes.nome as agente_nome',
+          'unidades.nome as unidade_nome',
+          'unidades.endereco as unidade_endereco',
+          'servicos.nome as servico_nome',
+          'servicos.preco as servico_preco'
+        )
+        .first();
+
+      if (!resultado) return null;
+
+      // Formatar dados para o template
+      return {
+        cliente: {
+          nome: resultado.cliente_nome,
+          telefone: resultado.cliente_telefone,
+          email: resultado.cliente_email
+        },
+        agente: {
+          nome: resultado.agente_nome
+        },
+        unidade: {
+          nome: resultado.unidade_nome,
+          endereco: resultado.unidade_endereco
+        },
+        servico: {
+          nome: resultado.servico_nome || 'Serviço não especificado',
+          preco: resultado.servico_preco || resultado.valor_total || 0
+        },
+        data: new Date(resultado.data_agendamento).toLocaleDateString('pt-BR'),
+        hora: resultado.hora_inicio
+      };
+
+    } catch (error) {
+      console.error('Erro ao buscar dados completos:', error);
+      return null;
     }
   }
 }

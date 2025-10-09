@@ -2,40 +2,47 @@ const express = require('express');
 const router = express.Router();
 
 // Importar rotas específicas
+const authRoutes = require('./auth');
+const evolutionRoutes = require('./evolution');
 const unidadesRoutes = require('./unidades');
 const clientesRoutes = require('./clientes');
 const servicosRoutes = require('./servicos');
 const agendamentosRoutes = require('./agendamentos');
 
-// Middleware temporário para simular usuário autenticado (para testes)
-const mockAuthMiddleware = (req, res, next) => {
-  // Em produção, isso seria substituído por um middleware de autenticação JWT real
-  req.user = {
-    id: 1,
-    nome: 'Usuário Teste',
-    email: 'teste@email.com',
-    tipo_usuario: 'salon',
-    plano: 'Multi',
-    limite_unidades: 5
-  };
-  next();
-};
+// Importar middleware de autenticação real
+const { authenticate } = require('../middleware/authMiddleware');
 
-// Aplicar middleware de autenticação mock em todas as rotas
-router.use(mockAuthMiddleware);
+// Rotas públicas (sem autenticação)
+router.use('/auth', authRoutes);
 
-// Definir rotas
-router.use('/unidades', unidadesRoutes);
-router.use('/clientes', clientesRoutes);
-router.use('/servicos', servicosRoutes);
-router.use('/agendamentos', agendamentosRoutes);
+// Rotas protegidas (com autenticação)
+router.use('/evolution', authenticate(), evolutionRoutes);
+router.use('/unidades', authenticate(), unidadesRoutes);
+router.use('/clientes', authenticate(), clientesRoutes);
+router.use('/servicos', authenticate(), servicosRoutes);
+router.use('/agendamentos', authenticate(), agendamentosRoutes);
 
-// Rota de teste para verificar se a API está funcionando
+// Rota de teste pública para verificar se a API está funcionando
 router.get('/test', (req, res) => {
   res.json({
     message: 'API funcionando corretamente!',
     timestamp: new Date().toISOString(),
-    user: req.user
+    authenticated: false
+  });
+});
+
+// Rota de teste protegida para verificar autenticação
+router.get('/test-auth', authenticate(), (req, res) => {
+  res.json({
+    message: 'API autenticada funcionando corretamente!',
+    timestamp: new Date().toISOString(),
+    authenticated: true,
+    user: {
+      id: req.user.id,
+      nome: req.user.nome,
+      email: req.user.email,
+      tipo_usuario: req.user.tipo_usuario
+    }
   });
 });
 
