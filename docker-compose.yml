@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # Banco de Dados PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: painel_agendamento_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: painel_agendamento_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - painel_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d painel_agendamento_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend Node.js
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: painel_agendamento_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DATABASE: painel_agendamento_dev
+      JWT_SECRET: painel_agendamento_jwt_secret_key_2025_muito_segura_desenvolvimento
+      JWT_REFRESH_SECRET: painel_agendamento_refresh_jwt_secret_key_2025_muito_segura_desenvolvimento
+      EVO_API_BASE_URL: https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/
+      EVO_API_INTERNAL_URL: http://ssesmt-evolution-api_evolution-api:8080/
+      EVO_API_INSTANCE_ID: D1737ABB6963-4720-8EE5-AE48DAE0BB18
+      EVO_API_KEY: SUA_API_KEY_AQUI
+      ENABLE_WHATSAPP_NOTIFICATIONS: true
+      REMINDER_24H_ENABLED: true
+      REMINDER_1H_ENABLED: true
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - painel_network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React/Vite
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: painel_agendamento_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api
+      VITE_APP_NAME: Painel de Agendamento
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - painel_network
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Volumes para persistência de dados
+volumes:
+  postgres_data:
+    driver: local
+
+# Rede personalizada para comunicação entre containers
+networks:
+  painel_network:
+    driver: bridge
