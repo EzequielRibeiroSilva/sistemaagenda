@@ -22,3 +22,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backend Environment Variables
+backend/.env
+
+# Backend Dependencies
+backend/node_modules
+
+# Backend Logs
+backend/logs
+backend/*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage reports
+backend/coverage
+
+# Runtime data
+backend/pids
+backend/*.pid
+backend/*.seed
+backend/*.pid.lock
