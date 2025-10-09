@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 
 const config = require('./config/config');
 const { testConnection } = require('./config/database');
+const apiRoutes = require('./routes/index');
 
 const app = express();
 
@@ -70,15 +71,7 @@ app.get('/', (req, res) => {
 });
 
 // Middleware de rotas da API
-app.use('/api', (req, res, next) => {
-  // TODO: implementar rotas da API
-  res.json({
-    message: 'API em desenvolvimento',
-    endpoint: req.path,
-    method: req.method,
-    timestamp: new Date().toISOString()
-  });
-});
+app.use('/api', apiRoutes);
 
 // Middleware de tratamento de erros 404
 app.use('*', (req, res) => {
