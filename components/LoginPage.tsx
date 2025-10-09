@@ -3,7 +3,14 @@ import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, Check } from './Icons';
 
 interface LoginPageProps {
-    onLoginSuccess: (email: string) => void;
+    onLoginSuccess: (userData: {
+        email: string;
+        role: string;
+        redirectTo: string;
+        permissions: any;
+        token: string;
+        user: any;
+    }) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
@@ -11,10 +18,123 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onLoginSuccess(email);
+        setIsLoading(true);
+        setError('');
+
+        // Validação básica no frontend
+        if (!email || !password) {
+            setError('Por favor, preencha todos os campos');
+            setIsLoading(false);
+            return;
+        }
+
+        if (!email.includes('@')) {
+            setError('Por favor, insira um email válido');
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
+            const response = await fetch(`${apiBaseUrl}/auth/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: email.trim().toLowerCase(),
+                    senha: password
+                }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Salvar tokens no localStorage se "Lembrar-me" estiver marcado
+                if (rememberMe) {
+                    localStorage.setItem('authToken', data.data.token);
+                    localStorage.setItem('userEmail', data.data.user.email);
+
+                    // Salvar refresh token se disponível
+                    if (data.data.refreshToken) {
+                        localStorage.setItem('refreshToken', data.data.refreshToken);
+                    }
+                }
+
+                // Log para auditoria (apenas em desenvolvimento)
+                if (import.meta.env.DEV) {
+                    console.log('✅ Login realizado com sucesso:', {
+                        email: data.data.user.email,
+                        role: data.data.user.role,
+                        redirectTo: data.data.redirectTo
+                    });
+                }
+
+                // Chamar callback de sucesso com dados da API
+                onLoginSuccess({
+                    email: data.data.user.email,
+                    role: data.data.user.role,
+                    redirectTo: data.data.redirectTo,
+                    permissions: data.data.user.permissions,
+                    token: data.data.token,
+                    user: data.data.user
+                });
+            } else {
+                // Tratar diferentes tipos de erro do backend de forma profissional
+                let errorMessage = 'Erro ao fazer login';
+
+                switch (response.status) {
+                    case 400:
+                        errorMessage = data.message || 'Dados inválidos. Verifique os campos preenchidos';
+                        break;
+                    case 401:
+                        errorMessage = 'Email ou senha incorretos';
+                        break;
+                    case 403:
+                        errorMessage = 'Acesso negado. Conta pode estar desativada';
+                        break;
+                    case 429:
+                        errorMessage = 'Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente';
+                        break;
+                    case 500:
+                    case 502:
+                    case 503:
+                    case 504:
+                        errorMessage = 'Serviço temporariamente indisponível. Tente novamente em alguns instantes';
+                        break;
+                    default:
+                        errorMessage = data.message || data.error || 'Erro inesperado. Tente novamente';
+                }
+
+                setError(errorMessage);
+
+                // Log para auditoria (apenas em desenvolvimento)
+                if (import.meta.env.DEV) {
+                    console.error('❌ Erro de login:', {
+                        status: response.status,
+                        message: data.message || data.error,
+                        email: email.trim().toLowerCase()
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('❌ Erro na requisição de login:', error);
+
+            // Verificar se é erro de rede
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                setError('Erro de conexão. Verifique sua internet e tente novamente');
+            } else {
+                setError('Erro inesperado. Tente novamente em alguns instantes');
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -26,6 +146,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                            {error}
+                        </div>
+                    )}
+
                     <div>
                         <label htmlFor="email" className="text-sm font-medium text-gray-700">Email</label>
                         <div className="mt-1 relative">
@@ -38,10 +164,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                                 type="email"
                                 autoComplete="email"
                                 required
+                                disabled={isLoading}
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="seu@email.com"
-                                className="w-full bg-white pl-10 pr-3 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                className="w-full bg-white pl-10 pr-3 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-50 disabled:text-gray-500"
                             />
                         </div>
                     </div>
@@ -58,15 +185,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                                 type={showPassword ? 'text' : 'password'}
                                 autoComplete="current-password"
                                 required
+                                disabled={isLoading}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Sua senha"
-                                className="w-full bg-white pl-10 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                className="w-full bg-white pl-10 pr-10 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-50 disabled:text-gray-500"
                             />
                             <button
                                 type="button"
+                                disabled={isLoading}
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 disabled:text-gray-300"
                                 aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                             >
                                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -102,9 +231,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                     <div>
                         <button
                             type="submit"
-                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            disabled={isLoading}
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                         >
-                            Entrar
+                            {isLoading ? (
+                                <div className="flex items-center">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Entrando...
+                                </div>
+                            ) : (
+                                'Entrar'
+                            )}
                         </button>
                     </div>
                 </form>

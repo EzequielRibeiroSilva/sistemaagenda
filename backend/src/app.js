@@ -11,8 +11,47 @@ const apiRoutes = require('./routes/index');
 
 const app = express();
 
-// Middleware de segurança
-app.use(helmet());
+// Middleware de segurança avançado
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Desabilitado para compatibilidade
+  hsts: {
+    maxAge: 31536000, // 1 ano
+    includeSubDomains: true,
+    preload: true
+  },
+  noSniff: true,
+  frameguard: { action: 'deny' },
+  xssFilter: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}));
+
+// Headers de segurança adicionais
+app.use((req, res, next) => {
+  // Remover header que expõe tecnologia
+  res.removeHeader('X-Powered-By');
+
+  // Headers de segurança personalizados
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+
+  next();
+});
 
 // Configuração CORS
 app.use(cors({

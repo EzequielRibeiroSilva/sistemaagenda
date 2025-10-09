@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const AuthController = require('../controllers/AuthController');
 const { authenticate } = require('../middleware/authMiddleware');
+const { loginRateLimit, userSpecificRateLimit } = require('../middleware/loginRateLimit');
+const { validateLogin, sanitizeInput, detectSQLInjection } = require('../middleware/validation');
 
 // Instanciar controlador
 const authController = new AuthController();
@@ -12,10 +14,19 @@ const authController = new AuthController();
  * @access Public
  * @body { email: string, senha: string }
  * @returns { success: boolean, message: string, data: { token: string, user: object, expiresIn: string } }
+ * @security Rate limited: 5 tentativas por IP em 15min, 3 tentativas por email em 30min
+ * @security Input validation, XSS protection, SQL injection detection
  */
-router.post('/login', async (req, res) => {
-  await authController.login(req, res);
-});
+router.post('/login',
+  detectSQLInjection,
+  sanitizeInput,
+  validateLogin,
+  loginRateLimit,
+  userSpecificRateLimit,
+  async (req, res) => {
+    await authController.login(req, res);
+  }
+);
 
 /**
  * @route POST /auth/logout

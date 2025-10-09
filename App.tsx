@@ -36,7 +36,14 @@ const App: React.FC = () => {
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingExtraServiceId, setEditingExtraServiceId] = useState<string | null>(null);
-  const [user, setUser] = useState<{ role: 'none' | 'salon' | 'admin' | 'agent', agentId: string | null }>({ role: 'none', agentId: null });
+  const [user, setUser] = useState<{
+    role: 'none' | 'salon' | 'admin' | 'agent' | 'MASTER' | 'ADMIN' | 'AGENTE',
+    agentId: string | null,
+    email?: string,
+    permissions?: any,
+    token?: string,
+    userData?: any
+  }>({ role: 'none', agentId: null });
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
 
@@ -65,17 +72,48 @@ const App: React.FC = () => {
     setActiveView('services-extra-edit');
   };
 
-  const handleLoginSuccess = (email: string) => {
-    const lowerEmail = email.toLowerCase();
-    if (lowerEmail === 'admin@admin.com') {
-      setUser({ role: 'admin', agentId: null });
-    } else if (lowerEmail === 'agenteeduardo@email.com') {
-      setUser({ role: 'agent', agentId: '1' }); // ID '1' for Eduardo Soares
+  const handleLoginSuccess = (loginData: {
+    email: string;
+    role: string;
+    redirectTo: string;
+    permissions: any;
+    token: string;
+    user: any;
+  }) => {
+    console.log('Login success data:', loginData);
+
+    // Mapear roles do backend para o frontend
+    let frontendRole: 'none' | 'salon' | 'admin' | 'agent' | 'MASTER' | 'ADMIN' | 'AGENTE' = 'salon';
+
+    switch (loginData.role) {
+      case 'MASTER':
+        frontendRole = 'MASTER';
+        break;
+      case 'ADMIN':
+        frontendRole = 'ADMIN';
+        break;
+      case 'AGENTE':
+        frontendRole = 'AGENTE';
+        break;
+      default:
+        frontendRole = 'salon';
     }
-    else {
-      setUser({ role: 'salon', agentId: null });
+
+    setUser({
+      role: frontendRole,
+      agentId: loginData.user.id?.toString() || null,
+      email: loginData.email,
+      permissions: loginData.permissions,
+      token: loginData.token,
+      userData: loginData.user
+    });
+
+    // Definir view inicial baseada no redirectTo
+    if (loginData.redirectTo === '/AdminDashboardPage') {
+      setActiveView('admin-dashboard');
+    } else {
+      setActiveView('dashboard');
     }
-    setActiveView('dashboard');
   };
   
   const handleLogout = () => {
@@ -93,13 +131,14 @@ const App: React.FC = () => {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
   
-  if (user.role === 'admin') {
+  // Renderizar AdminDashboardPage para usuários MASTER
+  if (user.role === 'MASTER' || user.role === 'admin') {
     return (
       <div className="flex h-screen bg-gray-100 text-gray-800">
         <AdminSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <AdminHeader 
-            onLogout={handleLogout} 
+          <AdminHeader
+            onLogout={handleLogout}
             searchQuery={adminSearchQuery}
             setSearchQuery={setAdminSearchQuery}
           />
@@ -117,6 +156,7 @@ const App: React.FC = () => {
     }
 
     switch (activeView) {
+      case 'admin-dashboard': return <AdminDashboardPage searchQuery={adminSearchQuery} />;
       case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
       case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
@@ -125,8 +165,8 @@ const App: React.FC = () => {
       case 'clients-edit': return <EditClientPage setActiveView={setActiveView} clientId={editingClientId} />;
       case 'services-list':
       case 'services-extra':
-        return <ServicesPage 
-          initialTab={activeView === 'services-extra' ? 'Serviços Extras' : 'Serviços'} 
+        return <ServicesPage
+          initialTab={activeView === 'services-extra' ? 'Serviços Extras' : 'Serviços'}
           setActiveView={setActiveView}
           onEditService={handleEditService}
           onEditExtraService={handleEditExtraService}

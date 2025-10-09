@@ -1,18 +1,43 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const Usuario = require('../models/Usuario');
+const config = require('../config/config');
 
 class AuthService {
   constructor() {
-    this.jwtSecret = process.env.JWT_SECRET || 'painel_agendamento_secret_key_2025';
-    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+    // Validar secrets obrigatórios em produção
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+        throw new Error('JWT_SECRET deve ter pelo menos 32 caracteres em produção');
+      }
+      if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 32) {
+        throw new Error('JWT_REFRESH_SECRET deve ter pelo menos 32 caracteres em produção');
+      }
+    }
+
+    this.jwtSecret = process.env.JWT_SECRET || this.generateSecureSecret();
+    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || this.generateSecureSecret();
+    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h'; // Reduzido para 1h por segurança
+    this.jwtRefreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
     this.blacklistedTokens = new Set(); // Em produção, usar Redis
+
+    // Log de aviso se usando secrets gerados automaticamente
+    if (!process.env.JWT_SECRET) {
+      console.warn('⚠️  JWT_SECRET não definido, usando secret gerado automaticamente');
+    }
   }
 
-  // Gerar JWT token
+  // Gerar secret seguro automaticamente (apenas para desenvolvimento)
+  generateSecureSecret() {
+    return crypto.randomBytes(64).toString('hex');
+  }
+
+  // Gerar JWT access token
   generateToken(user) {
+    const now = Math.floor(Date.now() / 1000);
     const payload = {
-      user_id: user.id, // Renomeado para user_id conforme especificação
+      user_id: user.id,
       id: user.id, // Mantido para compatibilidade
       email: user.email,
       nome: user.nome,
@@ -21,13 +46,32 @@ class AuthService {
       tipo_usuario: user.tipo_usuario, // Mantido para compatibilidade
       plano: user.plano,
       limite_unidades: user.limite_unidades,
-      status: user.status
+      status: user.status,
+      iat: now,
+      jti: crypto.randomUUID() // JWT ID único para rastreamento
     };
 
     return jwt.sign(payload, this.jwtSecret, {
       expiresIn: this.jwtExpiresIn,
       issuer: 'painel-agendamento-api',
-      audience: 'painel-agendamento-frontend'
+      audience: 'painel-agendamento-frontend',
+      algorithm: 'HS256' // Algoritmo explícito por segurança
+    });
+  }
+
+  // Gerar refresh token
+  generateRefreshToken(user) {
+    const payload = {
+      user_id: user.id,
+      type: 'refresh',
+      jti: crypto.randomUUID()
+    };
+
+    return jwt.sign(payload, this.jwtRefreshSecret, {
+      expiresIn: this.jwtRefreshExpiresIn,
+      issuer: 'painel-agendamento-api',
+      audience: 'painel-agendamento-frontend',
+      algorithm: 'HS256'
     });
   }
 
@@ -65,16 +109,19 @@ class AuthService {
         throw new Error('Credenciais inválidas');
       }
 
-      // Gerar token
-      const token = this.generateToken(usuario);
+      // Gerar tokens
+      const accessToken = this.generateToken(usuario);
+      const refreshToken = this.generateRefreshToken(usuario);
 
       // Remover senha do objeto de retorno
       const { senha_hash, ...usuarioSemSenha } = usuario;
 
       return {
-        token,
+        token: accessToken,
+        refreshToken: refreshToken,
         user: usuarioSemSenha,
-        expiresIn: this.jwtExpiresIn
+        expiresIn: this.jwtExpiresIn,
+        refreshExpiresIn: this.jwtRefreshExpiresIn
       };
     } catch (error) {
       throw error;

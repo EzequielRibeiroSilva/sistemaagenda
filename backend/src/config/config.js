@@ -7,7 +7,7 @@ const config = {
     version: '1.0.0',
     env: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT) || 3000,
-    host: process.env.HOST || 'localhost'
+    host: process.env.HOST || '0.0.0.0'
   },
 
   // Configurações do banco de dados
@@ -58,7 +58,7 @@ const config = {
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutos
     rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12,
-    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000']
+    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'file://']
   },
 
   // Configurações de log

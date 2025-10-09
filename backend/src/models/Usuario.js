@@ -1,5 +1,6 @@
 const BaseModel = require('./BaseModel');
 const bcrypt = require('bcryptjs');
+const config = require('../config/config');
 
 class Usuario extends BaseModel {
   constructor() {
@@ -14,20 +15,22 @@ class Usuario extends BaseModel {
   // Criar usuário com hash da senha
   async create(data) {
     if (data.senha) {
-      data.senha_hash = await bcrypt.hash(data.senha, 10);
+      // Usar salt rounds da configuração para máxima segurança
+      data.senha_hash = await bcrypt.hash(data.senha, config.security.bcryptSaltRounds);
       delete data.senha;
     }
-    
+
     return await super.create(data);
   }
 
   // Atualizar usuário com hash da senha se fornecida
   async update(id, data) {
     if (data.senha) {
-      data.senha_hash = await bcrypt.hash(data.senha, 10);
+      // Usar salt rounds da configuração para máxima segurança
+      data.senha_hash = await bcrypt.hash(data.senha, config.security.bcryptSaltRounds);
       delete data.senha;
     }
-    
+
     return await super.update(id, data);
   }
 

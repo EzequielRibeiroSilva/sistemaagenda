@@ -1,0 +1,196 @@
+const validator = require('validator');
+const xss = require('xss');
+
+/**
+ * Middleware de validação e sanitização para login
+ */
+const validateLogin = (req, res, next) => {
+  const { email, senha } = req.body;
+  const errors = [];
+
+  // Validar presença dos campos obrigatórios
+  if (!email) {
+    errors.push('Email é obrigatório');
+  }
+
+  if (!senha) {
+    errors.push('Senha é obrigatória');
+  }
+
+  // Se campos básicos estão ausentes, retornar erro
+  if (errors.length > 0) {
+    return res.status(400).json({
+      error: 'Dados inválidos',
+      message: 'Campos obrigatórios não preenchidos',
+      details: errors
+    });
+  }
+
+  // Sanitizar e validar email
+  let sanitizedEmail = email.toString().trim().toLowerCase();
+  
+  // Remover caracteres perigosos
+  sanitizedEmail = xss(sanitizedEmail, {
+    whiteList: {}, // Não permitir nenhuma tag HTML
+    stripIgnoreTag: true,
+    stripIgnoreTagBody: ['script']
+  });
+
+  // Validar formato do email
+  if (!validator.isEmail(sanitizedEmail)) {
+    errors.push('Formato de email inválido');
+  }
+
+  // Validar comprimento do email
+  if (sanitizedEmail.length > 254) { // RFC 5321 limit
+    errors.push('Email muito longo');
+  }
+
+  // Validar domínio do email (básico)
+  const emailParts = sanitizedEmail.split('@');
+  if (emailParts.length === 2) {
+    const domain = emailParts[1];
+    if (!validator.isFQDN(domain)) {
+      errors.push('Domínio do email inválido');
+    }
+  }
+
+  // Sanitizar senha (sem alterar o conteúdo, apenas verificar)
+  const sanitizedSenha = senha.toString();
+
+  // Validar comprimento da senha
+  if (sanitizedSenha.length < 6) {
+    errors.push('Senha deve ter pelo menos 6 caracteres');
+  }
+
+  if (sanitizedSenha.length > 128) {
+    errors.push('Senha muito longa');
+  }
+
+  // Verificar caracteres suspeitos na senha (possível injeção)
+  const suspiciousPatterns = [
+    /(<script|<\/script>)/i,
+    /(javascript:|vbscript:|onload=|onerror=)/i,
+    /(union\s+select|drop\s+table|insert\s+into|delete\s+from)/i,
+    /(\$\{|\#\{|<%=|<\?php)/i
+  ];
+
+  for (const pattern of suspiciousPatterns) {
+    if (pattern.test(sanitizedSenha)) {
+      errors.push('Senha contém caracteres não permitidos');
+      break;
+    }
+  }
+
+  // Se há erros de validação, retornar
+  if (errors.length > 0) {
+    // Log de tentativa suspeita
+    console.warn(`🚨 Tentativa de login com dados inválidos - IP: ${req.ip}, Email: ${sanitizedEmail}, Errors: ${errors.join(', ')}`);
+    
+    return res.status(400).json({
+      error: 'Dados inválidos',
+      message: 'Verifique os dados informados',
+      details: errors
+    });
+  }
+
+  // Adicionar dados sanitizados ao request
+  req.body.email = sanitizedEmail;
+  req.body.senha = sanitizedSenha;
+
+  next();
+};
+
+/**
+ * Middleware de validação genérica para outros endpoints
+ */
+const sanitizeInput = (req, res, next) => {
+  // Sanitizar todos os campos de string no body
+  if (req.body && typeof req.body === 'object') {
+    for (const [key, value] of Object.entries(req.body)) {
+      if (typeof value === 'string') {
+        // Sanitizar XSS
+        req.body[key] = xss(value, {
+          whiteList: {}, // Não permitir nenhuma tag HTML
+          stripIgnoreTag: true,
+          stripIgnoreTagBody: ['script']
+        });
+
+        // Trim whitespace
+        req.body[key] = req.body[key].trim();
+      }
+    }
+  }
+
+  // Sanitizar query parameters
+  if (req.query && typeof req.query === 'object') {
+    for (const [key, value] of Object.entries(req.query)) {
+      if (typeof value === 'string') {
+        req.query[key] = xss(value, {
+          whiteList: {},
+          stripIgnoreTag: true,
+          stripIgnoreTagBody: ['script']
+        }).trim();
+      }
+    }
+  }
+
+  next();
+};
+
+/**
+ * Middleware para detectar tentativas de injeção SQL
+ */
+const detectSQLInjection = (req, res, next) => {
+  const sqlInjectionPatterns = [
+    /(\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b)/i,
+    /((\%27)|(\')|(--)|(\%23)|(\#))/i,
+    /((\%3D)|(=))[^\n]*((\%27)|(\')|(--)|(\%23)|(\#))/i,
+    /\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))/i,
+    /((\%27)|(\'))union/i
+  ];
+
+  const checkForSQLInjection = (obj, path = '') => {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        for (const pattern of sqlInjectionPatterns) {
+          if (pattern.test(value)) {
+            console.error(`🚨 Possível tentativa de SQL Injection detectada - IP: ${req.ip}, Path: ${path}.${key}, Value: ${value}`);
+            return true;
+          }
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        if (checkForSQLInjection(value, `${path}.${key}`)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Verificar body, query e params
+  const sources = [
+    { data: req.body, name: 'body' },
+    { data: req.query, name: 'query' },
+    { data: req.params, name: 'params' }
+  ];
+
+  for (const source of sources) {
+    if (source.data && typeof source.data === 'object') {
+      if (checkForSQLInjection(source.data, source.name)) {
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          message: 'Requisição contém caracteres não permitidos'
+        });
+      }
+    }
+  }
+
+  next();
+};
+
+module.exports = {
+  validateLogin,
+  sanitizeInput,
+  detectSQLInjection
+};
