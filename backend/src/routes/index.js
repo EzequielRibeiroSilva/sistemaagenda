@@ -4,6 +4,7 @@ const router = express.Router();
 // Importar rotas específicas
 const authRoutes = require('./auth');
 const evolutionRoutes = require('./evolution');
+const rbacRoutes = require('./rbac');
 const unidadesRoutes = require('./unidades');
 const clientesRoutes = require('./clientes');
 const servicosRoutes = require('./servicos');
@@ -11,11 +12,15 @@ const agendamentosRoutes = require('./agendamentos');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
+const rbacMiddleware = require('../middleware/rbacMiddleware');
 
 // Rotas públicas (sem autenticação)
 router.use('/auth', authRoutes);
 
-// Rotas protegidas (com autenticação)
+// Rotas RBAC (com controle de acesso baseado em roles)
+router.use('/rbac', rbacRoutes);
+
+// Rotas protegidas (com autenticação básica - mantidas para compatibilidade)
 router.use('/evolution', authenticate(), evolutionRoutes);
 router.use('/unidades', authenticate(), unidadesRoutes);
 router.use('/clientes', authenticate(), clientesRoutes);

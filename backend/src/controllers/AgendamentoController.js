@@ -1,11 +1,13 @@
 const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
 const EvolutionApiService = require('../services/EvolutionApiService');
+const AuthService = require('../services/AuthService');
 
 class AgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
     this.evolutionApi = new EvolutionApiService();
+    this.authService = new AuthService();
   }
 
   // GET /api/agendamentos - Buscar agendamentos do usuário logado

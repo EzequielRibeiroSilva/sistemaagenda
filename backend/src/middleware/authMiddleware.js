@@ -52,8 +52,13 @@ class AuthMiddleware {
           });
         }
 
-        // Adicionar usuário ao request
-        req.user = usuario;
+        // Adicionar usuário ao request com informações RBAC
+        req.user = {
+          ...usuario,
+          // Garantir que as informações RBAC estejam disponíveis
+          role: usuario.role || decoded.role,
+          unidade_id: usuario.unidade_id || decoded.unidade_id
+        };
         req.token = token;
 
         next();

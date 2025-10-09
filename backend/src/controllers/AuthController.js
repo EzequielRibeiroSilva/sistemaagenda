@@ -33,10 +33,42 @@ class AuthController {
       // Log de sucesso
       console.log(`✅ Login realizado com sucesso: ${email} (${result.user.tipo_usuario})`);
 
+      // Determinar redirecionamento baseado no role
+      let redirectTo = '/DashboardPage'; // Padrão
+
+      switch (result.user.role) {
+        case 'MASTER':
+          redirectTo = '/AdminDashboardPage';
+          break;
+        case 'ADMIN':
+          redirectTo = '/DashboardPage';
+          break;
+        case 'AGENTE':
+          redirectTo = '/DashboardPage';
+          break;
+        default:
+          redirectTo = '/DashboardPage';
+      }
+
       return res.json({
         success: true,
         message: 'Login realizado com sucesso',
-        data: result
+        data: {
+          ...result,
+          user: {
+            ...result.user,
+            permissions: {
+              can_manage_system: result.user.role === 'MASTER',
+              can_manage_units: result.user.role === 'MASTER',
+              can_manage_agents: ['MASTER', 'ADMIN'].includes(result.user.role),
+              can_create_appointments: ['MASTER', 'ADMIN', 'AGENTE'].includes(result.user.role),
+              can_view_all_data: result.user.role === 'MASTER',
+              can_view_unit_data: ['MASTER', 'ADMIN'].includes(result.user.role),
+              can_view_own_data: true
+            }
+          },
+          redirectTo: redirectTo
+        }
       });
 
     } catch (error) {

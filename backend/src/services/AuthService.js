@@ -12,10 +12,13 @@ class AuthService {
   // Gerar JWT token
   generateToken(user) {
     const payload = {
-      id: user.id,
+      user_id: user.id, // Renomeado para user_id conforme especificação
+      id: user.id, // Mantido para compatibilidade
       email: user.email,
       nome: user.nome,
-      tipo_usuario: user.tipo_usuario,
+      role: user.role, // Nova coluna role (MASTER, ADMIN, AGENTE)
+      unidade_id: user.unidade_id, // Nova coluna unidade_id
+      tipo_usuario: user.tipo_usuario, // Mantido para compatibilidade
       plano: user.plano,
       limite_unidades: user.limite_unidades,
       status: user.status
@@ -128,26 +131,84 @@ class AuthService {
     }
   }
 
-  // Validar permissões por tipo de usuário
-  hasPermission(userType, requiredPermission) {
+  // Validar permissões por role (RBAC)
+  hasPermission(role, requiredPermission) {
     const permissions = {
-      admin: ['read', 'write', 'delete', 'manage_users', 'manage_system'],
-      salon: ['read', 'write', 'delete', 'manage_agents'],
-      agent: ['read', 'write']
+      MASTER: ['read', 'write', 'delete', 'manage_users', 'manage_system', 'manage_all_units', 'create_admins'],
+      ADMIN: ['read', 'write', 'delete', 'manage_agents', 'manage_unit'],
+      AGENTE: ['read', 'write', 'view_own_data']
     };
 
-    return permissions[userType]?.includes(requiredPermission) || false;
+    return permissions[role]?.includes(requiredPermission) || false;
   }
 
-  // Verificar se usuário pode acessar recurso
-  canAccessResource(user, resourceUserId) {
-    // Admin pode acessar qualquer recurso
-    if (user.tipo_usuario === 'admin') {
+  // Verificar se usuário pode acessar recurso baseado no RBAC
+  canAccessResource(user, resourceUserId, resourceUnidadeId = null) {
+    // MASTER pode acessar qualquer recurso
+    if (user.role === 'MASTER') {
       return true;
     }
 
-    // Outros usuários só podem acessar seus próprios recursos
-    return user.id === resourceUserId;
+    // ADMIN pode acessar recursos da sua unidade
+    if (user.role === 'ADMIN') {
+      // Se é o próprio usuário, pode acessar
+      if (user.id === resourceUserId) {
+        return true;
+      }
+      // Se tem unidade_id e o recurso pertence à mesma unidade
+      if (user.unidade_id && resourceUnidadeId && user.unidade_id === resourceUnidadeId) {
+        return true;
+      }
+      return false;
+    }
+
+    // AGENTE só pode acessar seus próprios recursos
+    if (user.role === 'AGENTE') {
+      return user.id === resourceUserId;
+    }
+
+    return false;
+  }
+
+  // Verificar se usuário pode gerenciar uma unidade específica
+  canManageUnit(user, unidadeId) {
+    // MASTER pode gerenciar qualquer unidade
+    if (user.role === 'MASTER') {
+      return true;
+    }
+
+    // ADMIN pode gerenciar apenas sua própria unidade
+    if (user.role === 'ADMIN') {
+      return user.unidade_id === unidadeId;
+    }
+
+    // AGENTE não pode gerenciar unidades
+    return false;
+  }
+
+  // Obter filtros de dados baseados no role do usuário
+  getDataFilters(user) {
+    switch (user.role) {
+      case 'MASTER':
+        // MASTER vê todos os dados - sem filtros
+        return {};
+
+      case 'ADMIN':
+        // ADMIN vê apenas dados da sua unidade
+        return user.unidade_id ? { unidade_id: user.unidade_id } : {};
+
+      case 'AGENTE':
+        // AGENTE vê apenas seus próprios dados
+        return {
+          agente_id: user.id,
+          // Também pode ver dados da sua unidade se aplicável
+          ...(user.unidade_id ? { unidade_id: user.unidade_id } : {})
+        };
+
+      default:
+        // Por segurança, se role não reconhecido, não retorna dados
+        return { id: -1 }; // Filtro que não retorna nada
+    }
   }
 }
 
