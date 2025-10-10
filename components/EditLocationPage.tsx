@@ -3,27 +3,11 @@ import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 
-// Mock data for agents and services, same as in CreateLocationPage
-const agentsData = [
-    { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=1' },
-    { name: 'Ângelo Paixão', avatar: 'https://i.pravatar.cc/150?img=2' },
-    { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=3' },
-];
-
-const servicesList = [
-    'CORTE', 'CORTE + PIGMENTAÇÃO', 'CORTE + BARBA', 'BARBA + PIGMENTAÇÃO', 'LUZES + CORTE',
-    'BARBA', 'BARBOTERAPIA', 'CORTE+BARBA+PIGMENTAÇÃO DA BARBA', 'CORTE+BARBA+PIGMENTAÇÃO BARBA E CABELO',
-    'ALISAMENTO AMERICANO +CORTE', 'ALISAMENTO AMERICANO', 'LIMPEZA DE PELE'
-];
-
-// Mock data for the location to be edited
-const mockLocationData = {
-    id: 'loc1',
-    name: 'Local Principal',
-    address: 'Av. Bezerra de Menezes, 123, Fortaleza',
-    phone: '(85) 91234-5678',
-    isOpen: true,
-};
+// Tipos para os dados do formulário
+interface ScheduleDay {
+  is_aberto: boolean;
+  periodos: { inicio: string; fim: string }[];
+}
 
 // Reusable components (copied from CreateLocationPage)
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
@@ -59,7 +43,12 @@ const TextInput: React.FC<{
     </div>
 );
 
-const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean; onChange: () => void; }> = ({ name, avatar, checked, onChange }) => (
+const AgentSelectItem: React.FC<{
+  id: number;
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+}> = ({ id, name, checked, onChange }) => (
     <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
         <div className="relative flex items-center">
             <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
@@ -67,17 +56,20 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <img src={avatar} alt={name} className="w-10 h-10 rounded-full object-cover mx-4" />
+        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mx-4">
+            <span className="text-blue-600 font-semibold text-sm">{name.charAt(0)}</span>
+        </div>
         <span className="font-bold text-gray-800 text-md flex-1">{name}</span>
-        <span className="text-sm text-gray-500 mr-4">Todos os Serviços Selecionados</span>
-        <button className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 p-2 rounded-lg hover:bg-blue-50">
-          <Cog className="w-4 h-4 mr-1" />
-          Personalizar
-        </button>
+        <span className="text-sm text-gray-500 mr-4">Agente #{id}</span>
     </label>
 );
 
-const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () => void }> = ({ label, checked, onChange }) => (
+const ServiceCheckbox: React.FC<{
+  id: number;
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+}> = ({ id, name, checked, onChange }) => (
     <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
         <div className="relative flex items-center">
             <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
@@ -85,7 +77,7 @@ const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () 
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <span className="ml-4 font-medium text-gray-800 text-sm">{label}</span>
+        <span className="ml-4 font-medium text-gray-800 text-sm">{name}</span>
     </label>
 );
 
@@ -124,7 +116,15 @@ interface EditLocationPageProps {
 }
 
 const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, locationId }) => {
-    const { fetchUnitById, updateUnit, loading, error, clearError } = useUnitManagement();
+    const {
+        fetchUnitById,
+        updateUnit,
+        agents,
+        services,
+        loading,
+        error,
+        clearError
+    } = useUnitManagement();
 
     // Component state for form fields
     const [formData, setFormData] = useState({
@@ -133,6 +133,18 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         telefone: '',
         status: 'Ativo' as 'Ativo' | 'Bloqueado'
     });
+
+    // Estado para agentes e serviços selecionados
+    const [selectedAgents, setSelectedAgents] = useState<Set<number>>(new Set());
+    const [selectedServices, setSelectedServices] = useState<Set<number>>(new Set());
+
+    // Estado para horários (7 dias da semana)
+    const [scheduleData, setScheduleData] = useState<ScheduleDay[]>(
+        Array.from({ length: 7 }, () => ({
+            is_aberto: false,
+            periodos: []
+        }))
+    );
 
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -144,12 +156,35 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                 setIsLoading(true);
                 const unit = await fetchUnitById(locationId);
                 if (unit) {
+                    // Preencher dados básicos
                     setFormData({
                         nome: unit.nome,
                         endereco: unit.endereco,
                         telefone: unit.telefone,
                         status: unit.status
                     });
+
+                    // Pré-selecionar agentes associados
+                    if (unit.agentes_ids && Array.isArray(unit.agentes_ids)) {
+                        setSelectedAgents(new Set(unit.agentes_ids));
+                    }
+
+                    // Pré-selecionar serviços associados
+                    if (unit.servicos_ids && Array.isArray(unit.servicos_ids)) {
+                        setSelectedServices(new Set(unit.servicos_ids));
+                    }
+
+                    // Preencher horários de funcionamento
+                    if (unit.horarios_funcionamento && Array.isArray(unit.horarios_funcionamento)) {
+                        const horariosOrdenados = unit.horarios_funcionamento
+                            .sort((a, b) => a.dia_semana - b.dia_semana)
+                            .map(horario => ({
+                                is_aberto: horario.is_aberto,
+                                periodos: horario.horarios_json || []
+                            }));
+
+                        setScheduleData(horariosOrdenados);
+                    }
                 }
                 setIsLoading(false);
             }
@@ -158,42 +193,60 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         loadUnit();
     }, [locationId, fetchUnitById]);
 
-    const [checkedAgents, setCheckedAgents] = useState<Record<string, boolean>>(
-        agentsData.reduce((acc, agent) => ({...acc, [agent.name]: true }), {})
-    );
-    const [checkedServices, setCheckedServices] = useState<Record<string, boolean>>(
-        servicesList.reduce((acc, service) => ({ ...acc, [service]: true }), {})
-    );
-
-    const handleAgentCheck = (agentName: string) => {
-        setCheckedAgents(prev => ({ ...prev, [agentName]: !prev[agentName] }));
+    // Handlers para agentes
+    const handleAgentToggle = (agentId: number) => {
+        setSelectedAgents(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(agentId)) {
+                newSet.delete(agentId);
+            } else {
+                newSet.add(agentId);
+            }
+            return newSet;
+        });
     };
-    
-    const allAgentsSelected = useMemo(() => agentsData.every(agent => checkedAgents[agent.name]), [checkedAgents]);
-    
+
     const handleSelectAllAgents = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
-        const newCheckedState = agentsData.reduce((acc, agent) => {
-            acc[agent.name] = isChecked;
-            return acc;
-        }, {} as Record<string, boolean>);
-        setCheckedAgents(newCheckedState);
+        if (isChecked) {
+            setSelectedAgents(new Set(agents.map(agent => agent.id)));
+        } else {
+            setSelectedAgents(new Set());
+        }
+    };
+
+    // Handlers para serviços
+    const handleServiceToggle = (serviceId: number) => {
+        setSelectedServices(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(serviceId)) {
+                newSet.delete(serviceId);
+            } else {
+                newSet.add(serviceId);
+            }
+            return newSet;
+        });
     };
 
     const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
-        const newCheckedState = Object.keys(checkedServices).reduce((acc, service) => {
-            acc[service] = isChecked;
-            return acc;
-        }, {} as Record<string, boolean>);
-        setCheckedServices(newCheckedState);
+        if (isChecked) {
+            setSelectedServices(new Set(services.map(service => service.id)));
+        } else {
+            setSelectedServices(new Set());
+        }
     };
 
-    const handleServiceCheck = (serviceName: string) => {
-        setCheckedServices(prev => ({ ...prev, [serviceName]: !prev[serviceName] }));
-    };
-    
-    const allServicesSelected = useMemo(() => Object.values(checkedServices).every(Boolean), [checkedServices]);
+    // Computed values
+    const allAgentsSelected = useMemo(() =>
+        agents.length > 0 && agents.every(agent => selectedAgents.has(agent.id)),
+        [agents, selectedAgents]
+    );
+
+    const allServicesSelected = useMemo(() =>
+        services.length > 0 && services.every(service => selectedServices.has(service.id)),
+        [services, selectedServices]
+    );
 
     // Form handlers
     const handleInputChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -231,11 +284,18 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         setIsSubmitting(true);
         clearError();
 
-        const success = await updateUnit(locationId, {
+        // Preparar dados para envio
+        const updateData = {
             nome: formData.nome.trim(),
             endereco: formData.endereco.trim(),
-            telefone: formData.telefone.trim()
-        });
+            telefone: formData.telefone.trim(),
+            status: formData.status, // Incluir status no payload
+            agentes_ids: Array.from(selectedAgents),
+            servicos_ids: Array.from(selectedServices),
+            horarios_semanais: scheduleData
+        };
+
+        const success = await updateUnit(locationId, updateData);
 
         setIsSubmitting(false);
 
@@ -336,7 +396,7 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                 </div>
             </FormCard>
 
-            <FormCard 
+            <FormCard
                 title="Selecione os Agentes para Este Local"
                 rightContent={
                     <label className="flex items-center cursor-pointer">
@@ -351,11 +411,19 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                 }
             >
                 <div className="space-y-3">
-                    {agentsData.map(agent => <AgentSelectItem key={agent.name} {...agent} checked={!!checkedAgents[agent.name]} onChange={() => handleAgentCheck(agent.name)} />)}
+                    {agents.map(agent => (
+                        <AgentSelectItem
+                            key={agent.id}
+                            id={agent.id}
+                            name={agent.nome}
+                            checked={selectedAgents.has(agent.id)}
+                            onChange={() => handleAgentToggle(agent.id)}
+                        />
+                    ))}
                 </div>
             </FormCard>
 
-            <FormCard 
+            <FormCard
                 title="Serviços Oferecidos"
                 rightContent={
                     <label className="flex items-center cursor-pointer">
@@ -370,19 +438,23 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                 }
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {servicesList.map(service => (
-                        <ServiceCheckbox 
-                            key={service} 
-                            label={service} 
-                            checked={checkedServices[service] || false}
-                            onChange={() => handleServiceCheck(service)}
+                    {services.map(service => (
+                        <ServiceCheckbox
+                            key={service.id}
+                            id={service.id}
+                            name={service.nome}
+                            checked={selectedServices.has(service.id)}
+                            onChange={() => handleServiceToggle(service.id)}
                         />
                     ))}
                 </div>
             </FormCard>
 
             <FormCard title="Definir Horários">
-                <AgentScheduleEditor />
+                <AgentScheduleEditor
+                    scheduleData={scheduleData}
+                    onScheduleChange={setScheduleData}
+                />
             </FormCard>
 
             <div className="pt-2 flex items-center gap-4">

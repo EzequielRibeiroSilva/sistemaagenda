@@ -23,6 +23,15 @@ class Agente extends BaseModel {
       );
   }
 
+  // Buscar apenas agentes ativos por usuário (otimizado para listas)
+  async findActiveByUsuario(usuarioId) {
+    return await this.db(this.tableName)
+      .where('usuario_id', usuarioId)
+      .where('status', 'Ativo')
+      .select('id', 'nome', 'sobrenome')
+      .orderBy('nome');
+  }
+
   // Buscar agente com dados completos (para edição)
   async findByIdComplete(agenteId) {
     const agente = await this.db(this.tableName)

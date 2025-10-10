@@ -75,10 +75,10 @@ router.patch('/:id/status',
 
 /**
  * DELETE /api/unidades/:id
- * Deleta unidade (apenas MASTER)
+ * Soft delete da unidade (ADMIN pode deletar suas próprias, MASTER pode deletar qualquer uma)
  */
 router.delete('/:id',
-  rbacMiddleware.requireRole('MASTER'),
+  rbacMiddleware.requireRole('MASTER', 'ADMIN'),
   rbacMiddleware.auditLog('DELETAR_UNIDADE'),
   async (req, res) => {
     await unidadeController.destroy(req, res);

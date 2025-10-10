@@ -8,6 +8,43 @@ class AgenteController {
   }
 
   /**
+   * GET /api/agentes/list - Listagem leve de agentes para formulários
+   * Retorna apenas id e nome dos agentes ativos do usuário logado
+   */
+  async list(req, res) {
+    try {
+      const usuarioId = req.user.id;
+
+      console.log('[AgenteController] Buscando lista leve de agentes para usuário:', usuarioId);
+
+      // Busca otimizada apenas com id e nome
+      const agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
+
+      // Formatar dados mínimos para formulários
+      const agentesLeves = agentes.map(agente => ({
+        id: agente.id,
+        nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
+      }));
+
+      console.log(`[AgenteController] Lista leve: ${agentesLeves.length} agentes ativos`);
+
+      res.status(200).json({
+        success: true,
+        data: agentesLeves,
+        message: 'Lista de agentes carregada com sucesso'
+      });
+    } catch (error) {
+      console.error('[AgenteController] Erro ao carregar lista de agentes:', error);
+
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao carregar lista de agentes',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
    * GET /api/agentes - Listagem de agentes (Grid)
    * Retorna todos os agentes da unidade do ADMIN logado
    */

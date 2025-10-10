@@ -121,6 +121,57 @@ class UnidadeService {
           );
         }
 
+        // Associar agentes à unidade (se fornecidos)
+        if (unidadeData.agentes_ids && Array.isArray(unidadeData.agentes_ids) && unidadeData.agentes_ids.length > 0) {
+          console.log(`🔗 Associando ${unidadeData.agentes_ids.length} agentes à unidade ${novaUnidade.id}`);
+
+          // Verificar se os agentes pertencem ao usuário
+          const agentesValidos = await trx('agentes')
+            .whereIn('id', unidadeData.agentes_ids)
+            .where('usuario_id', userId)
+            .select('id');
+
+          if (agentesValidos.length !== unidadeData.agentes_ids.length) {
+            throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');
+          }
+
+          // Criar associações na tabela agente_unidades
+          const associacoesAgentes = unidadeData.agentes_ids.map(agenteId => ({
+            agente_id: agenteId,
+            unidade_id: novaUnidade.id,
+            created_at: new Date()
+          }));
+
+          await trx('agente_unidades').insert(associacoesAgentes);
+          console.log(`✅ ${associacoesAgentes.length} agentes associados à unidade`);
+        }
+
+        // Associar serviços à unidade (se fornecidos)
+        if (unidadeData.servicos_ids && Array.isArray(unidadeData.servicos_ids) && unidadeData.servicos_ids.length > 0) {
+          console.log(`🔗 Associando ${unidadeData.servicos_ids.length} serviços à unidade ${novaUnidade.id}`);
+
+          // Verificar se os serviços pertencem ao usuário
+          const servicosValidos = await trx('servicos')
+            .whereIn('id', unidadeData.servicos_ids)
+            .where('usuario_id', userId)
+            .select('id');
+
+          if (servicosValidos.length !== unidadeData.servicos_ids.length) {
+            throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
+          }
+
+          // Criar associações na tabela servico_unidades (se existir) ou atualizar campo unidade_id
+          // Como não temos tabela pivô para serviços-unidades, vamos atualizar o campo unidade_id nos serviços
+          await trx('servicos')
+            .whereIn('id', unidadeData.servicos_ids)
+            .update({
+              unidade_id: novaUnidade.id,
+              updated_at: new Date()
+            });
+
+          console.log(`✅ ${servicosValidos.length} serviços associados à unidade`);
+        }
+
         await trx.commit();
 
         // Buscar unidade completa com horários
@@ -159,9 +210,12 @@ class UnidadeService {
       }
 
       // Buscar unidades do usuário
-      const unidades = await this.unidadeModel.findByUsuario(userId);
-      
-      // Aplicar filtros se fornecidos
+      const todasUnidades = await this.unidadeModel.findByUsuario(userId);
+
+      // Filtrar unidades excluídas por padrão
+      const unidades = todasUnidades.filter(u => u.status !== 'Excluido');
+
+      // Aplicar filtros adicionais se fornecidos
       let filteredUnidades = unidades;
       if (filters.status) {
         filteredUnidades = unidades.filter(u => u.status === filters.status);
@@ -271,8 +325,16 @@ class UnidadeService {
           nome: updateData.nome,
           endereco: updateData.endereco,
           telefone: updateData.telefone,
+          status: updateData.status,
           updated_at: new Date()
         };
+
+        // Remover campos undefined para não sobrescrever com null
+        Object.keys(dadosBasicos).forEach(key => {
+          if (dadosBasicos[key] === undefined) {
+            delete dadosBasicos[key];
+          }
+        });
 
         const [unidadeAtualizada] = await trx('unidades')
           .where('id', unidadeId)
@@ -281,18 +343,78 @@ class UnidadeService {
 
         // Atualizar horários se fornecidos
         if (updateData.horarios_funcionamento) {
-          console.log('🔍 DEBUG SERVICE - Iniciando upsert de horários para unidade:', unidadeId);
-          console.log('🔍 DEBUG SERVICE - Horários a serem sincronizados:', JSON.stringify(updateData.horarios_funcionamento, null, 2));
-
           await HorarioFuncionamentoUnidade.upsertHorariosSemanais(
             unidadeId,
             updateData.horarios_funcionamento,
             trx
           );
+        }
 
-          console.log('🔍 DEBUG SERVICE - Upsert de horários concluído');
-        } else {
-          console.log('🔍 DEBUG SERVICE - Nenhum horário para atualizar');
+        // Atualizar associações de agentes (se fornecidos)
+        if (updateData.agentes_ids !== undefined) {
+          console.log(`🔗 Atualizando associações de agentes para unidade ${unidadeId}`);
+
+          // Remover associações existentes
+          await trx('agente_unidades').where('unidade_id', unidadeId).del();
+
+          if (Array.isArray(updateData.agentes_ids) && updateData.agentes_ids.length > 0) {
+            // Verificar se os agentes pertencem ao usuário
+            const agentesValidos = await trx('agentes')
+              .whereIn('id', updateData.agentes_ids)
+              .where('usuario_id', userId)
+              .select('id');
+
+            if (agentesValidos.length !== updateData.agentes_ids.length) {
+              throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');
+            }
+
+            // Criar novas associações
+            const associacoesAgentes = updateData.agentes_ids.map(agenteId => ({
+              agente_id: agenteId,
+              unidade_id: unidadeId,
+              created_at: new Date()
+            }));
+
+            await trx('agente_unidades').insert(associacoesAgentes);
+            console.log(`✅ ${associacoesAgentes.length} agentes associados à unidade`);
+          } else {
+            console.log(`✅ Todas as associações de agentes removidas da unidade`);
+          }
+        }
+
+        // Atualizar associações de serviços (se fornecidos)
+        if (updateData.servicos_ids !== undefined) {
+          console.log(`🔗 Atualizando associações de serviços para unidade ${unidadeId}`);
+
+          // Remover associações existentes (limpar unidade_id dos serviços)
+          await trx('servicos').where('unidade_id', unidadeId).update({
+            unidade_id: null,
+            updated_at: new Date()
+          });
+
+          if (Array.isArray(updateData.servicos_ids) && updateData.servicos_ids.length > 0) {
+            // Verificar se os serviços pertencem ao usuário
+            const servicosValidos = await trx('servicos')
+              .whereIn('id', updateData.servicos_ids)
+              .where('usuario_id', userId)
+              .select('id');
+
+            if (servicosValidos.length !== updateData.servicos_ids.length) {
+              throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
+            }
+
+            // Associar serviços à unidade
+            await trx('servicos')
+              .whereIn('id', updateData.servicos_ids)
+              .update({
+                unidade_id: unidadeId,
+                updated_at: new Date()
+              });
+
+            console.log(`✅ ${servicosValidos.length} serviços associados à unidade`);
+          } else {
+            console.log(`✅ Todas as associações de serviços removidas da unidade`);
+          }
         }
 
         await trx.commit();
@@ -320,15 +442,19 @@ class UnidadeService {
    */
   async changeUnidadeStatus(userId, unidadeId, newStatus, userRole) {
     try {
+
+
       // Validar status
-      if (!['Ativo', 'Bloqueado'].includes(newStatus)) {
-        const error = new Error('Status inválido. Use "Ativo" ou "Bloqueado"');
+      if (!['Ativo', 'Bloqueado', 'Excluido'].includes(newStatus)) {
+        const error = new Error('Status inválido. Use "Ativo", "Bloqueado" ou "Excluido"');
         error.code = 'INVALID_STATUS';
         throw error;
       }
 
       // Atualizar usando o método updateUnidade que já verifica permissões
-      return await this.updateUnidade(userId, unidadeId, { status: newStatus }, userRole);
+      const resultado = await this.updateUnidade(userId, unidadeId, { status: newStatus }, userRole);
+
+      return resultado;
     } catch (error) {
       console.error('Erro ao alterar status da unidade:', error);
       throw error;
@@ -347,11 +473,26 @@ class UnidadeService {
         return null;
       }
 
+      // Buscar horários de funcionamento
       const horarios = await HorarioFuncionamentoUnidade.findByUnidade(unidadeId);
+
+      // Buscar agentes associados
+      const agentesAssociados = await db('agente_unidades')
+        .where('unidade_id', unidadeId)
+        .select('agente_id');
+      const agentesIds = agentesAssociados.map(a => a.agente_id);
+
+      // Buscar serviços associados
+      const servicosAssociados = await db('servicos')
+        .where('unidade_id', unidadeId)
+        .select('id');
+      const servicosIds = servicosAssociados.map(s => s.id);
 
       return {
         ...unidade,
-        horarios_funcionamento: horarios
+        horarios_funcionamento: horarios,
+        agentes_ids: agentesIds,
+        servicos_ids: servicosIds
       };
     } catch (error) {
       console.error('Erro ao buscar unidade com horários:', error);

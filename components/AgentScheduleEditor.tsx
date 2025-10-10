@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Edit, Plus, X } from './Icons';
 
 type TimePeriod = { id: number; start: string; end: string };
@@ -9,6 +9,17 @@ type DayScheduleData = {
 type ScheduleData = {
   [key: string]: DayScheduleData;
 };
+
+// Tipo para os dados vindos da API
+interface ScheduleDay {
+  is_aberto: boolean;
+  periodos: { inicio: string; fim: string }[];
+}
+
+interface AgentScheduleEditorProps {
+  scheduleData?: ScheduleDay[];
+  onScheduleChange?: (scheduleData: ScheduleDay[]) => void;
+}
 
 const initialSchedule: ScheduleData = {
   'Segunda-feira': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '19:00' }] },
@@ -26,7 +37,7 @@ const DayScheduleRow: React.FC<{
   onToggle: () => void;
   onUpdatePeriods: (periods: TimePeriod[]) => void;
 }> = ({ dayName, schedule, onToggle, onUpdatePeriods }) => {
-  const [isEditing, setIsEditing] = useState(dayName === 'Segunda-feira'); // Open Monday by default as in image
+  const [isEditing, setIsEditing] = useState(false); // Todos os dias iniciam fechados
   const { isActive, periods } = schedule;
 
   const handleAddPeriod = () => {
@@ -97,14 +108,57 @@ const DayScheduleRow: React.FC<{
 };
 
 
-const AgentScheduleEditor: React.FC = () => {
+const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
+    scheduleData,
+    onScheduleChange
+}) => {
     const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
 
+    // Converter dados da API para formato interno
+    useEffect(() => {
+        if (scheduleData && Array.isArray(scheduleData)) {
+            const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
+
+            const convertedSchedule: ScheduleData = {};
+
+            scheduleData.forEach((day, index) => {
+                const dayName = dayNames[index];
+                convertedSchedule[dayName] = {
+                    isActive: day.is_aberto,
+                    periods: day.periodos.map((periodo, periodIndex) => ({
+                        id: periodIndex + 1,
+                        start: periodo.inicio,
+                        end: periodo.fim
+                    }))
+                };
+            });
+
+            setSchedule(convertedSchedule);
+        }
+    }, [scheduleData]);
+
     const handleUpdateDay = (dayName: string, newDayData: DayScheduleData) => {
-        setSchedule(prev => ({
-            ...prev,
+        const newSchedule = {
+            ...schedule,
             [dayName]: newDayData
-        }));
+        };
+
+        setSchedule(newSchedule);
+
+        // Converter de volta para formato da API e notificar mudança
+        if (onScheduleChange) {
+            const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
+
+            const apiScheduleData: ScheduleDay[] = dayNames.map(dayName => ({
+                is_aberto: newSchedule[dayName]?.isActive || false,
+                periodos: newSchedule[dayName]?.periods.map(period => ({
+                    inicio: period.start,
+                    fim: period.end
+                })) || []
+            }));
+
+            onScheduleChange(apiScheduleData);
+        }
     };
 
     const handleToggleDay = (dayName: string) => {

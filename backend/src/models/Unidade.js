@@ -20,10 +20,11 @@ class Unidade extends BaseModel {
       .select('*');
   }
 
-  // Contar unidades por usuário
+  // Contar unidades ativas por usuário (exclui unidades com status 'Excluido')
   async countByUsuario(usuarioId) {
     const result = await this.db(this.tableName)
       .where('usuario_id', usuarioId)
+      .where('status', '!=', 'Excluido')
       .count('id as count')
       .first();
     return parseInt(result.count);

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Edit, MapPin, Phone, AlertCircle, CheckCircle, XCircle } from './Icons';
+import { Plus, Edit, MapPin, Phone, AlertCircle, CheckCircle, XCircle, X } from './Icons';
 import { useUnitManagement, Unit } from '../hooks/useUnitManagement';
 
 interface LocationCardProps {
@@ -11,9 +11,10 @@ interface LocationCardProps {
   status: 'Ativo' | 'Bloqueado';
   onEdit: (id: number) => void;
   onToggleStatus: (id: number, currentStatus: 'Ativo' | 'Bloqueado') => void;
+  onDelete: (id: number) => void;
 }
 
-const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus }) => (
+const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus, onDelete }) => (
   <div className="bg-white rounded-lg shadow-sm border border-gray-200">
     <div className="h-40 bg-gradient-to-br from-blue-500 to-blue-600 rounded-t-lg flex items-center justify-center">
       <MapPin className="w-12 h-12 text-white opacity-80" />
@@ -36,6 +37,13 @@ const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefon
           </div>
         </div>
         <div className="flex space-x-2">
+          <button
+            onClick={() => onDelete(id)}
+            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Excluir"
+          >
+            <X className="w-4 h-4" />
+          </button>
           <button
             onClick={() => onToggleStatus(id, status)}
             className={`p-2 rounded-lg transition-colors ${
@@ -123,11 +131,13 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
     loading,
     error,
     updateUnitStatus,
+    deleteUnit,
     clearError,
     canCreateNewUnit
   } = useUnitManagement();
 
   const [statusLoading, setStatusLoading] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
 
   const handleToggleStatus = async (id: number, currentStatus: 'Ativo' | 'Bloqueado') => {
     const newStatus = currentStatus === 'Ativo' ? 'Bloqueado' : 'Ativo';
@@ -139,6 +149,31 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
     if (!success) {
       // O erro já é tratado pelo hook
       console.error('Erro ao alterar status da unidade');
+    }
+  };
+
+  const handleDeleteLocation = async (id: number) => {
+    console.log("🔍 DEBUG: ID a ser excluído:", id);
+    console.log("🔍 DEBUG: Tipo do ID:", typeof id);
+
+    if (!confirm('Tem certeza que deseja excluir este local? Esta ação não pode ser desfeita.')) {
+      console.log("🔍 DEBUG: Usuário cancelou a exclusão");
+      return;
+    }
+
+    console.log("🔍 DEBUG: Usuário confirmou a exclusão, iniciando processo...");
+    setDeleteLoading(id);
+
+    console.log("🔍 DEBUG: Chamando deleteUnit com ID:", id);
+    const success = await deleteUnit(id);
+    console.log("🔍 DEBUG: Resultado do deleteUnit:", success);
+
+    setDeleteLoading(null);
+
+    if (!success) {
+      console.error('❌ DEBUG: Erro ao excluir unidade - success =', success);
+    } else {
+      console.log("✅ DEBUG: Exclusão reportada como sucesso");
     }
   };
 
@@ -200,6 +235,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
               status={unit.status}
               onEdit={onEditLocation}
               onToggleStatus={handleToggleStatus}
+              onDelete={handleDeleteLocation}
             />
           ))}
           <AddLocationCard
@@ -209,22 +245,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
           />
         </div>
 
-        {units.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <MapPin className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">Nenhuma unidade encontrada</h3>
-            <p className="text-gray-500 mb-4">Crie sua primeira unidade para começar</p>
-            {canCreateNewUnit() && (
-              <button
-                onClick={handleCreateLocation}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Criar Primeira Unidade
-              </button>
-            )}
-          </div>
-        )}
+        
       </div>
     </div>
   );

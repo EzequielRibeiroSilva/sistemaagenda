@@ -15,6 +15,16 @@ router.use(authenticate());
 router.use(requireRole('ADMIN'));
 
 /**
+ * @route GET /agentes/list
+ * @desc Listagem leve de agentes para formulários
+ * @access Private (ADMIN)
+ * @returns { success: boolean, data: Array<{id: number, nome: string}>, message: string }
+ */
+router.get('/list', async (req, res) => {
+  await agenteController.list(req, res);
+});
+
+/**
  * @route GET /agentes
  * @desc Listar agentes (Grid)
  * @access Private (ADMIN)

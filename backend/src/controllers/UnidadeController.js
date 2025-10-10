@@ -83,7 +83,9 @@ class UnidadeController extends BaseController {
         endereco: endereco?.trim() || '',
         telefone: telefone?.trim() || '',
         status: req.body.status || 'Ativo',
-        horarios_funcionamento: req.body.horarios_funcionamento || null
+        horarios_funcionamento: req.body.horarios_funcionamento || null,
+        agentes_ids: req.body.agentes_ids || null,
+        servicos_ids: req.body.servicos_ids || null
       };
 
       // Usar service para ambos MASTER e ADMIN (MASTER terá limite bypass no service)
@@ -182,14 +184,33 @@ class UnidadeController extends BaseController {
         updateData.telefone = req.body.telefone?.trim() || '';
       }
 
+      // Suporte para atualização de status
+      if (req.body.status !== undefined) {
+        const validStatuses = ['Ativo', 'Bloqueado', 'Excluido'];
+        if (!validStatuses.includes(req.body.status)) {
+          return res.status(400).json({
+            error: 'Dados inválidos',
+            message: 'Status deve ser: Ativo, Bloqueado ou Excluido'
+          });
+        }
+        updateData.status = req.body.status;
+      }
+
       if (req.body.horarios_funcionamento !== undefined) {
         updateData.horarios_funcionamento = req.body.horarios_funcionamento;
+      }
 
-        // DEBUG: Log do payload de horários recebido
-        console.log('🔍 DEBUG PUT - Payload horários recebido:', JSON.stringify(updateData.horarios_funcionamento, null, 2));
-        console.log('🔍 DEBUG PUT - Número de dias no payload:', updateData.horarios_funcionamento.length);
-      } else {
-        console.log('🔍 DEBUG PUT - Nenhum horário no payload');
+      // Suporte para horarios_semanais (formato do frontend)
+      if (req.body.horarios_semanais !== undefined) {
+        updateData.horarios_funcionamento = req.body.horarios_semanais;
+      }
+
+      if (req.body.agentes_ids !== undefined) {
+        updateData.agentes_ids = req.body.agentes_ids;
+      }
+
+      if (req.body.servicos_ids !== undefined) {
+        updateData.servicos_ids = req.body.servicos_ids;
       }
 
       // Usar service para atualizar com verificação de permissões
@@ -278,7 +299,7 @@ class UnidadeController extends BaseController {
     }
   }
 
-  // DELETE /api/unidades/:id - Deletar unidade (apenas MASTER)
+  // DELETE /api/unidades/:id - Soft delete da unidade (ADMIN pode deletar suas próprias)
   async destroy(req, res) {
     try {
       const { id } = req.params;
@@ -291,40 +312,33 @@ class UnidadeController extends BaseController {
         });
       }
 
-      // Apenas MASTER pode deletar unidades
-      if (userRole !== 'MASTER') {
+      // ADMIN pode deletar suas próprias unidades, MASTER pode deletar qualquer uma
+      // Usar soft delete alterando status para 'Excluido'
+      const unidadeAtualizada = await this.unidadeService.changeUnidadeStatus(
+        usuarioId,
+        parseInt(id),
+        'Excluido',
+        userRole
+      );
+
+      return res.json({
+        data: unidadeAtualizada,
+        message: 'Unidade excluída com sucesso'
+      });
+    } catch (error) {
+      console.error('Erro ao excluir unidade:', error);
+
+      if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
           error: 'Acesso negado',
-          message: 'Apenas usuários MASTER podem deletar unidades'
+          message: error.message
         });
       }
 
-      // Verificar se a unidade existe
-      const unidade = await this.model.findById(id);
-      if (!unidade) {
-        return res.status(404).json({
-          error: 'Unidade não encontrada'
-        });
-      }
-
-      const deleted = await this.model.delete(id);
-
-      if (deleted) {
-        return res.json({
-          message: 'Unidade deletada com sucesso'
-        });
-      } else {
-        return res.status(500).json({
-          error: 'Erro ao deletar unidade'
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao deletar unidade:', error);
-
-      if (error.code === '23503') {
+      if (error.code === 'INVALID_STATUS') {
         return res.status(400).json({
-          error: 'Não é possível deletar',
-          message: 'Esta unidade possui agendamentos ou agentes vinculados'
+          error: 'Status inválido',
+          message: error.message
         });
       }
 

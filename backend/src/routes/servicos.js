@@ -4,6 +4,9 @@ const ServicoController = require('../controllers/ServicoController');
 
 const servicoController = new ServicoController();
 
+// GET /api/servicos/list - Listagem leve de serviços para formulários
+router.get('/list', (req, res) => servicoController.list(req, res));
+
 // GET /api/servicos - Listar serviços
 router.get('/', (req, res) => servicoController.index(req, res));
 

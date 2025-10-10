@@ -6,6 +6,47 @@ class ServicoController extends BaseController {
     super(new Servico());
   }
 
+  // GET /api/servicos/list - Listagem leve de serviços para formulários
+  async list(req, res) {
+    try {
+      const usuarioId = req.user?.id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Usuário não autenticado'
+        });
+      }
+
+      console.log('[ServicoController] Buscando lista leve de serviços para usuário:', usuarioId);
+
+      // Busca otimizada apenas com id e nome
+      const servicos = await this.model.findActiveByUsuario(usuarioId);
+
+      // Formatar dados mínimos para formulários
+      const servicosLeves = servicos.map(servico => ({
+        id: servico.id,
+        nome: servico.nome
+      }));
+
+      console.log(`[ServicoController] Lista leve: ${servicosLeves.length} serviços ativos`);
+
+      return res.status(200).json({
+        success: true,
+        data: servicosLeves,
+        message: 'Lista de serviços carregada com sucesso'
+      });
+    } catch (error) {
+      console.error('[ServicoController] Erro ao carregar lista de serviços:', error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao carregar lista de serviços',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
   // GET /api/servicos - Buscar serviços do usuário logado
   async index(req, res) {
     try {

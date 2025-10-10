@@ -30,6 +30,7 @@ router.use('/agentes', agentesRoutes);
 
 // Rotas protegidas (com autenticação básica - mantidas para compatibilidade)
 router.use('/evolution', authenticate(), evolutionRoutes);
+
 router.use('/unidades', authenticate(), unidadesRoutes);
 router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
