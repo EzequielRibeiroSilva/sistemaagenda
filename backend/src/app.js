@@ -18,7 +18,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https:", "http://localhost:5173", "http://localhost:3000"],
       connectSrc: ["'self'"],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
@@ -77,6 +77,16 @@ app.use('/api/', limiter);
 // Middleware de parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Middleware específico para arquivos estáticos com headers CORS
+app.use('/uploads', (req, res, next) => {
+  // Headers para resolver ERR_BLOCKED_BY_RESPONSE.NotSameOrigin
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
 // Servir arquivos estáticos (uploads)
 app.use('/uploads', express.static('uploads'));

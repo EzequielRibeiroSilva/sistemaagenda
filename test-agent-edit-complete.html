@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Completo - Edição de Agente</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-result { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .scenario { border-left: 4px solid #007bff; padding-left: 15px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Teste Completo - Correção do Erro 500 na Edição de Agente</h1>
+        
+        <div class="test-section">
+            <h2>📋 Cenários de Teste</h2>
+            <div class="scenario">
+                <h3>Cenário A: Mudança Completa</h3>
+                <p>Editar nome, adicionar serviços, mudar status e agenda</p>
+                <button onclick="testScenarioA()">Executar Cenário A</button>
+                <div id="resultA"></div>
+            </div>
+            
+            <div class="scenario">
+                <h3>Cenário B: Sem Alterações</h3>
+                <p>Salvar sem alterar nada (deve retornar 200 OK)</p>
+                <button onclick="testScenarioB()">Executar Cenário B</button>
+                <div id="resultB"></div>
+            </div>
+            
+            <div class="scenario">
+                <h3>Cenário C: Mudança de Status (Bloqueio)</h3>
+                <p>Alterar status para "Bloqueado" e verificar sincronização com usuário</p>
+                <button onclick="testScenarioC()">Executar Cenário C</button>
+                <div id="resultC"></div>
+            </div>
+            
+            <div class="scenario">
+                <h3>Cenário D: Upload de Foto</h3>
+                <p>Testar upload de avatar via FormData</p>
+                <button onclick="testScenarioD()">Executar Cenário D</button>
+                <div id="resultD"></div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🧪 Teste de Login do Agente Carlos</h2>
+            <div class="scenario">
+                <h3>Teste de Login</h3>
+                <p>Testar login do agente Carlos com email: carlos@teste.com e senha: 123456</p>
+                <button onclick="testAgentLogin()">Testar Login do Agente</button>
+                <div id="loginResult"></div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🚀 Executar Todos os Testes</h2>
+            <button onclick="runAllTests()">Executar Sequência Completa</button>
+            <div id="allResults"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDUsImlkIjoxMDUsImVtYWlsIjoidGVzdGFuZG9AZ21haWwuY29tIiwibm9tZSI6ImV6ZXF1aWVsIHJpYmVpcm8iLCJyb2xlIjoiQURNSU4iLCJ1bmlkYWRlX2lkIjpudWxsLCJ0aXBvX3VzdWFyaW8iOiJzYWxvbiIsInBsYW5vIjoiTXVsdGkiLCJsaW1pdGVfdW5pZGFkZXMiOjEwLCJzdGF0dXMiOiJBdGl2byIsImlhdCI6MTc2MDEwNzI0NywianRpIjoiMDgzZTFmZTQtYzk1NC00NDNiLWFhZDItZTVmZjE3ZDEwYjkzIiwiZXhwIjoxNzYwMTkzNjQ3LCJhdWQiOiJwYWluZWwtYWdlbmRhbWVudG8tZnJvbnRlbmQiLCJpc3MiOiJwYWluZWwtYWdlbmRhbWVudG8tYXBpIn0.NPEueYge9BLQpLLfw4ZoiMJVYnbi5W_ezt1hkWFr7vA';
+        const AGENT_ID = 8;
+
+        function showResult(elementId, success, message, data = null) {
+            const element = document.getElementById(elementId);
+            const className = success ? 'success' : 'error';
+            let content = `<div class="test-result ${className}">
+                <strong>${success ? '✅ SUCESSO' : '❌ ERRO'}:</strong> ${message}`;
+            
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            content += '</div>';
+            element.innerHTML = content;
+        }
+
+        async function makeRequest(method, url, data = null, isFormData = false) {
+            const options = {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${TOKEN}`
+                }
+            };
+
+            if (data) {
+                if (isFormData) {
+                    options.body = data;
+                } else {
+                    options.headers['Content-Type'] = 'application/json';
+                    options.body = JSON.stringify(data);
+                }
+            }
+
+            const response = await fetch(url, options);
+            const result = await response.json();
+            
+            return {
+                status: response.status,
+                success: response.ok,
+                data: result
+            };
+        }
+
+        async function testScenarioA() {
+            try {
+                const data = {
+                    nome: 'Carlos Editado',
+                    sobrenome: 'Silva Santos',
+                    email: 'carlos.editado@teste.com',
+                    telefone: '(11) 99999-1111',
+                    unidade_id: 6,
+                    status: 'Ativo',
+                    agenda_personalizada: true,
+                    servicos_oferecidos: [7, 8, 9],
+                    horarios_funcionamento: [
+                        {
+                            dia_semana: 1,
+                            periodos: [{ inicio: '09:00', fim: '17:00' }]
+                        }
+                    ]
+                };
+
+                const result = await makeRequest('PUT', `${API_BASE}/agentes/${AGENT_ID}`, data);
+                
+                if (result.success) {
+                    showResult('resultA', true, 'Cenário A executado com sucesso!', result.data);
+                } else {
+                    showResult('resultA', false, `Erro no Cenário A: ${result.data.message}`, result.data);
+                }
+            } catch (error) {
+                showResult('resultA', false, `Erro de rede: ${error.message}`);
+            }
+        }
+
+        async function testScenarioB() {
+            try {
+                // Primeiro buscar dados atuais
+                const currentResult = await makeRequest('GET', `${API_BASE}/agentes/${AGENT_ID}`);
+                
+                if (!currentResult.success) {
+                    showResult('resultB', false, 'Erro ao buscar dados atuais');
+                    return;
+                }
+
+                const currentData = currentResult.data.data;
+                
+                // Enviar os mesmos dados (sem alterações)
+                const data = {
+                    nome: currentData.nome,
+                    sobrenome: currentData.sobrenome,
+                    email: currentData.email,
+                    telefone: currentData.telefone,
+                    unidade_id: currentData.unidade_id,
+                    status: currentData.status,
+                    agenda_personalizada: currentData.agenda_personalizada,
+                    servicos_oferecidos: currentData.servicos_atuais_ids || [],
+                    horarios_funcionamento: currentData.horarios_funcionamento || []
+                };
+
+                const result = await makeRequest('PUT', `${API_BASE}/agentes/${AGENT_ID}`, data);
+                
+                if (result.success) {
+                    showResult('resultB', true, 'Cenário B executado com sucesso! (Sem alterações)', result.data);
+                } else {
+                    showResult('resultB', false, `Erro no Cenário B: ${result.data.message}`, result.data);
+                }
+            } catch (error) {
+                showResult('resultB', false, `Erro de rede: ${error.message}`);
+            }
+        }
+
+        async function testScenarioC() {
+            try {
+                const data = {
+                    nome: 'Carlos',
+                    sobrenome: 'Silva',
+                    email: 'carlos@teste.com',
+                    telefone: '(11) 99999-0000',
+                    unidade_id: 6,
+                    status: 'Bloqueado', // Mudança principal
+                    agenda_personalizada: false,
+                    servicos_oferecidos: [7, 8],
+                    horarios_funcionamento: []
+                };
+
+                const result = await makeRequest('PUT', `${API_BASE}/agentes/${AGENT_ID}`, data);
+                
+                if (result.success) {
+                    showResult('resultC', true, 'Cenário C executado com sucesso! Status alterado para Bloqueado', result.data);
+                } else {
+                    showResult('resultC', false, `Erro no Cenário C: ${result.data.message}`, result.data);
+                }
+            } catch (error) {
+                showResult('resultC', false, `Erro de rede: ${error.message}`);
+            }
+        }
+
+        async function testScenarioD() {
+            try {
+                const formData = new FormData();
+                formData.append('nome', 'Carlos');
+                formData.append('sobrenome', 'Silva');
+                formData.append('email', 'carlos@teste.com');
+                formData.append('telefone', '(11) 99999-0000');
+                formData.append('unidade_id', '6');
+                formData.append('status', 'Ativo');
+                formData.append('agenda_personalizada', 'false');
+                formData.append('servicos_oferecidos', JSON.stringify([7, 8]));
+                formData.append('horarios_funcionamento', JSON.stringify([]));
+
+                const result = await makeRequest('PUT', `${API_BASE}/agentes/${AGENT_ID}`, formData, true);
+                
+                if (result.success) {
+                    showResult('resultD', true, 'Cenário D executado com sucesso! FormData processado corretamente', result.data);
+                } else {
+                    showResult('resultD', false, `Erro no Cenário D: ${result.data.message}`, result.data);
+                }
+            } catch (error) {
+                showResult('resultD', false, `Erro de rede: ${error.message}`);
+            }
+        }
+
+        async function testAgentLogin() {
+            try {
+                const data = {
+                    email: 'carlos@teste.com',
+                    senha: '123456'
+                };
+
+                const result = await makeRequest('POST', `${API_BASE}/auth/login`, data);
+
+                if (result.success) {
+                    showResult('loginResult', true, 'Login do agente realizado com sucesso!', {
+                        user: result.data.data.user,
+                        role: result.data.data.user.role,
+                        permissions: result.data.data.user.permissions
+                    });
+                } else {
+                    showResult('loginResult', false, `Erro no login: ${result.data.message}`, result.data);
+                }
+            } catch (error) {
+                showResult('loginResult', false, `Erro de rede: ${error.message}`);
+            }
+        }
+
+        async function runAllTests() {
+            const allResultsDiv = document.getElementById('allResults');
+            allResultsDiv.innerHTML = '<div class="test-result info">🚀 Executando todos os testes...</div>';
+
+            await testScenarioA();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            await testScenarioB();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            await testScenarioC();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            await testScenarioD();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            await testAgentLogin();
+
+            allResultsDiv.innerHTML = '<div class="test-result success">✅ Todos os testes executados! Verifique os resultados individuais acima.</div>';
+        }
+    </script>
+</body>
+</html>

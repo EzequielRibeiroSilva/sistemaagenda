@@ -1,10 +1,11 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Menu, Plus, Cog, LogOut, MessageSquare, Inbox } from './Icons';
+import { Search, Menu, Plus, Cog, LogOut, MessageSquare, Inbox, FaUser } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -18,6 +19,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
   const [isModalOpen, setModalOpen] = useState(false);
+  const { user } = useAuth();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -138,11 +140,25 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
               aria-haspopup="true"
               aria-expanded={isDropdownOpen}
             >
-              <img
-                src="https://picsum.photos/id/1027/200/200"
-                alt="User Avatar"
-                className="h-9 w-9 rounded-full object-cover"
-              />
+              {user.avatarUrl ? (
+                <img
+                  src={`http://localhost:3001${user.avatarUrl}`}
+                  alt="User Avatar"
+                  className="h-9 w-9 rounded-full object-cover"
+                  onError={(e) => {
+                    // Fallback para ícone se a imagem falhar
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const fallbackDiv = target.nextElementSibling as HTMLElement;
+                    if (fallbackDiv) {
+                      fallbackDiv.classList.remove('hidden');
+                    }
+                  }}
+                />
+              ) : null}
+              <div className={`h-9 w-9 rounded-full bg-gray-300 flex items-center justify-center ${user.avatarUrl ? 'hidden' : ''}`}>
+                <FaUser className="h-5 w-5 text-gray-600" />
+              </div>
             </button>
             {isDropdownOpen && (
               <div 

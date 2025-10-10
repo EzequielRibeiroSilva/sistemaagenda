@@ -129,27 +129,50 @@ class Agente extends BaseModel {
     return disponibilidade;
   }
 
-  // Criar agente com transação
+  // Criar agente com transação (incluindo usuário para login)
   async createWithTransaction(agenteData, servicosIds, horariosData) {
     return await this.db.transaction(async (trx) => {
-      // 1. Criar o agente
+      // 1. Criar usuário para o agente (se tem senha)
+      let usuarioId = null;
+      if (agenteData.senha_hash) {
+        const [userResult] = await trx('usuarios').insert({
+          nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
+          email: agenteData.email,
+          senha_hash: agenteData.senha_hash,
+          telefone: agenteData.telefone,
+          tipo_usuario: 'agent',
+          role: 'AGENTE',
+          status: 'Ativo',
+          created_at: new Date(),
+          updated_at: new Date()
+        }).returning('id');
+
+        usuarioId = userResult.id || userResult;
+      }
+
+      // 2. Criar o agente (com referência ao usuário)
+      const agenteDataWithUser = {
+        ...agenteData,
+        usuario_id: usuarioId
+      };
+
       const [agenteId] = await trx(this.tableName)
-        .insert(agenteData)
+        .insert(agenteDataWithUser)
         .returning('id');
 
       const finalAgenteId = agenteId.id || agenteId;
 
-      // 2. Associar serviços
+      // 3. Associar serviços
       if (servicosIds && servicosIds.length > 0) {
         const servicosData = servicosIds.map(servicoId => ({
           agente_id: finalAgenteId,
           servico_id: servicoId
         }));
-        
+
         await trx('agente_servicos').insert(servicosData);
       }
 
-      // 3. Criar horários de funcionamento (se agenda personalizada)
+      // 4. Criar horários de funcionamento (se agenda personalizada)
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
         const horariosFormatados = horariosData.map(horario => ({
           agente_id: finalAgenteId,
@@ -157,7 +180,7 @@ class Agente extends BaseModel {
           periodos: JSON.stringify(horario.periodos),
           ativo: true
         }));
-        
+
         await trx('horarios_funcionamento').insert(horariosFormatados);
       }
 
@@ -165,29 +188,87 @@ class Agente extends BaseModel {
     });
   }
 
-  // Atualizar agente com transação
+  // Atualizar agente com transação (incluindo usuário)
   async updateWithTransaction(agenteId, agenteData, servicosIds, horariosData) {
     return await this.db.transaction(async (trx) => {
-      // 1. Atualizar dados do agente
+      // 1. Buscar agente atual para obter usuario_id
+      const agenteAtual = await trx(this.tableName)
+        .where('id', agenteId)
+        .first();
+
+      // 2. Gerenciar usuário associado
+      let usuarioId = agenteAtual.usuario_id;
+
+      if (agenteData.senha_hash) {
+        // Se tem senha, precisa ter usuário
+        if (usuarioId) {
+          // Atualizar usuário existente
+          const usuarioData = {
+            nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
+            email: agenteData.email,
+            telefone: agenteData.telefone,
+            status: agenteData.status === 'Ativo' ? 'Ativo' : 'Bloqueado',
+            senha_hash: agenteData.senha_hash,
+            updated_at: new Date()
+          };
+
+          await trx('usuarios')
+            .where('id', usuarioId)
+            .update(usuarioData);
+        } else {
+          // Criar novo usuário
+          const [userResult] = await trx('usuarios').insert({
+            nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
+            email: agenteData.email,
+            senha_hash: agenteData.senha_hash,
+            telefone: agenteData.telefone,
+            tipo_usuario: 'agent',
+            role: 'AGENTE',
+            status: agenteData.status === 'Ativo' ? 'Ativo' : 'Bloqueado',
+            created_at: new Date(),
+            updated_at: new Date()
+          }).returning('id');
+
+          usuarioId = userResult.id || userResult;
+
+          // Atualizar agente com o usuario_id
+          agenteData.usuario_id = usuarioId;
+        }
+      } else if (usuarioId) {
+        // Se não tem senha mas tinha usuário, atualizar dados básicos
+        const usuarioData = {
+          nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
+          email: agenteData.email,
+          telefone: agenteData.telefone,
+          status: agenteData.status === 'Ativo' ? 'Ativo' : 'Bloqueado',
+          updated_at: new Date()
+        };
+
+        await trx('usuarios')
+          .where('id', usuarioId)
+          .update(usuarioData);
+      }
+
+      // 3. Atualizar dados do agente
       await trx(this.tableName)
         .where('id', agenteId)
         .update(agenteData);
 
-      // 2. Atualizar serviços (remover antigos e inserir novos)
+      // 4. Atualizar serviços (remover antigos e inserir novos)
       await trx('agente_servicos').where('agente_id', agenteId).del();
-      
+
       if (servicosIds && servicosIds.length > 0) {
         const servicosData = servicosIds.map(servicoId => ({
           agente_id: agenteId,
           servico_id: servicoId
         }));
-        
+
         await trx('agente_servicos').insert(servicosData);
       }
 
-      // 3. Atualizar horários de funcionamento
+      // 5. Atualizar horários de funcionamento
       await trx('horarios_funcionamento').where('agente_id', agenteId).del();
-      
+
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
         const horariosFormatados = horariosData.map(horario => ({
           agente_id: agenteId,
@@ -195,7 +276,7 @@ class Agente extends BaseModel {
           periodos: JSON.stringify(horario.periodos),
           ativo: true
         }));
-        
+
         await trx('horarios_funcionamento').insert(horariosFormatados);
       }
 

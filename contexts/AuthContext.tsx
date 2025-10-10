@@ -4,6 +4,7 @@ interface User {
   role: 'MASTER' | 'ADMIN' | 'AGENTE' | 'salon' | 'agent' | 'none';
   agentId: string | null;
   email?: string;
+  avatarUrl?: string | null;
   permissions?: any;
   userData?: any;
 }
@@ -58,7 +59,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           // Validar token fazendo uma requisição de teste
           try {
-            const response = await fetch('http://localhost:3000/api/auth/validate', {
+            const response = await fetch('http://localhost:3001/api/auth/validate', {
               method: 'GET',
               headers: {
                 'Authorization': `Bearer ${storedToken}`,
@@ -93,6 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 role: frontendRole,
                 agentId: validationData.data.id?.toString() || null,
                 email: storedUserEmail,
+                avatarUrl: validationData.data.avatar_url || null,
                 permissions: validationData.data.permissions,
                 userData: validationData.data
               });
@@ -160,6 +162,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       role: frontendRole,
       agentId: loginData.user.id?.toString() || null,
       email: loginData.email,
+      avatarUrl: loginData.user.avatar_url || null,
       permissions: loginData.permissions,
       userData: loginData.user
     });

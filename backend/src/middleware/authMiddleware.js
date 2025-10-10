@@ -52,12 +52,28 @@ class AuthMiddleware {
           });
         }
 
+        // Buscar avatar_url se for um agente
+        let avatarUrl = null;
+        if (usuario.tipo_usuario === 'agent') {
+          const Agente = require('../models/Agente');
+          const agenteModel = new Agente();
+          const agente = await agenteModel.db('agentes')
+            .where('usuario_id', usuario.id)
+            .select('avatar_url')
+            .first();
+
+          if (agente) {
+            avatarUrl = agente.avatar_url;
+          }
+        }
+
         // Adicionar usuário ao request com informações RBAC
         req.user = {
           ...usuario,
           // Garantir que as informações RBAC estejam disponíveis
           role: usuario.role || decoded.role,
-          unidade_id: usuario.unidade_id || decoded.unidade_id
+          unidade_id: usuario.unidade_id || decoded.unidade_id,
+          avatar_url: avatarUrl
         };
         req.token = token;
 

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Completo - EditAgentPage</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .success { color: #16a34a; background: #dcfce7; padding: 15px; border-radius: 6px; margin: 10px 0; }
+        .error { color: #dc2626; background: #fef2f2; padding: 15px; border-radius: 6px; margin: 10px 0; }
+        .info { color: #2563eb; background: #dbeafe; padding: 15px; border-radius: 6px; margin: 10px 0; }
+        button { background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button:hover { background: #2563eb; }
+        a { color: #3b82f6; text-decoration: none; padding: 10px; display: inline-block; background: #f0f9ff; border-radius: 4px; margin: 5px; }
+        a:hover { background: #e0f2fe; }
+        ul { margin: 10px 0; }
+        li { margin: 5px 0; }
+        h4 { margin: 15px 0 10px 0; color: #374151; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste Completo - EditAgentPage</h1>
+    <p><strong>Objetivo:</strong> Validar a implementação completa da pré-seleção, upload de imagem e persistência.</p>
+
+    <div class="test-section">
+        <h3>1. Validação do Backend (GET /api/agentes/:id)</h3>
+        <button onclick="testAgentDetails(10)">Testar Agente ID 10 (Ana - com dados completos)</button>
+        <div id="backend-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. Teste de Pré-Seleção no Frontend</h3>
+        <p>URLs para testar a pré-seleção:</p>
+        <a href="http://localhost:5173/agentes/editar/9" target="_blank">🔗 Agente 9 (Maria - sem serviços)</a>
+        <a href="http://localhost:5173/agentes/editar/10" target="_blank">🔗 Agente 10 (Ana - com serviços pré-selecionados)</a>
+        
+        <div class="info">
+            <h4>✅ Checklist de Validação:</h4>
+            <ul>
+                <li>[ ] Formulário carrega sem tela branca</li>
+                <li>[ ] Avatar atual é exibido no preview</li>
+                <li>[ ] Campos nome, email, telefone preenchidos</li>
+                <li>[ ] Serviços corretos aparecem marcados (Ana: CORTE ✅, DEPILAÇÃO ⬜, MANICURE ✅)</li>
+                <li>[ ] Toggle "Agenda Personalizada" ativo para Ana</li>
+                <li>[ ] Horários preenchidos (Segunda e Terça: 08:00-12:00, 14:00-18:00)</li>
+                <li>[ ] Botão "Salvar Alterações" funcional</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Teste de Upload de Imagem</h3>
+        <div class="info">
+            <p><strong>Passos para testar:</strong></p>
+            <ol>
+                <li>Abrir página de edição do Agente 10</li>
+                <li>Clicar no botão "+" sobre o avatar</li>
+                <li>Selecionar uma nova imagem (máx 5MB)</li>
+                <li>Verificar se preview atualiza</li>
+                <li>Clicar "Salvar Alterações"</li>
+                <li>Verificar se imagem foi salva no backend</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Teste de Persistência (PUT /api/agentes/:id)</h3>
+        <div class="info">
+            <p><strong>Cenário de teste:</strong></p>
+            <ol>
+                <li>Modificar seleção de serviços (desmarcar CORTE, marcar DEPILAÇÃO)</li>
+                <li>Alterar horário (adicionar período 19:00-21:00 na segunda)</li>
+                <li>Salvar alterações</li>
+                <li>Recarregar página e verificar se mudanças persistiram</li>
+            </ol>
+        </div>
+        <button onclick="testPersistence()">Simular Teste de Persistência</button>
+        <div id="persistence-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>5. Validação da Hierarquia de Horários</h3>
+        <div class="info">
+            <p><strong>Regra de Negócio:</strong></p>
+            <ul>
+                <li>✅ Horário Global (Unidade): Define limites da barbearia</li>
+                <li>✅ Horário do Agente: Define disponibilidade dentro do horário global</li>
+                <li>✅ Ausência do agente não bloqueia a barbearia, apenas sua agenda</li>
+            </ul>
+            <p>Esta hierarquia será implementada na fase de agendamento.</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3001/api';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDUsImlkIjoxMDUsImVtYWlsIjoidGVzdGFuZG9AZ21haWwuY29tIiwibm9tZSI6ImV6ZXF1aWVsIHJpYmVpcm8iLCJyb2xlIjoiQURNSU4iLCJ1bmlkYWRlX2lkIjpudWxsLCJ0aXBvX3VzdWFyaW8iOiJzYWxvbiIsInBsYW5vIjoiTXVsdGkiLCJsaW1pdGVfdW5pZGFkZXMiOjEwLCJzdGF0dXMiOiJBdGl2byIsImlhdCI6MTc2MDEwNzI0NywianRpIjoiMDgzZTFmZTQtYzk1NC00NDNiLWFhZDItZTVmZjE3ZDEwYjkzIiwiZXhwIjoxNzYwMTkzNjQ3LCJhdWQiOiJwYWluZWwtYWdlbmRhbWVudG8tZnJvbnRlbmQiLCJpc3MiOiJwYWluZWwtYWdlbmRhbWVudG8tYXBpIn0.NPEueYge9BLQpLLfw4ZoiMJVYnbi5W_ezt1hkWFr7vA';
+        
+        async function testAgentDetails(id) {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.innerHTML = `<p>🔄 Testando agente ${id}...</p>`;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agentes/${id}`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const agent = data.data;
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <h4>✅ Dados do Backend Validados</h4>
+                            <p><strong>Nome:</strong> ${agent.nome} ${agent.sobrenome}</p>
+                            <p><strong>Email:</strong> ${agent.email}</p>
+                            <p><strong>Avatar:</strong> ${agent.avatar_url ? '✅ Presente' : '❌ Ausente'}</p>
+                            <p><strong>Agenda Personalizada:</strong> ${agent.agenda_personalizada ? '✅ Ativa' : '❌ Inativa'}</p>
+                            
+                            <h4>📋 Serviços (${agent.servicos_disponiveis?.length || 0} disponíveis):</h4>
+                            <ul>
+                                ${agent.servicos_disponiveis?.map(s => `
+                                    <li style="color: ${agent.servicos_atuais_ids?.includes(s.id) ? 'green' : 'gray'}">
+                                        ${agent.servicos_atuais_ids?.includes(s.id) ? '✅' : '⬜'} 
+                                        ${s.nome} - R$ ${s.preco}
+                                    </li>
+                                `).join('') || '<li>Nenhum serviço</li>'}
+                            </ul>
+                            
+                            <h4>🕒 Horários (${agent.horarios_funcionamento?.length || 0} dias):</h4>
+                            <ul>
+                                ${agent.horarios_funcionamento?.map(h => `
+                                    <li>Dia ${h.dia_semana}: ${h.periodos?.map(p => `${p.inicio}-${p.fim}`).join(', ')}</li>
+                                `).join('') || '<li>Nenhum horário</li>'}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.message || 'Erro desconhecido');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p>❌ Erro: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testPersistence() {
+            const resultDiv = document.getElementById('persistence-result');
+            resultDiv.innerHTML = `
+                <div class="info">
+                    <p>🔄 Para testar persistência:</p>
+                    <ol>
+                        <li>Abra a página de edição do Agente 10</li>
+                        <li>Faça alterações nos serviços e horários</li>
+                        <li>Clique "Salvar Alterações"</li>
+                        <li>Recarregue a página para verificar persistência</li>
+                    </ol>
+                    <p><strong>URL:</strong> <a href="http://localhost:5173/agentes/editar/10" target="_blank">Editar Agente 10</a></p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 export interface Agent {
   id: number;
@@ -31,7 +31,14 @@ export interface AgentDetails extends Agent {
   unidade_id: number;
   agenda_personalizada: boolean;
   observacoes?: string;
-  servicos_oferecidos: number[];
+  // Novos campos para pré-seleção
+  servicos_disponiveis: Array<{
+    id: number;
+    nome: string;
+    preco: string;
+    duracao_minutos: number;
+  }>;
+  servicos_atuais_ids: number[];
   horarios_funcionamento: Array<{
     dia_semana: number;
     periodos: Array<{
@@ -56,6 +63,7 @@ export interface CreateAgentData {
   telefone: string;
   senha?: string;
   avatar_url?: string;
+  avatar?: File;
   biografia?: string;
   nome_exibicao?: string;
   unidade_id: number;
@@ -85,7 +93,7 @@ export interface UseAgentManagementReturn {
   fetchServices: () => Promise<void>;
   fetchAgentById: (id: number) => Promise<AgentDetails | null>;
   createAgent: (agentData: CreateAgentData) => Promise<boolean>;
-  updateAgent: (id: number, agentData: CreateAgentData) => Promise<boolean>;
+  updateAgent: (id: number, agentData: CreateAgentData) => Promise<any>;
   deleteAgent: (id: number) => Promise<boolean>;
   
   // Utilitários
@@ -262,7 +270,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
   }, [isAuthenticated, token, fetchAgents]);
 
   // Atualizar agente
-  const updateAgent = useCallback(async (id: number, agentData: CreateAgentData): Promise<boolean> => {
+  const updateAgent = useCallback(async (id: number, agentData: CreateAgentData): Promise<any> => {
     if (!isAuthenticated || !token) {
       return false;
     }
@@ -270,28 +278,53 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await authenticatedFetch(`/agentes/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(agentData),
+
+      // Criar FormData para suportar upload de arquivos
+      const formData = new FormData();
+
+      // Adicionar dados do agente
+      Object.entries(agentData).forEach(([key, value]) => {
+        if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento') {
+          formData.append(key, JSON.stringify(value));
+        } else if (key === 'avatar' && value instanceof File) {
+          formData.append(key, value);
+        } else if (value !== null && value !== undefined) {
+          formData.append(key, value.toString());
+        }
       });
-      
-      if (response.success) {
+
+      const response = await fetch(`${API_BASE_URL}/agentes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // Não definir Content-Type para FormData (browser define automaticamente)
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erro HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
         // Recarregar lista de agentes
         await fetchAgents();
-        return true;
+        return result.data; // Retornar os dados da resposta
       } else {
-        throw new Error(response.message || 'Erro ao atualizar agente');
+        throw new Error(result.message || 'Erro ao atualizar agente');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
       console.error('Erro ao atualizar agente:', err);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, isAuthenticated, token, fetchAgents]);
+  }, [isAuthenticated, token, fetchAgents]);
 
   // Excluir agente
   const deleteAgent = useCallback(async (id: number): Promise<boolean> => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Edit } from './Icons';
+import { Plus, Edit, FaUser } from './Icons';
 import { useAgentManagement, Agent } from '../hooks/useAgentManagement';
 
 // Componente removido - usando dados reais do hook
@@ -14,7 +14,27 @@ const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; }> = ({ 
             <Edit className="w-5 h-5" />
         </button>
         <div className="flex items-center">
-            <img src={agent.avatar} alt={agent.name} className="w-12 h-12 rounded-full object-cover" />
+            <div className="relative w-12 h-12">
+                {agent.avatar ? (
+                    <img
+                        src={`http://localhost:3001${agent.avatar}`}
+                        alt={agent.name}
+                        className="w-12 h-12 rounded-full object-cover"
+                        onError={(e) => {
+                            // Fallback para ícone se a imagem falhar
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const fallbackDiv = target.nextElementSibling as HTMLElement;
+                            if (fallbackDiv) {
+                                fallbackDiv.classList.remove('hidden');
+                            }
+                        }}
+                    />
+                ) : null}
+                <div className={`w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center ${agent.avatar ? 'hidden' : ''}`}>
+                    <FaUser className="w-6 h-6 text-gray-600" />
+                </div>
+            </div>
             <div className="ml-4">
                 <h3 className="font-bold text-gray-800">{agent.name}</h3>
                 <p className="text-sm text-gray-500">{agent.phone}</p>

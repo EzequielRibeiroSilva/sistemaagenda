@@ -56,7 +56,7 @@ const config = {
   // Configurações de segurança
   security: {
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutos
-    rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Aumentado temporariamente
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12,
     corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'file://']
   },
