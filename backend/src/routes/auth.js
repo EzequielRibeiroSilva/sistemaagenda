@@ -40,6 +40,17 @@ router.post('/logout', authenticate(), async (req, res) => {
 });
 
 /**
+ * @route GET /auth/validate
+ * @desc Validar token JWT
+ * @access Private
+ * @headers Authorization: Bearer <token>
+ * @returns { success: boolean, data: { user: object }, message: string }
+ */
+router.get('/validate', authenticate(), async (req, res) => {
+  await authController.validateToken(req, res);
+});
+
+/**
  * @route POST /auth/refresh
  * @desc Renovar token JWT
  * @access Private

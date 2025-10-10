@@ -1,64 +1,10 @@
 import React from 'react';
 import { Plus, Edit } from './Icons';
+import { useAgentManagement, Agent } from '../hooks/useAgentManagement';
 
-const agentsData = [
-  {
-    id: '1',
-    name: 'Eduardo Soares',
-    phone: '+5585989522202',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    availability: [
-      { day: 'Seg', available: true },
-      { day: 'Ter', available: true },
-      { day: 'Qua', available: true },
-      { day: 'Qui', available: true },
-      { day: 'Sex', available: true },
-      { day: 'Sab', available: true },
-      { day: 'Dom', available: false },
-    ],
-    status: 'Ativo',
-    reservations: 8,
-    todayHours: '08:00 - 12:00  14:00 - 21:00',
-  },
-  {
-    id: '2',
-    name: 'Ângelo Paixão',
-    phone: '+5585989307925',
-    avatar: 'https://i.pravatar.cc/150?img=2',
-    availability: [
-      { day: 'Seg', available: true },
-      { day: 'Ter', available: true },
-      { day: 'Qua', available: true },
-      { day: 'Qui', available: true },
-      { day: 'Sex', available: true },
-      { day: 'Sab', available: false },
-      { day: 'Dom', available: false },
-    ],
-    status: 'Ativo',
-    reservations: 1,
-    todayHours: '14:00 - 21:00',
-  },
-  {
-    id: '3',
-    name: 'Snake Filho',
-    phone: '+5585989307925',
-    avatar: 'https://i.pravatar.cc/150?img=3',
-    availability: [
-      { day: 'Seg', available: true },
-      { day: 'Ter', available: true },
-      { day: 'Qua', available: true },
-      { day: 'Qui', available: true },
-      { day: 'Sex', available: true },
-      { day: 'Sab', available: true },
-      { day: 'Dom', available: false },
-    ],
-    status: 'Ativo',
-    reservations: 7,
-    todayHours: '09:00 - 13:00  14:00 - 21:00',
-  },
-];
+// Componente removido - usando dados reais do hook
 
-const AgentCard: React.FC<{ agent: typeof agentsData[0]; onEdit: (id: string) => void; }> = ({ agent, onEdit }) => (
+const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; }> = ({ agent, onEdit }) => (
     <div className="relative group bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col transition-all duration-200 hover:border-blue-500 hover:shadow-lg">
         <button
             onClick={() => onEdit(agent.id)}
@@ -115,11 +61,58 @@ interface AgentsPageProps {
 }
 
 const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) => {
+    const { agents, loading, error } = useAgentManagement();
+
+    const handleEditAgent = (agentId: number) => {
+        onEditAgent(agentId.toString());
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Carregando agentes...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Não bloquear a página inteira por erro de serviços
+    // Mostrar erro como banner no topo, mas permitir uso da página
+
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Agentes</h1>
+            {/* Banner de erro (não bloqueia a página) */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                        <div className="text-red-500 text-xl mr-3">⚠️</div>
+                        <div className="flex-1">
+                            <p className="text-red-700 font-medium">Aviso</p>
+                            <p className="text-red-600 text-sm">{error}</p>
+                        </div>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                        >
+                            Recarregar
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold text-gray-800">Agentes</h1>
+                <div className="text-sm text-gray-600">
+                    {agents.length} agente{agents.length !== 1 ? 's' : ''} encontrado{agents.length !== 1 ? 's' : ''}
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {agentsData.map(agent => <AgentCard key={agent.id} agent={agent} onEdit={onEditAgent} />)}
+                {agents.map(agent => (
+                    <AgentCard key={agent.id} agent={agent} onEdit={handleEditAgent} />
+                ))}
                 <AddAgentCard onClick={() => setActiveView('agents-create')} />
             </div>
         </div>

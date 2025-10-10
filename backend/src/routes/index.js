@@ -9,6 +9,8 @@ const unidadesRoutes = require('./unidades');
 const clientesRoutes = require('./clientes');
 const servicosRoutes = require('./servicos');
 const agendamentosRoutes = require('./agendamentos');
+const usuariosRoutes = require('./usuarios');
+const agentesRoutes = require('./agentes');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -19,6 +21,12 @@ router.use('/auth', authRoutes);
 
 // Rotas RBAC (com controle de acesso baseado em roles)
 router.use('/rbac', rbacRoutes);
+
+// Rotas MASTER (AdminDashboardPage)
+router.use('/usuarios', usuariosRoutes);
+
+// Rotas ADMIN (Gerenciamento de Agentes)
+router.use('/agentes', agentesRoutes);
 
 // Rotas protegidas (com autenticação básica - mantidas para compatibilidade)
 router.use('/evolution', authenticate(), evolutionRoutes);

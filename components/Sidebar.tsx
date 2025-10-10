@@ -43,9 +43,14 @@ interface SidebarProps {
     userRole: 'salon' | 'agent';
     isOpenOnMobile: boolean;
     setOpenOnMobile: (isOpen: boolean) => void;
+    user?: {
+        role: string;
+        plano?: string;
+        userData?: any;
+    };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView, setActiveView, userRole, isOpenOnMobile, setOpenOnMobile }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView, setActiveView, userRole, isOpenOnMobile, setOpenOnMobile, user }) => {
   const [clientsSubmenuVisible, setClientsSubmenuVisible] = useState(false);
   const clientsNavItemRef = useRef<HTMLDivElement>(null);
   const [submenuPosition, setSubmenuPosition] = useState({ top: 0, left: 0 });
@@ -55,6 +60,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
   const servicesNavItemRef = useRef<HTMLDivElement>(null);
   const [servicesSubmenuPosition, setServicesSubmenuPosition] = useState({ top: 0, left: 0 });
   const hideServicesSubmenuTimeout = useRef<number | null>(null);
+
+  // Função para verificar se deve mostrar o item LOCAIS
+  const shouldShowLocais = () => {
+    if (!user) return false;
+
+    // MASTER sempre pode ver LOCAIS
+    if (user.role === 'MASTER') {
+      return true;
+    }
+
+    // ADMIN (mapeado como 'salon' no frontend) só pode ver LOCAIS se tiver plano Multi
+    // Verificar tanto o role original do userData quanto o role mapeado
+    const isAdmin = user.role === 'salon' || user.userData?.role === 'ADMIN';
+    if (isAdmin && user.plano === 'Multi') {
+      return true;
+    }
+
+    return false;
+  };
 
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
@@ -225,20 +249,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
                     </div>
                 </a>
             </div>
-            <NavItem 
-              icon={<Users className="h-5 w-5" />} 
-              label="AGENTES" 
+            <NavItem
+              icon={<Users className="h-5 w-5" />}
+              label="AGENTES"
               isCollapsed={isCollapsed}
               isActive={activeView.startsWith('agents')}
               onClick={() => handleNavItemClick('agents-list')}
             />
-            <NavItem 
-              icon={<MapPin className="h-5 w-5" />} 
-              label="LOCAIS" 
-              isCollapsed={isCollapsed}
-              isActive={activeView.startsWith('locations')}
-              onClick={() => handleNavItemClick('locations-list')}
-            />
+            {shouldShowLocais() && (
+              <NavItem
+                icon={<MapPin className="h-5 w-5" />}
+                label="LOCAIS"
+                isCollapsed={isCollapsed}
+                isActive={activeView.startsWith('locations')}
+                onClick={() => handleNavItemClick('locations-list')}
+              />
+            )}
           </>
         )}
 

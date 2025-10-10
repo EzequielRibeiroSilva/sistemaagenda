@@ -126,6 +126,26 @@ class AuthController {
     }
   }
 
+  // GET /auth/validate
+  async validateToken(req, res) {
+    try {
+      // O middleware de autenticação já validou o token
+      // req.user contém os dados do usuário decodificados do JWT
+      res.status(200).json({
+        success: true,
+        data: req.user,
+        message: 'Token válido'
+      });
+    } catch (error) {
+      console.error('Erro na validação do token:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao validar token'
+      });
+    }
+  }
+
   // POST /auth/refresh
   async refreshToken(req, res) {
     try {
@@ -234,6 +254,32 @@ class AuthController {
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: 'Erro ao alterar senha'
+      });
+    }
+  }
+
+  // POST /auth/logout
+  async logout(req, res) {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+
+      if (token) {
+        // Adicionar token à blacklist
+        await this.authService.blacklistToken(token);
+        console.log('🚪 Token adicionado à blacklist no logout');
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Logout realizado com sucesso'
+      });
+
+    } catch (error) {
+      console.error('❌ Erro no logout:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao realizar logout'
       });
     }
   }

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Automático - Teste</title>
+</head>
+<body>
+    <h1>🔑 Login Automático para Teste</h1>
+    <p>Fazendo login automático e redirecionando...</p>
+    
+    <div id="status"></div>
+
+    <script>
+        async function autoLogin() {
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                statusDiv.innerHTML = '🔄 Fazendo login...';
+                
+                // Fazer login via API
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin.agentes@teste.com',
+                        senha: 'senha123'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Salvar no localStorage
+                    localStorage.setItem('authToken', data.data.token);
+                    localStorage.setItem('refreshToken', data.data.refreshToken);
+                    localStorage.setItem('userEmail', data.data.user.email);
+                    
+                    statusDiv.innerHTML = '✅ Login realizado! Redirecionando...';
+                    
+                    // Redirecionar para o frontend
+                    setTimeout(() => {
+                        window.location.href = 'http://localhost:5173';
+                    }, 1000);
+                    
+                } else {
+                    throw new Error(data.message || 'Falha no login');
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = `❌ Erro: ${error.message}`;
+                console.error('Erro no login:', error);
+            }
+        }
+        
+        // Executar login automaticamente
+        autoLogin();
+    </script>
+</body>
+</html>

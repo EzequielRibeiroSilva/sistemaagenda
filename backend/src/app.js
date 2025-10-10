@@ -78,6 +78,9 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Servir arquivos estáticos (uploads)
+app.use('/uploads', express.static('uploads'));
+
 // Compressão
 app.use(compression());
 

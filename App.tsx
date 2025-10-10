@@ -17,6 +17,7 @@ import EditExtraServicePage from './components/EditExtraServicePage';
 import AgentsPage from './components/AgentsPage';
 import CreateAgentPage from './components/CreateAgentPage';
 import EditAgentPage from './components/EditAgentPage';
+import TestAgentsPage from './components/TestAgentsPage';
 import LocationsPage from './components/LocationsPage';
 import CreateLocationPage from './components/CreateLocationPage';
 import EditLocationPage from './components/EditLocationPage';
@@ -26,6 +27,8 @@ import AdminSidebar from './components/admin/AdminSidebar';
 import AdminDashboardPage from './components/admin/AdminDashboardPage';
 import AdminHeader from './components/admin/AdminHeader';
 import BookingPage from './components/BookingPage';
+import { useMasterUsers } from './hooks/useMasterUsers';
+import { useAuth } from './contexts/AuthContext';
 
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -34,18 +37,15 @@ const App: React.FC = () => {
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
-  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
   const [editingExtraServiceId, setEditingExtraServiceId] = useState<string | null>(null);
-  const [user, setUser] = useState<{
-    role: 'none' | 'salon' | 'admin' | 'agent' | 'MASTER' | 'ADMIN' | 'AGENTE',
-    agentId: string | null,
-    email?: string,
-    permissions?: any,
-    token?: string,
-    userData?: any
-  }>({ role: 'none', agentId: null });
-  const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
+
+  // Usar AuthContext
+  const { user, isAuthenticated, isLoading, login, logout: authLogout } = useAuth();
+
+  // Hook para usuários master (sempre chamado, mas só usado se for MASTER)
+  const masterUsersHook = useMasterUsers();
 
   const handleEditAgent = (agentId: string) => {
     setEditingAgentId(agentId);
@@ -62,7 +62,7 @@ const App: React.FC = () => {
     setActiveView('clients-edit');
   };
 
-  const handleEditLocation = (locationId: string) => {
+  const handleEditLocation = (locationId: number) => {
     setEditingLocationId(locationId);
     setActiveView('locations-edit');
   };
@@ -80,7 +80,7 @@ const App: React.FC = () => {
     token: string;
     user: any;
   }) => {
-    console.log('Login success data:', loginData);
+
 
     // Mapear roles do backend para o frontend
     let frontendRole: 'none' | 'salon' | 'admin' | 'agent' | 'MASTER' | 'ADMIN' | 'AGENTE' = 'salon';
@@ -99,14 +99,8 @@ const App: React.FC = () => {
         frontendRole = 'salon';
     }
 
-    setUser({
-      role: frontendRole,
-      agentId: loginData.user.id?.toString() || null,
-      email: loginData.email,
-      permissions: loginData.permissions,
-      token: loginData.token,
-      userData: loginData.user
-    });
+    // Usar login do AuthContext
+    login(loginData);
 
     // Definir view inicial baseada no redirectTo
     if (loginData.redirectTo === '/AdminDashboardPage') {
@@ -116,9 +110,27 @@ const App: React.FC = () => {
     }
   };
   
-  const handleLogout = () => {
-    setUser({ role: 'none', agentId: null });
+  const handleLogout = async () => {
+    if (user.role === 'MASTER') {
+      // Para usuários MASTER, usar o logout do hook que chama a API
+      await masterUsersHook.logout();
+    } else {
+      // Para outros usuários, usar logout do AuthContext
+      authLogout();
+    }
   };
+
+  // Loading Guard - não renderizar nada enquanto está carregando
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Simple Router
   const path = window.location.pathname;
@@ -127,7 +139,7 @@ const App: React.FC = () => {
     return <BookingPage />;
   }
 
-  if (user.role === 'none') {
+  if (!isAuthenticated || user.role === 'none') {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
   
@@ -139,11 +151,11 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden">
           <AdminHeader
             onLogout={handleLogout}
-            searchQuery={adminSearchQuery}
-            setSearchQuery={setAdminSearchQuery}
+            searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''}
+            setSearchQuery={user.role === 'MASTER' ? masterUsersHook.setSearchQuery : (() => {})}
           />
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
-            <AdminDashboardPage searchQuery={adminSearchQuery} />
+            <AdminDashboardPage searchQuery={masterUsersHook?.searchQuery || ''} />
           </main>
         </div>
       </div>
@@ -156,7 +168,7 @@ const App: React.FC = () => {
     }
 
     switch (activeView) {
-      case 'admin-dashboard': return <AdminDashboardPage searchQuery={adminSearchQuery} />;
+      case 'admin-dashboard': return <AdminDashboardPage searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''} />;
       case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
       case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
@@ -178,6 +190,7 @@ const App: React.FC = () => {
       case 'agents-list': return <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />;
       case 'agents-create': return <CreateAgentPage setActiveView={setActiveView} />;
       case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'agent' ? user.agentId : editingAgentId} />;
+      case 'test-agents': return <TestAgentsPage />;
       case 'locations-list': return <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />;
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
       case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;
@@ -188,14 +201,19 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-100 text-gray-800">
-      <Sidebar 
-        isCollapsed={isSidebarCollapsed} 
-        setCollapsed={setSidebarCollapsed} 
+      <Sidebar
+        isCollapsed={isSidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
         activeView={activeView}
         setActiveView={setActiveView}
         userRole={user.role as 'salon' | 'agent'}
         isOpenOnMobile={isMobileSidebarOpen}
         setOpenOnMobile={setMobileSidebarOpen}
+        user={{
+          role: user.role,
+          plano: user.userData?.plano,
+          userData: user.userData
+        }}
       />
       <div className="relative z-20 flex-1 flex flex-col overflow-hidden">
         <Header 

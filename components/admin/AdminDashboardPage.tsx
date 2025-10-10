@@ -1,52 +1,80 @@
 
 
-import React, { useState, useMemo } from 'react';
-import type { AdminUser } from '../../types';
+import React, { useState } from 'react';
 import { UserPlus, Edit, Slash } from '../Icons';
 import NewUserModal from './NewUserModal';
 import ManageUnitsModal from './ManageUnitsModal';
+import { useMasterUsers } from '../../hooks/useMasterUsers';
 
-const mockUsers: AdminUser[] = [
-  { id: 1, name: 'Salão Exemplo 1', email: 'contato@salao1.com', contact: '+55 11 98765-4321', status: 'Ativo', plan: 'Single', unitLimit: 1, units: [{ id: 101, name: 'Unidade Principal', status: 'Ativo' }], clientCount: 150 },
-  { id: 2, name: 'Barbearia do João', email: 'joao@barbearia.com', contact: '+55 21 91234-5678', status: 'Ativo', plan: 'Multi', unitLimit: 5, units: [
-      { id: 201, name: 'Unidade Centro', status: 'Ativo' },
-      { id: 202, name: 'Unidade Praia', status: 'Ativo' },
-      { id: 203, name: 'Unidade Shopping', status: 'Bloqueado' },
-      { id: 204, name: 'Unidade Aeroporto', status: 'Ativo' },
-  ], clientCount: 320 },
-  { id: 3, name: 'Studio de Beleza', email: 'contato@studio.com', contact: '+55 31 95555-4444', status: 'Bloqueado', plan: 'Single', unitLimit: 1, units: [{ id: 301, name: 'Matriz', status: 'Ativo' }], clientCount: 85 },
-];
+// Tipos para compatibilidade com os modais existentes
+interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  contact: string;
+  status: 'Ativo' | 'Bloqueado';
+  plan: 'Single' | 'Multi';
+  unitLimit: number;
+  units: Array<{ id: number; name: string; status: 'Ativo' | 'Bloqueado' }>;
+  clientCount: number;
+}
 
 interface AdminDashboardPageProps {
   searchQuery: string;
 }
 
-// FIX: Define UserDataPayload to match the data structure from NewUserModal.
-type UserDataPayload = Omit<AdminUser, 'status' | 'id' | 'units' | 'clientCount'> & { id?: number; password?: string };
+// Tipo para dados do modal
+type UserDataPayload = {
+  id?: number;
+  name: string;
+  email: string;
+  contact: string;
+  plan: 'Single' | 'Multi';
+  unitLimit: number;
+  password?: string;
+};
 
 const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) => {
-    const [users, setUsers] = useState(mockUsers);
+    const {
+        users: masterUsers,
+        loading,
+        error,
+        createUser,
+        updateUser,
+        updateUserStatus,
+        getUserUnits,
+        updateUnitStatus
+    } = useMasterUsers();
+
     const [isUserModalOpen, setUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
     const [managingUnitsUser, setManagingUnitsUser] = useState<AdminUser | null>(null);
+    const [managingUnitsData, setManagingUnitsData] = useState<Array<{ id: number; name: string; status: 'Ativo' | 'Bloqueado' }>>([]);
 
-    const filteredUsers = useMemo(() => {
-        if (!searchQuery) {
-            return users;
+    // Converter dados do hook para o formato esperado pelos componentes
+    const users: AdminUser[] = masterUsers.map(user => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        contact: user.contact,
+        status: user.status,
+        plan: user.plan,
+        unitLimit: user.unitLimit,
+        units: [], // Será carregado quando necessário
+        clientCount: user.clientCount
+    }));
+
+    const toggleUserStatus = async (id: number) => {
+        try {
+            const user = users.find(u => u.id === id);
+            if (!user) return;
+
+            const newStatus = user.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
+            await updateUserStatus(id, newStatus);
+        } catch (error) {
+            console.error('Erro ao alterar status:', error);
+            // Aqui você pode adicionar uma notificação de erro
         }
-        const lowercasedQuery = searchQuery.toLowerCase();
-        return users.filter(user =>
-            user.name.toLowerCase().includes(lowercasedQuery) ||
-            user.email.toLowerCase().includes(lowercasedQuery)
-        );
-    }, [users, searchQuery]);
-
-    const toggleUserStatus = (id: number) => {
-        setUsers(users.map(user => 
-            user.id === id 
-                ? { ...user, status: user.status === 'Ativo' ? 'Bloqueado' : 'Ativo' }
-                : user
-        ));
     };
     
     const handleOpenNewModal = () => {
@@ -64,62 +92,111 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
         setEditingUser(null);
     };
 
-    // FIX: Correctly type userData and handle object spreading to prevent type errors and logical bugs.
-    const handleSaveUser = (userData: UserDataPayload) => {
-        if (userData.id) {
-            // Update
-            const { password, ...restOfUserData } = userData;
-            setUsers(users.map(u => u.id === userData.id ? { ...u, ...restOfUserData } : u));
-        } else {
-            // Create
-            const { password, id, ...restOfUserData } = userData;
-            const newUser: AdminUser = {
-                id: Date.now(),
-                status: 'Ativo',
-                units: [],
-                clientCount: 0,
-                ...restOfUserData,
-            };
-            setUsers([...users, newUser]);
+    const handleSaveUser = async (userData: UserDataPayload) => {
+        try {
+            if (userData.id) {
+                // Update
+                const updateData = {
+                    nome: userData.name,
+                    email: userData.email,
+                    telefone: userData.contact,
+                    plano: userData.plan,
+                    limite_unidades: userData.unitLimit,
+                    ...(userData.password && { senha: userData.password })
+                };
+                await updateUser(userData.id, updateData);
+            } else {
+                // Create
+                const createData = {
+                    nome: userData.name,
+                    email: userData.email,
+                    senha: userData.password || '',
+                    telefone: userData.contact,
+                    plano: userData.plan,
+                    limite_unidades: userData.unitLimit
+                };
+                await createUser(createData);
+            }
+            handleCloseUserModal();
+        } catch (error) {
+            console.error('Erro ao salvar usuário:', error);
+            // Aqui você pode adicionar uma notificação de erro
         }
-        handleCloseUserModal();
     };
 
-    // FIX: Correctly infer unit status type and fix logic to use unit status instead of user status.
-    const handleToggleUnitStatus = (userId: number, unitId: number) => {
-        const updateUserState = (userList: AdminUser[]) =>
-            userList.map(user => {
-                if (user.id === userId) {
-                    return {
-                        ...user,
-                        units: user.units.map(unit => {
-                            if (unit.id === unitId) {
-                                const newStatus: 'Ativo' | 'Bloqueado' = unit.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
-                                return { ...unit, status: newStatus };
-                            }
-                            return unit;
-                        }),
-                    };
-                }
-                return user;
-            });
+    const handleToggleUnitStatus = async (userId: number, unitId: number) => {
+        try {
+            const unit = managingUnitsData.find(u => u.id === unitId);
+            if (!unit) return;
 
-        setUsers(updateUserState);
-        setManagingUnitsUser(prevUser => prevUser ? updateUserState([prevUser])[0] : null);
+            const newStatus = unit.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
+            await updateUnitStatus(unitId, newStatus);
+
+            // Atualizar dados locais do modal
+            setManagingUnitsData(prevUnits =>
+                prevUnits.map(u =>
+                    u.id === unitId ? { ...u, status: newStatus } : u
+                )
+            );
+        } catch (error) {
+            console.error('Erro ao alterar status da unidade:', error);
+            // Aqui você pode adicionar uma notificação de erro
+        }
+    };
+
+    const handleOpenManageUnits = async (user: AdminUser) => {
+        try {
+            const units = await getUserUnits(user.id);
+            setManagingUnitsData(units);
+            setManagingUnitsUser(user);
+        } catch (error) {
+            console.error('Erro ao carregar unidades:', error);
+            // Aqui você pode adicionar uma notificação de erro
+        }
     };
 
     const getStatusClass = (status: 'Ativo' | 'Bloqueado') => {
-        return status === 'Ativo' 
-            ? 'bg-green-100 text-green-800' 
+        return status === 'Ativo'
+            ? 'bg-green-100 text-green-800'
             : 'bg-gray-100 text-gray-600';
     };
+
+    // Mostrar loading
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-gray-600">Carregando usuários...</span>
+                </div>
+            </div>
+        );
+    }
+
+    // Mostrar erro
+    if (error) {
+        return (
+            <div className="space-y-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex">
+                        <div className="ml-3">
+                            <h3 className="text-sm font-medium text-red-800">Erro ao carregar usuários</h3>
+                            <div className="mt-2 text-sm text-red-700">
+                                <p>{error}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Usuários</h1>
-                    <p className="text-sm text-gray-500">Mostrando {filteredUsers.length} usuários</p>
+                    <p className="text-sm text-gray-500">Mostrando {users.length} usuários</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button 
@@ -148,8 +225,12 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredUsers.map(user => {
-                                const activeUnits = user.units.filter(u => u.status === 'Ativo').length;
+                            {users.map(user => {
+                                // Para usuários Multi, usar activeUnits do backend
+                                const activeUnitsDisplay = user.plan === 'Multi'
+                                    ? masterUsers.find(mu => mu.id === user.id)?.activeUnits || 0
+                                    : user.unitLimit;
+
                                 return (
                                 <tr key={user.id} className="border-t border-gray-200 hover:bg-gray-50">
                                     <td className="p-3 font-medium text-gray-700 text-center">{user.id}</td>
@@ -159,12 +240,12 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
                                     <td className="p-3 text-gray-600">{user.plan}</td>
                                     <td className="p-3 text-gray-600 text-center">
                                         {user.plan === 'Multi' ? (
-                                            <button 
-                                                onClick={() => setManagingUnitsUser(user)} 
+                                            <button
+                                                onClick={() => handleOpenManageUnits(user)}
                                                 className="font-medium text-blue-600 hover:underline"
                                                 aria-label={`Gerenciar unidades de ${user.name}`}
                                             >
-                                                {activeUnits} / {user.unitLimit}
+                                                {activeUnitsDisplay} / {user.unitLimit}
                                             </button>
                                         ) : (
                                             <span>{user.unitLimit}</span>
@@ -179,7 +260,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
                                     <td className="p-3">
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => handleOpenEditModal(user)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-md"><Edit className="w-4 h-4" /></button>
-                                            <button 
+                                            <button
                                                 onClick={() => toggleUserStatus(user.id)}
                                                 className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-md">
                                                 <Slash className="w-4 h-4" />
@@ -198,10 +279,13 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
                 onSave={handleSaveUser}
                 userToEdit={editingUser}
             />
-            <ManageUnitsModal 
+            <ManageUnitsModal
                 isOpen={!!managingUnitsUser}
-                onClose={() => setManagingUnitsUser(null)}
-                user={managingUnitsUser}
+                onClose={() => {
+                    setManagingUnitsUser(null);
+                    setManagingUnitsData([]);
+                }}
+                user={managingUnitsUser ? { ...managingUnitsUser, units: managingUnitsData } : null}
                 onToggleUnitStatus={handleToggleUnitStatus}
             />
         </div>

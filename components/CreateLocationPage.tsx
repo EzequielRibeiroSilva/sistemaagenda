@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle } from './Icons';
+import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
+import { useUnitManagement } from '../hooks/useUnitManagement';
 
 // Mock data for agents
 const agentsData = [
@@ -25,10 +26,28 @@ const FormCard: React.FC<{ title: string; children: React.ReactNode; rightConten
     </div>
 );
 
-const TextInput: React.FC<{ label: string; placeholder?: string; }> = ({ label, placeholder }) => (
+const TextInput: React.FC<{
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  required?: boolean;
+  error?: string;
+}> = ({ label, placeholder, value, onChange, required = false, error }) => (
     <div>
-        <label className="text-sm font-medium text-gray-600 mb-1 block">{label}</label>
-        <input type="text" placeholder={placeholder} className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" />
+        <label className="text-sm font-medium text-gray-600 mb-1 block">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          className={`w-full bg-gray-50 border text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${
+            error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300'
+          }`}
+        />
+        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
 );
 
@@ -97,6 +116,19 @@ interface CreateLocationPageProps {
 }
 
 const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }) => {
+    const { createUnit, loading, error, clearError, limitInfo } = useUnitManagement();
+
+    // Form state
+    const [formData, setFormData] = useState({
+        nome: '',
+        endereco: '',
+        telefone: '',
+        status: 'Ativo' as 'Ativo' | 'Bloqueado'
+    });
+
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const [checkedAgents, setCheckedAgents] = useState<Record<string, boolean>>(
         agentsData.reduce((acc, agent) => ({...acc, [agent.name]: true }), {})
     );
@@ -131,28 +163,127 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
     const handleServiceCheck = (serviceName: string) => {
         setCheckedServices(prev => ({ ...prev, [serviceName]: !prev[serviceName] }));
     };
-    
+
     const allServicesSelected = useMemo(() => Object.values(checkedServices).every(Boolean), [checkedServices]);
+
+    // Form handlers
+    const handleInputChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({ ...prev, [field]: e.target.value }));
+        // Clear error when user starts typing
+        if (formErrors[field]) {
+            setFormErrors(prev => ({ ...prev, [field]: '' }));
+        }
+    };
+
+    const validateForm = () => {
+        const errors: Record<string, string> = {};
+
+        if (!formData.nome.trim()) {
+            errors.nome = 'Nome do local é obrigatório';
+        }
+
+        if (!formData.endereco.trim()) {
+            errors.endereco = 'Endereço é obrigatório';
+        }
+
+        if (!formData.telefone.trim()) {
+            errors.telefone = 'Telefone é obrigatório';
+        }
+
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleSubmit = async () => {
+        if (!validateForm()) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        clearError();
+
+        const success = await createUnit({
+            nome: formData.nome.trim(),
+            endereco: formData.endereco.trim(),
+            telefone: formData.telefone.trim(),
+            status: formData.status
+        });
+
+        setIsSubmitting(false);
+
+        if (success) {
+            // Redirect back to locations list
+            setActiveView('locations-list');
+        }
+    };
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Criar Novo Local</h1>
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold text-gray-800">Criar Novo Local</h1>
+                {limitInfo && (
+                    <div className="text-sm text-gray-600">
+                        <span className="font-medium">{limitInfo.currentCount}</span>
+                        {limitInfo.limit ? ` de ${limitInfo.limit}` : ''} unidades utilizadas
+                    </div>
+                )}
+            </div>
+
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+                    <div className="flex items-center">
+                        <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                        <span className="text-red-800">{error}</span>
+                    </div>
+                    <button
+                        onClick={clearError}
+                        className="text-red-600 hover:text-red-800 font-medium text-sm"
+                    >
+                        Fechar
+                    </button>
+                </div>
+            )}
 
             <FormCard title="Informações Básicas">
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <TextInput label="Nome do Local" placeholder="Ex: Matriz Centro" />
-                        <TextInput label="Endereço do Local" placeholder="Av. Principal, 123" />
+                        <TextInput
+                            label="Nome do Local"
+                            placeholder="Ex: Matriz Centro"
+                            value={formData.nome}
+                            onChange={handleInputChange('nome')}
+                            required
+                            error={formErrors.nome}
+                        />
+                        <TextInput
+                            label="Endereço do Local"
+                            placeholder="Av. Principal, 123"
+                            value={formData.endereco}
+                            onChange={handleInputChange('endereco')}
+                            required
+                            error={formErrors.endereco}
+                        />
                     </div>
                     <div>
-                        <label className="text-sm font-medium text-gray-600 mb-1 block">Telefone (WhatsApp)</label>
+                        <label className="text-sm font-medium text-gray-600 mb-1 block">
+                            Telefone (WhatsApp) <span className="text-red-500">*</span>
+                        </label>
                         <div className="relative">
-                            <div className="flex items-center w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500">
+                            <div className={`flex items-center w-full bg-gray-50 border text-gray-800 text-sm rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 ${
+                                formErrors.telefone ? 'border-red-300 focus-within:border-red-500 focus-within:ring-red-500' : 'border-gray-300'
+                            }`}>
                                 <span className="pl-3 pr-2 text-lg">🇧🇷</span>
                                 <span className="text-gray-600 pr-2">+55</span>
-                                <input type="tel" placeholder="(00) 90000-0000" className="w-full bg-transparent p-2.5 focus:outline-none placeholder-gray-400" />
+                                <input
+                                    type="tel"
+                                    placeholder="(00) 90000-0000"
+                                    className="w-full bg-transparent p-2.5 focus:outline-none placeholder-gray-400"
+                                    value={formData.telefone}
+                                    onChange={handleInputChange('telefone')}
+                                />
                             </div>
                         </div>
+                        {formErrors.telefone && <p className="text-red-500 text-xs mt-1">{formErrors.telefone}</p>}
                         <p className="text-xs text-gray-500 mt-1">
                             Este número será usado para notificações e contato via WhatsApp.
                         </p>
@@ -212,9 +343,31 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
                 <AgentScheduleEditor />
             </FormCard>
 
-            <div className="pt-2">
-                <button className="bg-blue-600 text-white font-semibold px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    Salvar Local
+            <div className="pt-2 flex items-center gap-4">
+                <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting || loading}
+                    className="bg-blue-600 text-white font-semibold px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                    {isSubmitting || loading ? (
+                        <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Salvando...
+                        </>
+                    ) : (
+                        <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Salvar Local
+                        </>
+                    )}
+                </button>
+                <button
+                    onClick={() => setActiveView('locations-list')}
+                    disabled={isSubmitting || loading}
+                    className="bg-gray-100 text-gray-800 font-semibold px-8 py-3 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Cancelar
                 </button>
             </div>
         </div>

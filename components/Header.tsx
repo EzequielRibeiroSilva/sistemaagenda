@@ -90,10 +90,10 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
             </div>
 
             <div className="flex items-center space-x-4">
-              <div className="h-6 w-px bg-gray-200"></div>
+              <div className="h-6 w-px bg-gray-200 "></div>
               <button
                 onClick={() => setModalOpen(true)}
-                className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors "
               >
                 <Plus className="h-5 w-5 mr-2" />
                 Novas Reservas
