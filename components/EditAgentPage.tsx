@@ -1,28 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Check, Leaf, ImagePlaceholder } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
-
-// Mock data, should be consistent with AgentsPage
-const agentsData = [
-  {
-    id: '1',
-    name: 'Eduardo Soares',
-    phone: '+5585989522202',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-  },
-  {
-    id: '2',
-    name: 'Ângelo Paixão',
-    phone: '+5585989307925',
-    avatar: 'https://i.pravatar.cc/150?img=2',
-  },
-  {
-    id: '3',
-    name: 'Snake Filho',
-    phone: '+5585989307925',
-    avatar: 'https://i.pravatar.cc/150?img=3',
-  },
-];
+import { useAgentManagement, AgentDetails } from '../hooks/useAgentManagement';
+import { useAuth } from '../contexts/AuthContext';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -34,10 +14,10 @@ const FormCard: React.FC<{ title: string; children: React.ReactNode; rightConten
   </div>
 );
 
-const TextInput: React.FC<{ label: string; placeholder?: string; defaultValue?: string; className?: string, value?: string, onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void, type?: string }> = ({ label, placeholder, defaultValue, className = "", value, onChange, type="text" }) => (
+const TextInput: React.FC<{ label: string; placeholder?: string; defaultValue?: string; className?: string, value?: string, onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void, type?: string, readOnly?: boolean }> = ({ label, placeholder, defaultValue, className = "", value, onChange, type="text", readOnly = false }) => (
     <div className={className}>
         <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
-        <input type={type} placeholder={placeholder} defaultValue={defaultValue} value={value} onChange={onChange} className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" />
+        <input type={type} placeholder={placeholder} defaultValue={defaultValue} value={value} onChange={onChange} readOnly={readOnly} className={`w-full border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${readOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50'}`} />
     </div>
 );
 const TextArea: React.FC<{ label: string; placeholder?: string; rows?: number; className?: string }> = ({ label, placeholder, rows = 2, className = "" }) => (
@@ -74,48 +54,171 @@ const ServiceCheckboxWithIcon: React.FC<{ label: string, checked: boolean, onCha
     </label>
 );
 
+
+
 interface EditAgentPageProps {
   setActiveView: (view: string) => void;
   agentId: string | null;
 }
 
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
-    const agentToEdit = useMemo(() => agentsData.find(agent => agent.id === agentId), [agentId]);
+    const { fetchAgentById, updateAgent, loading, error } = useAgentManagement();
+    const { user, updateUser } = useAuth();
+    const [agentData, setAgentData] = useState<AgentDetails | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [phone, setPhone] = useState('');
+    const [email, setEmail] = useState('');
 
     useEffect(() => {
-        if (agentToEdit) {
-            const nameParts = agentToEdit.name.split(' ');
-            setFirstName(nameParts[0]);
-            setLastName(nameParts.slice(1).join(' '));
-            setPhone(agentToEdit.phone.replace('+55', '').trim());
-        }
-    }, [agentToEdit]);
+        const loadAgent = async () => {
+            if (agentId) {
+                setIsLoading(true);
+                const agent = await fetchAgentById(parseInt(agentId));
+                if (agent) {
+                    setAgentData(agent);
+                    // Preencher formulário com dados do agente
+                    setFirstName(agent.nome || '');
+                    setLastName(agent.sobrenome || '');
+                    setPhone(agent.telefone || '');
+                    setEmail(agent.email || '');
+
+                    // Implementar pré-seleção de serviços
+                    if (agent.servicos_disponiveis && agent.servicos_atuais_ids) {
+                        const initialCheckedServices: Record<number, boolean> = {};
+                        agent.servicos_disponiveis.forEach(servico => {
+                            // Marcar como true se o serviço está na lista de serviços atuais do agente
+                            initialCheckedServices[servico.id] = agent.servicos_atuais_ids.includes(servico.id);
+                        });
+                        setCheckedServices(initialCheckedServices);
+                    }
+
+                    // Implementar pré-seleção da agenda personalizada
+                    setIsCustomSchedule(agent.agenda_personalizada);
+
+                    // Definir preview da imagem atual
+                    if (agent.avatar_url) {
+                        setAvatarPreview(agent.avatar_url);
+                    }
+                }
+                setIsLoading(false);
+            }
+        };
+
+        loadAgent();
+    }, [agentId, fetchAgentById]);
     
-    const [checkedServices, setCheckedServices] = useState<Record<string, boolean>>(
-        servicesList.reduce((acc, service) => ({ ...acc, [service]: true }), {})
-    );
+    const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
     const [isCustomSchedule, setIsCustomSchedule] = useState(true);
+    const [scheduleData, setScheduleData] = useState<any[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string>('');
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
-        const newCheckedState = Object.keys(checkedServices).reduce((acc, service) => {
-            acc[service] = isChecked;
-            return acc;
-        }, {} as Record<string, boolean>);
-        setCheckedServices(newCheckedState);
+        if (agentData?.servicos_disponiveis) {
+            const newCheckedState: Record<number, boolean> = {};
+            agentData.servicos_disponiveis.forEach(servico => {
+                newCheckedState[servico.id] = isChecked;
+            });
+            setCheckedServices(newCheckedState);
+        }
     };
 
-    const handleServiceCheck = (serviceName: string) => {
-        setCheckedServices(prev => ({ ...prev, [serviceName]: !prev[serviceName] }));
+    const handleServiceCheck = (servicoId: number) => {
+        setCheckedServices(prev => ({ ...prev, [servicoId]: !prev[servicoId] }));
     };
 
-    const allServicesSelected = useMemo(() => Object.values(checkedServices).every(Boolean), [checkedServices]);
-    
-    if (!agentToEdit) {
+    const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Por favor, selecione apenas arquivos de imagem.');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) {
+                alert('A imagem deve ter no máximo 5MB.');
+                return;
+            }
+
+            setAvatarFile(file);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setAvatarPreview(e.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const allServicesSelected = useMemo(() => {
+        if (!agentData?.servicos_disponiveis?.length) return false;
+        return agentData.servicos_disponiveis.every(servico => checkedServices[servico.id] === true);
+    }, [checkedServices, agentData?.servicos_disponiveis]);
+
+    const handleSave = async () => {
+        if (!agentData) return;
+
+        setIsSaving(true);
+        try {
+            // Coletar apenas os IDs dos serviços marcados
+            const servicosSelecionados = Object.entries(checkedServices)
+                .filter(([_, isChecked]) => isChecked)
+                .map(([servicoId, _]) => parseInt(servicoId));
+
+            const updateData = {
+                nome: firstName,
+                sobrenome: lastName,
+                email: email,
+                telefone: phone,
+                unidade_id: agentData.unidade_id, // Incluir unidade_id obrigatório
+                agenda_personalizada: isCustomSchedule,
+                servicos_oferecidos: servicosSelecionados,
+                horarios_funcionamento: isCustomSchedule ? scheduleData : [],
+                avatar: avatarFile // Incluir arquivo de avatar se houver
+            };
+
+            const result = await updateAgent(agentData.id, updateData);
+
+            if (result) {
+                alert('Agente atualizado com sucesso!');
+
+                // Se o usuário logado é o agente que foi editado, atualizar o avatar no contexto
+                if (user.agentId === agentData.id.toString() && result?.avatar_url) {
+                    updateUser({ avatarUrl: result.avatar_url });
+                }
+
+                // Redirecionar para lista de agentes
+                setActiveView('agents-list');
+            } else {
+                throw new Error('Erro ao atualizar agente');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar:', error);
+            alert('Erro ao salvar alterações: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Carregando dados do agente...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!agentData) {
         return (
             <div className="p-4 text-center">
                 <h2 className="text-xl font-semibold text-gray-700">Agente não encontrado.</h2>
@@ -131,34 +234,61 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             <h1 className="text-3xl font-bold text-gray-800">Editar Agente</h1>
 
             <FormCard title="Informações Gerais">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-1">
-                        <div className="border-2 border-dotted border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:border-blue-500 group h-full min-h-[220px]">
-                             <img src={agentToEdit.avatar} alt={agentToEdit.name} className="w-32 h-32 rounded-full object-cover mb-4" />
-                            <span className="text-sm font-semibold text-gray-600 group-hover:text-blue-600">Mudar foto</span>
-                        </div>
-                    </div>
-                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <TextInput label="Primeiro Nome" value={firstName} onChange={e => setFirstName(e.target.value)} />
-                        <TextInput label="Último Nome" value={lastName} onChange={e => setLastName(e.target.value)} />
-                        <TextInput label="Nome De Exibição" className="md:col-span-2" value={`${firstName} ${lastName}`} />
-                        <TextInput label="Endereço De E-Mail" className="md:col-span-2" />
-                        <TextInput label="Senha" type="password" placeholder="Deixe em branco para não alterar" className="md:col-span-2" />
-                        
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Avatar Upload */}
+                    <div className="md:col-span-2 flex items-center space-x-6">
                         <div className="relative">
-                            <label className="text-sm font-medium text-gray-600 mb-2 block">Telefone</label>
-                            <div className="flex items-center w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500">
-                                <span className="pl-3 pr-2 text-lg">🇧🇷</span>
-                                <span className="text-gray-600 pr-2">+55</span>
-                                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="11 96123-4567" className="w-full bg-transparent p-2.5 focus:outline-none placeholder-gray-400" />
+                            <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                {avatarPreview ? (
+                                    <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                                ) : (
+                                    <ImagePlaceholder className="w-8 h-8 text-gray-400" />
+                                )}
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors"
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleAvatarChange}
+                                className="hidden"
+                            />
                         </div>
-                        
-                        <SelectInput label="Estado">
-                            <option>Ativo</option>
-                            <option>Bloqueado</option>
-                        </SelectInput>
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-700">Foto do Agente</h3>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Clique no botão + para alterar a foto. Máximo 5MB.
+                            </p>
+                        </div>
                     </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <TextInput label="Primeiro Nome" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                    <TextInput label="Último Nome" value={lastName} onChange={e => setLastName(e.target.value)} />
+                    <TextInput label="Nome De Exibição" className="md:col-span-2" value={`${firstName} ${lastName}`} readOnly />
+                    <TextInput label="Endereço De E-Mail" className="md:col-span-2" value={email} onChange={e => setEmail(e.target.value)} />
+                    <TextInput label="Senha" type="password" placeholder="Deixe em branco para não alterar" className="md:col-span-2" />
+
+                    <div className="relative">
+                        <label className="text-sm font-medium text-gray-600 mb-2 block">Telefone</label>
+                        <div className="flex items-center w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500">
+                            <span className="pl-3 pr-2 text-lg">🇧🇷</span>
+                            <span className="text-gray-600 pr-2">+55</span>
+                            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="11 96123-4567" className="w-full bg-transparent p-2.5 focus:outline-none placeholder-gray-400" />
+                        </div>
+                    </div>
+
+                    <SelectInput label="Estado">
+                        <option>Ativo</option>
+                        <option>Bloqueado</option>
+                    </SelectInput>
                 </div>
             </FormCard>
 
@@ -177,23 +307,23 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 }
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {servicesList.map(service => (
+                     {agentData?.servicos_disponiveis?.map(servico => (
                         <ServiceCheckboxWithIcon
-                            key={service} 
-                            label={service} 
-                            checked={checkedServices[service] || false}
-                            onChange={() => handleServiceCheck(service)}
+                            key={servico.id}
+                            label={`${servico.nome} - R$ ${servico.preco} (${servico.duracao_minutos}min)`}
+                            checked={checkedServices[servico.id] || false}
+                            onChange={() => handleServiceCheck(servico.id)}
                         />
                     ))}
                 </div>
             </FormCard>
             
             <FormCard
-                title="Selecione a agenda do agente"
+                title="Agenda Semanal"
                 rightContent={
                      <label className="flex items-center text-sm font-medium text-blue-600 cursor-pointer">
                         <div className="relative flex items-center">
-                            <input 
+                            <input
                                 type="checkbox"
                                 checked={isCustomSchedule}
                                 onChange={() => setIsCustomSchedule(!isCustomSchedule)}
@@ -203,22 +333,34 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                                 {isCustomSchedule && <Check className="w-3 h-3 text-white" />}
                             </div>
                         </div>
-                        <span className="ml-2 font-semibold">Definir Agenda Personalizada</span>
+                        <span className="ml-2 font-semibold">Agenda personalizada</span>
                     </label>
                 }
             >
                 {isCustomSchedule ? (
-                    <AgentScheduleEditor />
+                    <AgentScheduleEditor
+                        scheduleData={agentData?.horarios_funcionamento || []}
+                        onScheduleChange={setScheduleData}
+                    />
                 ) : (
-                    <div className="bg-gray-100 p-4 rounded-lg text-sm text-center text-gray-600">
-                        O agente usará o horário de trabalho padrão.
+                    <div className="text-center py-8 text-gray-500">
+                        <p>Usando agenda padrão da unidade</p>
+                        <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
                     </div>
                 )}
             </FormCard>
 
             <div className="pt-2">
-                <button className="bg-blue-600 text-white font-semibold px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    Salvar Alterações
+                <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className={`font-semibold px-8 py-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                        isSaving
+                            ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                >
+                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
             </div>
         </div>

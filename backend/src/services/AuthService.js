@@ -94,6 +94,8 @@ class AuthService {
       const usuarioModel = new Usuario();
       const usuario = await usuarioModel.findByEmail(email);
 
+
+
       if (!usuario) {
         throw new Error('Credenciais inválidas');
       }
@@ -109,12 +111,28 @@ class AuthService {
         throw new Error('Credenciais inválidas');
       }
 
+      // Buscar avatar_url se for um agente
+      let avatarUrl = null;
+      if (usuario.tipo_usuario === 'agent') {
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.db('agentes')
+          .where('usuario_id', usuario.id)
+          .select('avatar_url')
+          .first();
+
+        if (agente) {
+          avatarUrl = agente.avatar_url;
+        }
+      }
+
       // Gerar tokens
       const accessToken = this.generateToken(usuario);
       const refreshToken = this.generateRefreshToken(usuario);
 
-      // Remover senha do objeto de retorno
+      // Remover senha do objeto de retorno e adicionar avatar_url
       const { senha_hash, ...usuarioSemSenha } = usuario;
+      usuarioSemSenha.avatar_url = avatarUrl;
 
       return {
         token: accessToken,

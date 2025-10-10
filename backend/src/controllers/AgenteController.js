@@ -1,6 +1,6 @@
 const Agente = require('../models/Agente');
 const bcrypt = require('bcryptjs');
-const { deleteOldAvatar } = require('../middleware/uploadMiddleware');
+const { deleteOldAvatar } = require('../middleware/formDataMiddleware');
 
 class AgenteController {
   constructor() {
@@ -15,7 +15,7 @@ class AgenteController {
     try {
       const usuarioId = req.user.id;
 
-      console.log('[AgenteController] Buscando lista leve de agentes para usuário:', usuarioId);
+
 
       // Busca otimizada apenas com id e nome
       const agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
@@ -26,7 +26,7 @@ class AgenteController {
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
       }));
 
-      console.log(`[AgenteController] Lista leve: ${agentesLeves.length} agentes ativos`);
+
 
       res.status(200).json({
         success: true,
@@ -52,7 +52,7 @@ class AgenteController {
     try {
       const usuarioId = req.user.id;
       
-      console.log('[AgenteController] Buscando agentes para usuário:', usuarioId);
+
       
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
       
@@ -62,7 +62,7 @@ class AgenteController {
         name: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
         email: agente.email,
         phone: agente.telefone,
-        avatar: agente.avatar_url || `https://i.pravatar.cc/150?img=${agente.id}`,
+        avatar: agente.avatar_url || null,
         status: agente.status,
         reservations: agente.reservations,
         todayHours: agente.todayHours,
@@ -74,7 +74,7 @@ class AgenteController {
         comissao_percentual: agente.comissao_percentual
       }));
       
-      console.log(`[AgenteController] Encontrados ${agentesFormatados.length} agentes`);
+
       
       res.status(200).json({
         success: true,
@@ -99,11 +99,9 @@ class AgenteController {
     try {
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
-      
-      console.log('[AgenteController] Buscando agente:', agenteId);
-      
+
       const agente = await this.agenteModel.findByIdComplete(agenteId);
-      
+
       if (!agente) {
         return res.status(404).json({
           success: false,
@@ -120,6 +118,11 @@ class AgenteController {
           message: 'Você não tem permissão para acessar este agente'
         });
       }
+
+      // Buscar todos os serviços disponíveis do usuário
+      const Servico = require('../models/Servico');
+      const servicoModel = new Servico();
+      const servicosDisponiveis = await servicoModel.findActiveByUsuario(usuarioId);
 
       // Formatar dados para o frontend
       const agenteFormatado = {
@@ -138,14 +141,22 @@ class AgenteController {
         observacoes: agente.observacoes,
         data_admissao: agente.data_admissao,
         comissao_percentual: agente.comissao_percentual,
-        servicos_oferecidos: agente.servicos_oferecidos.map(s => s.id),
+        // Serviços para pré-seleção
+        servicos_disponiveis: servicosDisponiveis.map(s => ({
+          id: s.id,
+          nome: s.nome,
+          preco: s.preco,
+          duracao_minutos: s.duracao_minutos
+        })),
+        servicos_atuais_ids: agente.servicos_oferecidos.map(s => s.id),
+        // Horários formatados
         horarios_funcionamento: agente.horarios_funcionamento.map(h => ({
           dia_semana: h.dia_semana,
           periodos: typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos
         }))
       };
       
-      console.log('[AgenteController] Agente encontrado:', agenteFormatado.nome);
+
       
       res.status(200).json({
         success: true,
@@ -208,19 +219,13 @@ class AgenteController {
         console.error('Erro ao parsear horarios_funcionamento:', e);
       }
 
-      console.log('[AgenteController] Criando novo agente:', {
-        nome,
-        email,
-        unidade_id: unidade_id,
-        tipo_unidade_id: typeof unidade_id,
-        body_keys: Object.keys(req.body)
-      });
 
-      // Converter unidade_id para número
+
+      // Converter unidade_id para número (pode vir como string do FormData)
       const unidadeIdNum = parseInt(unidade_id);
 
       // Validações básicas
-      if (!nome || !email || !unidadeIdNum || isNaN(unidadeIdNum)) {
+      if (!nome || !email || !unidade_id || isNaN(unidadeIdNum)) {
         return res.status(400).json({
           success: false,
           error: 'Campos obrigatórios',
@@ -249,7 +254,7 @@ class AgenteController {
       }
 
       // URL do avatar (do upload ou padrão)
-      const finalAvatarUrl = req.avatarUrl || avatar_url || `https://i.pravatar.cc/150?img=${Date.now()}`;
+      const finalAvatarUrl = req.avatarUrl || avatar_url || null;
 
       // Dados do agente
       const agenteData = {
@@ -269,14 +274,14 @@ class AgenteController {
         status: 'Ativo'
       };
 
-      // Criar agente com transação
+      // Criar agente com transação (incluindo usuário para login)
       const agenteId = await this.agenteModel.createWithTransaction(
         agenteData,
         servicosIds,
         horariosData
       );
 
-      console.log(`[AgenteController] Agente criado com sucesso - ID: ${agenteId}`);
+
 
       res.status(201).json({
         success: true,
@@ -316,6 +321,7 @@ class AgenteController {
         email,
         telefone,
         senha,
+        status,
         avatar_url,
         biografia,
         nome_exibicao,
@@ -328,7 +334,27 @@ class AgenteController {
         horarios_funcionamento
       } = req.body;
 
-      console.log('[AgenteController] Atualizando agente:', agenteId);
+      // Parse de dados JSON se vieram como string (FormData)
+      let servicosIds = [];
+      let horariosData = [];
+
+      try {
+        servicosIds = typeof servicos_oferecidos === 'string'
+          ? JSON.parse(servicos_oferecidos)
+          : (servicos_oferecidos || []);
+      } catch (e) {
+        console.error('Erro ao parsear servicos_oferecidos:', e);
+        servicosIds = [];
+      }
+
+      try {
+        horariosData = typeof horarios_funcionamento === 'string'
+          ? JSON.parse(horarios_funcionamento)
+          : (horarios_funcionamento || []);
+      } catch (e) {
+        console.error('Erro ao parsear horarios_funcionamento:', e);
+        horariosData = [];
+      }
 
       // Verificar se o agente existe e pertence ao usuário
       const agenteExistente = await this.agenteModel.findByIdComplete(agenteId);
@@ -376,8 +402,8 @@ class AgenteController {
       let finalAvatarUrl = agenteExistente.avatar_url; // Manter existente por padrão
 
       if (req.avatarUrl) {
-        // Novo upload - deletar avatar antigo se não for padrão
-        if (agenteExistente.avatar_url && !agenteExistente.avatar_url.includes('pravatar.cc')) {
+        // Novo upload - deletar avatar antigo se existir
+        if (agenteExistente.avatar_url) {
           deleteOldAvatar(agenteExistente.avatar_url);
         }
         finalAvatarUrl = req.avatarUrl;
@@ -398,7 +424,8 @@ class AgenteController {
         sobrenome,
         email,
         telefone,
-        senha_hash: senhaHash,
+        status: status || 'Ativo', // Incluir status
+        senha_hash: senhaHash, // Já processado acima
         avatar_url: finalAvatarUrl,
         biografia,
         nome_exibicao,
@@ -410,20 +437,15 @@ class AgenteController {
         updated_at: new Date()
       };
 
-      // Atualizar senha apenas se fornecida
-      if (senha && senha.trim() !== '') {
-        agenteData.senha_hash = await bcrypt.hash(senha, 12);
-      }
-
       // Atualizar agente com transação
       await this.agenteModel.updateWithTransaction(
         agenteId,
         agenteData,
-        servicos_oferecidos,
-        horarios_funcionamento
+        servicosIds,
+        horariosData
       );
 
-      console.log(`[AgenteController] Agente atualizado com sucesso - ID: ${agenteId}`);
+
 
       res.status(200).json({
         success: true,
@@ -458,7 +480,7 @@ class AgenteController {
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
 
-      console.log('[AgenteController] Excluindo agente:', agenteId);
+
 
       // Verificar se o agente existe e pertence ao usuário
       const agente = await this.agenteModel.findByIdComplete(agenteId);
@@ -485,7 +507,7 @@ class AgenteController {
         updated_at: new Date()
       });
 
-      console.log(`[AgenteController] Agente bloqueado com sucesso - ID: ${agenteId}`);
+
 
       res.status(200).json({
         success: true,

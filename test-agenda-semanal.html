@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Agenda Semanal EditAgentPage</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            color: #2563eb;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d1fae5; color: #065f46; }
+        .error { background-color: #fee2e2; color: #991b1b; }
+        .info { background-color: #dbeafe; color: #1e40af; }
+        .warning { background-color: #fef3c7; color: #92400e; }
+        button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #1d4ed8; }
+        .result {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .test-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .test-links a {
+            background-color: #10b981;
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .test-links a:hover {
+            background-color: #059669;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste - Agenda Semanal na EditAgentPage</h1>
+    
+    <div class="test-section">
+        <h2 class="test-title">📋 Checklist de Implementação</h2>
+        
+        <div class="status info">
+            <strong>✅ CONCLUÍDO:</strong>
+            <ul>
+                <li>AgentScheduleEditor atualizado para suportar ambas as interfaces</li>
+                <li>EditAgentPage usando AgentScheduleEditor original (mesmo da CreateAgentPage)</li>
+                <li>Rate limiting aumentado temporariamente (100 → 1000 req/15min)</li>
+                <li>Mapeamento correto de dados backend → frontend</li>
+            </ul>
+        </div>
+
+        <div class="status warning">
+            <strong>🔍 PARA TESTAR:</strong>
+            <ul>
+                <li>Carregamento da página de edição sem erro 429</li>
+                <li>Agenda semanal exibindo layout idêntico ao CreateAgentPage</li>
+                <li>Pré-seleção correta dos dias/horários do backend</li>
+                <li>Funcionalidade de edição de horários</li>
+                <li>Salvamento das alterações via PUT</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">🔗 Links de Teste</h2>
+        <div class="test-links">
+            <a href="http://localhost:5173/agentes/editar/10" target="_blank">
+                📝 Editar Agente 10 (Ana Silva)
+            </a>
+            <a href="http://localhost:5173/agentes/editar/9" target="_blank">
+                📝 Editar Agente 9 (Maria Santos)
+            </a>
+            <a href="http://localhost:5173/agentes/criar" target="_blank">
+                ➕ Criar Novo Agente (Comparação)
+            </a>
+            <a href="http://localhost:5173/agentes" target="_blank">
+                📋 Lista de Agentes
+            </a>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">🔍 Testes de API</h2>
+        
+        <button onclick="testAgentData()">🔍 Testar Dados do Agente 10</button>
+        <button onclick="testAgentData9()">🔍 Testar Dados do Agente 9</button>
+        <button onclick="testBackendHealth()">❤️ Testar Saúde do Backend</button>
+        
+        <div id="apiResults" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">📊 Dados Esperados</h2>
+        
+        <div class="status info">
+            <strong>Agente 10 (Ana Silva):</strong>
+            <ul>
+                <li>agenda_personalizada: true</li>
+                <li>servicos_atuais_ids: [7, 9]</li>
+                <li>horarios_funcionamento: Segunda (08:00-12:00, 14:00-18:00), Terça (08:00-12:00, 14:00-18:00)</li>
+            </ul>
+        </div>
+
+        <div class="status info">
+            <strong>Agente 9 (Maria Santos):</strong>
+            <ul>
+                <li>agenda_personalizada: true</li>
+                <li>servicos_atuais_ids: [] (vazio)</li>
+                <li>horarios_funcionamento: [] (vazio)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDUsImlkIjoxMDUsImVtYWlsIjoidGVzdGFuZG9AZ21haWwuY29tIiwibm9tZSI6ImV6ZXF1aWVsIHJpYmVpcm8iLCJyb2xlIjoiQURNSU4iLCJ1bmlkYWRlX2lkIjpudWxsLCJ0aXBvX3VzdWFyaW8iOiJzYWxvbiIsInBsYW5vIjoiTXVsdGkiLCJsaW1pdGVfdW5pZGFkZXMiOjEwLCJzdGF0dXMiOiJBdGl2byIsImlhdCI6MTc2MDEwNzI0NywianRpIjoiMDgzZTFmZTQtYzk1NC00NDNiLWFhZDItZTVmZjE3ZDEwYjkzIiwiZXhwIjoxNzYwMTkzNjQ3LCJhdWQiOiJwYWluZWwtYWdlbmRhbWVudG8tZnJvbnRlbmQiLCJpc3MiOiJwYWluZWwtYWdlbmRhbWVudG8tYXBpIn0.NPEueYge9BLQpLLfw4ZoiMJVYnbi5W_ezt1hkWFr7vA';
+
+        function displayResult(data) {
+            document.getElementById('apiResults').textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function testAgentData() {
+            try {
+                const response = await fetch(`${API_BASE}/agentes/10`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                const data = await response.json();
+                displayResult({
+                    status: response.status,
+                    success: data.success,
+                    agenda_personalizada: data.data?.agenda_personalizada,
+                    servicos_atuais_ids: data.data?.servicos_atuais_ids,
+                    horarios_funcionamento: data.data?.horarios_funcionamento
+                });
+            } catch (error) {
+                displayResult({ error: error.message });
+            }
+        }
+
+        async function testAgentData9() {
+            try {
+                const response = await fetch(`${API_BASE}/agentes/9`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                const data = await response.json();
+                displayResult({
+                    status: response.status,
+                    success: data.success,
+                    agenda_personalizada: data.data?.agenda_personalizada,
+                    servicos_atuais_ids: data.data?.servicos_atuais_ids,
+                    horarios_funcionamento: data.data?.horarios_funcionamento
+                });
+            } catch (error) {
+                displayResult({ error: error.message });
+            }
+        }
+
+        async function testBackendHealth() {
+            try {
+                const response = await fetch(`${API_BASE.replace('/api', '')}/health`);
+                const data = await response.json();
+                displayResult({
+                    status: response.status,
+                    health: data
+                });
+            } catch (error) {
+                displayResult({ error: error.message });
+            }
+        }
+    </script>
+</body>
+</html>

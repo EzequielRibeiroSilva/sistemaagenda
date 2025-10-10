@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Criação de Agente como Usuário</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            color: #2563eb;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d1fae5; color: #065f46; }
+        .error { background-color: #fee2e2; color: #991b1b; }
+        .info { background-color: #dbeafe; color: #1e40af; }
+        .warning { background-color: #fef3c7; color: #92400e; }
+        button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #1d4ed8; }
+        button.danger { background-color: #dc2626; }
+        button.danger:hover { background-color: #b91c1c; }
+        button.success { background-color: #10b981; }
+        button.success:hover { background-color: #059669; }
+        .result {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .test-form {
+            display: grid;
+            gap: 15px;
+            max-width: 500px;
+        }
+        .test-form input, .test-form select {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+        }
+        .test-form label {
+            font-weight: bold;
+            color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste - Criação de Agente como Usuário do Sistema</h1>
+    
+    <div class="test-section">
+        <h2 class="test-title">🎯 Objetivo do Teste</h2>
+        <div class="status info">
+            <strong>Verificar se:</strong>
+            <ul>
+                <li>✅ Agente é criado na tabela <code>agentes</code></li>
+                <li>✅ Usuário é criado na tabela <code>usuarios</code> com role 'AGENTE'</li>
+                <li>✅ Agente consegue fazer login no sistema</li>
+                <li>✅ Agente tem acesso limitado (apenas seus dados)</li>
+                <li>✅ Edição de agente atualiza também o usuário</li>
+                <li>✅ Mudança de status bloqueia/desbloqueia login</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">🔧 1. Criar Agente de Teste</h2>
+        
+        <div class="test-form">
+            <label>Nome:</label>
+            <input type="text" id="nome" value="João" />
+            
+            <label>Sobrenome:</label>
+            <input type="text" id="sobrenome" value="Silva" />
+            
+            <label>Email:</label>
+            <input type="email" id="email" value="joao.silva@teste.com" />
+            
+            <label>Telefone:</label>
+            <input type="text" id="telefone" value="(11) 99999-1234" />
+            
+            <label>Senha:</label>
+            <input type="password" id="senha" value="123456" />
+            
+            <label>Unidade ID:</label>
+            <input type="number" id="unidade_id" value="6" />
+            
+            <button onclick="createTestAgent()" class="success">🚀 Criar Agente</button>
+        </div>
+        
+        <div id="createResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">🔍 2. Verificar Criação</h2>
+        
+        <button onclick="checkAgentInDatabase()">📋 Verificar Agente na Tabela</button>
+        <button onclick="checkUserInDatabase()">👤 Verificar Usuário na Tabela</button>
+        <button onclick="testAgentLogin()">🔐 Testar Login do Agente</button>
+        
+        <div id="verifyResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">✏️ 3. Testar Edição</h2>
+        
+        <button onclick="updateAgentStatus()">🔒 Bloquear Agente</button>
+        <button onclick="testBlockedLogin()">❌ Testar Login Bloqueado</button>
+        <button onclick="reactivateAgent()">✅ Reativar Agente</button>
+        
+        <div id="editResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">🧹 4. Limpeza</h2>
+        
+        <button onclick="cleanupTestData()" class="danger">🗑️ Limpar Dados de Teste</button>
+        
+        <div id="cleanupResult" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDUsImlkIjoxMDUsImVtYWlsIjoidGVzdGFuZG9AZ21haWwuY29tIiwibm9tZSI6ImV6ZXF1aWVsIHJpYmVpcm8iLCJyb2xlIjoiQURNSU4iLCJ1bmlkYWRlX2lkIjpudWxsLCJ0aXBvX3VzdWFyaW8iOiJzYWxvbiIsInBsYW5vIjoiTXVsdGkiLCJsaW1pdGVfdW5pZGFkZXMiOjEwLCJzdGF0dXMiOiJBdGl2byIsImlhdCI6MTc2MDEwNzI0NywianRpIjoiMDgzZTFmZTQtYzk1NC00NDNiLWFhZDItZTVmZjE3ZDEwYjkzIiwiZXhwIjoxNzYwMTkzNjQ3LCJhdWQiOiJwYWluZWwtYWdlbmRhbWVudG8tZnJvbnRlbmQiLCJpc3MiOiJwYWluZWwtYWdlbmRhbWVudG8tYXBpIn0.NPEueYge9BLQpLLfw4ZoiMJVYnbi5W_ezt1hkWFr7vA';
+        
+        let testAgentId = null;
+        let testAgentEmail = null;
+
+        function displayResult(elementId, data) {
+            document.getElementById(elementId).textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function createTestAgent() {
+            try {
+                const formData = new FormData();
+                formData.append('nome', document.getElementById('nome').value);
+                formData.append('sobrenome', document.getElementById('sobrenome').value);
+                formData.append('email', document.getElementById('email').value);
+                formData.append('telefone', document.getElementById('telefone').value);
+                formData.append('senha', document.getElementById('senha').value);
+                formData.append('unidade_id', document.getElementById('unidade_id').value);
+                formData.append('agenda_personalizada', 'false');
+                formData.append('servicos_oferecidos', '[]');
+                formData.append('horarios_funcionamento', '[]');
+
+                const response = await fetch(`${API_BASE}/agentes`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    testAgentId = data.data.id;
+                    testAgentEmail = data.data.email;
+                }
+                
+                displayResult('createResult', {
+                    status: response.status,
+                    success: data.success,
+                    agentId: data.data?.id,
+                    message: data.message,
+                    error: data.error
+                });
+            } catch (error) {
+                displayResult('createResult', { error: error.message });
+            }
+        }
+
+        async function checkAgentInDatabase() {
+            if (!testAgentId) {
+                displayResult('verifyResult', { error: 'Crie um agente primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/agentes/${testAgentId}`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                const data = await response.json();
+                
+                displayResult('verifyResult', {
+                    type: 'AGENTE_CHECK',
+                    status: response.status,
+                    found: data.success,
+                    agente: data.data,
+                    usuario_id: data.data?.usuario_id
+                });
+            } catch (error) {
+                displayResult('verifyResult', { error: error.message });
+            }
+        }
+
+        async function checkUserInDatabase() {
+            // Simular verificação - em produção seria uma rota específica
+            displayResult('verifyResult', {
+                type: 'USER_CHECK',
+                message: 'Verificação manual necessária no banco de dados',
+                query: `SELECT * FROM usuarios WHERE email = '${testAgentEmail}' AND role = 'AGENTE';`
+            });
+        }
+
+        async function testAgentLogin() {
+            if (!testAgentEmail) {
+                displayResult('verifyResult', { error: 'Crie um agente primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: testAgentEmail,
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                displayResult('verifyResult', {
+                    type: 'LOGIN_TEST',
+                    status: response.status,
+                    success: data.success,
+                    role: data.data?.user?.role,
+                    permissions: data.data?.user?.permissions,
+                    message: data.message
+                });
+            } catch (error) {
+                displayResult('verifyResult', { error: error.message });
+            }
+        }
+
+        async function updateAgentStatus() {
+            if (!testAgentId) {
+                displayResult('editResult', { error: 'Crie um agente primeiro' });
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('nome', 'João');
+                formData.append('sobrenome', 'Silva');
+                formData.append('email', testAgentEmail);
+                formData.append('telefone', '(11) 99999-1234');
+                formData.append('unidade_id', '6');
+                formData.append('status', 'Bloqueado'); // BLOQUEAR
+                formData.append('agenda_personalizada', 'false');
+                formData.append('servicos_oferecidos', '[]');
+                formData.append('horarios_funcionamento', '[]');
+
+                const response = await fetch(`${API_BASE}/agentes/${testAgentId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                displayResult('editResult', {
+                    type: 'BLOCK_AGENT',
+                    status: response.status,
+                    success: data.success,
+                    message: data.message
+                });
+            } catch (error) {
+                displayResult('editResult', { error: error.message });
+            }
+        }
+
+        async function testBlockedLogin() {
+            if (!testAgentEmail) {
+                displayResult('editResult', { error: 'Bloqueie o agente primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: testAgentEmail,
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                displayResult('editResult', {
+                    type: 'BLOCKED_LOGIN_TEST',
+                    status: response.status,
+                    success: data.success,
+                    shouldFail: true,
+                    message: data.message || data.error
+                });
+            } catch (error) {
+                displayResult('editResult', { error: error.message });
+            }
+        }
+
+        async function reactivateAgent() {
+            if (!testAgentId) {
+                displayResult('editResult', { error: 'Crie um agente primeiro' });
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('nome', 'João');
+                formData.append('sobrenome', 'Silva');
+                formData.append('email', testAgentEmail);
+                formData.append('telefone', '(11) 99999-1234');
+                formData.append('unidade_id', '6');
+                formData.append('status', 'Ativo'); // REATIVAR
+                formData.append('agenda_personalizada', 'false');
+                formData.append('servicos_oferecidos', '[]');
+                formData.append('horarios_funcionamento', '[]');
+
+                const response = await fetch(`${API_BASE}/agentes/${testAgentId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                displayResult('editResult', {
+                    type: 'REACTIVATE_AGENT',
+                    status: response.status,
+                    success: data.success,
+                    message: data.message
+                });
+            } catch (error) {
+                displayResult('editResult', { error: error.message });
+            }
+        }
+
+        async function cleanupTestData() {
+            if (!testAgentId) {
+                displayResult('cleanupResult', { message: 'Nenhum agente para limpar' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/agentes/${testAgentId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+
+                const data = await response.json();
+                
+                displayResult('cleanupResult', {
+                    status: response.status,
+                    success: data.success,
+                    message: data.message,
+                    note: 'Usuário associado deve ser removido automaticamente (CASCADE)'
+                });
+                
+                testAgentId = null;
+                testAgentEmail = null;
+            } catch (error) {
+                displayResult('cleanupResult', { error: error.message });
+            }
+        }
+    </script>
+</body>
+</html>

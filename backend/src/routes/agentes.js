@@ -3,7 +3,7 @@ const router = express.Router();
 const AgenteController = require('../controllers/AgenteController');
 const { authenticate } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/rbacMiddleware');
-const { handleAvatarUpload } = require('../middleware/uploadMiddleware');
+const { handleFormDataWithUpload } = require('../middleware/formDataMiddleware');
 
 // Instanciar controller
 const agenteController = new AgenteController();
@@ -52,7 +52,7 @@ router.get('/:id', async (req, res) => {
  * @body {object} agenteData - Dados do agente
  * @returns { success: boolean, data: Agent, message: string }
  */
-router.post('/', handleAvatarUpload, async (req, res) => {
+router.post('/', handleFormDataWithUpload, async (req, res) => {
   await agenteController.store(req, res);
 });
 
@@ -64,7 +64,7 @@ router.post('/', handleAvatarUpload, async (req, res) => {
  * @body {object} agenteData - Dados do agente
  * @returns { success: boolean, data: Agent, message: string }
  */
-router.put('/:id', handleAvatarUpload, async (req, res) => {
+router.put('/:id', handleFormDataWithUpload, async (req, res) => {
   await agenteController.update(req, res);
 });
 

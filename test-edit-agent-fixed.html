@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Edição de Agente (Corrigido)</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .status { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste de Edição de Agente (Pós-Correção useMemo)</h1>
+    
+    <div class="test-section">
+        <h3>✅ Correção Aplicada</h3>
+        <p class="status">useMemo adicionado às importações do React em EditAgentPage.tsx</p>
+        <p>A tela branca deve ter sido resolvida.</p>
+    </div>
+    
+    <div class="test-section">
+        <h3>1. Teste de Conectividade Backend</h3>
+        <button onclick="testBackendConnection()">Testar Backend</button>
+        <div id="backend-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. Teste de Busca de Agente por ID</h3>
+        <button onclick="testFetchAgent(9)">Buscar Agente ID 9 (Maria - sem serviços)</button>
+        <button onclick="testFetchAgent(10)">Buscar Agente ID 10 (Ana - com serviços)</button>
+        <div id="agent-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. Teste de URL de Edição (Deve Funcionar Agora)</h3>
+        <p>URLs de teste:</p>
+        <a href="http://localhost:5173/agentes/editar/9" target="_blank">🔗 Editar Agente 9 (Maria Santos - sem serviços)</a><br>
+        <a href="http://localhost:5173/agentes/editar/10" target="_blank">🔗 Editar Agente 10 (Ana Silva - com serviços pré-selecionados)</a>
+        <p><strong>Esperado:</strong> Páginas devem carregar sem tela branca, mostrando formulário preenchido com pré-seleção.</p>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3001/api';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDUsImlkIjoxMDUsImVtYWlsIjoidGVzdGFuZG9AZ21haWwuY29tIiwibm9tZSI6ImV6ZXF1aWVsIHJpYmVpcm8iLCJyb2xlIjoiQURNSU4iLCJ1bmlkYWRlX2lkIjpudWxsLCJ0aXBvX3VzdWFyaW8iOiJzYWxvbiIsInBsYW5vIjoiTXVsdGkiLCJsaW1pdGVfdW5pZGFkZXMiOjEwLCJzdGF0dXMiOiJBdGl2byIsImlhdCI6MTc2MDEwNzI0NywianRpIjoiMDgzZTFmZTQtYzk1NC00NDNiLWFhZDItZTVmZjE3ZDEwYjkzIiwiZXhwIjoxNzYwMTkzNjQ3LCJhdWQiOiJwYWluZWwtYWdlbmRhbWVudG8tZnJvbnRlbmQiLCJpc3MiOiJwYWluZWwtYWdlbmRhbWVudG8tYXBpIn0.NPEueYge9BLQpLLfw4ZoiMJVYnbi5W_ezt1hkWFr7vA';
+        
+        async function testBackendConnection() {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.innerHTML = '<p>🔄 Testando...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agentes`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <p>✅ Backend conectado com sucesso!</p>
+                            <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                            <p><strong>Agentes encontrados:</strong> ${data.data.length}</p>
+                            <ul>
+                                ${data.data.map(agent => `<li>ID ${agent.id}: ${agent.name} (${agent.email})</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.message || 'Erro desconhecido');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p>❌ Erro: ${error.message}</p>
+                        <p><strong>Possível causa:</strong> CORS, token expirado, ou backend offline</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testFetchAgent(id) {
+            const resultDiv = document.getElementById('agent-result');
+            resultDiv.innerHTML = `<p>🔄 Buscando agente ${id}...</p>`;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agentes/${id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const agent = data.data;
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <p>✅ Agente ${id} encontrado com sucesso!</p>
+                            <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                            <p><strong>Nome:</strong> ${agent.nome} ${agent.sobrenome || ''}</p>
+                            <p><strong>Email:</strong> ${agent.email}</p>
+                            <p><strong>Telefone:</strong> ${agent.telefone || 'Não informado'}</p>
+                            <p><strong>Unidade:</strong> ${agent.unidade_nome}</p>
+                            <p><strong>Avatar URL:</strong> ${agent.avatar_url || 'Não definido'}</p>
+                            <p><strong>Agenda Personalizada:</strong> ${agent.agenda_personalizada ? 'Sim' : 'Não'}</p>
+
+                            <h4>📋 Serviços Disponíveis (${agent.servicos_disponiveis?.length || 0}):</h4>
+                            <ul>
+                                ${agent.servicos_disponiveis?.map(s => `
+                                    <li style="color: ${agent.servicos_atuais_ids?.includes(s.id) ? 'green' : 'gray'}">
+                                        ${agent.servicos_atuais_ids?.includes(s.id) ? '✅' : '⬜'}
+                                        ${s.nome} - R$ ${s.preco} (${s.duracao_minutos}min)
+                                    </li>
+                                `).join('') || '<li>Nenhum serviço disponível</li>'}
+                            </ul>
+
+                            <h4>🕒 Horários de Funcionamento (${agent.horarios_funcionamento?.length || 0} dias):</h4>
+                            <ul>
+                                ${agent.horarios_funcionamento?.map(h => `
+                                    <li>Dia ${h.dia_semana}: ${h.periodos?.map(p => `${p.inicio}-${p.fim}`).join(', ') || 'Sem períodos'}</li>
+                                `).join('') || '<li>Nenhum horário configurado</li>'}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.message || 'Erro desconhecido');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p>❌ Erro ao buscar agente ${id}: ${error.message}</p>
+                        <p><strong>Status esperado:</strong> 200 OK</p>
+                        <p><strong>Se 404:</strong> Agente não existe ou não pertence ao usuário</p>
+                        <p><strong>Se 401:</strong> Token inválido ou expirado</p>
+                        <p><strong>Se 500:</strong> Erro interno do servidor</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

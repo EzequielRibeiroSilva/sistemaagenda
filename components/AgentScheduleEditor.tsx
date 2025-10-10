@@ -17,8 +17,13 @@ interface ScheduleDay {
 }
 
 interface AgentScheduleEditorProps {
+  // Nova interface (para EditAgentPage)
   scheduleData?: ScheduleDay[];
   onScheduleChange?: (scheduleData: ScheduleDay[]) => void;
+
+  // Interface legada (para CreateAgentPage)
+  schedule?: any;
+  onChange?: (schedule: any) => void;
 }
 
 const initialSchedule: ScheduleData = {
@@ -110,32 +115,42 @@ const DayScheduleRow: React.FC<{
 
 const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     scheduleData,
-    onScheduleChange
+    onScheduleChange,
+    schedule: legacySchedule,
+    onChange: legacyOnChange
 }) => {
     const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
 
-    // Converter dados da API para formato interno
+    // Converter dados da API para formato interno (nova interface)
     useEffect(() => {
         if (scheduleData && Array.isArray(scheduleData)) {
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
+            const convertedSchedule: ScheduleData = { ...initialSchedule };
 
-            const convertedSchedule: ScheduleData = {};
-
-            scheduleData.forEach((day, index) => {
-                const dayName = dayNames[index];
-                convertedSchedule[dayName] = {
-                    isActive: day.is_aberto,
-                    periods: day.periodos.map((periodo, periodIndex) => ({
-                        id: periodIndex + 1,
-                        start: periodo.inicio,
-                        end: periodo.fim
-                    }))
-                };
+            scheduleData.forEach((dayData) => {
+                const dayName = dayNames[dayData.dia_semana];
+                if (dayName && dayData.periodos && dayData.periodos.length > 0) {
+                    convertedSchedule[dayName] = {
+                        isActive: true,
+                        periods: dayData.periodos.map((periodo, periodIndex) => ({
+                            id: periodIndex + 1,
+                            start: periodo.inicio,
+                            end: periodo.fim
+                        }))
+                    };
+                }
             });
 
             setSchedule(convertedSchedule);
         }
     }, [scheduleData]);
+
+    // Suporte para interface legada (CreateAgentPage)
+    useEffect(() => {
+        if (legacySchedule && typeof legacySchedule === 'object') {
+            setSchedule(legacySchedule);
+        }
+    }, [legacySchedule]);
 
     const handleUpdateDay = (dayName: string, newDayData: DayScheduleData) => {
         const newSchedule = {
@@ -145,19 +160,27 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
 
         setSchedule(newSchedule);
 
-        // Converter de volta para formato da API e notificar mudança
+        // Notificar interface nova (EditAgentPage)
         if (onScheduleChange) {
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
 
-            const apiScheduleData: ScheduleDay[] = dayNames.map(dayName => ({
-                is_aberto: newSchedule[dayName]?.isActive || false,
-                periodos: newSchedule[dayName]?.periods.map(period => ({
-                    inicio: period.start,
-                    fim: period.end
-                })) || []
-            }));
+            const apiScheduleData: ScheduleDay[] = dayNames
+                .map((dayName, index) => ({
+                    dia_semana: index,
+                    is_aberto: newSchedule[dayName]?.isActive || false,
+                    periodos: newSchedule[dayName]?.periods.map(period => ({
+                        inicio: period.start,
+                        fim: period.end
+                    })) || []
+                }))
+                .filter(day => day.is_aberto && day.periodos.length > 0);
 
             onScheduleChange(apiScheduleData);
+        }
+
+        // Notificar interface legada (CreateAgentPage)
+        if (legacyOnChange) {
+            legacyOnChange(newSchedule);
         }
     };
 

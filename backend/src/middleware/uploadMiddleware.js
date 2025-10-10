@@ -37,16 +37,35 @@ const upload = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB máximo
-    files: 1 // Apenas 1 arquivo por vez
+    files: 1, // Apenas 1 arquivo por vez
+    fields: 20, // Permitir até 20 campos de texto
+    fieldSize: 1024 * 1024 // 1MB por campo de texto
   },
   fileFilter: fileFilter
 });
 
-// Middleware para upload de avatar
-const uploadAvatar = upload.single('avatar');
+// Middleware para upload de avatar com suporte a todos os campos FormData
+const uploadAvatar = upload.fields([
+  { name: 'avatar', maxCount: 1 },
+  { name: 'nome', maxCount: 1 },
+  { name: 'sobrenome', maxCount: 1 },
+  { name: 'email', maxCount: 1 },
+  { name: 'telefone', maxCount: 1 },
+  { name: 'senha', maxCount: 1 },
+  { name: 'unidade_id', maxCount: 1 },
+  { name: 'agenda_personalizada', maxCount: 1 },
+  { name: 'biografia', maxCount: 1 },
+  { name: 'nome_exibicao', maxCount: 1 },
+  { name: 'observacoes', maxCount: 1 },
+  { name: 'data_admissao', maxCount: 1 },
+  { name: 'comissao_percentual', maxCount: 1 },
+  { name: 'servicos_oferecidos', maxCount: 1 },
+  { name: 'horarios_funcionamento', maxCount: 1 }
+]);
 
 // Middleware wrapper com tratamento de erro
 const handleAvatarUpload = (req, res, next) => {
+  console.log('[uploadMiddleware] Processando FormData...');
   uploadAvatar(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -75,21 +94,25 @@ const handleAvatarUpload = (req, res, next) => {
         message: err.message
       });
     }
-    
-    // Se há arquivo, adicionar URL ao req
-    if (req.file) {
+
+    // Debug: verificar o que foi processado
+    console.log('[uploadMiddleware] req.body keys:', Object.keys(req.body));
+    console.log('[uploadMiddleware] req.files:', req.files ? Object.keys(req.files) : 'nenhum');
+
+    // Se há arquivo de avatar, adicionar URL ao req
+    if (req.files && req.files.avatar && req.files.avatar[0]) {
       // URL relativa que será servida pelo express.static
-      req.avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      req.avatarUrl = `/uploads/avatars/${req.files.avatar[0].filename}`;
     }
-    
+
     next();
   });
 };
 
 // Função para deletar arquivo antigo
 const deleteOldAvatar = (avatarUrl) => {
-  if (!avatarUrl || avatarUrl.includes('pravatar.cc')) {
-    return; // Não deletar avatars padrão
+  if (!avatarUrl) {
+    return; // Não deletar se não há URL
   }
   
   try {
