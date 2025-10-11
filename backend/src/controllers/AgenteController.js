@@ -15,8 +15,6 @@ class AgenteController {
     try {
       const usuarioId = req.user.id;
 
-
-
       // Busca otimizada apenas com id e nome
       const agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
 
@@ -25,8 +23,6 @@ class AgenteController {
         id: agente.id,
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
       }));
-
-
 
       res.status(200).json({
         success: true,

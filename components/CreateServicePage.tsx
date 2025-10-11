@@ -268,7 +268,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
             if (result.success) {
                 console.log('✅ Serviço criado com sucesso!');
                 if (setActiveView) {
-                    setActiveView('services'); // Voltar para a lista
+                    setActiveView('services-list'); // Voltar para a lista de serviços
                 }
             } else {
                 setSubmitError(result.error || 'Erro ao criar serviço');
@@ -402,7 +402,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                  {agents.map(agent => (
                                     <AgentSelectItem
                                       key={agent.id}
-                                      name={`${agent.nome} ${agent.sobrenome}`}
+                                      name={agent.nome}
                                       avatar={agent.avatar || 'https://i.pravatar.cc/150?img=1'}
                                       checked={!!checkedAgents[agent.id]}
                                       onChange={() => handleAgentCheck(agent.id)}
@@ -463,7 +463,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                     {setActiveView && (
                         <button
                             type="button"
-                            onClick={() => setActiveView('services')}
+                            onClick={() => setActiveView('services-list')}
                             className="ml-4 bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
                         >
                             Cancelar
