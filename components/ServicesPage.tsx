@@ -53,11 +53,11 @@ const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void }> 
         </div>
         <div className="flex justify-between text-sm text-gray-500">
           <p>Preço:</p>
-          <p className="text-gray-700 font-medium">R$ {service.preco.toFixed(2)}</p>
+          <p className="text-gray-700 font-medium">R$ {(Number(service.preco) || 0).toFixed(2)}</p>
         </div>
         <div className="flex justify-between text-sm text-gray-500">
           <p>Comissão:</p>
-          <p className="text-gray-700 font-medium">{service.comissao_percentual}%</p>
+          <p className="text-gray-700 font-medium">{Number(service.comissao_percentual) || 0}%</p>
         </div>
         <div className="flex justify-between text-sm text-gray-500">
           <p>Status:</p>

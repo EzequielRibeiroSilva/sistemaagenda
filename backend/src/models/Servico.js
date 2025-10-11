@@ -44,6 +44,10 @@ class Servico extends BaseModel {
 
         return {
           ...servico,
+          // Garantir que campos numéricos sejam Numbers
+          preco: parseFloat(servico.preco) || 0,
+          duracao_minutos: parseInt(servico.duracao_minutos) || 0,
+          comissao_percentual: parseFloat(servico.comissao_percentual) || 0,
           agentes_associados: agentesAssociados,
           agentes_atuais_ids: agentesAssociados.map(a => a.id),
           extras_associados: extrasAssociados,
@@ -157,6 +161,10 @@ class Servico extends BaseModel {
 
     return {
       ...servico,
+      // Garantir que campos numéricos sejam Numbers
+      preco: parseFloat(servico.preco) || 0,
+      duracao_minutos: parseInt(servico.duracao_minutos) || 0,
+      comissao_percentual: parseFloat(servico.comissao_percentual) || 0,
       agentes_associados: agentesAssociados,
       agentes_atuais_ids: agentesAssociados.map(a => a.id),
       extras_associados: extrasAssociados,
