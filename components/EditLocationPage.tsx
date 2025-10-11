@@ -5,6 +5,7 @@ import { useUnitManagement } from '../hooks/useUnitManagement';
 
 // Tipos para os dados do formulário
 interface ScheduleDay {
+  dia_semana: number;
   is_aberto: boolean;
   periodos: { inicio: string; fim: string }[];
 }
@@ -140,7 +141,8 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
     // Estado para horários (7 dias da semana)
     const [scheduleData, setScheduleData] = useState<ScheduleDay[]>(
-        Array.from({ length: 7 }, () => ({
+        Array.from({ length: 7 }, (_, index) => ({
+            dia_semana: index,
             is_aberto: false,
             periodos: []
         }))
@@ -179,8 +181,12 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                         const horariosOrdenados = unit.horarios_funcionamento
                             .sort((a, b) => a.dia_semana - b.dia_semana)
                             .map(horario => ({
+                                dia_semana: horario.dia_semana,
                                 is_aberto: horario.is_aberto,
-                                periodos: horario.horarios_json || []
+                                periodos: horario.horarios_json ? horario.horarios_json.map(h => ({
+                                    inicio: h.inicio,
+                                    fim: h.fim
+                                })) : []
                             }));
 
                         setScheduleData(horariosOrdenados);
@@ -191,7 +197,7 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         };
 
         loadUnit();
-    }, [locationId, fetchUnitById]);
+    }, [locationId]); // ✅ REMOVIDO fetchUnitById das dependências
 
     // Handlers para agentes
     const handleAgentToggle = (agentId: number) => {

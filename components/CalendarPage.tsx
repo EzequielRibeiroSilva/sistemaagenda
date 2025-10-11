@@ -190,7 +190,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
 
 interface CalendarPageProps {
   loggedInAgentId: string | null;
-  userRole: 'salon' | 'agent';
+  userRole: 'ADMIN' | 'AGENTE';
 }
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }) => {
@@ -770,7 +770,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         <button onClick={handleNext} className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                             <ChevronRight className="h-5 w-5 text-gray-600" />
                         </button>
-                        {userRole === 'salon' && (
+                        {userRole === 'ADMIN' && (
                             <HeaderDropdown
                                 options={locationOptionsForHeader}
                                 selected={selectedLocationName}

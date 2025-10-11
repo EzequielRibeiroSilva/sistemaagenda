@@ -12,7 +12,7 @@ interface HeaderProps {
   setActiveView: (view: string) => void;
   onEditAgent: (agentId: string) => void;
   onEditService: (serviceId: string) => void;
-  userRole: 'salon' | 'agent';
+  userRole: 'ADMIN' | 'AGENTE';
   onToggleMobileSidebar: () => void;
   loggedInAgentId: string | null;
 }

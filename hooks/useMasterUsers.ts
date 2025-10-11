@@ -268,7 +268,7 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     }, 300); // Debounce de 300ms
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, fetchUsers, isAuthenticated, token, user.role]);
+  }, [searchQuery, isAuthenticated, token, user.role]); // Removido fetchUsers das dependências
 
   // Effect inicial para carregar usuários - só executa se autenticado
   useEffect(() => {
@@ -277,7 +277,7 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     }
 
     fetchUsers();
-  }, [fetchUsers, isAuthenticated, token, user.role]);
+  }, [isAuthenticated, token, user.role]); // Removido fetchUsers das dependências
 
   return {
     users,

@@ -5,7 +5,8 @@ import { useUnitManagement } from '../hooks/useUnitManagement';
 
 // Função para gerar horários padrão (todos fechados)
 const getDefaultSchedule = () => {
-  return Array.from({ length: 7 }, () => ({
+  return Array.from({ length: 7 }, (_, index) => ({
+    dia_semana: index, // 0 = Domingo, 1 = Segunda, etc.
     is_aberto: false,
     periodos: []
   }));
@@ -76,9 +77,7 @@ const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () 
     </label>
 );
 
-const StatusToggle: React.FC = () => {
-    const [isOpen, setIsOpen] = useState(true);
-
+const StatusToggle: React.FC<{ isOpen: boolean; setIsOpen: (isOpen: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
     return (
         <div>
             <label className="text-sm font-medium text-gray-600 mb-1 block">Status do Local</label>
@@ -316,7 +315,7 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
                         </p>
                     </div>
                     <div>
-                        <StatusToggle />
+                        <StatusToggle isOpen={formData.status === 'Ativo'} setIsOpen={(isOpen) => setFormData(prev => ({ ...prev, status: isOpen ? 'Ativo' : 'Bloqueado' }))} />
                     </div>
                 </div>
             </FormCard>
@@ -390,7 +389,7 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
 
             <FormCard title="Definir Horários">
                 <AgentScheduleEditor
-                    schedule={schedule}
+                    scheduleData={schedule}
                     onScheduleChange={setSchedule}
                 />
             </FormCard>

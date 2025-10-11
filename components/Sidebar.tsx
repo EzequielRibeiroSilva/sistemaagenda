@@ -40,7 +40,7 @@ interface SidebarProps {
     setCollapsed: (isCollapsed: boolean) => void;
     activeView: string;
     setActiveView: (view: string) => void;
-    userRole: 'salon' | 'agent';
+    userRole: 'ADMIN' | 'AGENTE';
     isOpenOnMobile: boolean;
     setOpenOnMobile: (isOpen: boolean) => void;
     user?: {
@@ -195,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             onClick={() => handleNavItemClick('compromissos')}
         />
         
-        {(userRole === 'salon' || userRole === 'agent') && (
+        {(userRole === 'ADMIN' || userRole === 'AGENTE') && (
             <div 
                 ref={clientsNavItemRef}
                 className="relative"
@@ -221,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             </div>
         )}
         
-        {userRole === 'salon' && (
+        {userRole === 'ADMIN' && (
           <>
             <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Recursos</div>
             <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
@@ -275,9 +275,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             icon={<Cog className="h-5 w-5" />} 
             label="DEFINIÇÕES" 
             isCollapsed={isCollapsed}
-            isActive={activeView === 'settings' || (userRole === 'agent' && activeView === 'agents-edit')}
+            isActive={activeView === 'settings' || (userRole === 'AGENTE' && activeView === 'agents-edit')}
             onClick={() => {
-                if (userRole === 'agent') {
+                if (userRole === 'AGENTE') {
                     handleNavItemClick('agents-edit');
                 } else {
                     handleNavItemClick('settings');
@@ -285,8 +285,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             }}
         />
       </nav>
-      {portalRoot && (userRole === 'salon' || userRole === 'agent') && createPortal(clientsSubmenu, portalRoot)}
-      {portalRoot && userRole === 'salon' && createPortal(servicesSubmenu, portalRoot)}
+      {portalRoot && (userRole === 'ADMIN' || userRole === 'AGENTE') && createPortal(clientsSubmenu, portalRoot)}
+      {portalRoot && userRole === 'ADMIN' && createPortal(servicesSubmenu, portalRoot)}
     </>
   );
 
