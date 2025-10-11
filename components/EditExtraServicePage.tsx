@@ -115,13 +115,20 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                 setLoadingService(true);
                 setSubmitError(null);
 
-                const extraService = await fetchExtraService(Number(extraServiceId));
+                const numericId = Number(extraServiceId);
+
+                if (isNaN(numericId)) {
+                    setSubmitError('ID do serviço extra inválido');
+                    return;
+                }
+
+                const extraService = await fetchExtraService(numericId);
 
                 if (isMounted && extraService) {
                     setNome(extraService.nome);
                     setDescricao(extraService.descricao || '');
                     setDuracaoMinutos(extraService.duracao_minutos);
-                    setPreco(extraService.preco);
+                    setPreco(typeof extraService.preco === 'string' ? parseFloat(extraService.preco) : extraService.preco);
                     setQuantidadeMaxima(extraService.quantidade_maxima);
                     setStatus(extraService.status);
 
