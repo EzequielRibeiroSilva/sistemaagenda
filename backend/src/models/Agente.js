@@ -29,7 +29,7 @@ class Agente extends BaseModel {
       .join('unidades', 'agentes.unidade_id', 'unidades.id')
       .where('unidades.usuario_id', usuarioId)
       .where('agentes.status', 'Ativo')
-      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome')
+      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url')
       .orderBy('agentes.nome');
   }
 
@@ -41,7 +41,7 @@ class Agente extends BaseModel {
       .select(
         'agentes.*',
         'unidades.nome as unidade_nome',
-        'unidades.usuario_id'
+        'unidades.usuario_id as unidade_usuario_id'
       )
       .first();
 
@@ -203,6 +203,16 @@ class Agente extends BaseModel {
       if (agenteData.senha_hash) {
         // Se tem senha, precisa ter usuário
         if (usuarioId) {
+          // Verificar se o email já existe em outro usuário
+          const emailExistente = await trx('usuarios')
+            .where('email', agenteData.email)
+            .where('id', '!=', usuarioId)
+            .first();
+
+          if (emailExistente) {
+            throw new Error('Este email já está cadastrado no sistema');
+          }
+
           // Atualizar usuário existente
           const usuarioData = {
             nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
@@ -237,6 +247,16 @@ class Agente extends BaseModel {
         }
       } else if (usuarioId) {
         // Se não tem senha mas tinha usuário, atualizar dados básicos
+        // Verificar se o email já existe em outro usuário
+        const emailExistente = await trx('usuarios')
+          .where('email', agenteData.email)
+          .where('id', '!=', usuarioId)
+          .first();
+
+        if (emailExistente) {
+          throw new Error('Este email já está cadastrado no sistema');
+        }
+
         const usuarioData = {
           nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
           email: agenteData.email,

@@ -34,7 +34,7 @@ class Servico extends BaseModel {
         const agentesAssociados = await this.db('agente_servicos')
           .join('agentes', 'agente_servicos.agente_id', 'agentes.id')
           .where('agente_servicos.servico_id', servico.id)
-          .select('agentes.id', 'agentes.nome', 'agentes.sobrenome');
+          .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url');
 
         // Buscar extras associados
         const extrasAssociados = await this.db('servico_servicos_extras')
@@ -151,7 +151,7 @@ class Servico extends BaseModel {
     const agentesAssociados = await this.db('agente_servicos')
       .join('agentes', 'agente_servicos.agente_id', 'agentes.id')
       .where('agente_servicos.servico_id', servicoId)
-      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome');
+      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url');
 
     // Buscar extras associados
     const extrasAssociados = await this.db('servico_servicos_extras')

@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { Copy, Check, MessageSquare, Eye } from './Icons';
 
@@ -44,6 +45,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     const [allowCancellation, setAllowCancellation] = useState(true);
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [businessName, setBusinessName] = useState('Salão do Eduardo');
+    const [businessLogo, setBusinessLogo] = useState('https://picsum.photos/id/1027/200/200');
 
     const bookingLink = `${window.location.origin}/reservar?salao=123`;
 
@@ -52,6 +55,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       });
+    };
+    
+    const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setBusinessLogo(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     };
 
   return (
@@ -103,6 +117,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                     Ver
                   </button>
               </div>
+          </FormRow>
+      </Card>
+
+      <Card title="Informações do Negócio">
+          <FormRow label="Logo do Negócio">
+              <div className="flex items-center gap-4">
+                  <img src={businessLogo} alt="Logo do Negócio" className="w-16 h-16 rounded-full object-cover bg-gray-200" />
+                  <label htmlFor="logo-upload" className="cursor-pointer bg-white text-gray-700 border border-gray-300 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+                      Alterar
+                  </label>
+                  <input id="logo-upload" type="file" className="hidden" accept="image/*" onChange={handleLogoChange} />
+              </div>
+          </FormRow>
+          <FormRow label="Nome do Negócio">
+              <Input 
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+              />
           </FormRow>
       </Card>
 

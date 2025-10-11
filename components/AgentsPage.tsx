@@ -1,18 +1,27 @@
-import React from 'react';
-import { Plus, Edit, FaUser } from './Icons';
+import React, { useState } from 'react';
+import { Plus, Edit, FaUser, X } from './Icons';
 import { useAgentManagement, Agent } from '../hooks/useAgentManagement';
 
 // Componente removido - usando dados reais do hook
 
-const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; }> = ({ agent, onEdit }) => (
+const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; onDelete: (id: number) => void; }> = ({ agent, onEdit, onDelete }) => (
     <div className="relative group bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col transition-all duration-200 hover:border-blue-500 hover:shadow-lg">
-        <button
-            onClick={() => onEdit(agent.id)}
-            aria-label={`Editar ${agent.name}`}
-            className="absolute top-3 right-3 p-2 bg-white/70 backdrop-blur-sm rounded-full text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-            <Edit className="w-5 h-5" />
-        </button>
+        <div className="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button
+                onClick={() => onDelete(agent.id)}
+                aria-label={`Excluir ${agent.name}`}
+                className="p-2 bg-white/70 backdrop-blur-sm rounded-full text-red-600 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+                <X className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => onEdit(agent.id)}
+                aria-label={`Editar ${agent.name}`}
+                className="p-2 bg-white/70 backdrop-blur-sm rounded-full text-gray-600 hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <Edit className="w-5 h-5" />
+            </button>
+        </div>
         <div className="flex items-center">
             <div className="relative w-12 h-12">
                 {agent.avatar ? (
@@ -82,10 +91,28 @@ interface AgentsPageProps {
 }
 
 const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) => {
-    const { agents, loading, error } = useAgentManagement();
+    const { agents, loading, error, deleteAgent } = useAgentManagement();
+    const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
 
     const handleEditAgent = (agentId: number) => {
         onEditAgent(agentId.toString());
+    };
+
+    const handleDeleteAgent = async (agentId: number) => {
+        const agent = agents.find(a => a.id === agentId);
+        if (!agent) return;
+
+        if (!confirm(`Tem certeza que deseja excluir o agente "${agent.name}"? Esta ação irá remover o agente e seu usuário do sistema permanentemente.`)) {
+            return;
+        }
+
+        setDeleteLoading(agentId);
+        const success = await deleteAgent(agentId);
+        setDeleteLoading(null);
+
+        if (!success) {
+            alert('Erro ao excluir agente. Tente novamente.');
+        }
     };
 
     if (loading) {
@@ -132,7 +159,13 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {agents.map(agent => (
-                    <AgentCard key={agent.id} agent={agent} onEdit={handleEditAgent} />
+                    <div key={agent.id} className={deleteLoading === agent.id ? 'opacity-50 pointer-events-none' : ''}>
+                        <AgentCard
+                            agent={agent}
+                            onEdit={handleEditAgent}
+                            onDelete={handleDeleteAgent}
+                        />
+                    </div>
                 ))}
                 <AddAgentCard onClick={() => setActiveView('agents-create')} />
             </div>

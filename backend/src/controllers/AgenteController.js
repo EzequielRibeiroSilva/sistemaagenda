@@ -21,7 +21,8 @@ class AgenteController {
       // Formatar dados mínimos para formulários
       const agentesLeves = agentes.map(agente => ({
         id: agente.id,
-        nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
+        nome: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
+        avatar: agente.avatar_url || null
       }));
 
       res.status(200).json({
@@ -106,8 +107,8 @@ class AgenteController {
         });
       }
 
-      // Verificar se o agente pertence ao usuário logado
-      if (agente.usuario_id !== usuarioId) {
+      // Verificar se o agente pertence a uma unidade do usuário ADMIN logado
+      if (agente.unidade_usuario_id !== usuarioId) {
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
@@ -372,7 +373,8 @@ class AgenteController {
         });
       }
 
-      if (agenteExistente.usuario_id !== usuarioId) {
+      // Verificar se o agente pertence a uma unidade do usuário ADMIN logado
+      if (agenteExistente.unidade_usuario_id !== usuarioId) {
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
@@ -478,16 +480,24 @@ class AgenteController {
   }
 
   /**
-   * DELETE /api/agentes/:id - Exclusão de agente (soft delete)
+   * DELETE /api/agentes/:id - Exclusão completa de agente (agente + usuário)
+   * Apenas usuários ADMIN podem excluir agentes (usuários do tipo AGENTE)
    */
   async destroy(req, res) {
     try {
       const agenteId = req.params.id;
-      const usuarioId = req.user.id;
+      const usuarioLogado = req.user;
 
+      // Verificar se o usuário logado é ADMIN
+      if (usuarioLogado.role !== 'ADMIN') {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Apenas administradores podem excluir agentes'
+        });
+      }
 
-
-      // Verificar se o agente existe e pertence ao usuário
+      // Verificar se o agente existe
       const agente = await this.agenteModel.findByIdComplete(agenteId);
 
       if (!agente) {
@@ -498,25 +508,45 @@ class AgenteController {
         });
       }
 
-      if (agente.usuario_id !== usuarioId) {
+      // Verificar se o agente pertence a uma unidade do usuário ADMIN logado
+      if (agente.unidade_usuario_id !== usuarioLogado.id) {
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
-          message: 'Você não tem permissão para excluir este agente'
+          message: 'Você só pode excluir agentes da sua unidade'
         });
       }
 
-      // Soft delete - apenas alterar status
-      await this.agenteModel.update(agenteId, {
-        status: 'Bloqueado',
-        updated_at: new Date()
+      // Iniciar transação para exclusão completa
+      await this.agenteModel.db.transaction(async (trx) => {
+        // 1. Excluir registros relacionados ao agente
+        await trx('agendamentos').where('agente_id', agenteId).del();
+        await trx('agente_servicos').where('agente_id', agenteId).del();
+        await trx('agente_unidades').where('agente_id', agenteId).del();
+        await trx('horarios_funcionamento').where('agente_id', agenteId).del();
+
+        // 2. Excluir o agente
+        await trx('agentes').where('id', agenteId).del();
+
+        // 3. Excluir o usuário associado ao agente (se existir e for do tipo AGENTE)
+        if (agente.usuario_id) {
+          const usuarioAgente = await trx('usuarios')
+            .where('id', agente.usuario_id)
+            .first();
+
+          // Só excluir se for usuário do tipo AGENTE (não ADMIN ou MASTER)
+          if (usuarioAgente && usuarioAgente.role === 'AGENTE') {
+            await trx('usuarios').where('id', agente.usuario_id).del();
+            console.log(`✅ Usuário AGENTE (ID: ${agente.usuario_id}, Email: ${usuarioAgente.email}) excluído com sucesso`);
+          } else if (usuarioAgente) {
+            console.log(`⚠️ Usuário (ID: ${agente.usuario_id}) não foi excluído - Role: ${usuarioAgente.role}`);
+          }
+        }
       });
-
-
 
       res.status(200).json({
         success: true,
-        message: 'Agente bloqueado com sucesso'
+        message: 'Agente e usuário excluídos com sucesso'
       });
     } catch (error) {
       console.error('[AgenteController] Erro ao excluir agente:', error);
