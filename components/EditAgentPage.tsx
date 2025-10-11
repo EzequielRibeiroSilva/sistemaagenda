@@ -62,6 +62,7 @@ interface EditAgentPageProps {
 }
 
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
+    console.log('🔄 EditAgentPage renderizado com agentId:', agentId);
     const { fetchAgentById, updateAgent, loading, error } = useAgentManagement();
     const { user, updateUser } = useAuth();
     const [agentData, setAgentData] = useState<AgentDetails | null>(null);
@@ -71,19 +72,23 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     const [lastName, setLastName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
+    const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
 
     useEffect(() => {
+        let isMounted = true; // Flag para evitar updates em componente desmontado
+
         const loadAgent = async () => {
-            if (agentId) {
+            if (agentId && isMounted) {
                 setIsLoading(true);
                 const agent = await fetchAgentById(parseInt(agentId));
-                if (agent) {
+                if (agent && isMounted) {
                     setAgentData(agent);
                     // Preencher formulário com dados do agente
                     setFirstName(agent.nome || '');
                     setLastName(agent.sobrenome || '');
                     setPhone(agent.telefone || '');
                     setEmail(agent.email || '');
+                    setStatus(agent.status || 'Ativo');
 
                     // Implementar pré-seleção de serviços
                     if (agent.servicos_disponiveis && agent.servicos_atuais_ids) {
@@ -98,16 +103,36 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     // Implementar pré-seleção da agenda personalizada
                     setIsCustomSchedule(agent.agenda_personalizada);
 
+                    // Inicializar agenda personalizada
+                    if (agent.agenda_personalizada && agent.horarios_funcionamento) {
+                        setScheduleData(agent.horarios_funcionamento);
+                    } else {
+                        // Se não tem agenda personalizada, inicializar com padrão vazio
+                        setScheduleData(Array.from({ length: 7 }, (_, index) => ({
+                            dia_semana: index,
+                            is_aberto: false,
+                            periodos: []
+                        })));
+                    }
+
                     // Definir preview da imagem atual
                     if (agent.avatar_url) {
-                        setAvatarPreview(agent.avatar_url);
+                        setAvatarPreview(`http://localhost:3001${agent.avatar_url}`);
+                    } else if (agent.avatar) {
+                        setAvatarPreview(`http://localhost:3001${agent.avatar}`);
                     }
                 }
-                setIsLoading(false);
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         };
 
         loadAgent();
+
+        return () => {
+            isMounted = false; // Cleanup para evitar memory leaks
+        };
     }, [agentId]); // Removido fetchAgentById das dependências
     
     const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
@@ -163,8 +188,13 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     }, [checkedServices, agentData?.servicos_disponiveis]);
 
     const handleSave = async () => {
-        if (!agentData) return;
+        console.log('🚀 handleSave CHAMADO!');
+        if (!agentData) {
+            console.log('❌ agentData é null, saindo...');
+            return;
+        }
 
+        console.log('✅ agentData existe, continuando...');
         setIsSaving(true);
         try {
             // Coletar apenas os IDs dos serviços marcados
@@ -177,12 +207,22 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 sobrenome: lastName,
                 email: email,
                 telefone: phone,
+                status: status, // ✅ CORREÇÃO: Incluir campo status
                 unidade_id: agentData.unidade_id, // Incluir unidade_id obrigatório
                 agenda_personalizada: isCustomSchedule,
                 servicos_oferecidos: servicosSelecionados,
                 horarios_funcionamento: isCustomSchedule ? scheduleData : [],
                 avatar: avatarFile // Incluir arquivo de avatar se houver
             };
+
+            // DEBUG: Log dos dados que estão sendo enviados
+            console.log('🔍 DEBUG - Dados sendo enviados:', {
+                status: status, // ✅ CORREÇÃO: Log do status
+                agenda_personalizada: isCustomSchedule,
+                horarios_funcionamento: updateData.horarios_funcionamento,
+                scheduleData: scheduleData,
+                updateData: updateData // Log completo dos dados
+            });
 
             const result = await updateAgent(agentData.id, updateData);
 
@@ -285,9 +325,13 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         </div>
                     </div>
 
-                    <SelectInput label="Estado">
-                        <option>Ativo</option>
-                        <option>Bloqueado</option>
+                    <SelectInput
+                        label="Estado"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Bloqueado')}
+                    >
+                        <option value="Ativo">Ativo</option>
+                        <option value="Bloqueado">Bloqueado</option>
                     </SelectInput>
                 </div>
             </FormCard>
@@ -339,7 +383,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             >
                 {isCustomSchedule ? (
                     <AgentScheduleEditor
-                        scheduleData={agentData?.horarios_funcionamento || []}
+                        scheduleData={scheduleData}
                         onScheduleChange={setScheduleData}
                     />
                 ) : (
@@ -352,7 +396,10 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
 
             <div className="pt-2">
                 <button
-                    onClick={handleSave}
+                    onClick={() => {
+                        console.log('🖱️ Botão Salvar clicado!');
+                        handleSave();
+                    }}
                     disabled={isSaving}
                     className={`font-semibold px-8 py-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
                         isSaving

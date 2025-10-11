@@ -351,6 +351,12 @@ class AgenteController {
         horariosData = typeof horarios_funcionamento === 'string'
           ? JSON.parse(horarios_funcionamento)
           : (horarios_funcionamento || []);
+
+        // DEBUG: Log dos dados recebidos
+        console.log('🔍 DEBUG BACKEND - Dados recebidos:');
+        console.log('horarios_funcionamento (raw):', horarios_funcionamento);
+        console.log('horariosData (parsed):', JSON.stringify(horariosData, null, 2));
+        console.log('agenda_personalizada:', agenda_personalizada);
       } catch (e) {
         console.error('Erro ao parsear horarios_funcionamento:', e);
         horariosData = [];
