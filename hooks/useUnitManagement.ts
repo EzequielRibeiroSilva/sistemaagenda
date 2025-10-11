@@ -240,15 +240,14 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await authenticatedFetch('/unidades', {
         method: 'POST',
         body: JSON.stringify(unitData),
       });
 
-      // Atualizar lista de unidades após criação
-      await fetchUnits();
-      
+      // ✅ REMOVIDO fetchUnits() para evitar loops - a lista será atualizada quando necessário
+
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar unidade';
@@ -258,22 +257,21 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, fetchUnits]);
+  }, [authenticatedFetch]);
 
   // Atualizar unidade
   const updateUnit = useCallback(async (id: number, unitData: UpdateUnitData): Promise<boolean> => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await authenticatedFetch(`/unidades/${id}`, {
         method: 'PUT',
         body: JSON.stringify(unitData),
       });
 
-      // Atualizar lista de unidades após atualização
-      await fetchUnits();
-      
+      // ✅ REMOVIDO fetchUnits() para evitar loops - a lista será atualizada quando necessário
+
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar unidade';
@@ -283,22 +281,21 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, fetchUnits]);
+  }, [authenticatedFetch]);
 
   // Atualizar status da unidade
   const updateUnitStatus = useCallback(async (id: number, status: 'Ativo' | 'Bloqueado'): Promise<boolean> => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await authenticatedFetch(`/unidades/${id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
 
-      // Atualizar lista de unidades após alteração de status
-      await fetchUnits();
-      
+      // ✅ REMOVIDO fetchUnits() para evitar loops - a lista será atualizada quando necessário
+
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao alterar status da unidade';
@@ -308,7 +305,7 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, fetchUnits]);
+  }, [authenticatedFetch]);
 
   // Deletar unidade (apenas MASTER)
   const deleteUnit = useCallback(async (id: number): Promise<boolean> => {

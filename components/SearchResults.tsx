@@ -28,7 +28,7 @@ interface SearchResultsProps {
     onAddNewAppointment: () => void;
     onSelectAgent: (agentId: string) => void;
     onSelectService: (serviceId: string) => void;
-    userRole: 'salon' | 'agent';
+    userRole: 'ADMIN' | 'AGENTE';
     loggedInAgentId: string | null;
 }
 
@@ -52,7 +52,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
     const lowerCaseQuery = query.toLowerCase();
 
     const agentsToSearch = useMemo(() => {
-        if (userRole === 'agent' && loggedInAgentId) {
+        if (userRole === 'AGENTE' && loggedInAgentId) {
             return mockAgents.filter(agent => agent.id === loggedInAgentId);
         }
         return mockAgents;

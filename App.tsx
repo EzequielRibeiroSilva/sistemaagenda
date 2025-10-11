@@ -144,7 +144,7 @@ const App: React.FC = () => {
   }
   
   // Renderizar AdminDashboardPage para usuários MASTER
-  if (user.role === 'MASTER' || user.role === 'admin') {
+  if (user.role === 'MASTER') {
     return (
       <div className="flex h-screen bg-gray-100 text-gray-800">
         <AdminSidebar />
@@ -170,7 +170,7 @@ const App: React.FC = () => {
     switch (activeView) {
       case 'admin-dashboard': return <AdminDashboardPage searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''} />;
       case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
-      case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'salon' | 'agent'} />;
+      case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
       case 'clients-list': return <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />;
       case 'clients-add': return <AddClientPage />;
@@ -206,7 +206,7 @@ const App: React.FC = () => {
         setCollapsed={setSidebarCollapsed}
         activeView={activeView}
         setActiveView={setActiveView}
-        userRole={user.role as 'salon' | 'agent'}
+        userRole={user.role as 'ADMIN' | 'AGENTE'}
         isOpenOnMobile={isMobileSidebarOpen}
         setOpenOnMobile={setMobileSidebarOpen}
         user={{
@@ -221,7 +221,7 @@ const App: React.FC = () => {
           setActiveView={setActiveView} 
           onEditAgent={handleEditAgent}
           onEditService={handleEditService}
-          userRole={user.role as 'salon' | 'agent'}
+          userRole={user.role as 'ADMIN' | 'AGENTE'}
           loggedInAgentId={user.agentId}
           onToggleMobileSidebar={() => setMobileSidebarOpen(true)}
         />

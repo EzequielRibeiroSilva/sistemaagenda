@@ -108,7 +108,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
         };
 
         loadAgent();
-    }, [agentId, fetchAgentById]);
+    }, [agentId]); // Removido fetchAgentById das dependências
     
     const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
     const [isCustomSchedule, setIsCustomSchedule] = useState(true);

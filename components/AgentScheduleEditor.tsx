@@ -125,18 +125,27 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     useEffect(() => {
         if (scheduleData && Array.isArray(scheduleData)) {
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
-            const convertedSchedule: ScheduleData = { ...initialSchedule };
+            const convertedSchedule: ScheduleData = {};
 
+            // Inicializar todos os dias primeiro
+            dayNames.forEach((dayName) => {
+                convertedSchedule[dayName] = {
+                    isActive: false,
+                    periods: []
+                };
+            });
+
+            // Processar dados da API para todos os dias (abertos e fechados)
             scheduleData.forEach((dayData) => {
                 const dayName = dayNames[dayData.dia_semana];
-                if (dayName && dayData.periodos && dayData.periodos.length > 0) {
+                if (dayName) {
                     convertedSchedule[dayName] = {
-                        isActive: true,
-                        periods: dayData.periodos.map((periodo, periodIndex) => ({
+                        isActive: dayData.is_aberto,
+                        periods: dayData.periodos ? dayData.periodos.map((periodo, periodIndex) => ({
                             id: periodIndex + 1,
                             start: periodo.inicio,
                             end: periodo.fim
-                        }))
+                        })) : []
                     };
                 }
             });
@@ -172,8 +181,7 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
                         inicio: period.start,
                         fim: period.end
                     })) || []
-                }))
-                .filter(day => day.is_aberto && day.periodos.length > 0);
+                }));
 
             onScheduleChange(apiScheduleData);
         }

@@ -7,6 +7,10 @@ interface User {
   avatarUrl?: string | null;
   permissions?: any;
   userData?: any;
+  // Campos críticos para regras de negócio
+  id?: number;
+  unidade_id?: number | null;
+  plano?: 'Single' | 'Multi';
 }
 
 interface AuthContextType {
@@ -79,10 +83,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   frontendRole = 'MASTER';
                   break;
                 case 'ADMIN':
-                  frontendRole = 'salon';
+                  frontendRole = 'ADMIN';
                   break;
                 case 'AGENTE':
-                  frontendRole = 'agent';
+                  frontendRole = 'AGENTE';
                   break;
                 default:
                   frontendRole = 'salon';
@@ -96,7 +100,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 email: storedUserEmail,
                 avatarUrl: validationData.data.avatar_url || null,
                 permissions: validationData.data.permissions,
-                userData: validationData.data
+                userData: validationData.data,
+                // Campos críticos para regras de negócio
+                id: validationData.data.id,
+                unidade_id: validationData.data.unidade_id,
+                plano: validationData.data.plano
               });
             } else {
               // Token inválido, limpar storage
@@ -146,10 +154,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         frontendRole = 'MASTER';
         break;
       case 'ADMIN':
-        frontendRole = 'salon';
+        frontendRole = 'ADMIN';
         break;
       case 'AGENTE':
-        frontendRole = 'agent';
+        frontendRole = 'AGENTE';
         break;
       default:
         frontendRole = 'salon';
@@ -164,7 +172,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       email: loginData.email,
       avatarUrl: loginData.user.avatar_url || null,
       permissions: loginData.permissions,
-      userData: loginData.user
+      userData: loginData.user,
+      // Campos críticos para regras de negócio
+      id: loginData.user.id,
+      unidade_id: loginData.user.unidade_id,
+      plano: loginData.user.plano
     });
 
 
