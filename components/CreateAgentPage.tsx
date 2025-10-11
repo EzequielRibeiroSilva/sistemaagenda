@@ -85,7 +85,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     senha: '',
     biografia: '',
     nome_exibicao: '',
-    unidade_id: 1,
+    // unidade_id: 1, // ✅ REMOVIDO: Backend usa unidade_id do token JWT
     comissao_percentual: 60,
     observacoes: ''
   });
@@ -173,6 +173,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
       console.log('🔄 CustomSchedule:', customSchedule);
       console.log('📅 Schedule atual:', schedule);
       console.log('🛠️ Serviços selecionados:', selectedServices);
+      console.log('🔒 SEGURANÇA: unidade_id será definido pelo backend via token JWT');
 
       const agentData = {
         ...formData,
