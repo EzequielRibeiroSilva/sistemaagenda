@@ -112,10 +112,7 @@ const ExtraSelectItem: React.FC<{ name: string; checked: boolean; onChange: () =
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center mx-3">
-            <span className="text-white text-xs font-bold">+</span>
-        </div>
-        <span className="font-medium text-gray-800 text-sm">{name}</span>
+        <span className="ml-3 font-medium text-gray-800 text-sm">{name}</span>
     </label>
 );
 
