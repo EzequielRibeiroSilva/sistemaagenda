@@ -92,7 +92,15 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
   const [customSchedule, setCustomSchedule] = useState(false);
-  const [schedule, setSchedule] = useState<any>({});
+  const [schedule, setSchedule] = useState<any>({
+    'Segunda-feira': { isActive: false, periods: [] },
+    'Terça': { isActive: false, periods: [] },
+    'Quarta-feira': { isActive: false, periods: [] },
+    'Quinta': { isActive: false, periods: [] },
+    'Sexta-feira': { isActive: false, periods: [] },
+    'Sábado': { isActive: false, periods: [] },
+    'Domingo': { isActive: false, periods: [] }
+  }); // ✅ CORREÇÃO: Inicializar com estrutura dos 7 dias
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,6 +126,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   };
 
   const handleScheduleChange = (newSchedule: any) => {
+    console.log('📅 Schedule alterado:', newSchedule); // ✅ DEBUG: Log da agenda
     setSchedule(newSchedule);
   };
 
@@ -158,15 +167,43 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     setIsSubmitting(true);
 
     try {
+      // ✅ DEBUG: Logs detalhados antes do envio
+      console.log('🚀 CreateAgent - handleSave chamado');
+      console.log('📋 FormData:', formData);
+      console.log('🔄 CustomSchedule:', customSchedule);
+      console.log('📅 Schedule atual:', schedule);
+      console.log('🛠️ Serviços selecionados:', selectedServices);
+
       const agentData = {
         ...formData,
         agenda_personalizada: customSchedule,
         servicos_oferecidos: selectedServices,
-        horarios_funcionamento: customSchedule ? Object.entries(schedule).map(([dia, periodos]) => ({
-          dia_semana: parseInt(dia),
-          periodos: periodos as Array<{start: string, end: string}>
-        })) : []
+        horarios_funcionamento: customSchedule ? (() => {
+          // ✅ CORREÇÃO: Mapear nomes dos dias para números
+          const dayNameToNumber: Record<string, number> = {
+            'Domingo': 0,
+            'Segunda-feira': 1,
+            'Terça': 2,
+            'Quarta-feira': 3,
+            'Quinta': 4,
+            'Sexta-feira': 5,
+            'Sábado': 6
+          };
+
+          return Object.entries(schedule)
+            .filter(([_, dayData]: [string, any]) => dayData.isActive && dayData.periods.length > 0)
+            .map(([dayName, dayData]: [string, any]) => ({
+              dia_semana: dayNameToNumber[dayName],
+              periodos: dayData.periods.map((period: any) => ({
+                inicio: period.start,
+                fim: period.end
+              }))
+            }));
+        })() : []
       };
+
+      // ✅ DEBUG: Log do payload final
+      console.log('📤 Payload final sendo enviado:', agentData);
 
       const success = await createAgent(agentData);
       
@@ -326,7 +363,10 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
             <input
               type="checkbox"
               checked={customSchedule}
-              onChange={(e) => setCustomSchedule(e.target.checked)}
+              onChange={(e) => {
+                console.log('🔄 Toggle customSchedule:', e.target.checked); // ✅ DEBUG: Log do toggle
+                setCustomSchedule(e.target.checked);
+              }}
               className="mr-2"
             />
             <span className="text-sm text-gray-600">Agenda personalizada</span>
