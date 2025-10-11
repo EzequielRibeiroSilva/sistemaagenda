@@ -115,11 +115,14 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         })));
                     }
 
-                    // Definir preview da imagem atual
-                    if (agent.avatar_url) {
-                        setAvatarPreview(`http://localhost:3001${agent.avatar_url}`);
-                    } else if (agent.avatar) {
-                        setAvatarPreview(`http://localhost:3001${agent.avatar}`);
+                    // ✅ CORREÇÃO: Definir preview da imagem atual com fallback robusto
+                    const avatarUrl = agent.avatar_url || agent.avatar;
+                    if (avatarUrl) {
+                        const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:3001${avatarUrl}`;
+                        setAvatarPreview(fullUrl);
+                        console.log('🖼️ Avatar preview definido:', fullUrl);
+                    } else {
+                        console.log('⚠️ Nenhum avatar encontrado para o agente');
                     }
                 }
                 if (isMounted) {
@@ -280,10 +283,24 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         <div className="relative">
                             <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                                 {avatarPreview ? (
-                                    <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
-                                ) : (
+                                    <img
+                                        src={avatarPreview}
+                                        alt="Preview"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            console.error('❌ Erro ao carregar avatar:', avatarPreview);
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                            const fallbackDiv = target.nextElementSibling as HTMLElement;
+                                            if (fallbackDiv) {
+                                                fallbackDiv.classList.remove('hidden');
+                                            }
+                                        }}
+                                    />
+                                ) : null}
+                                <div className={`w-full h-full flex items-center justify-center ${avatarPreview ? 'hidden' : ''}`}>
                                     <ImagePlaceholder className="w-8 h-8 text-gray-400" />
-                                )}
+                                </div>
                             </div>
                             <button
                                 type="button"

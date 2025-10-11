@@ -21,7 +21,8 @@ const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; }> = ({ 
                         alt={agent.name}
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => {
-                            // Fallback para ícone se a imagem falhar
+                            // ✅ CORREÇÃO: Fallback melhorado com logs
+                            console.error('❌ Erro ao carregar avatar do agente:', agent.name, agent.avatar);
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
                             const fallbackDiv = target.nextElementSibling as HTMLElement;
