@@ -17,8 +17,7 @@ interface Service {
 
 interface Agent {
   id: number;
-  nome: string;
-  sobrenome: string;
+  nome: string; // Já vem concatenado do backend: "Nome Sobrenome"
   avatar?: string;
 }
 
