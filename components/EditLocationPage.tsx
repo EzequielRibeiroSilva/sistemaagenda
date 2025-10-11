@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle } from './Icons';
+import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 
@@ -47,9 +47,10 @@ const TextInput: React.FC<{
 const AgentSelectItem: React.FC<{
   id: number;
   name: string;
+  avatar: string | null;
   checked: boolean;
   onChange: () => void;
-}> = ({ id, name, checked, onChange }) => (
+}> = ({ id, name, avatar, checked, onChange }) => (
     <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
         <div className="relative flex items-center">
             <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
@@ -57,8 +58,26 @@ const AgentSelectItem: React.FC<{
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mx-4">
-            <span className="text-blue-600 font-semibold text-sm">{name.charAt(0)}</span>
+        <div className="relative w-10 h-10 mx-4">
+            {avatar ? (
+                <img
+                    src={`http://localhost:3000${avatar}`}
+                    alt={name}
+                    className="w-10 h-10 rounded-full object-cover"
+                    onError={(e) => {
+                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallbackDiv = target.nextElementSibling as HTMLElement;
+                        if (fallbackDiv) {
+                            fallbackDiv.classList.remove('hidden');
+                        }
+                    }}
+                />
+            ) : null}
+            <div className={`w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center ${avatar ? 'hidden' : ''}`}>
+                <FaUser className="w-5 h-5 text-gray-600" />
+            </div>
         </div>
         <span className="font-bold text-gray-800 text-md flex-1">{name}</span>
         <span className="text-sm text-gray-500 mr-4">Agente #{id}</span>
@@ -422,6 +441,7 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                             key={agent.id}
                             id={agent.id}
                             name={agent.nome}
+                            avatar={agent.avatar_url}
                             checked={selectedAgents.has(agent.id)}
                             onChange={() => handleAgentToggle(agent.id)}
                         />

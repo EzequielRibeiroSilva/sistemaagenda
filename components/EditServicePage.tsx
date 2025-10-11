@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Check } from './Icons';
+import { Plus, Check, FaUser } from './Icons';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 
 interface Service {
@@ -91,7 +91,7 @@ const SelectInput: React.FC<{
     </div>
 );
 
-const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean; onChange: () => void; }> = ({ name, avatar, checked, onChange }) => (
+const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: boolean; onChange: () => void; }> = ({ name, avatar, checked, onChange }) => (
     <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
         <div className="relative flex items-center">
             <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
@@ -99,7 +99,27 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <img src={avatar} alt={name} className="w-8 h-8 rounded-full object-cover mx-3" />
+        <div className="relative w-8 h-8 mx-3">
+            {avatar ? (
+                <img
+                    src={`http://localhost:3000${avatar}`}
+                    alt={name}
+                    className="w-8 h-8 rounded-full object-cover"
+                    onError={(e) => {
+                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallbackDiv = target.nextElementSibling as HTMLElement;
+                        if (fallbackDiv) {
+                            fallbackDiv.classList.remove('hidden');
+                        }
+                    }}
+                />
+            ) : null}
+            <div className={`w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ${avatar ? 'hidden' : ''}`}>
+                <FaUser className="w-4 h-4 text-gray-600" />
+            </div>
+        </div>
         <span className="font-medium text-gray-800 text-sm">{name}</span>
     </label>
 );
@@ -438,7 +458,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                                     <AgentSelectItem
                                       key={agent.id}
                                       name={agent.nome}
-                                      avatar={agent.avatar ? `http://localhost:3001${agent.avatar}` : 'https://i.pravatar.cc/150?img=1'}
+                                      avatar={agent.avatar_url}
                                       checked={!!checkedAgents[agent.id]}
                                       onChange={() => handleAgentCheck(agent.id)}
                                     />
