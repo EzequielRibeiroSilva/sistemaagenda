@@ -201,6 +201,14 @@ class ServicoController extends BaseController {
         });
       }
 
+      if (status && !['Ativo', 'Bloqueado'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Status inválido',
+          message: 'Status deve ser "Ativo" ou "Bloqueado"'
+        });
+      }
+
       const servicoData = {
         nome: nome.trim(),
         descricao: descricao?.trim() || '',
@@ -301,6 +309,14 @@ class ServicoController extends BaseController {
         return res.status(400).json({
           success: false,
           error: 'Duração deve ser maior que zero'
+        });
+      }
+
+      if (status !== undefined && !['Ativo', 'Bloqueado'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Status inválido',
+          message: 'Status deve ser "Ativo" ou "Bloqueado"'
         });
       }
 

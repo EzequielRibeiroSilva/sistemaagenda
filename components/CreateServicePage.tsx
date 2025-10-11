@@ -158,7 +158,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     const [duracaoMinutos, setDuracaoMinutos] = useState(60);
     const [preco, setPreco] = useState(0);
     const [comissaoPercentual, setComissaoPercentual] = useState(70);
-    const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+    const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -332,10 +332,10 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                             <SelectInput
                               label="Estado"
                               value={status}
-                              onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
+                              onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Bloqueado')}
                             >
-                                <option value="Ativo">Ativo</option>
-                                <option value="Inativo">Inativo</option>
+                                <option value="Ativo">Disponível</option>
+                                <option value="Bloqueado">Indisponível</option>
                             </SelectInput>
                         </div>
                     </FormCard>
