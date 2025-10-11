@@ -6,7 +6,7 @@ interface ExtraService {
   nome: string;
   descricao?: string;
   duracao_minutos: number;
-  preco: number;
+  preco: number | string; // Backend pode retornar como string
   quantidade_maxima: number;
   status: 'Ativo' | 'Inativo';
   usuario_id: number;
@@ -52,7 +52,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3001/api/servicos/extras/list', {
+      const response = await fetch('http://localhost:3001/api/servicos/extras', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

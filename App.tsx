@@ -1,6 +1,6 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import CalendarPage from './components/CalendarPage';
@@ -43,6 +43,25 @@ const App: React.FC = () => {
 
   // Usar AuthContext
   const { user, isAuthenticated, isLoading, login, logout: authLogout } = useAuth();
+
+  // Limpar estados de edição quando muda de view (mas não quando entra na página de edição)
+  useEffect(() => {
+    if (activeView !== 'services-extra-edit' && activeView !== 'services-extra') {
+      if (editingExtraServiceId) {
+        setEditingExtraServiceId(null);
+      }
+    }
+    if (activeView !== 'services-edit' && activeView !== 'services') {
+      if (editingServiceId) {
+        setEditingServiceId(null);
+      }
+    }
+    if (activeView !== 'agents-edit' && activeView !== 'agents-list') {
+      if (editingAgentId) {
+        setEditingAgentId(null);
+      }
+    }
+  }, [activeView, editingExtraServiceId, editingServiceId, editingAgentId]);
 
   // Hook para usuários master (sempre chamado, mas só usado se for MASTER)
   const masterUsersHook = useMasterUsers();
