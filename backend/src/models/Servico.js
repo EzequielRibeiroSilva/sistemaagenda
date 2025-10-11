@@ -16,6 +16,45 @@ class Servico extends BaseModel {
       );
   }
 
+  // Buscar serviços por usuário com associações (para listagem)
+  async findByUsuarioWithAssociations(usuarioId) {
+    const servicos = await this.db(this.tableName)
+      .leftJoin('categorias_servicos', 'servicos.categoria_id', 'categorias_servicos.id')
+      .where('servicos.usuario_id', usuarioId)
+      .select(
+        'servicos.*',
+        'categorias_servicos.nome as categoria_nome'
+      )
+      .orderBy('servicos.created_at', 'desc');
+
+    // Para cada serviço, buscar agentes e extras associados
+    const servicosCompletos = await Promise.all(
+      servicos.map(async (servico) => {
+        // Buscar agentes associados
+        const agentesAssociados = await this.db('agente_servicos')
+          .join('agentes', 'agente_servicos.agente_id', 'agentes.id')
+          .where('agente_servicos.servico_id', servico.id)
+          .select('agentes.id', 'agentes.nome', 'agentes.sobrenome');
+
+        // Buscar extras associados
+        const extrasAssociados = await this.db('servico_servicos_extras')
+          .join('servicos_extras', 'servico_servicos_extras.servico_extra_id', 'servicos_extras.id')
+          .where('servico_servicos_extras.servico_id', servico.id)
+          .select('servicos_extras.id', 'servicos_extras.nome');
+
+        return {
+          ...servico,
+          agentes_associados: agentesAssociados,
+          agentes_atuais_ids: agentesAssociados.map(a => a.id),
+          extras_associados: extrasAssociados,
+          extras_atuais_ids: extrasAssociados.map(e => e.id)
+        };
+      })
+    );
+
+    return servicosCompletos;
+  }
+
   // Buscar serviços ativos por usuário
   async findActiveByUsuario(usuarioId) {
     return await this.db(this.tableName)

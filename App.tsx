@@ -52,8 +52,8 @@ const App: React.FC = () => {
     setActiveView('agents-edit');
   };
 
-  const handleEditService = (serviceId: string) => {
-    setEditingServiceId(serviceId);
+  const handleEditService = (serviceId: number | string) => {
+    setEditingServiceId(String(serviceId));
     setActiveView('services-edit');
   };
 
@@ -183,7 +183,7 @@ const App: React.FC = () => {
           onEditService={handleEditService}
           onEditExtraService={handleEditExtraService}
         />;
-      case 'services-create': return <CreateServicePage />;
+      case 'services-create': return <CreateServicePage setActiveView={setActiveView} />;
       case 'services-edit': return <EditServicePage setActiveView={setActiveView} serviceId={editingServiceId} />;
       case 'services-extra-create': return <CreateExtraServicePage setActiveView={setActiveView} />;
       case 'services-extra-edit': return <EditExtraServicePage setActiveView={setActiveView} extraServiceId={editingExtraServiceId} />;

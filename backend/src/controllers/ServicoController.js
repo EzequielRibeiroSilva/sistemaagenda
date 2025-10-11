@@ -51,12 +51,15 @@ class ServicoController extends BaseController {
   async index(req, res) {
     try {
       const usuarioId = req.user?.id;
-      
+
       if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
         });
       }
+
+      console.log('[ServicoController] Buscando serviços completos para usuário:', usuarioId);
 
       const { page, limit, status, categoria_id, agente_id, stats } = req.query;
 
@@ -73,23 +76,31 @@ class ServicoController extends BaseController {
       } else if (page && limit) {
         const filters = { usuario_id: usuarioId };
         if (status) filters.status = status;
-        
+
         const result = await this.model.findWithPagination(
-          parseInt(page), 
-          parseInt(limit), 
+          parseInt(page),
+          parseInt(limit),
           filters
         );
         return res.json(result);
       } else {
-        data = await this.model.findByUsuario(usuarioId);
+        // Buscar serviços com associações completas para listagem
+        data = await this.model.findByUsuarioWithAssociations(usuarioId);
       }
 
-      return res.json({ data });
+      console.log(`[ServicoController] Retornando ${data.length} serviços`);
+
+      return res.status(200).json({
+        success: true,
+        data,
+        message: 'Serviços carregados com sucesso'
+      });
     } catch (error) {
-      console.error('Erro ao buscar serviços:', error);
-      return res.status(500).json({ 
+      console.error('[ServicoController] Erro ao buscar serviços:', error);
+      return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }
