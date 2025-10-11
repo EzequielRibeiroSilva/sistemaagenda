@@ -310,8 +310,8 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       const result = await response.json();
 
       if (result.success) {
-        // Recarregar lista de agentes
-        await fetchAgents();
+        // ✅ CORREÇÃO: Não recarregar automaticamente para evitar loops
+        // A lista será recarregada quando o usuário voltar para AgentsPage
         return result.data; // Retornar os dados da resposta
       } else {
         throw new Error(result.message || 'Erro ao atualizar agente');
@@ -364,26 +364,36 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
   // Effect inicial para carregar dados - SEM dependências circulares
   useEffect(() => {
+    let isMounted = true; // Flag para evitar updates em componente desmontado
+
     if (isAuthenticated && token) {
       // Executar as funções diretamente para evitar dependências circulares
       const loadData = async () => {
         try {
           // Buscar serviços primeiro (necessário para criar agentes)
-          await fetchServices();
+          if (isMounted) await fetchServices();
           // Depois buscar agentes
-          await fetchAgents();
+          if (isMounted) await fetchAgents();
         } catch (error) {
-          console.error('Erro ao carregar dados iniciais:', error);
+          if (isMounted) {
+            console.error('Erro ao carregar dados iniciais:', error);
+          }
         }
       };
 
       loadData();
     } else {
       // Limpar dados se não autenticado
-      setAgents([]);
-      setServices([]);
-      setError(null);
+      if (isMounted) {
+        setAgents([]);
+        setServices([]);
+        setError(null);
+      }
     }
+
+    return () => {
+      isMounted = false; // Cleanup para evitar memory leaks
+    };
   }, [isAuthenticated, token]); // APENAS isAuthenticated e token como dependências
 
   return {

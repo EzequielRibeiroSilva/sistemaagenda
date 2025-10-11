@@ -12,7 +12,8 @@ type ScheduleData = {
 
 // Tipo para os dados vindos da API
 interface ScheduleDay {
-  is_aberto: boolean;
+  dia_semana: number;
+  is_aberto?: boolean; // Opcional, será calculado se não existir
   periodos: { inicio: string; fim: string }[];
 }
 
@@ -66,7 +67,12 @@ const DayScheduleRow: React.FC<{
     <div className="border-t border-gray-200 first:border-t-0">
       <div className="flex items-center justify-between p-4 min-h-[72px]">
         <div className="flex items-center">
-          <button onClick={onToggle} role="switch" aria-checked={isActive} className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${isActive ? 'bg-blue-600' : 'bg-gray-200'}`}>
+          <button
+            onClick={onToggle}
+            role="switch"
+            aria-checked={isActive}
+            className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${isActive ? 'bg-blue-600' : 'bg-gray-200'}`}
+          >
             <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
           <span className={`ml-4 font-semibold text-base ${isActive ? 'text-gray-800' : 'text-gray-400'}`}>{dayName}</span>
@@ -119,11 +125,14 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     schedule: legacySchedule,
     onChange: legacyOnChange
 }) => {
+    console.log('🚀 AgentScheduleEditor renderizado com:', { scheduleData, onScheduleChange });
     const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
+    const [isInitialized, setIsInitialized] = useState(false);
 
-    // Converter dados da API para formato interno (nova interface)
+    // Converter dados da API para formato interno (nova interface) - APENAS UMA VEZ
     useEffect(() => {
-        if (scheduleData && Array.isArray(scheduleData)) {
+        if (scheduleData && Array.isArray(scheduleData) && !isInitialized) {
+            console.log('🔄 AgentScheduleEditor: Inicializando dados da API');
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
             const convertedSchedule: ScheduleData = {};
 
@@ -139,20 +148,25 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
             scheduleData.forEach((dayData) => {
                 const dayName = dayNames[dayData.dia_semana];
                 if (dayName) {
+                    const periods = dayData.periodos ? dayData.periodos.map((periodo, periodIndex) => ({
+                        id: periodIndex + 1,
+                        start: periodo.inicio,
+                        end: periodo.fim
+                    })) : [];
+
                     convertedSchedule[dayName] = {
-                        isActive: dayData.is_aberto,
-                        periods: dayData.periodos ? dayData.periodos.map((periodo, periodIndex) => ({
-                            id: periodIndex + 1,
-                            start: periodo.inicio,
-                            end: periodo.fim
-                        })) : []
+                        // Calcular isActive baseado se há períodos (já que API não envia is_aberto)
+                        isActive: periods.length > 0,
+                        periods: periods
                     };
                 }
             });
 
             setSchedule(convertedSchedule);
+            setIsInitialized(true);
+            console.log('✅ AgentScheduleEditor: Dados inicializados com sucesso');
         }
-    }, [scheduleData]);
+    }, [scheduleData, isInitialized]);
 
     // Suporte para interface legada (CreateAgentPage)
     useEffect(() => {
@@ -177,10 +191,10 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
                 .map((dayName, index) => ({
                     dia_semana: index,
                     is_aberto: newSchedule[dayName]?.isActive || false,
-                    periodos: newSchedule[dayName]?.periods.map(period => ({
+                    periodos: newSchedule[dayName]?.periods ? newSchedule[dayName].periods.map(period => ({
                         inicio: period.start,
                         fim: period.end
-                    })) || []
+                    })) : []
                 }));
 
             onScheduleChange(apiScheduleData);
@@ -193,16 +207,19 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     };
 
     const handleToggleDay = (dayName: string) => {
-        handleUpdateDay(dayName, {
+        const newState = {
             ...schedule[dayName],
             isActive: !schedule[dayName].isActive,
-        });
+        };
+        handleUpdateDay(dayName, newState);
     };
 
     const handleUpdatePeriods = (dayName: string, periods: TimePeriod[]) => {
         handleUpdateDay(dayName, {
             ...schedule[dayName],
-            periods: periods
+            periods: periods,
+            // Ativar automaticamente o dia se há períodos, desativar se não há
+            isActive: periods.length > 0
         });
     };
     
