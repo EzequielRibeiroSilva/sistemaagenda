@@ -8,6 +8,7 @@ const rbacRoutes = require('./rbac');
 const unidadesRoutes = require('./unidades');
 const clientesRoutes = require('./clientes');
 const servicosRoutes = require('./servicos');
+const servicosExtrasRoutes = require('./servicosExtras');
 const agendamentosRoutes = require('./agendamentos');
 const usuariosRoutes = require('./usuarios');
 const agentesRoutes = require('./agentes');
@@ -34,6 +35,7 @@ router.use('/evolution', authenticate(), evolutionRoutes);
 router.use('/unidades', authenticate(), unidadesRoutes);
 router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
+router.use('/servicos/extras', authenticate(), servicosExtrasRoutes);
 router.use('/agendamentos', authenticate(), agendamentosRoutes);
 
 // Rota de teste pública para verificar se a API está funcionando

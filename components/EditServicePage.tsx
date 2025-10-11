@@ -1,19 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Check } from './Icons';
+import { useServiceManagement } from '../hooks/useServiceManagement';
 
-// Mock data to find the service to edit
-const mockServicesData = [
-    { id: 's1', name: 'CORTE', price: 30, duration: 60, commission: 70 },
-    { id: 's2', name: 'CORTE + PIGMENTAÇÃO', price: 50, duration: 60, commission: 70 },
-    { id: 's3', name: 'CORTE + BARBA', price: 45, duration: 60, commission: 70 },
-    { id: 's4', name: 'BARBA + PIGMENTAÇÃO', price: 30, duration: 60, commission: 70 },
-];
-
-const agentsData = [
-    { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=1' },
-    { name: 'Ângelo Paixão', avatar: 'https://i.pravatar.cc/150?img=2' },
-    { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=3' },
-];
+interface Service {
+  id: number;
+  nome: string;
+  descricao?: string;
+  duracao_minutos: number;
+  preco: number;
+  comissao_percentual: number;
+  status: 'Ativo' | 'Inativo';
+  agentes_associados?: Array<{ id: number; nome: string; sobrenome: string }>;
+  agentes_atuais_ids?: number[];
+  extras_associados?: Array<{ id: number; nome: string }>;
+  extras_atuais_ids?: number[];
+}
 
 // Reusable components from CreateServicePage
 const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -49,36 +50,220 @@ interface EditServicePageProps {
 }
 
 const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, serviceId }) => {
-    const serviceToEdit = useMemo(() => mockServicesData.find(s => s.id === serviceId), [serviceId]);
+    // Hook para gerenciar serviços
+    const {
+        agents,
+        extraServices,
+        loading,
+        error,
+        fetchService,
+        updateService
+    } = useServiceManagement();
 
-    const [serviceName, setServiceName] = useState('');
-    const [price, setPrice] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [commission, setCommission] = useState(0);
-    const [checkedAgents, setCheckedAgents] = useState<Record<string, boolean>>(
-        agentsData.reduce((acc, agent) => ({...acc, [agent.name]: true }), {})
-    );
+    // Estados do formulário
+    const [nome, setNome] = useState('');
+    const [descricao, setDescricao] = useState('');
+    const [duracaoMinutos, setDuracaoMinutos] = useState(60);
+    const [preco, setPreco] = useState(0);
+    const [comissaoPercentual, setComissaoPercentual] = useState(70);
+    const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const [loadingService, setLoadingService] = useState(true);
+
+    // Estados para seleções
+    const [checkedAgents, setCheckedAgents] = useState<Record<number, boolean>>({});
+    const [checkedExtras, setCheckedExtras] = useState<Record<number, boolean>>({});
+
+    // Carregar dados do serviço
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadService = async () => {
+            if (!serviceId) return;
+
+            try {
+                setLoadingService(true);
+                setSubmitError(null);
+
+                const service = await fetchService(Number(serviceId));
+
+                if (isMounted && service) {
+                    setNome(service.nome);
+                    setDescricao(service.descricao || '');
+                    setDuracaoMinutos(service.duracao_minutos);
+                    setPreco(service.preco);
+                    setComissaoPercentual(service.comissao_percentual);
+                    setStatus(service.status);
+
+                    // Configurar agentes selecionados
+                    if (agents.length > 0) {
+                        const initialAgentState = agents.reduce((acc, agent) => {
+                            acc[agent.id] = service.agentes_atuais_ids?.includes(agent.id) || false;
+                            return acc;
+                        }, {} as Record<number, boolean>);
+                        setCheckedAgents(initialAgentState);
+                    }
+
+                    // Configurar extras selecionados
+                    if (extraServices.length > 0) {
+                        const initialExtraState = extraServices.reduce((acc, extra) => {
+                            acc[extra.id] = service.extras_atuais_ids?.includes(extra.id) || false;
+                            return acc;
+                        }, {} as Record<number, boolean>);
+                        setCheckedExtras(initialExtraState);
+                    }
+
+                    console.log('✅ Serviço carregado:', service.nome);
+                }
+            } catch (error) {
+                if (isMounted) {
+                    console.error('❌ Erro ao carregar serviço:', error);
+                    setSubmitError('Erro ao carregar dados do serviço');
+                }
+            } finally {
+                if (isMounted) {
+                    setLoadingService(false);
+                }
+            }
+        };
+
+        if (agents.length > 0 && extraServices.length > 0) {
+            loadService();
+        }
+
+        return () => {
+            isMounted = false;
+        };
+    }, [serviceId, fetchService, agents, extraServices]);
+
+    // Atualizar seleções quando os dados carregarem
+    useEffect(() => {
+        if (agents.length > 0 && !loadingService) {
+            // Manter seleções existentes ou inicializar como false
+            setCheckedAgents(prev => {
+                const newState = agents.reduce((acc, agent) => {
+                    acc[agent.id] = prev[agent.id] || false;
+                    return acc;
+                }, {} as Record<number, boolean>);
+                return newState;
+            });
+        }
+    }, [agents, loadingService]);
 
     useEffect(() => {
-        if (serviceToEdit) {
-            setServiceName(serviceToEdit.name);
-            setPrice(serviceToEdit.price);
-            setDuration(serviceToEdit.duration);
-            setCommission(serviceToEdit.commission);
+        if (extraServices.length > 0 && !loadingService) {
+            // Manter seleções existentes ou inicializar como false
+            setCheckedExtras(prev => {
+                const newState = extraServices.reduce((acc, extra) => {
+                    acc[extra.id] = prev[extra.id] || false;
+                    return acc;
+                }, {} as Record<number, boolean>);
+                return newState;
+            });
         }
-    }, [serviceToEdit]);
+    }, [extraServices, loadingService]);
 
-    const handleAgentCheck = (agentName: string) => {
-        setCheckedAgents(prev => ({ ...prev, [agentName]: !prev[agentName] }));
+    const handleAgentCheck = (agentId: number) => {
+        setCheckedAgents(prev => ({ ...prev, [agentId]: !prev[agentId] }));
     };
 
-    if (!serviceToEdit) {
+    const allAgentsSelected = useMemo(() =>
+        agents.length > 0 && agents.every(agent => checkedAgents[agent.id]),
+        [checkedAgents, agents]
+    );
+
+    const handleSelectAllAgents = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        const newCheckedState = agents.reduce((acc, agent) => {
+            acc[agent.id] = isChecked;
+            return acc;
+        }, {} as Record<number, boolean>);
+        setCheckedAgents(newCheckedState);
+    };
+
+    const handleExtraCheck = (extraId: number) => {
+        setCheckedExtras(prev => ({ ...prev, [extraId]: !prev[extraId] }));
+    };
+
+    const allExtrasSelected = useMemo(() =>
+        extraServices.length > 0 && extraServices.every(extra => checkedExtras[extra.id]),
+        [checkedExtras, extraServices]
+    );
+
+    const handleSelectAllExtras = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        const newCheckedState = extraServices.reduce((acc, extra) => {
+            acc[extra.id] = isChecked;
+            return acc;
+        }, {} as Record<number, boolean>);
+        setCheckedExtras(newCheckedState);
+    };
+
+    // Função para submeter o formulário
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!nome.trim()) {
+            setSubmitError('Nome é obrigatório');
+            return;
+        }
+
+        if (preco < 0) {
+            setSubmitError('Preço deve ser maior ou igual a zero');
+            return;
+        }
+
+        try {
+            setSubmitting(true);
+            setSubmitError(null);
+
+            // Obter IDs dos agentes e extras selecionados
+            const agentesIds = agents
+                .filter(agent => checkedAgents[agent.id])
+                .map(agent => agent.id);
+
+            const extrasIds = extraServices
+                .filter(extra => checkedExtras[extra.id])
+                .map(extra => extra.id);
+
+            const serviceData = {
+                nome: nome.trim(),
+                descricao: descricao.trim(),
+                duracao_minutos: duracaoMinutos,
+                preco: preco,
+                comissao_percentual: comissaoPercentual,
+                status: status,
+                agentes_ids: agentesIds,
+                extras_ids: extrasIds
+            };
+
+            console.log('🔄 Atualizando serviço:', serviceId, serviceData);
+
+            const result = await updateService(Number(serviceId), serviceData);
+
+            if (result.success) {
+                console.log('✅ Serviço atualizado com sucesso!');
+                setActiveView('services'); // Voltar para a lista
+            } else {
+                setSubmitError(result.error || 'Erro ao atualizar serviço');
+            }
+        } catch (error) {
+            console.error('❌ Erro ao atualizar serviço:', error);
+            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Loading state
+    if (loading || loadingService) {
         return (
-            <div className="p-4 text-center">
-                <h2 className="text-xl font-semibold text-gray-700">Serviço não encontrado.</h2>
-                <button onClick={() => setActiveView('services-list')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    Voltar para a lista de serviços
-                </button>
+            <div className="space-y-6">
+                <h1 className="text-3xl font-bold text-gray-800">Editar Serviço</h1>
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <p className="text-gray-600">Carregando dados...</p>
+                </div>
             </div>
         );
     }
@@ -87,29 +272,177 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         <div className="space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Editar Serviço</h1>
 
-            <FormCard title="Informações Gerais">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <TextInput label="Nome Do Serviço" value={serviceName} onChange={e => setServiceName(e.target.value)} />
-                    <TextInput label="Valor Final (R$)" type="number" value={String(price)} onChange={e => setPrice(Number(e.target.value))} />
-                    <TextInput label="Duração (minutos)" type="number" value={String(duration)} onChange={e => setDuration(Number(e.target.value))} />
-                    <TextInput label="Comissão (%)" type="number" value={String(commission)} onChange={e => setCommission(Number(e.target.value))} />
+            {/* Exibir erro de carregamento */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">❌ {error}</p>
                 </div>
-            </FormCard>
-            
-            <FormCard title="Agentes Que Oferecem Este Serviço">
-                 <div className="space-y-3">
-                     {agentsData.map(agent => <AgentSelectItem key={agent.name} {...agent} checked={!!checkedAgents[agent.name]} onChange={() => handleAgentCheck(agent.name)} />)}
-                 </div>
-            </FormCard>
+            )}
 
-            <div className="pt-2">
-                <button className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">
-                    Salvar Alterações
-                </button>
-                <button onClick={() => setActiveView('services-list')} className="ml-4 bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors">
-                    Cancelar
-                </button>
-            </div>
+            {/* Exibir erro de submissão */}
+            {submitError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">❌ {submitError}</p>
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+                <div className="space-y-6">
+                    <FormCard title="Informações Gerais">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <TextInput
+                                label="Nome Do Serviço"
+                                placeholder="Nome Do Serviço"
+                                value={nome}
+                                onChange={(e) => setNome(e.target.value)}
+                            />
+                            <TextArea
+                                label="Breve Descrição"
+                                placeholder="Breve Descrição"
+                                value={descricao}
+                                onChange={(e) => setDescricao(e.target.value)}
+                            />
+                            <div className="flex items-end gap-2">
+                                 <SelectInput label="Categoria" className="flex-1">
+                                    <option>Sem Categoria</option>
+                                </SelectInput>
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 h-[44px]"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Adicionar Categoria
+                                </button>
+                            </div>
+
+                            <SelectInput
+                              label="Estado"
+                              value={status}
+                              onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
+                            >
+                                <option value="Ativo">Ativo</option>
+                                <option value="Inativo">Inativo</option>
+                            </SelectInput>
+                        </div>
+                    </FormCard>
+
+                    <FormCard title="Duração do Serviço e Preço">
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <TextInput
+                              label="Duração (minutos)"
+                              type="number"
+                              value={String(duracaoMinutos)}
+                              onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                            />
+                            <TextInput
+                              label="Valor Final (R$)"
+                              type="number"
+                              step="0.01"
+                              value={String(preco)}
+                              onChange={(e) => setPreco(Number(e.target.value))}
+                            />
+                            <TextInput
+                              label="Comissão (%)"
+                              type="number"
+                              value={String(comissaoPercentual)}
+                              onChange={(e) => setComissaoPercentual(Number(e.target.value))}
+                            />
+                        </div>
+                    </FormCard>
+
+                    <FormCard title="Agentes Que Oferecem Este Serviço">
+                         <div className="flex justify-end mb-4">
+                             <label className="flex items-center text-sm font-medium text-gray-700 cursor-pointer">
+                                <div className="relative flex items-center">
+                                    <input type="checkbox" checked={allAgentsSelected} onChange={handleSelectAllAgents} className="sr-only" />
+                                    <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allAgentsSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                        {allAgentsSelected && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                </div>
+                                <span className="ml-2">Selecionar Todos</span>
+                             </label>
+                         </div>
+                         {agents.length === 0 ? (
+                            <div className="text-center py-8">
+                                <p className="text-gray-500 text-sm">
+                                    👥 Nenhum agente encontrado.
+                                </p>
+                                <p className="text-gray-400 text-xs mt-1">
+                                    Cadastre agentes primeiro para associá-los aos serviços.
+                                </p>
+                            </div>
+                         ) : (
+                             <div className="space-y-3">
+                                 {agents.map(agent => (
+                                    <AgentSelectItem
+                                      key={agent.id}
+                                      name={`${agent.nome} ${agent.sobrenome}`}
+                                      avatar={agent.avatar || 'https://i.pravatar.cc/150?img=1'}
+                                      checked={!!checkedAgents[agent.id]}
+                                      onChange={() => handleAgentCheck(agent.id)}
+                                    />
+                                 ))}
+                             </div>
+                         )}
+                    </FormCard>
+
+                    <FormCard title="Serviços Extras">
+                         <div className="flex justify-end mb-4">
+                             <label className="flex items-center text-sm font-medium text-gray-700 cursor-pointer">
+                                <div className="relative flex items-center">
+                                    <input type="checkbox" checked={allExtrasSelected} onChange={handleSelectAllExtras} className="sr-only" />
+                                    <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allExtrasSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                        {allExtrasSelected && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                </div>
+                                <span className="ml-2">Selecionar Todos</span>
+                             </label>
+                         </div>
+                         {extraServices.length === 0 ? (
+                            <div className="text-center py-8">
+                                <p className="text-gray-500 text-sm">
+                                    ⭐ Nenhum serviço extra encontrado.
+                                </p>
+                                <p className="text-gray-400 text-xs mt-1">
+                                    Cadastre serviços extras primeiro para associá-los aos serviços principais.
+                                </p>
+                            </div>
+                         ) : (
+                             <div className="space-y-3">
+                                 {extraServices.map(extra => (
+                                    <ExtraSelectItem
+                                      key={extra.id}
+                                      name={extra.nome}
+                                      checked={!!checkedExtras[extra.id]}
+                                      onChange={() => handleExtraCheck(extra.id)}
+                                    />
+                                 ))}
+                             </div>
+                         )}
+                    </FormCard>
+                </div>
+
+                <div className="pt-2">
+                    <button
+                        type="submit"
+                        disabled={submitting || !nome.trim()}
+                        className={`font-semibold px-6 py-2.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                            submitting || !nome.trim()
+                                ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        {submitting ? 'Salvando...' : 'Salvar Alterações'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('services')}
+                        className="ml-4 bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </form>
         </div>
     );
 };

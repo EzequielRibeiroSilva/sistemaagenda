@@ -94,51 +94,137 @@ class ServicoController extends BaseController {
     }
   }
 
+  // GET /api/servicos/:id - Buscar serviço específico com associações
+  async show(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Usuário não autenticado'
+        });
+      }
+
+      console.log(`[ServicoController] Buscando serviço ${id} para usuário ${usuarioId}`);
+
+      const servico = await this.model.findByIdComplete(id);
+
+      if (!servico) {
+        return res.status(404).json({
+          success: false,
+          message: 'Serviço não encontrado'
+        });
+      }
+
+      // Verificar se o serviço pertence ao usuário
+      if (servico.usuario_id !== usuarioId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Acesso negado'
+        });
+      }
+
+      console.log(`[ServicoController] Serviço encontrado: ${servico.nome}`);
+
+      return res.status(200).json({
+        success: true,
+        data: servico,
+        message: 'Serviço carregado com sucesso'
+      });
+    } catch (error) {
+      console.error('[ServicoController] Erro ao buscar serviço:', error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao buscar serviço',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
   // POST /api/servicos - Criar novo serviço
   async store(req, res) {
     try {
       const usuarioId = req.user?.id;
-      
+
       if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
         });
       }
 
-      const dadosServico = {
-        ...req.body,
-        usuario_id: usuarioId
-      };
+      const {
+        nome,
+        descricao,
+        duracao_minutos,
+        preco,
+        comissao_percentual,
+        status,
+        categoria_id,
+        agentes_ids,
+        extras_ids
+      } = req.body;
 
       // Validações básicas
-      if (!dadosServico.nome) {
-        return res.status(400).json({ 
-          error: 'Nome é obrigatório' 
+      if (!nome || !nome.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nome é obrigatório'
         });
       }
 
-      if (!dadosServico.preco || dadosServico.preco < 0) {
-        return res.status(400).json({ 
-          error: 'Preço deve ser maior que zero' 
+      if (!preco || preco < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Preço deve ser maior ou igual a zero'
         });
       }
 
-      if (!dadosServico.duracao_minutos || dadosServico.duracao_minutos < 1) {
-        return res.status(400).json({ 
-          error: 'Duração deve ser maior que zero' 
+      if (!duracao_minutos || duracao_minutos < 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Duração deve ser maior que zero'
         });
       }
 
-      const data = await this.model.create(dadosServico);
-      return res.status(201).json({ 
-        data,
-        message: 'Serviço criado com sucesso' 
+      const servicoData = {
+        nome: nome.trim(),
+        descricao: descricao?.trim() || '',
+        duracao_minutos: duracao_minutos,
+        preco: parseFloat(preco),
+        comissao_percentual: comissao_percentual || 70,
+        status: status || 'Ativo',
+        categoria_id: categoria_id || null,
+        usuario_id: usuarioId,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+
+      console.log(`🔗 [ServicoController] Criando serviço com ${agentes_ids?.length || 0} agentes e ${extras_ids?.length || 0} extras`);
+
+      const servicoId = await this.model.createWithTransaction(
+        servicoData,
+        agentes_ids || [],
+        extras_ids || []
+      );
+
+      // Buscar serviço criado para retorno
+      const servicoCriado = await this.model.findById(servicoId);
+
+      return res.status(201).json({
+        success: true,
+        data: servicoCriado,
+        message: 'Serviço criado com sucesso'
       });
     } catch (error) {
       console.error('Erro ao criar serviço:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }
@@ -148,51 +234,99 @@ class ServicoController extends BaseController {
     try {
       const { id } = req.params;
       const usuarioId = req.user?.id;
-      
+
       if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
         });
       }
 
       // Verificar se o serviço pertence ao usuário
       const servico = await this.model.findById(id);
       if (!servico) {
-        return res.status(404).json({ 
-          error: 'Serviço não encontrado' 
+        return res.status(404).json({
+          success: false,
+          error: 'Serviço não encontrado'
         });
       }
 
       if (servico.usuario_id !== usuarioId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
+          success: false,
           error: 'Acesso negado',
-          message: 'Você não tem permissão para editar este serviço' 
+          message: 'Você não tem permissão para editar este serviço'
         });
       }
+
+      const {
+        nome,
+        descricao,
+        duracao_minutos,
+        preco,
+        comissao_percentual,
+        status,
+        categoria_id,
+        agentes_ids,
+        extras_ids
+      } = req.body;
 
       // Validações básicas
-      if (req.body.preco !== undefined && req.body.preco < 0) {
-        return res.status(400).json({ 
-          error: 'Preço deve ser maior ou igual a zero' 
+      if (nome !== undefined && (!nome || !nome.trim())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nome é obrigatório'
         });
       }
 
-      if (req.body.duracao_minutos !== undefined && req.body.duracao_minutos < 1) {
-        return res.status(400).json({ 
-          error: 'Duração deve ser maior que zero' 
+      if (preco !== undefined && preco < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Preço deve ser maior ou igual a zero'
         });
       }
 
-      const data = await this.model.update(id, req.body);
-      return res.json({ 
-        data,
-        message: 'Serviço atualizado com sucesso' 
+      if (duracao_minutos !== undefined && duracao_minutos < 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Duração deve ser maior que zero'
+        });
+      }
+
+      const servicoData = {
+        ...(nome !== undefined && { nome: nome.trim() }),
+        ...(descricao !== undefined && { descricao: descricao?.trim() || '' }),
+        ...(duracao_minutos !== undefined && { duracao_minutos }),
+        ...(preco !== undefined && { preco: parseFloat(preco) }),
+        ...(comissao_percentual !== undefined && { comissao_percentual }),
+        ...(status !== undefined && { status }),
+        ...(categoria_id !== undefined && { categoria_id }),
+        updated_at: new Date()
+      };
+
+      console.log(`🔄 [ServicoController] Atualizando serviço ${id} com ${agentes_ids?.length || 0} agentes e ${extras_ids?.length || 0} extras`);
+
+      await this.model.updateWithTransaction(
+        id,
+        servicoData,
+        agentes_ids || [],
+        extras_ids || []
+      );
+
+      // Buscar serviço atualizado para retorno
+      const servicoAtualizado = await this.model.findByIdComplete(id);
+
+      return res.status(200).json({
+        success: true,
+        data: servicoAtualizado,
+        message: 'Serviço atualizado com sucesso'
       });
     } catch (error) {
       console.error('Erro ao atualizar serviço:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }

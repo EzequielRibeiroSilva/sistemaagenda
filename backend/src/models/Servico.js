@@ -59,6 +59,118 @@ class Servico extends BaseModel {
       .sum('agendamento_servicos.preco_aplicado as receita_total')
       .groupBy('servicos.id', 'categorias_servicos.id');
   }
+
+  // Criar serviço com transação (incluindo associações com agentes e extras)
+  async createWithTransaction(servicoData, agentesIds, extrasIds) {
+    return await this.db.transaction(async (trx) => {
+      // 1. Criar o serviço
+      const [servicoId] = await trx(this.tableName)
+        .insert(servicoData)
+        .returning('id');
+
+      const finalServicoId = servicoId.id || servicoId;
+
+      // 2. Associar agentes (se fornecidos)
+      if (agentesIds && agentesIds.length > 0) {
+        const agentesAssociacoes = agentesIds.map(agenteId => ({
+          agente_id: agenteId,
+          servico_id: finalServicoId,
+          created_at: new Date()
+        }));
+
+        await trx('agente_servicos').insert(agentesAssociacoes);
+      }
+
+      // 3. Associar serviços extras (se fornecidos)
+      if (extrasIds && extrasIds.length > 0) {
+        const extrasAssociacoes = extrasIds.map(extraId => ({
+          servico_id: finalServicoId,
+          servico_extra_id: extraId,
+          created_at: new Date()
+        }));
+
+        await trx('servico_servicos_extras').insert(extrasAssociacoes);
+      }
+
+      return finalServicoId;
+    });
+  }
+
+  // Buscar serviço com associações completas (para edição)
+  async findByIdComplete(servicoId) {
+    const servico = await this.db(this.tableName)
+      .where('id', servicoId)
+      .first();
+
+    if (!servico) return null;
+
+    // Buscar agentes associados
+    const agentesAssociados = await this.db('agente_servicos')
+      .join('agentes', 'agente_servicos.agente_id', 'agentes.id')
+      .where('agente_servicos.servico_id', servicoId)
+      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome');
+
+    // Buscar extras associados
+    const extrasAssociados = await this.db('servico_servicos_extras')
+      .join('servicos_extras', 'servico_servicos_extras.servico_extra_id', 'servicos_extras.id')
+      .where('servico_servicos_extras.servico_id', servicoId)
+      .select('servicos_extras.id', 'servicos_extras.nome');
+
+    return {
+      ...servico,
+      agentes_associados: agentesAssociados,
+      agentes_atuais_ids: agentesAssociados.map(a => a.id),
+      extras_associados: extrasAssociados,
+      extras_atuais_ids: extrasAssociados.map(e => e.id)
+    };
+  }
+
+  // Atualizar serviço com transação (incluindo associações)
+  async updateWithTransaction(servicoId, servicoData, agentesIds, extrasIds) {
+    return await this.db.transaction(async (trx) => {
+      // 1. Atualizar dados do serviço
+      await trx(this.tableName)
+        .where('id', servicoId)
+        .update({
+          ...servicoData,
+          updated_at: new Date()
+        });
+
+      // 2. Remover associações existentes com agentes
+      await trx('agente_servicos')
+        .where('servico_id', servicoId)
+        .del();
+
+      // 3. Remover associações existentes com extras
+      await trx('servico_servicos_extras')
+        .where('servico_id', servicoId)
+        .del();
+
+      // 4. Criar novas associações com agentes (se fornecidas)
+      if (agentesIds && agentesIds.length > 0) {
+        const agentesAssociacoes = agentesIds.map(agenteId => ({
+          agente_id: agenteId,
+          servico_id: servicoId,
+          created_at: new Date()
+        }));
+
+        await trx('agente_servicos').insert(agentesAssociacoes);
+      }
+
+      // 5. Criar novas associações com extras (se fornecidas)
+      if (extrasIds && extrasIds.length > 0) {
+        const extrasAssociacoes = extrasIds.map(extraId => ({
+          servico_id: servicoId,
+          servico_extra_id: extraId,
+          created_at: new Date()
+        }));
+
+        await trx('servico_servicos_extras').insert(extrasAssociacoes);
+      }
+
+      return servicoId;
+    });
+  }
 }
 
 module.exports = Servico;
