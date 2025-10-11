@@ -9,7 +9,7 @@ class AgenteController {
 
   /**
    * GET /api/agentes/list - Listagem leve de agentes para formulários
-   * Retorna apenas id e nome dos agentes ativos do usuário logado
+   * Retorna apenas id e nome dos agentes do usuário logado (todos os status para associações)
    */
   async list(req, res) {
     try {
@@ -22,7 +22,7 @@ class AgenteController {
       const agentesLeves = agentes.map(agente => ({
         id: agente.id,
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
-        avatar: agente.avatar_url || null
+        avatar_url: agente.avatar_url || null
       }));
 
       res.status(200).json({

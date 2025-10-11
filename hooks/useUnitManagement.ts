@@ -30,6 +30,7 @@ export interface HorarioFuncionamento {
 export interface Agent {
   id: number;
   nome: string;
+  avatar_url?: string | null;
 }
 
 export interface Service {
@@ -205,6 +206,7 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
       const response = await authenticatedFetch('/agentes/list');
 
       if (response.success) {
+        console.log('🔍 DEBUG AGENTS LIST: Dados recebidos do /agentes/list:', response.data);
         setAgents(response.data || []);
       } else {
         throw new Error(response.message || 'Erro ao buscar agentes');

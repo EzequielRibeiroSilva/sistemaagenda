@@ -12,23 +12,31 @@ class Agente extends BaseModel {
       .select('*');
   }
 
-  // Buscar agentes por usuário (através das unidades)
+  // Buscar agentes por usuário (diretamente ou através das unidades)
   async findByUsuario(usuarioId) {
     return await this.db(this.tableName)
-      .join('unidades', 'agentes.unidade_id', 'unidades.id')
-      .where('unidades.usuario_id', usuarioId)
+      .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+      .where(function() {
+        this.where('agentes.usuario_id', usuarioId)  // Agentes diretos do usuário
+            .orWhere('unidades.usuario_id', usuarioId);  // Agentes através de unidades
+      })
       .select(
         'agentes.*',
         'unidades.nome as unidade_nome'
       );
   }
 
-  // Buscar apenas agentes ativos por usuário (otimizado para listas)
+  // Buscar agentes por usuário para associações (otimizado para listas)
   async findActiveByUsuario(usuarioId) {
+    // Buscar agentes que pertencem diretamente ao usuário OU através de unidades
+    // NOTA: Removido filtro de status para permitir associação de agentes independente do status operacional
     return await this.db(this.tableName)
-      .join('unidades', 'agentes.unidade_id', 'unidades.id')
-      .where('unidades.usuario_id', usuarioId)
-      .where('agentes.status', 'Ativo')
+      .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+      .where(function() {
+        this.where('agentes.usuario_id', usuarioId)  // Agentes diretos do usuário
+            .orWhere('unidades.usuario_id', usuarioId);  // Agentes através de unidades
+      })
+      // .where('agentes.status', 'Ativo')  // ❌ REMOVIDO: Agentes bloqueados também podem ser associados
       .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url')
       .orderBy('agentes.nome');
   }
