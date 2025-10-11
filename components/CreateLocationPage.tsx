@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle } from './Icons';
+import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 
@@ -47,7 +47,7 @@ const TextInput: React.FC<{
     </div>
 );
 
-const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean; onChange: () => void; }> = ({ name, avatar, checked, onChange }) => (
+const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: boolean; onChange: () => void; }> = ({ name, avatar, checked, onChange }) => (
     <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
         <div className="relative flex items-center">
             <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
@@ -55,7 +55,27 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <img src={avatar} alt={name} className="w-10 h-10 rounded-full object-cover mx-4" />
+        <div className="relative w-10 h-10 mx-4">
+            {avatar ? (
+                <img
+                    src={`http://localhost:3000${avatar}`}
+                    alt={name}
+                    className="w-10 h-10 rounded-full object-cover"
+                    onError={(e) => {
+                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallbackDiv = target.nextElementSibling as HTMLElement;
+                        if (fallbackDiv) {
+                            fallbackDiv.classList.remove('hidden');
+                        }
+                    }}
+                />
+            ) : null}
+            <div className={`w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center ${avatar ? 'hidden' : ''}`}>
+                <FaUser className="w-5 h-5 text-gray-600" />
+            </div>
+        </div>
         <span className="font-bold text-gray-800 text-md flex-1">{name}</span>
         <span className="text-sm text-gray-500 mr-4">Todos os Serviços Selecionados</span>
         <button className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 p-2 rounded-lg hover:bg-blue-50">
@@ -340,7 +360,7 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
                             <AgentSelectItem
                                 key={agent.id}
                                 name={agent.nome}
-                                avatar={`https://i.pravatar.cc/150?u=${agent.id}`}
+                                avatar={agent.avatar_url}
                                 checked={!!checkedAgents[agent.id]}
                                 onChange={() => handleAgentCheck(agent.id)}
                             />

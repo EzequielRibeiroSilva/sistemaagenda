@@ -146,6 +146,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       const response = await authenticatedFetch('/agentes');
       
       if (response.success) {
+        console.log('🔍 DEBUG AGENTS: Dados recebidos do /agentes:', response.data);
         setAgents(response.data);
       } else {
         throw new Error(response.message || 'Erro ao buscar agentes');
