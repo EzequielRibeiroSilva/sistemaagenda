@@ -327,18 +327,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                               value={descricao}
                               onChange={(e) => setDescricao(e.target.value)}
                             />
-                            <div className="flex items-end gap-2">
-                                 <SelectInput label="Categoria" className="flex-1">
-                                    <option>Sem Categoria</option>
-                                </SelectInput>
-                                <button
-                                  type="button"
-                                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 h-[44px]"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    Adicionar Categoria
-                                </button>
-                            </div>
+
 
                             <SelectInput
                               label="Estado"
