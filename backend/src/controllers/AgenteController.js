@@ -180,7 +180,20 @@ class AgenteController {
   async store(req, res) {
     try {
       const usuarioId = req.user.id;
+
+      // ✅ CORREÇÃO DE SEGURANÇA: Usar unidade_id do token JWT
+      const unidadeIdDoToken = req.user.unidade_id;
+
+      if (!unidadeIdDoToken) {
+        return res.status(403).json({
+          success: false,
+          error: 'Usuário sem unidade',
+          message: 'Usuário não possui unidade associada'
+        });
+      }
+
       // Extrair dados do body (pode ser JSON ou FormData)
+      // ✅ SEGURANÇA: unidade_id removido do req.body - será forçado do token
       const {
         nome,
         sobrenome,
@@ -190,7 +203,7 @@ class AgenteController {
         avatar_url,
         biografia,
         nome_exibicao,
-        unidade_id,
+        // unidade_id, // ❌ REMOVIDO: Não confiar no frontend
         agenda_personalizada,
         observacoes,
         data_admissao,
@@ -221,31 +234,21 @@ class AgenteController {
 
 
 
-      // Converter unidade_id para número (pode vir como string do FormData)
-      const unidadeIdNum = parseInt(unidade_id);
+      // ✅ CORREÇÃO DE SEGURANÇA: Usar unidade_id do token (já validado)
+      const unidadeIdNum = parseInt(unidadeIdDoToken);
 
       // Validações básicas
-      if (!nome || !email || !unidade_id || isNaN(unidadeIdNum)) {
+      if (!nome || !email || isNaN(unidadeIdNum)) {
         return res.status(400).json({
           success: false,
           error: 'Campos obrigatórios',
-          message: 'Nome, email e unidade são obrigatórios'
+          message: 'Nome e email são obrigatórios'
         });
       }
 
-      // Verificar se a unidade pertence ao usuário logado
-      const unidade = await this.agenteModel.db('unidades')
-        .where('id', unidadeIdNum)
-        .where('usuario_id', usuarioId)
-        .first();
-
-      if (!unidade) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unidade inválida',
-          message: 'A unidade selecionada não pertence ao seu usuário'
-        });
-      }
+      // ✅ SEGURANÇA: Não precisa verificar se unidade pertence ao usuário
+      // porque unidadeIdDoToken já vem do JWT validado
+      console.log(`🔒 [SEGURANÇA] Criando agente na unidade ${unidadeIdNum} do usuário ${usuarioId}`);
 
       // Hash da senha se fornecida
       let senhaHash = null;
