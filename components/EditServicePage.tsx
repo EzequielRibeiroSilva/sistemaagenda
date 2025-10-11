@@ -9,7 +9,7 @@ interface Service {
   duracao_minutos: number;
   preco: number;
   comissao_percentual: number;
-  status: 'Ativo' | 'Inativo';
+  status: 'Ativo' | 'Bloqueado';
   agentes_associados?: Array<{ id: number; nome: string; sobrenome: string }>;
   agentes_atuais_ids?: number[];
   extras_associados?: Array<{ id: number; nome: string }>;
@@ -138,7 +138,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
     const [duracaoMinutos, setDuracaoMinutos] = useState(60);
     const [preco, setPreco] = useState(0);
     const [comissaoPercentual, setComissaoPercentual] = useState(70);
-    const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+    const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [loadingService, setLoadingService] = useState(true);
@@ -379,10 +379,10 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                             <SelectInput
                               label="Estado"
                               value={status}
-                              onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
+                              onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Bloqueado')}
                             >
-                                <option value="Ativo">Ativo</option>
-                                <option value="Inativo">Inativo</option>
+                                <option value="Ativo">Disponível</option>
+                                <option value="Bloqueado">Indisponível</option>
                             </SelectInput>
                         </div>
                     </FormCard>

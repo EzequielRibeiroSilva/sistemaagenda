@@ -11,7 +11,7 @@ interface Service {
   duracao_minutos: number;
   preco: number;
   comissao_percentual: number;
-  status: 'Ativo' | 'Inativo';
+  status: 'Ativo' | 'Bloqueado';
   agentes_associados?: Array<{ id: number; nome: string; sobrenome: string; avatar?: string }>;
   extras_associados?: Array<{ id: number; nome: string }>;
 }
@@ -62,7 +62,7 @@ const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void }> 
         <div className="flex justify-between text-sm text-gray-500">
           <p>Status:</p>
           <p className={`font-medium ${service.status === 'Ativo' ? 'text-green-600' : 'text-red-600'}`}>
-            {service.status}
+            {service.status === 'Ativo' ? 'Disponível' : 'Indisponível'}
           </p>
         </div>
       </div>
