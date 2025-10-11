@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImagePlaceholder, Check, ChevronLeft } from './Icons';
+import { useExtraServiceManagement } from '../hooks/useExtraServiceManagement';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -11,23 +12,59 @@ const FormCard: React.FC<{ title: string; children: React.ReactNode; rightConten
   </div>
 );
 
-const TextInput: React.FC<{ label: string; placeholder?: string; defaultValue?: string; className?: string }> = ({ label, placeholder, defaultValue, className = "" }) => (
+const TextInput: React.FC<{
+  label: string;
+  placeholder?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  className?: string;
+}> = ({ label, placeholder, value, onChange, type = "text", className = "" }) => (
     <div className={className}>
         <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
-        <input type="text" placeholder={placeholder} defaultValue={defaultValue} className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" />
-    </div>
-);
-const TextArea: React.FC<{ label: string; placeholder?: string; className?: string }> = ({ label, placeholder, className = "" }) => (
-    <div className={className}>
-        <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
-        <textarea placeholder={placeholder} rows={3} className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]" />
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+        />
     </div>
 );
 
-const SelectInput: React.FC<{ label: string; children: React.ReactNode, className?: string }> = ({ label, children, className="" }) => (
+const TextArea: React.FC<{
+  label: string;
+  placeholder?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  className?: string;
+}> = ({ label, placeholder, value, onChange, className = "" }) => (
     <div className={className}>
         <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
-        <select className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500">
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          rows={3}
+          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+        />
+    </div>
+);
+
+const SelectInput: React.FC<{
+  label: string;
+  children: React.ReactNode;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  className?: string;
+}> = ({ label, children, value, onChange, className="" }) => (
+    <div className={className}>
+        <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
+        <select
+          value={value}
+          onChange={onChange}
+          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+        >
             {children}
         </select>
     </div>
@@ -54,92 +91,249 @@ const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () 
     </label>
 );
 
-const connectedServicesList = [
-    'CORTE', 'CORTE + PIGMENTAÇÃO', 'CORTE + BARBA', 'BARBA + PIGMENTAÇÃO', 'LUZES + CORTE',
-    'BARBA', 'BARBOTERAPIA', 'CORTE+BARBA+PIGMENTAÇÃO DA BARBA', 'CORTE+BARBA+PIGMENTAÇÃO BARBA E CABELO',
-    'ALISAMENTO AMERICANO +CORTE', 'ALISAMENTO AMERICANO', 'LIMPEZA DE PELE'
-];
-
 interface CreateExtraServicePageProps {
   setActiveView: (view: string) => void;
 }
 
 const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActiveView }) => {
-    const [checkedServices, setCheckedServices] = useState<Record<string, boolean>>(
-        connectedServicesList.reduce((acc, service) => ({ ...acc, [service]: true }), {})
-    );
+    // Hook para gerenciar serviços extras
+    const {
+        services,
+        loading,
+        error,
+        createExtraService
+    } = useExtraServiceManagement();
+
+    // Estados do formulário
+    const [nome, setNome] = useState('');
+    const [descricao, setDescricao] = useState('');
+    const [duracaoMinutos, setDuracaoMinutos] = useState(0);
+    const [preco, setPreco] = useState(0);
+    const [quantidadeMaxima, setQuantidadeMaxima] = useState(1);
+    const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
+
+    // Estado dos serviços conectados (baseado nos serviços reais)
+    const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
+
+    // Inicializar serviços conectados quando os serviços carregarem
+    useEffect(() => {
+        if (services.length > 0) {
+            const initialCheckedState = services.reduce((acc, service) => {
+                acc[service.id] = false; // Por padrão, nenhum serviço selecionado
+                return acc;
+            }, {} as Record<number, boolean>);
+            setCheckedServices(initialCheckedState);
+        }
+    }, [services]);
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
-        const newCheckedState = Object.keys(checkedServices).reduce((acc, service) => {
-            acc[service] = isChecked;
+        const newCheckedState = services.reduce((acc, service) => {
+            acc[service.id] = isChecked;
             return acc;
-        }, {} as Record<string, boolean>);
+        }, {} as Record<number, boolean>);
         setCheckedServices(newCheckedState);
     };
 
-    const handleServiceCheck = (serviceName: string) => {
-        setCheckedServices(prev => ({ ...prev, [serviceName]: !prev[serviceName] }));
+    const handleServiceCheck = (serviceId: number) => {
+        setCheckedServices(prev => ({ ...prev, [serviceId]: !prev[serviceId] }));
     };
-    
-    const allSelected = Object.values(checkedServices).every(Boolean);
+
+    const allSelected = services.length > 0 && services.every(service => checkedServices[service.id]);
+
+    // Função para submeter o formulário
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!nome.trim()) {
+            setSubmitError('Nome é obrigatório');
+            return;
+        }
+
+        if (preco < 0) {
+            setSubmitError('Preço deve ser maior ou igual a zero');
+            return;
+        }
+
+        try {
+            setSubmitting(true);
+            setSubmitError(null);
+
+            // Obter IDs dos serviços selecionados
+            const servicosConectados = services
+                .filter(service => checkedServices[service.id])
+                .map(service => service.id);
+
+            const extraServiceData = {
+                nome: nome.trim(),
+                descricao: descricao.trim(),
+                duracao_minutos: duracaoMinutos,
+                preco: preco,
+                quantidade_maxima: quantidadeMaxima,
+                status: status,
+                servicos_conectados: servicosConectados
+            };
+
+            console.log('🚀 Enviando dados do serviço extra:', extraServiceData);
+
+            const result = await createExtraService(extraServiceData);
+
+            if (result.success) {
+                console.log('✅ Serviço extra criado com sucesso!');
+                setActiveView('services-extra'); // Voltar para a lista
+            } else {
+                setSubmitError(result.error || 'Erro ao criar serviço extra');
+            }
+        } catch (error) {
+            console.error('❌ Erro ao criar serviço extra:', error);
+            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Loading state
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-3xl font-bold text-gray-800">Criar novo serviço extra</h1>
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <p className="text-gray-600">Carregando dados...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4 -mb-2">
               <h1 className="text-3xl font-bold text-gray-800">Criar novo serviço extra</h1>
             </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                <div className="lg:col-span-2 space-y-6">
-                    <FormCard title="Informações básicas">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                           <TextInput label="Nome do serviço extra" className="md:col-span-2" />
-                           <TextInput label="Duração (minutos)" defaultValue="0" />
-                           <TextInput label="Valor de cobrança" defaultValue="R$ 0,00" />
-                           <TextInput label="Quantidade Máxima" defaultValue="1" />
-                           <SelectInput label="Status">
-                                <option>Ativo</option>
-                                <option>Inativo</option>
-                           </SelectInput>
-                        </div>
-                        <TextArea label="Descrição curta" />
-                    </FormCard>
-                </div>
-                
-            </div>
 
-            <FormCard 
-                title="Serviços Conectados"
-                rightContent={
-                    <label className="flex items-center cursor-pointer">
-                        <div className="relative flex items-center">
-                             <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="sr-only" />
-                             <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {allSelected && <Check className="w-3 h-3 text-white" />}
-                            </div>
-                        </div>
-                        <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
-                    </label>
-                }
-            >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {connectedServicesList.map(service => (
-                        <ServiceCheckbox 
-                            key={service} 
-                            label={service} 
-                            checked={checkedServices[service] || false}
-                            onChange={() => handleServiceCheck(service)}
-                        />
-                    ))}
+            {/* Exibir erro de carregamento */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">❌ {error}</p>
                 </div>
-            </FormCard>
-            
-            <div className="pt-2">
-                <button className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    Adicionar serviço extra
-                </button>
-            </div>
+            )}
+
+            {/* Exibir erro de submissão */}
+            {submitError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">❌ {submitError}</p>
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="lg:col-span-2 space-y-6">
+                        <FormCard title="Informações básicas">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                               <TextInput
+                                 label="Nome do serviço extra"
+                                 className="md:col-span-2"
+                                 value={nome}
+                                 onChange={(e) => setNome(e.target.value)}
+                                 placeholder="Ex: Sobrancelha"
+                               />
+                               <TextInput
+                                 label="Duração (minutos)"
+                                 type="number"
+                                 value={String(duracaoMinutos)}
+                                 onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                               />
+                               <TextInput
+                                 label="Valor de cobrança (R$)"
+                                 type="number"
+                                 step="0.01"
+                                 value={String(preco)}
+                                 onChange={(e) => setPreco(Number(e.target.value))}
+                               />
+                               <TextInput
+                                 label="Quantidade Máxima"
+                                 type="number"
+                                 value={String(quantidadeMaxima)}
+                                 onChange={(e) => setQuantidadeMaxima(Number(e.target.value))}
+                               />
+                               <SelectInput
+                                 label="Status"
+                                 value={status}
+                                 onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
+                               >
+                                    <option value="Ativo">Ativo</option>
+                                    <option value="Inativo">Inativo</option>
+                               </SelectInput>
+                            </div>
+                            <TextArea
+                              label="Descrição curta"
+                              value={descricao}
+                              onChange={(e) => setDescricao(e.target.value)}
+                              placeholder="Descreva brevemente o serviço extra..."
+                            />
+                        </FormCard>
+                    </div>
+                </div>
+
+                <FormCard
+                    title="Serviços Conectados"
+                    rightContent={
+                        <label className="flex items-center cursor-pointer">
+                            <div className="relative flex items-center">
+                                 <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="sr-only" />
+                                 <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                    {allSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                            </div>
+                            <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
+                        </label>
+                    }
+                >
+                    {services.length === 0 ? (
+                        <div className="text-center py-8">
+                            <p className="text-gray-500 text-sm">
+                                📋 Nenhum serviço principal encontrado.
+                            </p>
+                            <p className="text-gray-400 text-xs mt-1">
+                                Cadastre serviços principais primeiro para conectá-los aos extras.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {services.map(service => (
+                                <ServiceCheckbox
+                                    key={service.id}
+                                    label={service.nome}
+                                    checked={checkedServices[service.id] || false}
+                                    onChange={() => handleServiceCheck(service.id)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </FormCard>
+
+                <div className="pt-2">
+                    <button
+                        type="submit"
+                        disabled={submitting || !nome.trim()}
+                        className={`font-semibold px-6 py-2.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                            submitting || !nome.trim()
+                                ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        {submitting ? 'Criando...' : 'Adicionar serviço extra'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('services-extra')}
+                        className="ml-4 bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </form>
         </div>
     );
 };
