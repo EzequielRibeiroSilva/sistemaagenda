@@ -112,8 +112,8 @@ const ExtraSelectItem: React.FC<{ name: string; checked: boolean; onChange: () =
                 {checked && <Check className="w-3 h-3 text-white" />}
             </div>
         </div>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mx-3">
-            <span className="text-white text-xs font-bold">⭐</span>
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center mx-3">
+            <span className="text-white text-xs font-bold">+</span>
         </div>
         <span className="font-medium text-gray-800 text-sm">{name}</span>
     </label>
@@ -441,7 +441,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                                     <AgentSelectItem
                                       key={agent.id}
                                       name={agent.nome}
-                                      avatar={agent.avatar || 'https://i.pravatar.cc/150?img=1'}
+                                      avatar={agent.avatar ? `http://localhost:3001${agent.avatar}` : 'https://i.pravatar.cc/150?img=1'}
                                       checked={!!checkedAgents[agent.id]}
                                       onChange={() => handleAgentCheck(agent.id)}
                                     />
