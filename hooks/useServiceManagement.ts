@@ -48,11 +48,10 @@ export const useServiceManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Buscar lista leve de serviços
-  const fetchServices = useCallback(async () => {
+  // Buscar lista leve de serviços (para formulários)
+  const fetchServicesList = useCallback(async () => {
     if (!isAuthenticated || !token) {
-      setServices([]);
-      return;
+      return [];
     }
 
     try {
@@ -68,14 +67,51 @@ export const useServiceManagement = () => {
 
       if (data.success) {
         const servicesData = Array.isArray(data.data) ? data.data : [];
+        console.log('✅ Lista leve de serviços carregada:', servicesData.length);
+        return servicesData;
+      } else {
+        throw new Error(data.message || 'Erro ao carregar lista de serviços');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar lista de serviços:', error);
+      return [];
+    }
+  }, [isAuthenticated, token]);
+
+  // Buscar serviços completos (com associações para listagem)
+  const fetchServices = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      setServices([]);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('http://localhost:3001/api/servicos', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const servicesData = Array.isArray(data.data) ? data.data : [];
         setServices(servicesData);
-        console.log('✅ Serviços carregados:', servicesData.length);
+        console.log('✅ Serviços completos carregados:', servicesData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
     } catch (error) {
       console.error('❌ Erro ao buscar serviços:', error);
+      setError(error instanceof Error ? error.message : 'Erro desconhecido');
       setServices([]);
+    } finally {
+      setLoading(false);
     }
   }, [isAuthenticated, token]);
 

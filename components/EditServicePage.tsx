@@ -24,10 +24,70 @@ const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ titl
     </div>
 );
 
-const TextInput: React.FC<{ label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string }> = ({ label, value, onChange, type = 'text' }) => (
-    <div>
+const TextInput: React.FC<{
+  label: string;
+  placeholder?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  className?: string;
+  type?: string;
+  step?: string;
+}> = ({ label, placeholder, value, onChange, className = "", type = "text", step }) => (
+    <div className={className}>
         <label className="text-sm font-medium text-gray-600 mb-1 block">{label}</label>
-        <input type={type} value={value} onChange={onChange} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" />
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          step={step}
+          className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+        />
+    </div>
+);
+
+const TextArea: React.FC<{
+  label: string;
+  placeholder?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  className?: string;
+}> = ({ label, placeholder, value, onChange, className = "" }) => (
+    <div className={className}>
+        <label className="text-sm font-medium text-gray-600 mb-1 block">{label}</label>
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          rows={3}
+          className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+        />
+    </div>
+);
+
+const SelectInput: React.FC<{
+  label: string;
+  children: React.ReactNode;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  className?: string;
+}> = ({ label, children, value, onChange, className="" }) => (
+    <div className={className}>
+        <label className="text-sm font-medium text-gray-600 mb-1 block">{label}</label>
+        <div className="relative">
+            <select
+              value={value}
+              onChange={onChange}
+              className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+            >
+                {children}
+            </select>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+            </div>
+        </div>
     </div>
 );
 
@@ -40,6 +100,21 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string; checked: boolean
             </div>
         </div>
         <img src={avatar} alt={name} className="w-8 h-8 rounded-full object-cover mx-3" />
+        <span className="font-medium text-gray-800 text-sm">{name}</span>
+    </label>
+);
+
+const ExtraSelectItem: React.FC<{ name: string; checked: boolean; onChange: () => void; }> = ({ name, checked, onChange }) => (
+    <label className={`flex items-center p-3 rounded-lg border-2 ${checked ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'} cursor-pointer transition-colors`}>
+        <div className="relative flex items-center">
+            <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
+            <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                {checked && <Check className="w-3 h-3 text-white" />}
+            </div>
+        </div>
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mx-3">
+            <span className="text-white text-xs font-bold">⭐</span>
+        </div>
         <span className="font-medium text-gray-800 text-sm">{name}</span>
     </label>
 );
