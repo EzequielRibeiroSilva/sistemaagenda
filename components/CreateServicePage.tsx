@@ -392,7 +392,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                     <AgentSelectItem
                                       key={agent.id}
                                       name={agent.nome}
-                                      avatar={agent.avatar || 'https://i.pravatar.cc/150?img=1'}
+                                      avatar={agent.avatar ? `http://localhost:3001${agent.avatar}` : 'https://i.pravatar.cc/150?img=1'}
                                       checked={!!checkedAgents[agent.id]}
                                       onChange={() => handleAgentCheck(agent.id)}
                                     />
