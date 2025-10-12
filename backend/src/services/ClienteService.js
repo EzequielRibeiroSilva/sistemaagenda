@@ -43,10 +43,7 @@ class ClienteService {
       }
     }
 
-    // 3. Validar email se fornecido
-    if (dadosCliente.email && !this.validarFormatoEmail(dadosCliente.email)) {
-      erros.push('Formato de email inválido');
-    }
+    // 3. Email removido - clientes não precisam de email (comunicação via WhatsApp)
 
     // 4. Validar dados de assinante
     if (dadosCliente.is_assinante) {
@@ -110,15 +107,7 @@ class ClienteService {
     return { valido: true };
   }
 
-  /**
-   * Validar formato do email
-   * @param {string} email - Email a ser validado
-   * @returns {boolean} Se o email é válido
-   */
-  validarFormatoEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  }
+  // Método validarFormatoEmail removido - clientes não precisam de email
 
   /**
    * Validar dados de assinatura
@@ -198,7 +187,6 @@ class ClienteService {
       ultimo_nome: dadosCliente.ultimo_nome?.trim() || '',
       telefone: dadosCliente.telefone?.trim() || '',
       telefone_limpo: this.limparTelefone(dadosCliente.telefone),
-      email: dadosCliente.email?.trim().toLowerCase() || null,
       is_assinante: Boolean(dadosCliente.is_assinante),
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || 
         (dadosCliente.is_assinante ? new Date().toISOString().split('T')[0] : null),

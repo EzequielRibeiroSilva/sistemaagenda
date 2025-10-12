@@ -57,7 +57,6 @@ class ClienteController {
         firstName: cliente.primeiro_nome,
         lastName: cliente.ultimo_nome,
         phone: cliente.telefone,
-        email: cliente.email,
         isSubscriber: cliente.is_assinante,
         subscriptionStartDate: cliente.data_inicio_assinatura,
         status: cliente.status,
@@ -135,7 +134,6 @@ class ClienteController {
           firstName: novoCliente.primeiro_nome,
           lastName: novoCliente.ultimo_nome,
           phone: novoCliente.telefone,
-          email: novoCliente.email,
           isSubscriber: novoCliente.is_assinante,
           subscriptionStartDate: novoCliente.data_inicio_assinatura,
           status: novoCliente.status
@@ -201,7 +199,6 @@ class ClienteController {
           firstName: cliente.primeiro_nome,
           lastName: cliente.ultimo_nome,
           phone: cliente.telefone,
-          email: cliente.email,
           isSubscriber: cliente.is_assinante,
           subscriptionStartDate: cliente.data_inicio_assinatura,
           status: cliente.status,
@@ -255,7 +252,6 @@ class ClienteController {
           firstName: clienteAtualizado.primeiro_nome,
           lastName: clienteAtualizado.ultimo_nome,
           phone: clienteAtualizado.telefone,
-          email: clienteAtualizado.email,
           isSubscriber: clienteAtualizado.is_assinante,
           subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
           status: clienteAtualizado.status

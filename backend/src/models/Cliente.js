@@ -35,7 +35,6 @@ class Cliente extends BaseModel {
         'ultimo_nome',
         'telefone',
         'telefone_limpo',
-        'email',
         'is_assinante',
         'data_inicio_assinatura',
         'status',
@@ -85,6 +84,19 @@ class Cliente extends BaseModel {
     return await this.db(this.tableName)
       .where('id', id)
       .where('unidade_id', unidadeId)
+      .select(
+        'id',
+        'primeiro_nome',
+        'ultimo_nome',
+        'telefone',
+        'telefone_limpo',
+        'is_assinante',
+        'data_inicio_assinatura',
+        'status',
+        'whatsapp_id',
+        'created_at',
+        'updated_at'
+      )
       .first();
   }
 
@@ -98,6 +110,19 @@ class Cliente extends BaseModel {
     return await this.db(this.tableName)
       .where('telefone_limpo', telefoneLimpo)
       .where('unidade_id', unidadeId)
+      .select(
+        'id',
+        'primeiro_nome',
+        'ultimo_nome',
+        'telefone',
+        'telefone_limpo',
+        'is_assinante',
+        'data_inicio_assinatura',
+        'status',
+        'whatsapp_id',
+        'created_at',
+        'updated_at'
+      )
       .first();
   }
 
@@ -128,7 +153,6 @@ class Cliente extends BaseModel {
       ultimo_nome: dadosCliente.ultimo_nome?.trim() || '',
       telefone: dadosCliente.telefone?.trim() || '',
       telefone_limpo: telefoneLimpo,
-      email: dadosCliente.email?.trim() || null,
       is_assinante: dadosCliente.is_assinante || false,
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || null,
       status: dadosCliente.status || 'Ativo',
@@ -160,6 +184,7 @@ class Cliente extends BaseModel {
         .where('telefone_limpo', telefoneLimpo)
         .where('unidade_id', unidadeId)
         .where('id', '!=', id)
+        .select('id')
         .first();
 
       if (outroClienteComTelefone) {
