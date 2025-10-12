@@ -8,7 +8,6 @@ export interface Client {
   firstName: string;
   lastName: string;
   phone: string;
-  email?: string;
   isSubscriber: boolean;
   subscriptionStartDate?: string;
   status: 'Ativo' | 'Bloqueado';
@@ -40,7 +39,6 @@ export interface CreateClientData {
   primeiro_nome: string;
   ultimo_nome?: string;
   telefone: string;
-  email?: string;
   is_assinante?: boolean;
   data_inicio_assinatura?: string;
   status?: 'Ativo' | 'Bloqueado';

@@ -101,7 +101,6 @@ export interface Client {
   id: number;
   name: string;
   phone: string;
-  email: string;
   socialAlert?: boolean;
   totalApps: number;
   nextAppStatus: string;
