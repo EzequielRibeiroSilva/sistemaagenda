@@ -1,0 +1,374 @@
+import { useState, useCallback, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+
+// Tipos para o módulo de clientes
+export interface Client {
+  id: number;
+  name: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email?: string;
+  isSubscriber: boolean;
+  subscriptionStartDate?: string;
+  status: 'Ativo' | 'Bloqueado';
+  whatsappId?: number;
+  createdAt: string;
+  updatedAt: string;
+  // Campos calculados para compatibilidade
+  totalApps: number;
+  nextAppStatus: string;
+  timeToNext: string;
+  socialAlert: boolean;
+}
+
+export interface ClientFilters {
+  nome?: string;
+  telefone?: string;
+  id?: number;
+  is_assinante?: boolean;
+  status?: 'Ativo' | 'Bloqueado';
+}
+
+export interface ClientStats {
+  total: number;
+  subscribers: number;
+  nonSubscribers: number;
+}
+
+export interface CreateClientData {
+  primeiro_nome: string;
+  ultimo_nome?: string;
+  telefone: string;
+  email?: string;
+  is_assinante?: boolean;
+  data_inicio_assinatura?: string;
+  status?: 'Ativo' | 'Bloqueado';
+}
+
+export interface UpdateClientData extends Partial<CreateClientData> {
+  id: number;
+}
+
+/**
+ * Hook personalizado para gerenciamento de clientes
+ * Integra com a API backend e gerencia estado local
+ * 
+ * Funcionalidades:
+ * - CRUD completo de clientes
+ * - Filtros server-side
+ * - Contagem de assinantes
+ * - Loading states
+ * - Error handling
+ * - Cache local
+ */
+export const useClientManagement = () => {
+  // Estados
+  const [clients, setClients] = useState<Client[]>([]);
+  const [stats, setStats] = useState<ClientStats>({ total: 0, subscribers: 0, nonSubscribers: 0 });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ClientFilters>({});
+
+  // Hook de autenticação
+  const { token, isAuthenticated } = useAuth();
+
+  // Função para fazer requisições autenticadas
+  const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    if (!token || !isAuthenticated) {
+      throw new Error('Token de autenticação não encontrado');
+    }
+
+    const response = await fetch(`http://localhost:3000/api${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+    }
+
+    return response.json();
+  }, [token, isAuthenticated]);
+
+  /**
+   * Limpar erro
+   */
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  /**
+   * Buscar lista de clientes com filtros
+   */
+  const fetchClients = useCallback(async (newFilters?: ClientFilters) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Usar filtros fornecidos ou filtros atuais
+      const currentFilters = newFilters || filters;
+
+      // Construir query string
+      const queryParams = new URLSearchParams();
+      
+      if (currentFilters.nome) {
+        queryParams.append('nome', currentFilters.nome);
+      }
+      
+      if (currentFilters.telefone) {
+        queryParams.append('telefone', currentFilters.telefone);
+      }
+      
+      if (currentFilters.id) {
+        queryParams.append('id', currentFilters.id.toString());
+      }
+      
+      if (typeof currentFilters.is_assinante === 'boolean') {
+        queryParams.append('is_assinante', currentFilters.is_assinante.toString());
+      }
+      
+      if (currentFilters.status) {
+        queryParams.append('status', currentFilters.status);
+      }
+
+      const queryString = queryParams.toString();
+      const url = `/clientes${queryString ? `?${queryString}` : ''}`;
+
+      const response = await authenticatedFetch(url);
+
+      if (response.success) {
+        setClients(response.data || []);
+        
+        // Atualizar estatísticas se fornecidas
+        if (response.meta) {
+          setStats({
+            total: response.meta.total || 0,
+            subscribers: response.meta.subscribers || 0,
+            nonSubscribers: response.meta.nonSubscribers || 0
+          });
+        }
+
+        // Atualizar filtros se novos foram fornecidos
+        if (newFilters) {
+          setFilters(newFilters);
+        }
+      } else {
+        throw new Error(response.message || 'Erro ao buscar clientes');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar clientes';
+      setError(errorMessage);
+      console.error('Erro ao buscar clientes:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [authenticatedFetch, filters]);
+
+  /**
+   * Buscar cliente específico por ID
+   */
+  const fetchClient = useCallback(async (id: number): Promise<Client | null> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch(`/clientes/${id}`);
+
+      if (response.success) {
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Cliente não encontrado');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar cliente';
+      setError(errorMessage);
+      console.error('Erro ao buscar cliente:', err);
+      return null;
+    }
+  }, [authenticatedFetch]);
+
+  /**
+   * Criar novo cliente
+   */
+  const createClient = useCallback(async (clientData: CreateClientData): Promise<boolean> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch('/clientes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(clientData),
+      });
+
+      if (response.success) {
+        // Recarregar lista após criação
+        await fetchClients();
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao criar cliente');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente';
+      setError(errorMessage);
+      console.error('Erro ao criar cliente:', err);
+      return false;
+    }
+  }, [authenticatedFetch, fetchClients]);
+
+  /**
+   * Atualizar cliente existente
+   */
+  const updateClient = useCallback(async (id: number, clientData: Partial<CreateClientData>): Promise<boolean> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch(`/clientes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(clientData),
+      });
+
+      if (response.success) {
+        // Recarregar lista após atualização
+        await fetchClients();
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao atualizar cliente');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar cliente';
+      setError(errorMessage);
+      console.error('Erro ao atualizar cliente:', err);
+      return false;
+    }
+  }, [authenticatedFetch, fetchClients]);
+
+  /**
+   * Excluir cliente (soft delete)
+   */
+  const deleteClient = useCallback(async (id: number): Promise<boolean> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch(`/clientes/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.success) {
+        // Recarregar lista após exclusão
+        await fetchClients();
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao excluir cliente');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir cliente';
+      setError(errorMessage);
+      console.error('Erro ao excluir cliente:', err);
+      return false;
+    }
+  }, [authenticatedFetch, fetchClients]);
+
+  /**
+   * Aplicar filtros (server-side)
+   */
+  const applyFilters = useCallback(async (newFilters: ClientFilters) => {
+    await fetchClients(newFilters);
+  }, [fetchClients]);
+
+  /**
+   * Limpar filtros
+   */
+  const clearFilters = useCallback(async () => {
+    const emptyFilters: ClientFilters = {};
+    await fetchClients(emptyFilters);
+  }, [fetchClients]);
+
+  /**
+   * Buscar apenas assinantes
+   */
+  const fetchSubscribers = useCallback(async () => {
+    await fetchClients({ is_assinante: true });
+  }, [fetchClients]);
+
+  /**
+   * Buscar apenas não assinantes
+   */
+  const fetchNonSubscribers = useCallback(async () => {
+    await fetchClients({ is_assinante: false });
+  }, [fetchClients]);
+
+  /**
+   * Criar cliente rápido para agendamento
+   */
+  const createClientForBooking = useCallback(async (telefone: string, nome: string): Promise<Client | null> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch('/clientes/agendamento', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ telefone, nome }),
+      });
+
+      if (response.success) {
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Erro ao criar cliente para agendamento');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente para agendamento';
+      setError(errorMessage);
+      console.error('Erro ao criar cliente para agendamento:', err);
+      return null;
+    }
+  }, [authenticatedFetch]);
+
+  /**
+   * Carregar dados iniciais
+   */
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  // Retornar interface do hook
+  return {
+    // Estados
+    clients,
+    stats,
+    loading,
+    error,
+    filters,
+
+    // Ações
+    fetchClients,
+    fetchClient,
+    createClient,
+    updateClient,
+    deleteClient,
+    applyFilters,
+    clearFilters,
+    fetchSubscribers,
+    fetchNonSubscribers,
+    createClientForBooking,
+    clearError,
+
+    // Computed values
+    subscriberCount: stats.subscribers,
+    totalCount: stats.total,
+    nonSubscriberCount: stats.nonSubscribers,
+    hasClients: clients.length > 0,
+    hasFilters: Object.keys(filters).length > 0
+  };
+};

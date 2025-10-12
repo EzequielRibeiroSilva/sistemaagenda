@@ -1,259 +1,374 @@
-const BaseController = require('./BaseController');
 const Cliente = require('../models/Cliente');
 
-class ClienteController extends BaseController {
+/**
+ * Controller para gerenciamento de clientes
+ * Implementa CRUD completo com suporte a Multi-Tenant e Assinantes
+ *
+ * Endpoints:
+ * - GET /clientes - Listagem com filtros
+ * - POST /clientes - Criação manual
+ * - GET /clientes/:id - Detalhe para edição
+ * - PUT /clientes/:id - Atualização
+ * - DELETE /clientes/:id - Exclusão (soft delete)
+ * - POST /clientes/agendamento - Criação rápida para agendamento
+ */
+class ClienteController {
   constructor() {
-    super(new Cliente());
+    this.clienteModel = new Cliente();
   }
 
-  // GET /api/clientes - Buscar clientes do usuário logado
-  async index(req, res) {
+  /**
+   * GET /api/clientes - Listagem de clientes com filtros
+   * Suporta filtros por nome, telefone, ID, status de assinante
+   */
+  async list(req, res) {
     try {
-      const usuarioId = req.user?.id;
-      
-      if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+      const usuarioId = req.user.id;
+      const unidadeId = req.user.unidade_id;
+
+      // Validar se usuário tem unidade_id (Multi-Tenant)
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade para acessar clientes'
         });
       }
 
-      const { page, limit, assinante, search } = req.query;
-      let data;
-
-      if (assinante === 'true') {
-        data = await this.model.findAssinantes(usuarioId);
-      } else if (search) {
-        // Busca por nome ou telefone
-        data = await this.model.db(this.model.tableName)
-          .where('usuario_id', usuarioId)
-          .where(function() {
-            this.where('nome', 'ilike', `%${search}%`)
-                .orWhere('telefone', 'ilike', `%${search}%`)
-                .orWhere('email', 'ilike', `%${search}%`);
-          })
-          .select('*');
-      } else if (page && limit) {
-        const filters = { usuario_id: usuarioId };
-        const result = await this.model.findWithPagination(
-          parseInt(page), 
-          parseInt(limit), 
-          filters
-        );
-        return res.json(result);
-      } else {
-        data = await this.model.findByUsuario(usuarioId);
-      }
-
-      return res.json({ data });
-    } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
-      return res.status(500).json({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
-      });
-    }
-  }
-
-  // POST /api/clientes - Criar novo cliente
-  async store(req, res) {
-    try {
-      const usuarioId = req.user?.id;
-      
-      if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
-        });
-      }
-
-      // Verificar se já existe cliente com mesmo telefone
-      const { telefone, email } = req.body;
-      
-      if (telefone) {
-        const clienteExistente = await this.model.findByTelefone(telefone, usuarioId);
-        if (clienteExistente) {
-          return res.status(400).json({ 
-            error: 'Cliente já existe',
-            message: 'Já existe um cliente com este telefone' 
-          });
-        }
-      }
-
-      if (email) {
-        const clienteExistente = await this.model.findByEmail(email, usuarioId);
-        if (clienteExistente) {
-          return res.status(400).json({ 
-            error: 'Cliente já existe',
-            message: 'Já existe um cliente com este email' 
-          });
-        }
-      }
-
-      const dadosCliente = {
-        ...req.body,
-        usuario_id: usuarioId
+      // Extrair filtros da query string
+      const filtros = {
+        nome: req.query.nome || req.query.name,
+        telefone: req.query.telefone || req.query.phone,
+        id: req.query.id ? parseInt(req.query.id) : null,
+        is_assinante: req.query.is_assinante === 'true' ? true :
+                     req.query.is_assinante === 'false' ? false : null,
+        status: req.query.status
       };
 
-      const data = await this.model.create(dadosCliente);
-      return res.status(201).json({ 
-        data,
-        message: 'Cliente criado com sucesso' 
+      // Buscar clientes e contadores
+      const [clientes, contadores] = await Promise.all([
+        this.clienteModel.findByUnidade(unidadeId, filtros),
+        this.clienteModel.countByUnidade(unidadeId, filtros)
+      ]);
+
+      // Formatar dados para o frontend
+      const clientesFormatados = clientes.map(cliente => ({
+        id: cliente.id,
+        name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
+        firstName: cliente.primeiro_nome,
+        lastName: cliente.ultimo_nome,
+        phone: cliente.telefone,
+        email: cliente.email,
+        isSubscriber: cliente.is_assinante,
+        subscriptionStartDate: cliente.data_inicio_assinatura,
+        status: cliente.status,
+        whatsappId: cliente.whatsapp_id,
+        createdAt: cliente.created_at,
+        updatedAt: cliente.updated_at,
+        // Campos calculados para compatibilidade com frontend existente
+        totalApps: 0, // TODO: Implementar contagem de agendamentos
+        nextAppStatus: 'n/a',
+        timeToNext: 'n/a',
+        socialAlert: cliente.is_assinante
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: clientesFormatados,
+        meta: {
+          total: contadores.total,
+          subscribers: contadores.assinantes,
+          nonSubscribers: contadores.naoAssinantes,
+          filters: filtros
+        },
+        message: `${contadores.total} cliente(s) encontrado(s)`
       });
+
     } catch (error) {
-      console.error('Erro ao criar cliente:', error);
-      return res.status(500).json({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
+      console.error('[ClienteController] Erro ao listar clientes:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao listar clientes',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
 
-  // PUT /api/clientes/:id - Atualizar cliente
+  /**
+   * POST /api/clientes - Criar novo cliente
+   */
+  async create(req, res) {
+    try {
+      const usuarioId = req.user.id;
+      const unidadeId = req.user.unidade_id;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade para criar clientes'
+        });
+      }
+
+      // Validar dados obrigatórios
+      const { primeiro_nome, telefone } = req.body;
+      if (!primeiro_nome?.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Primeiro nome é obrigatório'
+        });
+      }
+
+      if (!telefone?.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Telefone é obrigatório'
+        });
+      }
+
+      // Criar cliente
+      const novoCliente = await this.clienteModel.create(req.body, unidadeId);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          id: novoCliente.id,
+          name: `${novoCliente.primeiro_nome} ${novoCliente.ultimo_nome}`.trim(),
+          firstName: novoCliente.primeiro_nome,
+          lastName: novoCliente.ultimo_nome,
+          phone: novoCliente.telefone,
+          email: novoCliente.email,
+          isSubscriber: novoCliente.is_assinante,
+          subscriptionStartDate: novoCliente.data_inicio_assinatura,
+          status: novoCliente.status
+        },
+        message: 'Cliente criado com sucesso'
+      });
+
+    } catch (error) {
+      console.error('[ClienteController] Erro ao criar cliente:', error);
+
+      // Tratar erros específicos
+      if (error.message.includes('telefone nesta unidade')) {
+        return res.status(409).json({
+          success: false,
+          message: error.message
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao criar cliente',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /api/clientes/:id - Buscar cliente específico
+   */
+  async show(req, res) {
+    try {
+      const clienteId = parseInt(req.params.id);
+      const unidadeId = req.user.unidade_id;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade'
+        });
+      }
+
+      if (!clienteId || isNaN(clienteId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente inválido'
+        });
+      }
+
+      const cliente = await this.clienteModel.findByIdAndUnidade(clienteId, unidadeId);
+
+      if (!cliente) {
+        return res.status(404).json({
+          success: false,
+          message: 'Cliente não encontrado'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          id: cliente.id,
+          name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
+          firstName: cliente.primeiro_nome,
+          lastName: cliente.ultimo_nome,
+          phone: cliente.telefone,
+          email: cliente.email,
+          isSubscriber: cliente.is_assinante,
+          subscriptionStartDate: cliente.data_inicio_assinatura,
+          status: cliente.status,
+          whatsappId: cliente.whatsapp_id,
+          createdAt: cliente.created_at,
+          updatedAt: cliente.updated_at
+        },
+        message: 'Cliente encontrado'
+      });
+
+    } catch (error) {
+      console.error('[ClienteController] Erro ao buscar cliente:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao buscar cliente',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * PUT /api/clientes/:id - Atualizar cliente
+   */
   async update(req, res) {
     try {
-      const { id } = req.params;
-      const usuarioId = req.user?.id;
-      
-      if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+      const clienteId = parseInt(req.params.id);
+      const unidadeId = req.user.unidade_id;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade'
         });
       }
 
-      // Verificar se o cliente pertence ao usuário
-      const cliente = await this.model.findById(id);
-      if (!cliente) {
-        return res.status(404).json({ 
-          error: 'Cliente não encontrado' 
+      if (!clienteId || isNaN(clienteId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente inválido'
         });
       }
 
-      if (cliente.usuario_id !== usuarioId) {
-        return res.status(403).json({ 
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para editar este cliente' 
-        });
-      }
+      // Atualizar cliente
+      const clienteAtualizado = await this.clienteModel.update(clienteId, req.body, unidadeId);
 
-      // Verificar duplicatas se telefone ou email foram alterados
-      const { telefone, email } = req.body;
-      
-      if (telefone && telefone !== cliente.telefone) {
-        const clienteExistente = await this.model.findByTelefone(telefone, usuarioId);
-        if (clienteExistente && clienteExistente.id !== parseInt(id)) {
-          return res.status(400).json({ 
-            error: 'Telefone já existe',
-            message: 'Já existe outro cliente com este telefone' 
-          });
-        }
-      }
-
-      if (email && email !== cliente.email) {
-        const clienteExistente = await this.model.findByEmail(email, usuarioId);
-        if (clienteExistente && clienteExistente.id !== parseInt(id)) {
-          return res.status(400).json({ 
-            error: 'Email já existe',
-            message: 'Já existe outro cliente com este email' 
-          });
-        }
-      }
-
-      const data = await this.model.update(id, req.body);
-      return res.json({ 
-        data,
-        message: 'Cliente atualizado com sucesso' 
-      });
-    } catch (error) {
-      console.error('Erro ao atualizar cliente:', error);
-      return res.status(500).json({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
-      });
-    }
-  }
-
-  // DELETE /api/clientes/:id - Deletar cliente
-  async destroy(req, res) {
-    try {
-      const { id } = req.params;
-      const usuarioId = req.user?.id;
-      
-      if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
-        });
-      }
-
-      // Verificar se o cliente pertence ao usuário
-      const cliente = await this.model.findById(id);
-      if (!cliente) {
-        return res.status(404).json({ 
-          error: 'Cliente não encontrado' 
-        });
-      }
-
-      if (cliente.usuario_id !== usuarioId) {
-        return res.status(403).json({ 
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para deletar este cliente' 
-        });
-      }
-
-      const deleted = await this.model.delete(id);
-      
-      if (deleted) {
-        return res.json({ 
-          message: 'Cliente deletado com sucesso' 
-        });
-      } else {
-        return res.status(500).json({ 
-          error: 'Erro ao deletar cliente' 
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao deletar cliente:', error);
-      
-      if (error.code === '23503') {
-        return res.status(400).json({ 
-          error: 'Não é possível deletar',
-          message: 'Este cliente possui agendamentos vinculados' 
-        });
-      }
-      
-      return res.status(500).json({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
-      });
-    }
-  }
-
-  // GET /api/clientes/stats - Estatísticas dos clientes
-  async stats(req, res) {
-    try {
-      const usuarioId = req.user?.id;
-      
-      if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
-        });
-      }
-
-      const total = await this.model.count({ usuario_id: usuarioId });
-      const assinantes = await this.model.findAssinantes(usuarioId);
-      const comAgendamentos = await this.model.findWithAgendamentos(usuarioId);
-
-      return res.json({
+      res.status(200).json({
+        success: true,
         data: {
-          total,
-          assinantes: assinantes.length,
-          com_agendamentos: comAgendamentos.length,
-          sem_agendamentos: total - comAgendamentos.length
-        }
+          id: clienteAtualizado.id,
+          name: `${clienteAtualizado.primeiro_nome} ${clienteAtualizado.ultimo_nome}`.trim(),
+          firstName: clienteAtualizado.primeiro_nome,
+          lastName: clienteAtualizado.ultimo_nome,
+          phone: clienteAtualizado.telefone,
+          email: clienteAtualizado.email,
+          isSubscriber: clienteAtualizado.is_assinante,
+          subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
+          status: clienteAtualizado.status
+        },
+        message: 'Cliente atualizado com sucesso'
       });
+
     } catch (error) {
-      console.error('Erro ao buscar estatísticas:', error);
-      return res.status(500).json({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
+      console.error('[ClienteController] Erro ao atualizar cliente:', error);
+
+      // Tratar erros específicos
+      if (error.message.includes('não encontrado') || error.message.includes('telefone nesta unidade')) {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao atualizar cliente',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/clientes/:id - Excluir cliente (soft delete)
+   */
+  async delete(req, res) {
+    try {
+      const clienteId = parseInt(req.params.id);
+      const unidadeId = req.user.unidade_id;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade'
+        });
+      }
+
+      if (!clienteId || isNaN(clienteId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente inválido'
+        });
+      }
+
+      const sucesso = await this.clienteModel.delete(clienteId, unidadeId);
+
+      if (!sucesso) {
+        return res.status(404).json({
+          success: false,
+          message: 'Cliente não encontrado'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Cliente excluído com sucesso'
+      });
+
+    } catch (error) {
+      console.error('[ClienteController] Erro ao excluir cliente:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor ao excluir cliente',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * POST /api/clientes/agendamento - Criar cliente rápido para agendamento
+   */
+  async createForAgendamento(req, res) {
+    try {
+      const unidadeId = req.user.unidade_id;
+      const { telefone, nome } = req.body;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade'
+        });
+      }
+
+      if (!telefone || !nome) {
+        return res.status(400).json({
+          success: false,
+          message: 'Telefone e nome são obrigatórios'
+        });
+      }
+
+      const cliente = await this.clienteModel.findOrCreateForAgendamento(telefone, nome, unidadeId);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          id: cliente.id,
+          name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
+          phone: cliente.telefone,
+          isSubscriber: cliente.is_assinante
+        },
+        message: 'Cliente encontrado/criado para agendamento'
+      });
+
+    } catch (error) {
+      console.error('[ClienteController] Erro ao criar cliente para agendamento:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }

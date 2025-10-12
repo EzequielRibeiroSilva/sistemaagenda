@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           // Validar token fazendo uma requisição de teste
           try {
-            const response = await fetch('http://localhost:3001/api/auth/validate', {
+            const response = await fetch('http://localhost:3000/api/auth/validate', {
               method: 'GET',
               headers: {
                 'Authorization': `Bearer ${storedToken}`,

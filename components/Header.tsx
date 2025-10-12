@@ -142,7 +142,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
             >
               {user.avatarUrl ? (
                 <img
-                  src={`http://localhost:3001${user.avatarUrl}`}
+                  src={`http://localhost:3000${user.avatarUrl}`}
                   alt="User Avatar"
                   className="h-9 w-9 rounded-full object-cover"
                   onError={(e) => {

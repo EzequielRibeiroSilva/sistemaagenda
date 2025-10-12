@@ -29,7 +29,7 @@ const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void }> 
               {service.agentes_associados.slice(0, 3).map((agent, index) => (
                 <img
                   key={agent.id}
-                  src={agent.avatar_url ? `http://localhost:3001${agent.avatar_url}` : `https://i.pravatar.cc/150?img=${index + 1}`}
+                  src={agent.avatar_url ? `http://localhost:3000${agent.avatar_url}` : `https://i.pravatar.cc/150?img=${index + 1}`}
                   alt={`${agent.nome} ${agent.sobrenome}`}
                   className="w-6 h-6 rounded-full border-2 border-white object-cover"
                 />

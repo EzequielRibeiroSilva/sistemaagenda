@@ -118,7 +118,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     // ✅ CORREÇÃO: Definir preview da imagem atual com fallback robusto
                     const avatarUrl = agent.avatar_url || agent.avatar;
                     if (avatarUrl) {
-                        const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:3001${avatarUrl}`;
+                        const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:3000${avatarUrl}`;
                         setAvatarPreview(fullUrl);
                         console.log('🖼️ Avatar preview definido:', fullUrl);
                     } else {
