@@ -111,28 +111,28 @@ export const useClientManagement = () => {
       setLoading(true);
       setError(null);
 
-      // Usar filtros fornecidos ou filtros atuais
+      // Usar filtros fornecidos ou filtros atuais do estado
       const currentFilters = newFilters || filters;
 
       // Construir query string
       const queryParams = new URLSearchParams();
-      
+
       if (currentFilters.nome) {
         queryParams.append('nome', currentFilters.nome);
       }
-      
+
       if (currentFilters.telefone) {
         queryParams.append('telefone', currentFilters.telefone);
       }
-      
+
       if (currentFilters.id) {
         queryParams.append('id', currentFilters.id.toString());
       }
-      
+
       if (typeof currentFilters.is_assinante === 'boolean') {
         queryParams.append('is_assinante', currentFilters.is_assinante.toString());
       }
-      
+
       if (currentFilters.status) {
         queryParams.append('status', currentFilters.status);
       }
@@ -144,7 +144,7 @@ export const useClientManagement = () => {
 
       if (response.success) {
         setClients(response.data || []);
-        
+
         // Atualizar estatísticas se fornecidas
         if (response.meta) {
           setStats({
@@ -154,8 +154,9 @@ export const useClientManagement = () => {
           });
         }
 
-        // Atualizar filtros se novos foram fornecidos
-        if (newFilters) {
+        // ✅ CORREÇÃO: Atualizar filtros APENAS se novos foram fornecidos
+        // e são diferentes dos atuais (evita loop)
+        if (newFilters && JSON.stringify(newFilters) !== JSON.stringify(filters)) {
           setFilters(newFilters);
         }
       } else {
@@ -168,7 +169,7 @@ export const useClientManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, filters]);
+  }, [authenticatedFetch]);
 
   /**
    * Buscar cliente específico por ID
@@ -335,12 +336,8 @@ export const useClientManagement = () => {
     }
   }, [authenticatedFetch]);
 
-  /**
-   * Carregar dados iniciais
-   */
-  useEffect(() => {
-    fetchClients();
-  }, []);
+  // ✅ CORREÇÃO DEFINITIVA: Removido useEffect inicial
+  // O componente deve chamar fetchClients() explicitamente quando necessário
 
   // Retornar interface do hook
   return {

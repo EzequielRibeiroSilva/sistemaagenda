@@ -35,7 +35,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         subscriberCount
     } = useClientManagement();
 
-    // Aplicar filtros com debounce
+    // ✅ CORREÇÃO: Carregar dados iniciais APENAS UMA VEZ
+    useEffect(() => {
+        applyFilters({});
+    }, []); // Array vazio = executa apenas uma vez
+
+    // Aplicar filtros com debounce (SEM applyFilters nas dependências)
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             const apiFilters: ClientFilters = {};
@@ -56,7 +61,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         }, 500); // Debounce de 500ms
 
         return () => clearTimeout(timeoutId);
-    }, [localFilters, applyFilters]);
+    }, [localFilters]); // ✅ CORREÇÃO: Removido 'applyFilters' das dependências
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
