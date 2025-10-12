@@ -26,7 +26,7 @@ const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; onDelete
             <div className="relative w-12 h-12">
                 {agent.avatar ? (
                     <img
-                        src={`http://localhost:3001${agent.avatar}`}
+                        src={`http://localhost:3000${agent.avatar}`}
                         alt={agent.name}
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => {

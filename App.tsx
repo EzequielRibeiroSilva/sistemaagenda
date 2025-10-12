@@ -192,7 +192,7 @@ const App: React.FC = () => {
       case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
       case 'clients-list': return <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />;
-      case 'clients-add': return <AddClientPage />;
+      case 'clients-add': return <AddClientPage setActiveView={setActiveView} />;
       case 'clients-edit': return <EditClientPage setActiveView={setActiveView} clientId={editingClientId} />;
       case 'services-list':
       case 'services-extra':
