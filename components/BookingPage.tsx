@@ -228,7 +228,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <SelectionCard
             key={service.id}
             title={service.nome}
-            subtitle={`${service.duracao_minutos} min - R$ ${service.preco.toFixed(2).replace('.', ',')}`}
+            subtitle={`${service.duracao_minutos} min - R$ ${(Number(service.preco) || 0).toFixed(2).replace('.', ',')}`}
             onClick={() => handleToggleService(service.id)}
             isSelected={tempSelectedServiceIds.includes(service.id)}
           />
@@ -388,7 +388,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   };
 
   const renderConfirmation = () => {
-    const totalPrice = useMemo(() => selectedServices.reduce((total, s) => total + s.preco, 0), [selectedServices]);
+    const totalPrice = useMemo(() => selectedServices.reduce((total, s) => total + (Number(s.preco) || 0), 0), [selectedServices]);
     const totalDuration = useMemo(() => selectedServices.reduce((total, s) => total + s.duracao_minutos, 0), [selectedServices]);
 
     return (
@@ -401,7 +401,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               {selectedServices.map(service => (
                 <li key={service.id} className="flex justify-between">
                   <span>{service.nome}</span>
-                  <span>R$ {service.preco.toFixed(2).replace('.', ',')}</span>
+                  <span>R$ {(Number(service.preco) || 0).toFixed(2).replace('.', ',')}</span>
                 </li>
               ))}
             </ul>

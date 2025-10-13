@@ -154,10 +154,25 @@ const App: React.FC = () => {
   // Simple Router
   const path = window.location.pathname;
 
+  // ROTAS PÚBLICAS (DEVEM VIR PRIMEIRO - SEM AUTENTICAÇÃO)
+
+  // Rota de agendamento: /booking/:unidadeId
+  if (path.startsWith('/booking/')) {
+    return <BookingPage />;
+  }
+
+  // Rota de agendamento com slug: /:slug/booking/:unidadeId
+  const slugBookingMatch = path.match(/^\/([^\/]+)\/booking\/(\d+)$/);
+  if (slugBookingMatch) {
+    return <BookingPage />;
+  }
+
+  // Rota legacy de reserva
   if (path === '/reservar') {
     return <BookingPage />;
   }
 
+  // ROTAS PRIVADAS (REQUEREM AUTENTICAÇÃO)
   if (!isAuthenticated || user.role === 'none') {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
