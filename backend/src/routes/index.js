@@ -12,6 +12,7 @@ const servicosExtrasRoutes = require('./servicosExtras');
 const agendamentosRoutes = require('./agendamentos');
 const usuariosRoutes = require('./usuarios');
 const agentesRoutes = require('./agentes');
+const settingsRoutes = require('./settings');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -37,6 +38,7 @@ router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos/extras', authenticate(), servicosExtrasRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
 router.use('/agendamentos', authenticate(), agendamentosRoutes);
+router.use('/settings', authenticate(), settingsRoutes);
 
 // Rota de teste pública para verificar se a API está funcionando
 router.get('/test', (req, res) => {

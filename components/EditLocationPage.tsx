@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
+import { getAssetUrl } from '../utils/api';
 
 // Tipos para os dados do formulário
 interface ScheduleDay {
@@ -61,7 +62,7 @@ const AgentSelectItem: React.FC<{
         <div className="relative w-10 h-10 mx-4">
             {avatar ? (
                 <img
-                    src={`http://localhost:3000${avatar}`}
+                    src={getAssetUrl(avatar)}
                     alt={name}
                     className="w-10 h-10 rounded-full object-cover"
                     onError={(e) => {

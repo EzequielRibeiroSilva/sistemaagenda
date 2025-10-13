@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Edit, FaUser, X } from './Icons';
 import { useAgentManagement, Agent } from '../hooks/useAgentManagement';
+import { getAssetUrl } from '../utils/api';
 
 // Componente removido - usando dados reais do hook
 
@@ -26,7 +27,7 @@ const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; onDelete
             <div className="relative w-12 h-12">
                 {agent.avatar ? (
                     <img
-                        src={`http://localhost:3000${agent.avatar}`}
+                        src={getAssetUrl(agent.avatar)}
                         alt={agent.name}
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => {

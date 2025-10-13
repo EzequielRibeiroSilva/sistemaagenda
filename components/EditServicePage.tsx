@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Check, FaUser } from './Icons';
 import { useServiceManagement } from '../hooks/useServiceManagement';
+import { getAssetUrl } from '../utils/api';
 
 interface Service {
   id: number;
@@ -102,7 +103,7 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: 
         <div className="relative w-8 h-8 mx-3">
             {avatar ? (
                 <img
-                    src={`http://localhost:3000${avatar}`}
+                    src={getAssetUrl(avatar)}
                     alt={name}
                     className="w-8 h-8 rounded-full object-cover"
                     onError={(e) => {

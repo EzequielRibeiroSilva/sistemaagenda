@@ -6,6 +6,7 @@ import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
 import { useAuth } from '../contexts/AuthContext';
+import { getAssetUrl } from '../utils/api';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -142,7 +143,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
             >
               {user.avatarUrl ? (
                 <img
-                  src={`http://localhost:3000${user.avatarUrl}`}
+                  src={getAssetUrl(user.avatarUrl)}
                   alt="User Avatar"
                   className="h-9 w-9 rounded-full object-cover"
                   onError={(e) => {
