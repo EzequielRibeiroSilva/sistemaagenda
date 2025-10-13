@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-
-const API_BASE_URL = 'http://localhost:3000/api';
+import { API_BASE_URL } from '../utils/api';
 
 interface Service {
   id: number;

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit } from './Icons';
 import ServiceExtrasPage from './ServiceExtrasPage';
 import { useServiceManagement } from '../hooks/useServiceManagement';
+import { getAssetUrl } from '../utils/api';
 
 interface Service {
   id: number;
@@ -29,7 +30,7 @@ const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void }> 
               {service.agentes_associados.slice(0, 3).map((agent, index) => (
                 <img
                   key={agent.id}
-                  src={agent.avatar_url ? `http://localhost:3000${agent.avatar_url}` : `https://i.pravatar.cc/150?img=${index + 1}`}
+                  src={agent.avatar_url ? getAssetUrl(agent.avatar_url) : `https://i.pravatar.cc/150?img=${index + 1}`}
                   alt={`${agent.nome} ${agent.sobrenome}`}
                   className="w-6 h-6 rounded-full border-2 border-white object-cover"
                 />

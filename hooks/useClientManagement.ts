@@ -77,7 +77,7 @@ export const useClientManagement = () => {
       throw new Error('Token de autenticação não encontrado');
     }
 
-    const response = await fetch(`http://localhost:3000/api${url}`, {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${url}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',

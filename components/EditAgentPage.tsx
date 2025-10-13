@@ -3,6 +3,7 @@ import { Plus, Check, Leaf, ImagePlaceholder } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useAgentManagement, AgentDetails } from '../hooks/useAgentManagement';
 import { useAuth } from '../contexts/AuthContext';
+import { getAssetUrl } from '../utils/api';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -118,7 +119,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     // ✅ CORREÇÃO: Definir preview da imagem atual com fallback robusto
                     const avatarUrl = agent.avatar_url || agent.avatar;
                     if (avatarUrl) {
-                        const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:3000${avatarUrl}`;
+                        const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : getAssetUrl(avatarUrl);
                         setAvatarPreview(fullUrl);
                         console.log('🖼️ Avatar preview definido:', fullUrl);
                     } else {
