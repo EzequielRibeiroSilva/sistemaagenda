@@ -137,9 +137,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         }
     };
 
-    // Gerar link de reserva usando unidade_id real do AuthContext
-    const unidadeId = user?.unidade_id;
-    const bookingLink = unidadeId ? `${window.location.origin}/booking/${unidadeId}` : 'Carregando...';
+    // Gerar link de reserva usando nome do negócio e unidade_id
+    const bookingLink = generateBookingLink() || 'Carregando...';
 
     // Função para salvar todas as definições (transação unificada)
     const handleSaveAllSettings = async () => {

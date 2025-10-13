@@ -214,12 +214,22 @@ export const useSettingsManagement = () => {
 
   // Gerar link de agendamento
   const generateBookingLink = useCallback(() => {
-    if (!user?.unidade_id) {
+    if (!user?.unidade_id || !settings?.nome_negocio) {
       return '';
     }
 
-    return `${window.location.origin}/booking/${user.unidade_id}`;
-  }, [user?.unidade_id]);
+    // Gerar slug do nome do negócio
+    const slug = settings.nome_negocio
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^a-z0-9\s-]/g, '') // Remove caracteres especiais
+      .replace(/\s+/g, '-') // Substitui espaços por hífens
+      .replace(/-+/g, '-') // Remove hífens duplicados
+      .trim('-'); // Remove hífens do início e fim
+
+    return `${window.location.origin}/${slug}/booking/${user.unidade_id}`;
+  }, [user?.unidade_id, settings?.nome_negocio]);
 
   // Copiar link para clipboard
   const copyBookingLink = useCallback(async () => {
