@@ -11,9 +11,11 @@ class WhatsAppService {
     this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'painel-agendamento';
     this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
     this.enabled = process.env.WHATSAPP_ENABLED === 'true';
+    this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
 
     console.log('[WhatsApp] Configuração:', {
       enabled: this.enabled,
+      testMode: this.testMode,
       url: this.evolutionApiUrl,
       instance: this.instanceName,
       instanceId: this.instanceId
@@ -56,13 +58,34 @@ class WhatsAppService {
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
+    // Modo de teste - simula envio bem-sucedido
+    if (this.testMode) {
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      console.log(`🧪 [WhatsApp TEST MODE] Simulando envio para ${formattedPhone}`);
+      console.log(`📱 [WhatsApp TEST MODE] Mensagem: ${message.substring(0, 100)}...`);
+
+      // Simular delay de rede
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log(`✅ [WhatsApp TEST MODE] Mensagem "enviada" com sucesso para ${phoneNumber}`);
+      return {
+        success: true,
+        data: {
+          messageId: `test_${Date.now()}`,
+          phone: formattedPhone,
+          status: 'sent',
+          testMode: true
+        }
+      };
+    }
+
     try {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
-      
+
       console.log(`[WhatsApp] Enviando mensagem para ${formattedPhone}`);
-      
-      // Usar instanceId se disponível, senão usar instanceName
-      const instanceIdentifier = this.instanceId || this.instanceName;
+
+      // Usar instanceName se disponível, senão usar instanceId
+      const instanceIdentifier = this.instanceName || this.instanceId;
 
       const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${instanceIdentifier}`, {
         method: 'POST',
@@ -139,18 +162,28 @@ _Esta é uma mensagem automática do sistema de agendamentos._`;
    */
   async sendAppointmentConfirmation(agendamentoData) {
     try {
+      if (!this.isEnabled()) {
+        console.log(`[WhatsApp] Serviço desabilitado - Confirmação NÃO enviada para ${agendamentoData.cliente.nome}`);
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
       const message = this.generateAppointmentMessage(agendamentoData);
       const result = await this.sendMessage(agendamentoData.cliente.telefone, message);
-      
+
       if (result.success) {
-        console.log(`[WhatsApp] Confirmação enviada para ${agendamentoData.cliente.nome}`);
+        console.log(`✅ [WhatsApp] Confirmação enviada para ${agendamentoData.cliente.nome} (${agendamentoData.cliente.telefone})`);
       } else {
-        console.error(`[WhatsApp] Falha ao enviar confirmação para ${agendamentoData.cliente.nome}:`, result.error);
+        console.error(`❌ [WhatsApp] Falha ao enviar confirmação para ${agendamentoData.cliente.nome}:`, result.error);
+
+        // Log mais detalhado para debug
+        if (result.error && result.error.response && result.error.response.message) {
+          console.error(`[WhatsApp] Detalhes do erro:`, result.error.response.message);
+        }
       }
-      
+
       return result;
     } catch (error) {
-      console.error('[WhatsApp] Erro ao enviar confirmação:', error);
+      console.error('❌ [WhatsApp] Erro ao enviar confirmação:', error);
       return { success: false, error: error.message };
     }
   }

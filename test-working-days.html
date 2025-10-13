@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Dias de Trabalho do Agente</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .day { padding: 10px; margin: 5px; border: 1px solid #ccc; border-radius: 5px; }
+        .working { background-color: #d4edda; }
+        .not-working { background-color: #f8d7da; }
+        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 20px 0; }
+        .calendar-day { 
+            padding: 10px; 
+            text-align: center; 
+            border: 1px solid #ccc; 
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .available { background-color: #d4edda; }
+        .unavailable { background-color: #f8d7da; color: #666; cursor: not-allowed; }
+        .past { background-color: #e9ecef; color: #666; cursor: not-allowed; }
+        .selected { background-color: #007bff; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste - Dias de Trabalho do Agente</h1>
+        
+        <h2>📊 Dados do Agente (ID: 23)</h2>
+        <div id="agent-data"></div>
+        
+        <h2>📅 Calendário de Outubro 2025</h2>
+        <div class="calendar" id="calendar"></div>
+        
+        <h2>📋 Legenda</h2>
+        <div class="day available">✅ Disponível (agente trabalha + data futura)</div>
+        <div class="day unavailable">❌ Indisponível (agente não trabalha)</div>
+        <div class="day past">⏰ Data passada</div>
+    </div>
+
+    <script>
+        // Dados simulados do agente (baseados na resposta da API)
+        const agentSchedule = [
+            { dia_semana: 0, ativo: true, periodos: [] }, // Domingo - SEM PERÍODOS
+            { dia_semana: 1, ativo: true, periodos: [] }, // Segunda - SEM PERÍODOS
+            { dia_semana: 2, ativo: true, periodos: [] }, // Terça - SEM PERÍODOS
+            { dia_semana: 3, ativo: true, periodos: [{ inicio: "10:00", fim: "16:00" }] }, // Quarta - COM PERÍODOS
+            { dia_semana: 4, ativo: true, periodos: [{ inicio: "10:00", fim: "16:00" }] }, // Quinta - COM PERÍODOS
+            { dia_semana: 5, ativo: true, periodos: [{ inicio: "09:00", fim: "12:00" }, { inicio: "14:00", fim: "16:00" }] }, // Sexta - COM PERÍODOS
+            { dia_semana: 6, ativo: true, periodos: [] } // Sábado - SEM PERÍODOS
+        ];
+
+        // Lógica corrigida para identificar dias de trabalho
+        const workingDays = agentSchedule
+            .filter(h => h.ativo && h.periodos && h.periodos.length > 0)
+            .map(h => h.dia_semana);
+
+        console.log('Dias de trabalho do agente:', workingDays);
+
+        // Exibir dados do agente
+        const agentDataDiv = document.getElementById('agent-data');
+        agentDataDiv.innerHTML = agentSchedule.map(day => {
+            const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const isWorking = workingDays.includes(day.dia_semana);
+            const periodsText = day.periodos.length > 0 ? 
+                day.periodos.map(p => `${p.inicio}-${p.fim}`).join(', ') : 
+                'Sem horários';
+            
+            return `
+                <div class="day ${isWorking ? 'working' : 'not-working'}">
+                    <strong>${dayNames[day.dia_semana]}</strong> (${day.dia_semana}): 
+                    ${isWorking ? '✅ TRABALHA' : '❌ FOLGA'} - ${periodsText}
+                </div>
+            `;
+        }).join('');
+
+        // Gerar calendário de outubro 2025
+        const calendarDiv = document.getElementById('calendar');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Outubro 2025
+        const year = 2025;
+        const month = 9; // Outubro (0-indexed)
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        // Cabeçalho dos dias da semana
+        const dayHeaders = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        dayHeaders.forEach(header => {
+            const headerDiv = document.createElement('div');
+            headerDiv.textContent = header;
+            headerDiv.style.fontWeight = 'bold';
+            headerDiv.style.textAlign = 'center';
+            headerDiv.style.padding = '5px';
+            calendarDiv.appendChild(headerDiv);
+        });
+
+        // Espaços em branco antes do primeiro dia
+        for (let i = 0; i < firstDay; i++) {
+            const blankDiv = document.createElement('div');
+            calendarDiv.appendChild(blankDiv);
+        }
+
+        // Dias do mês
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dayOfWeek = date.getDay();
+            const worksThatDay = workingDays.includes(dayOfWeek);
+            const isPast = date < today;
+            const isAvailable = date >= today && worksThatDay;
+
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'calendar-day';
+            dayDiv.textContent = day;
+
+            if (isPast) {
+                dayDiv.classList.add('past');
+                dayDiv.title = 'Data já passou';
+            } else if (worksThatDay) {
+                dayDiv.classList.add('available');
+                dayDiv.title = 'Agente trabalha neste dia';
+            } else {
+                dayDiv.classList.add('unavailable');
+                dayDiv.title = 'Agente não trabalha neste dia (folga)';
+            }
+
+            calendarDiv.appendChild(dayDiv);
+        }
+    </script>
+</body>
+</html>

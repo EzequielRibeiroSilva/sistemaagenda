@@ -137,9 +137,17 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     if (!salonData?.horarios_agentes || !agentId) return [];
 
     const workingDays = salonData.horarios_agentes
-      .filter(h => h.agente_id === agentId && h.ativo) // Apenas dias ativos do agente selecionado
-      .map(h => h.dia_semana); // Retorna array de números [1, 2, 3, 4, 5] para Seg-Sex
+      .filter(h => {
+        // Dia deve estar ativo E ter pelo menos um período de trabalho definido
+        return h.agente_id === agentId &&
+               h.ativo &&
+               h.periodos &&
+               h.periodos.length > 0;
+      })
+      .map(h => h.dia_semana); // Retorna array de números apenas dos dias com horários
 
+    console.log(`[BookingPage] Horários do agente ${agentId}:`, salonData.horarios_agentes.filter(h => h.agente_id === agentId));
+    console.log(`[BookingPage] Dias de trabalho do agente ${agentId}:`, workingDays);
     return workingDays;
   }, [salonData, selectedAgentId, tempSelectedAgentId]);
 
@@ -392,23 +400,39 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               const date = new Date(year, month, day);
               const dayOfWeek = date.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
               const worksThatDay = agentWorkingDays.includes(dayOfWeek);
+              const isPastDate = date < today;
               const isAvailable = date >= today && worksThatDay; // Só disponível se for futuro E o agente trabalha nesse dia
               const isSelected = selectedDate?.toDateString() === date.toDateString();
+
+              // Determinar estilo baseado no status do dia
+              let buttonStyle = '';
+              let textStyle = '';
+
+              if (isSelected) {
+                buttonStyle = 'bg-gray-800 text-white';
+                textStyle = 'text-white';
+              } else if (isAvailable) {
+                buttonStyle = 'bg-lime-100/60 hover:bg-lime-200';
+                textStyle = 'text-gray-800';
+              } else {
+                // Dias passados OU dias de folga recebem o mesmo estilo cinza
+                buttonStyle = 'cursor-not-allowed bg-gray-100';
+                textStyle = 'text-gray-400';
+              }
 
               return (
                 <button
                   key={day}
                   disabled={!isAvailable}
                   onClick={() => isAvailable ? handleDateSelect(date) : undefined}
-                  className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${
-                    isSelected ? 'bg-gray-800 text-white' :
-                    isAvailable ? 'bg-lime-100/60 hover:bg-lime-200' : 'cursor-not-allowed'
-                  }`}
-                  style={{
-                    backgroundColor: !isAvailable ? '#F3F4F6' : undefined
-                  }}
+                  className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${buttonStyle}`}
+                  title={
+                    isPastDate ? 'Data já passou' :
+                    !worksThatDay ? 'Agente não trabalha neste dia' :
+                    'Clique para selecionar'
+                  }
                 >
-                  <span className={`font-semibold ${isSelected ? 'text-white' : isAvailable ? 'text-gray-800' : 'text-gray-400'}`}>
+                  <span className={`font-semibold ${textStyle}`}>
                     {day}
                   </span>
                 </button>
@@ -492,8 +516,27 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         </div>
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Telefone (WhatsApp)</label>
-          <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(00) 90000-0000" className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
+          <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(85) 99999-9999" className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
           <p className="text-xs text-gray-500 mt-1">Você receberá a confirmação do agendamento neste número.</p>
+        </div>
+
+        {/* Informações sobre o processo */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-start space-x-2">
+            <div className="text-blue-600 mt-0.5">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-blue-800">Como funciona:</p>
+              <ul className="text-xs text-blue-700 mt-1 space-y-1">
+                <li>• Se você já é nosso cliente, seus dados serão encontrados automaticamente</li>
+                <li>• Se é a primeira vez, criaremos seu cadastro rapidamente</li>
+                <li>• A confirmação será enviada via WhatsApp instantaneamente</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
        <div className="p-4 mt-auto border-t border-gray-200 bg-white">
@@ -511,9 +554,26 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       return;
     }
 
+    // Validar formato do telefone
+    const phoneRegex = /^(\+55\s?)?(\(?\d{2}\)?\s?)?\d{4,5}-?\d{4}$/;
+    if (!phoneRegex.test(clientPhone.trim())) {
+      alert('Por favor, insira um número de telefone válido (ex: (85) 99999-9999)');
+      return;
+    }
+
     setIsCreatingAppointment(true);
 
     try {
+      // Formatar telefone para o padrão brasileiro
+      let formattedPhone = clientPhone.trim().replace(/\D/g, '');
+      if (formattedPhone.length === 11 && !formattedPhone.startsWith('55')) {
+        formattedPhone = `+55${formattedPhone}`;
+      } else if (formattedPhone.length === 13 && formattedPhone.startsWith('55')) {
+        formattedPhone = `+${formattedPhone}`;
+      } else if (!formattedPhone.startsWith('+55')) {
+        formattedPhone = `+55${formattedPhone}`;
+      }
+
       const agendamentoData = {
         unidade_id: unidadeId,
         agente_id: selectedAgentId,
@@ -521,7 +581,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         data_agendamento: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD
         hora_inicio: selectedTime,
         cliente_nome: clientName.trim(),
-        cliente_telefone: clientPhone.trim(),
+        cliente_telefone: formattedPhone,
         observacoes: ''
       };
 
@@ -531,12 +591,24 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
       if (agendamentoCriado) {
         console.log('[BookingPage] Agendamento criado com sucesso:', agendamentoCriado.agendamento_id);
+        console.log('[BookingPage] Cliente processado e WhatsApp enviado automaticamente');
         setCurrentStep(6); // Ir para tela de sucesso
       }
 
     } catch (error) {
       console.error('[BookingPage] Erro ao criar agendamento:', error);
-      alert(`Erro ao criar agendamento: ${error.message}`);
+
+      // Mensagens de erro mais específicas
+      let errorMessage = 'Erro ao criar agendamento';
+      if (error.message.includes('Horário indisponível')) {
+        errorMessage = 'Este horário já foi ocupado. Por favor, escolha outro horário.';
+      } else if (error.message.includes('WhatsApp')) {
+        errorMessage = 'Agendamento criado, mas houve problema no envio do WhatsApp. Entre em contato conosco.';
+      } else if (error.message.includes('cliente')) {
+        errorMessage = 'Erro ao processar seus dados. Verifique as informações e tente novamente.';
+      }
+
+      alert(errorMessage);
     } finally {
       setIsCreatingAppointment(false);
     }
@@ -588,16 +660,43 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   };
 
   const renderSuccess = () => (
-    <div className="p-8 flex flex-col items-center justify-center text-center h-full">
-        <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-800">Agendamento Confirmado!</h2>
-        <p className="text-gray-600 mt-2">
-            Obrigado, {clientName}.<br />
-            Enviamos a confirmação e os detalhes do seu agendamento para o seu WhatsApp.
-        </p>
-        <button onClick={() => resetToStep(1)} className="mt-8 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors">
+    <div className="p-6 flex flex-col items-center justify-center text-center h-full space-y-6">
+        <CheckCircle className="w-20 h-20 text-green-500" />
+
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Agendamento Confirmado!</h2>
+          <p className="text-gray-600">
+              Obrigado, <span className="font-semibold">{clientName}</span>!
+          </p>
+        </div>
+
+        {/* Informações do processo */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 w-full max-w-sm">
+          <div className="flex items-center justify-center space-x-2 mb-3">
+            <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+            </svg>
+            <span className="text-sm font-medium text-green-800">WhatsApp Enviado</span>
+          </div>
+          <ul className="text-xs text-green-700 space-y-1">
+            <li>✓ Seus dados foram {clientPhone ? 'atualizados' : 'cadastrados'} com sucesso</li>
+            <li>✓ Confirmação enviada para {clientPhone}</li>
+            <li>✓ Você receberá lembretes automáticos</li>
+          </ul>
+        </div>
+
+        <div className="space-y-3 w-full max-w-sm">
+          <button
+            onClick={() => resetToStep(1)}
+            className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors"
+          >
             Fazer Novo Agendamento
-        </button>
+          </button>
+
+          <p className="text-xs text-gray-500">
+            Precisa de ajuda? Entre em contato conosco pelo WhatsApp
+          </p>
+        </div>
     </div>
   );
 
