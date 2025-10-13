@@ -112,13 +112,14 @@ class PublicBookingController {
   }
 
   /**
-   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD
+   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD&duration=90
    * Buscar disponibilidade de um agente em uma data específica
+   * Hierarquia: Horário Agente ∩ Horário Unidade ∩ Agendamentos Existentes
    */
   async getAgenteDisponibilidade(req, res) {
     try {
       const { id: agenteId } = req.params;
-      const { data } = req.query;
+      const { data, duration } = req.query;
 
       if (!data) {
         return res.status(400).json({
@@ -128,7 +129,10 @@ class PublicBookingController {
         });
       }
 
-      console.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data}`);
+      // Duração em minutos (padrão: 60 min)
+      const duracaoMinutos = parseInt(duration) || 60;
+
+      console.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min)`);
 
       // Verificar se agente existe e está ativo
       const agente = await this.agenteModel.findById(agenteId);
@@ -144,44 +148,67 @@ class PublicBookingController {
       const dataObj = new Date(data + 'T00:00:00');
       const diaSemana = dataObj.getDay();
 
-      // Buscar horários de funcionamento da unidade para este dia
+      // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
       const horarioUnidade = await db('horarios_funcionamento_unidade')
         .where('unidade_id', agente.unidade_id)
         .where('dia_semana', diaSemana)
         .where('is_aberto', true)
         .first();
 
-      if (!horarioUnidade) {
+      if (!horarioUnidade || !horarioUnidade.horarios_json || horarioUnidade.horarios_json.length === 0) {
         return res.json({
           success: true,
           data: {
+            agente_id: agenteId,
+            data: data,
+            dia_semana: diaSemana,
             slots_disponiveis: [],
             message: 'Unidade fechada neste dia'
           }
         });
       }
 
-      // Buscar agendamentos existentes do agente nesta data
+      // 2. HIERARQUIA: Buscar horários específicos do AGENTE (se existir)
+      const horarioAgente = await db('horarios_funcionamento')
+        .where('agente_id', agenteId)
+        .where('dia_semana', diaSemana)
+        .where('ativo', true)
+        .first();
+
+      // Usar horário do agente se existir, senão usar da unidade
+      const horariosParaUsar = horarioAgente && horarioAgente.periodos && horarioAgente.periodos.length > 0
+        ? horarioAgente.periodos
+        : horarioUnidade.horarios_json;
+
+      // 3. HIERARQUIA: Buscar agendamentos existentes do agente nesta data
       const agendamentosExistentes = await db('agendamentos')
         .where('agente_id', agenteId)
         .where('data_agendamento', data)
         .whereIn('status', ['Aprovado', 'Confirmado'])
         .select('hora_inicio', 'hora_fim');
 
-      // Gerar slots disponíveis baseado nos horários da unidade
+      console.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
+
+      // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
       const slotsDisponiveis = this.generateAvailableSlots(
-        horarioUnidade.horarios_json,
+        horariosParaUsar,
         agendamentosExistentes,
-        60 // duração padrão em minutos
+        duracaoMinutos
       );
+
+      // Retornar apenas array de horários (formato simples)
+      const horariosDisponiveis = slotsDisponiveis.map(slot => slot.hora_inicio);
 
       res.json({
         success: true,
         data: {
-          agente_id: agenteId,
+          agente_id: parseInt(agenteId),
           data: data,
           dia_semana: diaSemana,
-          slots_disponiveis: slotsDisponiveis
+          duracao_minutos: duracaoMinutos,
+          slots_disponiveis: horariosDisponiveis,
+          total_slots: horariosDisponiveis.length,
+          message: horariosDisponiveis.length === 0 ? 'Nenhum horário disponível neste dia' : `${horariosDisponiveis.length} horários disponíveis`
         }
       });
 
@@ -197,26 +224,37 @@ class PublicBookingController {
 
   /**
    * Gerar slots de horários disponíveis
+   * Algoritmo: Para cada período de funcionamento, gerar slots de 15 em 15 minutos
+   * e verificar se há espaço suficiente para a duração solicitada
    */
   generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos) {
     const slots = [];
-    
+    const intervaloSlot = 15; // Slots de 15 em 15 minutos para maior flexibilidade
+
     for (const periodo of horariosJson) {
       const inicio = this.timeToMinutes(periodo.inicio);
       const fim = this.timeToMinutes(periodo.fim);
-      
-      for (let minuto = inicio; minuto <= fim - duracaoMinutos; minuto += duracaoMinutos) {
+
+      // Gerar slots de 15 em 15 minutos
+      for (let minuto = inicio; minuto <= fim - duracaoMinutos; minuto += intervaloSlot) {
         const horarioSlot = this.minutesToTime(minuto);
         const horarioFim = this.minutesToTime(minuto + duracaoMinutos);
-        
+
+        // Verificar se há espaço suficiente para a duração completa
+        if (minuto + duracaoMinutos > fim) {
+          continue; // Não cabe no período de funcionamento
+        }
+
         // Verificar se não conflita com agendamentos existentes
         const conflito = agendamentosExistentes.some(agendamento => {
           const agendamentoInicio = this.timeToMinutes(agendamento.hora_inicio);
           const agendamentoFim = this.timeToMinutes(agendamento.hora_fim);
-          
+
+          // Verificar sobreposição: novo agendamento não pode começar antes do fim do existente
+          // nem terminar depois do início do existente
           return (minuto < agendamentoFim && (minuto + duracaoMinutos) > agendamentoInicio);
         });
-        
+
         if (!conflito) {
           slots.push({
             hora_inicio: horarioSlot,
@@ -226,7 +264,10 @@ class PublicBookingController {
         }
       }
     }
-    
+
+    // Ordenar slots por horário
+    slots.sort((a, b) => this.timeToMinutes(a.hora_inicio) - this.timeToMinutes(b.hora_inicio));
+
     return slots;
   }
 
