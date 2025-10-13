@@ -94,7 +94,14 @@ class AuthService {
       const usuarioModel = new Usuario();
       const usuario = await usuarioModel.findByEmail(email);
 
-
+      // DEBUG: Log dos dados do usuário encontrado
+      console.log('🔍 [DEBUG] Usuário encontrado no banco:', {
+        id: usuario?.id,
+        nome: usuario?.nome,
+        email: usuario?.email,
+        role: usuario?.role,
+        unidade_id: usuario?.unidade_id
+      });
 
       if (!usuario) {
         throw new Error('Credenciais inválidas');
