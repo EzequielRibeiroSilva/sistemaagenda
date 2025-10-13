@@ -59,6 +59,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [tempSelectedServiceIds, setTempSelectedServiceIds] = useState<number[]>([]);
   const [tempSelectedTime, setTempSelectedTime] = useState<string | null>(null);
 
+  // Estados para o novo calendário
+  const [viewDate, setViewDate] = useState(new Date());
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
+
   // Efeito para carregar os dados do salão
   useEffect(() => {
     const loadData = async () => {
@@ -127,17 +131,44 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const selectedAgent = useMemo(() => salonData?.agentes.find(a => a.id === selectedAgentId), [salonData, selectedAgentId]);
   const selectedServices = useMemo(() => salonData?.servicos.filter(s => selectedServiceIds.includes(s.id)) || [], [salonData, selectedServiceIds]);
 
+  // Extrair dias de trabalho do agente selecionado (usar tempSelectedAgentId para preview no calendário)
+  const agentWorkingDays = useMemo(() => {
+    const agentId = selectedAgentId || tempSelectedAgentId; // Usar temp para preview
+    if (!salonData?.horarios_agentes || !agentId) return [];
+
+    const workingDays = salonData.horarios_agentes
+      .filter(h => h.agente_id === agentId && h.ativo) // Apenas dias ativos do agente selecionado
+      .map(h => h.dia_semana); // Retorna array de números [1, 2, 3, 4, 5] para Seg-Sex
+
+    return workingDays;
+  }, [salonData, selectedAgentId, tempSelectedAgentId]);
+
   const availableAgents = useMemo(() => {
     if (!salonData) return [];
     return salonData.agentes;
   }, [salonData]);
 
   const availableServices = useMemo(() => {
-    if (!salonData) return [];
-    // Para simplificar, todos os serviços estão disponíveis para todos os agentes
-    // Em uma implementação mais complexa, poderia haver relacionamento agente-serviço
+    if (!salonData || !selectedAgentId) return [];
+
+    // Filtrar serviços baseado nas associações agente-serviço
+    if (salonData.agente_servicos) {
+      const servicosDoAgente = salonData.agente_servicos
+        .filter(associacao => associacao.agente_id === selectedAgentId)
+        .map(associacao => associacao.servico_id);
+
+      const servicosFiltrados = salonData.servicos.filter(servico =>
+        servicosDoAgente.includes(servico.id)
+      );
+
+      console.log(`[BookingPage] Serviços filtrados para agente ${selectedAgentId}:`, servicosFiltrados.length);
+      return servicosFiltrados;
+    }
+
+    // Fallback: se não há associações, mostrar todos os serviços
+    console.log('[BookingPage] Usando fallback: todos os serviços');
     return salonData.servicos;
-  }, [salonData]);
+  }, [salonData, selectedAgentId]);
 
   const handleToggleService = (serviceId: number) => {
     setTempSelectedServiceIds(prev => {
@@ -249,51 +280,57 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     </div>
   );
 
-  // Componente DateTimeSelectionStep com design melhorado e API real
-  const DateTimeSelectionStep: React.FC = () => {
-    const [viewDate, setViewDate] = useState(new Date()); // Inicializar com data atual, não mock
-    const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
-    const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  // Função para buscar disponibilidade quando uma data é selecionada
+  const handleDateSelect = async (date: Date) => {
+    console.log('[BookingPage] Data selecionada:', date);
+    console.log('[BookingPage] selectedAgent:', selectedAgent);
+    console.log('[BookingPage] selectedServices:', selectedServices);
 
+    setSelectedDate(date);
+    setTempSelectedTime('');
+    setIsLoadingSlots(true);
+    setAvailableTimeSlots([]);
+
+    try {
+      if (!selectedAgent) {
+        console.error('[BookingPage] Nenhum agente selecionado');
+        return;
+      }
+
+      if (!selectedServices || selectedServices.length === 0) {
+        console.error('[BookingPage] Nenhum serviço selecionado');
+        return;
+      }
+
+      // Calcular duração total dos serviços selecionados
+      const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
+
+      const dateStr = date.toISOString().split('T')[0];
+      console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min)`);
+
+      const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
+
+      if (disponibilidade && disponibilidade.slots_disponiveis) {
+        setAvailableTimeSlots(disponibilidade.slots_disponiveis);
+        console.log(`[BookingPage] ${disponibilidade.slots_disponiveis.length} slots disponíveis carregados`);
+        console.log('[BookingPage] Formato do primeiro slot:', disponibilidade.slots_disponiveis[0]);
+      } else {
+        setAvailableTimeSlots([]);
+        console.log('[BookingPage] Nenhum slot disponível');
+      }
+    } catch (error) {
+      console.error('[BookingPage] Erro ao buscar disponibilidade:', error);
+      setAvailableTimeSlots([]);
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
+
+  // Função para renderizar a seleção de data e hora com design melhorado e API real
+  const renderDateTimeSelection = () => {
     const toISODateString = (date: Date) => {
       const pad = (num: number) => num.toString().padStart(2, '0');
       return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    };
-
-    // Função para buscar disponibilidade quando uma data é selecionada
-    const handleDateSelect = async (date: Date) => {
-      setSelectedDate(date);
-      setTempSelectedTime('');
-      setIsLoadingSlots(true);
-      setAvailableTimeSlots([]);
-
-      try {
-        if (!selectedAgent) {
-          console.error('Nenhum agente selecionado');
-          return;
-        }
-
-        // Calcular duração total dos serviços selecionados
-        const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
-
-        const dateStr = toISODateString(date);
-        console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min)`);
-
-        const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
-
-        if (disponibilidade && disponibilidade.slots_disponiveis) {
-          setAvailableTimeSlots(disponibilidade.slots_disponiveis);
-          console.log(`[BookingPage] ${disponibilidade.slots_disponiveis.length} slots disponíveis carregados`);
-        } else {
-          setAvailableTimeSlots([]);
-          console.log('[BookingPage] Nenhum slot disponível');
-        }
-      } catch (error) {
-        console.error('[BookingPage] Erro ao buscar disponibilidade:', error);
-        setAvailableTimeSlots([]);
-      } finally {
-        setIsLoadingSlots(false);
-      }
     };
 
     // Função para verificar se um dia tem slots disponíveis (para indicadores visuais)
@@ -353,18 +390,23 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const date = new Date(year, month, day);
-              const isAvailable = date >= today; // Simplificado: mostrar todos os dias futuros como clicáveis
+              const dayOfWeek = date.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
+              const worksThatDay = agentWorkingDays.includes(dayOfWeek);
+              const isAvailable = date >= today && worksThatDay; // Só disponível se for futuro E o agente trabalha nesse dia
               const isSelected = selectedDate?.toDateString() === date.toDateString();
 
               return (
                 <button
                   key={day}
                   disabled={!isAvailable}
-                  onClick={() => handleDateSelect(date)}
+                  onClick={() => isAvailable ? handleDateSelect(date) : undefined}
                   className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${
                     isSelected ? 'bg-gray-800 text-white' :
-                    isAvailable ? 'bg-lime-100/60 hover:bg-lime-200' : 'text-gray-300'
+                    isAvailable ? 'bg-lime-100/60 hover:bg-lime-200' : 'cursor-not-allowed'
                   }`}
+                  style={{
+                    backgroundColor: !isAvailable ? '#F3F4F6' : undefined
+                  }}
                 >
                   <span className={`font-semibold ${isSelected ? 'text-white' : isAvailable ? 'text-gray-800' : 'text-gray-400'}`}>
                     {day}
@@ -399,16 +441,16 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               {/* Slots disponíveis da API */}
               {!isLoadingSlots && availableTimeSlots.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {availableTimeSlots.map(time => (
+                  {availableTimeSlots.map(slot => (
                     <button
-                      key={time}
-                      onClick={() => setTempSelectedTime(time)}
+                      key={slot.hora_inicio}
+                      onClick={() => setTempSelectedTime(slot.hora_inicio)}
                       className={`p-3 rounded-lg border font-semibold text-center transition-colors ${
-                        tempSelectedTime === time ? 'bg-gray-800 text-white border-gray-800' :
+                        tempSelectedTime === slot.hora_inicio ? 'bg-gray-800 text-white border-gray-800' :
                         'bg-lime-100/60 border-lime-200 text-gray-800 hover:border-lime-500'
                       }`}
                     >
-                      {time}
+                      {slot.hora_inicio}
                     </button>
                   ))}
                 </div>
@@ -440,8 +482,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     );
   };
 
-  const renderDateTimeSelection = () => <DateTimeSelectionStep />;
-  
   const renderClientDetails = () => (
     <div className="flex flex-col h-full">
       <StepHeader title="Seus dados" onBack={() => resetToStep(4)} />

@@ -54,10 +54,11 @@ class MasterUserService {
             .count('id as count')
             .first();
 
-          // Contar total de clientes
+          // Contar total de clientes através das unidades do usuário
           const totalClientes = await knex('clientes')
-            .where('usuario_id', user.id)
-            .count('id as count')
+            .join('unidades', 'clientes.unidade_id', 'unidades.id')
+            .where('unidades.usuario_id', user.id)
+            .count('clientes.id as count')
             .first();
 
           return {
@@ -275,8 +276,9 @@ class MasterUserService {
         .first();
 
       const totalClientes = await knex('clientes')
-        .where('usuario_id', id)
-        .count('id as count')
+        .join('unidades', 'clientes.unidade_id', 'unidades.id')
+        .where('unidades.usuario_id', id)
+        .count('clientes.id as count')
         .first();
 
       return {

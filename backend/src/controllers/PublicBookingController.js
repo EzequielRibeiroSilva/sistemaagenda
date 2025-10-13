@@ -66,10 +66,19 @@ class PublicBookingController {
         preco: parseFloat(servico.preco || 0)
       }));
 
-      // Buscar horários de funcionamento da unidade
-      const horariosFuncionamento = await db('horarios_funcionamento_unidade')
-        .where('unidade_id', unidadeId)
-        .select('dia_semana', 'horarios_json', 'is_aberto');
+      // Buscar associações agente-serviço para filtrar no frontend
+      const associacoesAgenteServico = await db('agente_servicos')
+        .whereIn('agente_id', agentes.map(a => a.id))
+        .select('agente_id', 'servico_id');
+
+      console.log(`[PublicBooking] Associações agente-serviço: ${associacoesAgenteServico.length} registros`);
+
+      // Buscar horários de funcionamento dos agentes da unidade
+      const horariosAgentes = await db('horarios_funcionamento')
+        .whereIn('agente_id', agentes.map(a => a.id))
+        .select('agente_id', 'dia_semana', 'ativo', 'periodos');
+
+      console.log(`[PublicBooking] Horários dos agentes: ${horariosAgentes.length} registros`);
 
       const salonData = {
         unidade: {
@@ -90,7 +99,8 @@ class PublicBookingController {
         },
         agentes,
         servicos,
-        horarios_funcionamento: horariosFuncionamento
+        agente_servicos: associacoesAgenteServico,
+        horarios_agentes: horariosAgentes
       };
 
       console.log(`[PublicBooking] Dados carregados: ${agentes.length} agentes, ${servicos.length} serviços`);
@@ -168,17 +178,52 @@ class PublicBookingController {
         });
       }
 
-      // 2. HIERARQUIA: Buscar horários específicos do AGENTE (se existir)
+      // 2. HIERARQUIA: Buscar horários específicos do AGENTE (ativo ou inativo)
       const horarioAgente = await db('horarios_funcionamento')
         .where('agente_id', agenteId)
         .where('dia_semana', diaSemana)
-        .where('ativo', true)
         .first();
 
-      // Usar horário do agente se existir, senão usar da unidade
-      const horariosParaUsar = horarioAgente && horarioAgente.periodos && horarioAgente.periodos.length > 0
-        ? horarioAgente.periodos
-        : horarioUnidade.horarios_json;
+      console.log(`[PublicBooking] Horário do agente para dia ${diaSemana}:`, horarioAgente);
+
+      // REGRA DE INTERSEÇÃO: Calcular (Horários do Agente) ∩ (Horários do Local)
+      let horariosParaUsar = [];
+
+      if (horarioAgente && horarioAgente.ativo && horarioAgente.periodos && horarioAgente.periodos.length > 0) {
+        // Agente tem horário personalizado e trabalha neste dia
+        console.log(`[PublicBooking] Horários do agente:`, horarioAgente.periodos);
+        console.log(`[PublicBooking] Horários da unidade:`, horarioUnidade.horarios_json);
+
+        // APLICAR INTERSEÇÃO: Para cada período do agente, calcular sobreposição com períodos da unidade
+        horariosParaUsar = this.calcularIntersecaoHorarios(horarioAgente.periodos, horarioUnidade.horarios_json);
+        console.log(`[PublicBooking] Horários após interseção:`, horariosParaUsar);
+
+      } else if (horarioAgente && (!horarioAgente.ativo || !horarioAgente.periodos || horarioAgente.periodos.length === 0)) {
+        // Agente tem folga neste dia (ativo = false ou sem períodos)
+        horariosParaUsar = [];
+        console.log(`[PublicBooking] Agente tem folga neste dia`);
+
+      } else {
+        // Agente não tem horário personalizado, usar da unidade (caso raro)
+        horariosParaUsar = horarioUnidade.horarios_json;
+        console.log(`[PublicBooking] Usando horário padrão da unidade (agente sem horário personalizado):`, horariosParaUsar);
+      }
+
+      // Verificar se há horários para trabalhar (se vazio = folga)
+      if (!horariosParaUsar || horariosParaUsar.length === 0) {
+        return res.json({
+          success: true,
+          data: {
+            agente_id: parseInt(agenteId),
+            data: data,
+            dia_semana: diaSemana,
+            duracao_minutos: duracaoMinutos,
+            slots_disponiveis: [],
+            total_slots: 0,
+            message: 'Agente não trabalha neste dia'
+          }
+        });
+      }
 
       // 3. HIERARQUIA: Buscar agendamentos existentes do agente nesta data
       const agendamentosExistentes = await db('agendamentos')
@@ -196,8 +241,8 @@ class PublicBookingController {
         duracaoMinutos
       );
 
-      // Retornar apenas array de horários (formato simples)
-      const horariosDisponiveis = slotsDisponiveis.map(slot => slot.hora_inicio);
+      // Retornar slots completos com hora_inicio, hora_fim e disponivel
+      const horariosDisponiveis = slotsDisponiveis;
 
       res.json({
         success: true,
@@ -229,13 +274,14 @@ class PublicBookingController {
    */
   generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos) {
     const slots = [];
-    const intervaloSlot = 15; // Slots de 15 em 15 minutos para maior flexibilidade
+    // CORREÇÃO CRÍTICA: Usar a duração do serviço como intervalo dos slots
+    const intervaloSlot = duracaoMinutos; // Slots baseados na duração real do serviço
 
     for (const periodo of horariosJson) {
       const inicio = this.timeToMinutes(periodo.inicio);
       const fim = this.timeToMinutes(periodo.fim);
 
-      // Gerar slots de 15 em 15 minutos
+      // Gerar slots baseados na duração do serviço (ex: 60min = slots de hora em hora)
       for (let minuto = inicio; minuto <= fim - duracaoMinutos; minuto += intervaloSlot) {
         const horarioSlot = this.minutesToTime(minuto);
         const horarioFim = this.minutesToTime(minuto + duracaoMinutos);
@@ -269,6 +315,43 @@ class PublicBookingController {
     slots.sort((a, b) => this.timeToMinutes(a.hora_inicio) - this.timeToMinutes(b.hora_inicio));
 
     return slots;
+  }
+
+  /**
+   * REGRA DE INTERSEÇÃO: Calcular sobreposição entre horários do agente e da unidade
+   * Retorna apenas os períodos onde ambos (agente E unidade) estão funcionando
+   */
+  calcularIntersecaoHorarios(horariosAgente, horariosUnidade) {
+    const intersecoes = [];
+
+    for (const periodoAgente of horariosAgente) {
+      for (const periodoUnidade of horariosUnidade) {
+        // Converter para minutos para facilitar cálculos
+        const agenteInicio = this.timeToMinutes(periodoAgente.inicio);
+        const agenteFim = this.timeToMinutes(periodoAgente.fim);
+        const unidadeInicio = this.timeToMinutes(periodoUnidade.inicio);
+        const unidadeFim = this.timeToMinutes(periodoUnidade.fim);
+
+        // Calcular interseção: início = max(início1, início2), fim = min(fim1, fim2)
+        const intersecaoInicio = Math.max(agenteInicio, unidadeInicio);
+        const intersecaoFim = Math.min(agenteFim, unidadeFim);
+
+        // Se há sobreposição válida (início < fim)
+        if (intersecaoInicio < intersecaoFim) {
+          intersecoes.push({
+            inicio: this.minutesToTime(intersecaoInicio),
+            fim: this.minutesToTime(intersecaoFim)
+          });
+        }
+      }
+    }
+
+    // Remover duplicatas e ordenar
+    const intersecoesSemDuplicatas = intersecoes.filter((periodo, index, array) =>
+      index === array.findIndex(p => p.inicio === periodo.inicio && p.fim === periodo.fim)
+    );
+
+    return intersecoesSemDuplicatas.sort((a, b) => this.timeToMinutes(a.inicio) - this.timeToMinutes(b.inicio));
   }
 
   /**
