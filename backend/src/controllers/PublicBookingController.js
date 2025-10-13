@@ -55,10 +55,16 @@ class PublicBookingController {
         .select('id', 'nome', 'nome_exibicao', 'biografia', 'avatar_url');
 
       // Buscar serviços ativos da unidade
-      const servicos = await db('servicos')
+      const servicosRaw = await db('servicos')
         .where('unidade_id', unidadeId)
         .where('status', 'Ativo')
         .select('id', 'nome', 'descricao', 'preco', 'duracao_minutos', 'categoria_id');
+
+      // Converter preços para números
+      const servicos = servicosRaw.map(servico => ({
+        ...servico,
+        preco: parseFloat(servico.preco || 0)
+      }));
 
       // Buscar horários de funcionamento da unidade
       const horariosFuncionamento = await db('horarios_funcionamento_unidade')
@@ -352,8 +358,14 @@ class PublicBookingController {
         .first();
 
       if (!cliente) {
+        // Dividir nome em primeiro e último nome
+        const nomePartes = cliente_nome.trim().split(' ');
+        const primeiro_nome = nomePartes[0];
+        const ultimo_nome = nomePartes.slice(1).join(' ') || '';
+
         const [novoCliente] = await trx('clientes').insert({
-          nome: cliente_nome,
+          primeiro_nome,
+          ultimo_nome,
           telefone: cliente_telefone,
           unidade_id: unidade_id,
           status: 'Ativo'
@@ -388,9 +400,10 @@ class PublicBookingController {
       console.log(`[PublicBooking] Agendamento criado com sucesso: ID ${agendamento.id}`);
 
       // Preparar dados para notificação WhatsApp
+      const nomeCompleto = `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim();
       const agendamentoCompleto = {
         cliente: {
-          nome: cliente.nome,
+          nome: nomeCompleto,
           telefone: cliente.telefone
         },
         agente: {

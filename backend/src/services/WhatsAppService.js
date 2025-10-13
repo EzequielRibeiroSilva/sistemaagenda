@@ -6,10 +6,18 @@
 
 class WhatsAppService {
   constructor() {
-    this.evolutionApiUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    this.evolutionApiUrl = process.env.EVO_API_BASE_URL || process.env.EVOLUTION_API_URL || 'http://localhost:8080';
     this.evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
     this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'painel-agendamento';
+    this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
     this.enabled = process.env.WHATSAPP_ENABLED === 'true';
+
+    console.log('[WhatsApp] Configuração:', {
+      enabled: this.enabled,
+      url: this.evolutionApiUrl,
+      instance: this.instanceName,
+      instanceId: this.instanceId
+    });
   }
 
   /**
@@ -53,7 +61,10 @@ class WhatsAppService {
       
       console.log(`[WhatsApp] Enviando mensagem para ${formattedPhone}`);
       
-      const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${this.instanceName}`, {
+      // Usar instanceId se disponível, senão usar instanceName
+      const instanceIdentifier = this.instanceId || this.instanceName;
+
+      const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${instanceIdentifier}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,11 +105,11 @@ class WhatsAppService {
       year: 'numeric'
     });
 
-    const servicosTexto = servicos.map(s => `• ${s.nome} - R$ ${s.preco.toFixed(2).replace('.', ',')}`).join('\n');
+    const servicosTexto = servicos.map(s => `• ${s.nome} - R$ ${parseFloat(s.preco || 0).toFixed(2).replace('.', ',')}`).join('\n');
 
     return `🎉 *Agendamento Confirmado!*
 
-Olá, ${cliente.nome}! Seu agendamento foi confirmado com sucesso.
+Olá, ${cliente.nome}! Seu agendamento na ${unidade.nome} foi CONFIRMADO!
 
 📋 *Detalhes do Agendamento:*
 📍 Local: ${unidade.nome}
@@ -109,12 +120,14 @@ Olá, ${cliente.nome}! Seu agendamento foi confirmado com sucesso.
 💼 *Serviços:*
 ${servicosTexto}
 
-💰 *Valor Total: R$ ${valor_total.toFixed(2).replace('.', ',')}*
+💰 *Valor Total: R$ ${parseFloat(valor_total || 0).toFixed(2).replace('.', ',')}*
 
 ⚠️ *Importante:*
 • Chegue com 10 minutos de antecedência
 • Em caso de cancelamento, avise com pelo menos 2 horas de antecedência
 • Traga um documento com foto
+
+Se precisar cancelar ou reagendar, entre em contato conosco.
 
 Obrigado por escolher nossos serviços! 😊
 
