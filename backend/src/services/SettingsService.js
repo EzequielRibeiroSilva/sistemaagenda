@@ -47,17 +47,37 @@ class SettingsService {
     try {
       // Converte dados do frontend para formato do banco (horas → minutos onde necessário)
       const dadosFormatados = this.formatarParaBanco(dadosConfiguracao);
-      
+
       // Valida dados
       this.validarConfiguracoes(dadosFormatados);
-      
+
       // Atualiza no banco
       const configuracaoAtualizada = await this.configuracaoModel.upsert(unidadeId, dadosFormatados);
-      
+
       // Retorna formatado para o frontend
       return this.formatarParaFrontend(configuracaoAtualizada);
     } catch (error) {
       console.error('[SettingsService] Erro ao atualizar configurações:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza apenas a logo da unidade (sem validação de outros campos)
+   */
+  async updateLogoOnly(unidadeId, logoUrl) {
+    try {
+      console.log(`[SettingsService] Atualizando apenas logo para unidade ${unidadeId}: ${logoUrl}`);
+
+      // Atualiza no banco apenas o campo logo_url
+      const configuracaoAtualizada = await this.configuracaoModel.upsert(unidadeId, {
+        logo_url: logoUrl
+      });
+
+      // Retorna formatado para o frontend
+      return this.formatarParaFrontend(configuracaoAtualizada);
+    } catch (error) {
+      console.error('[SettingsService] Erro ao atualizar logo:', error);
       throw error;
     }
   }
@@ -150,14 +170,16 @@ class SettingsService {
   }
 
   /**
-   * Valida dados de configuração
+   * Valida dados de configuração (validação condicional)
    */
   validarConfiguracoes(dadosConfiguracao) {
     const erros = [];
 
-    // Nome do negócio
-    if (!dadosConfiguracao.nome_negocio || dadosConfiguracao.nome_negocio.trim().length === 0) {
-      erros.push('Nome do negócio é obrigatório');
+    // Nome do negócio (só valida se estiver presente na requisição)
+    if (dadosConfiguracao.hasOwnProperty('nome_negocio')) {
+      if (!dadosConfiguracao.nome_negocio || dadosConfiguracao.nome_negocio.trim().length === 0) {
+        erros.push('Nome do negócio é obrigatório');
+      }
     }
 
     // Duração do serviço

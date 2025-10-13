@@ -38,7 +38,7 @@ router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos/extras', authenticate(), servicosExtrasRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
 router.use('/agendamentos', authenticate(), agendamentosRoutes);
-router.use('/settings', authenticate(), settingsRoutes);
+router.use('/settings', settingsRoutes);
 
 // Rota de teste pública para verificar se a API está funcionando
 router.get('/test', (req, res) => {

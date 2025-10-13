@@ -88,39 +88,49 @@ class SettingsController {
 
   /**
    * PUT /api/settings
-   * Atualiza configurações da unidade
+   * Atualiza configurações da unidade (suporta multipart/form-data para logo)
    */
   async updateSettings(req, res) {
     try {
       const { unidade_id, id: userId } = req.user;
-      const dadosConfiguracao = req.body;
-      
+      let dadosConfiguracao = { ...req.body };
+
       console.log(`[SettingsController] Atualizando configurações para unidade ${unidade_id}`);
-      
-      // Se há dados de senha, processa separadamente
+      console.log(`[SettingsController] Dados recebidos:`, dadosConfiguracao);
+      console.log(`[SettingsController] Arquivo recebido:`, !!req.file);
+
+      // 1. Processar upload de logo (se houver)
+      if (req.file) {
+        const logoUrl = `/uploads/logos/${req.file.filename}`;
+        dadosConfiguracao.logo_url = logoUrl;
+        console.log(`[SettingsController] Logo processado: ${logoUrl}`);
+      }
+
+      // 2. Processar alteração de senha (se houver)
       if (dadosConfiguracao.senha_atual && dadosConfiguracao.nova_senha) {
+        console.log(`[SettingsController] Processando alteração de senha`);
         await this.settingsService.updateSenhaAdmin(
           userId,
           dadosConfiguracao.senha_atual,
           dadosConfiguracao.nova_senha,
           dadosConfiguracao.confirmacao_senha
         );
-        
+
         // Remove dados de senha dos dados de configuração
         delete dadosConfiguracao.senha_atual;
         delete dadosConfiguracao.nova_senha;
         delete dadosConfiguracao.confirmacao_senha;
       }
-      
-      // Atualiza configurações
+
+      // 3. Atualizar configurações (incluindo logo_url se houver)
       const configuracaoAtualizada = await this.settingsService.updateConfiguracoes(
         unidade_id,
         dadosConfiguracao
       );
-      
+
       // Log de auditoria
       console.log(`🔍 AUDIT: ${req.user.role} (ID: ${req.user.id}) realizou ATUALIZAR_CONFIGURACOES em PUT /api/settings`);
-      
+
       res.json({
         success: true,
         data: configuracaoAtualizada,
@@ -128,6 +138,17 @@ class SettingsController {
       });
     } catch (error) {
       console.error('[SettingsController] Erro ao atualizar configurações:', error);
+
+      // Remove arquivo se houve erro
+      if (req.file) {
+        try {
+          await fs.unlink(req.file.path);
+          console.log(`[SettingsController] Arquivo removido após erro: ${req.file.path}`);
+        } catch (unlinkError) {
+          console.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
+        }
+      }
+
       res.status(400).json({
         success: false,
         error: 'Erro na validação',
@@ -155,10 +176,8 @@ class SettingsController {
       // Gera URL do logo
       const logoUrl = `/uploads/logos/${req.file.filename}`;
       
-      // Atualiza configuração com nova URL do logo
-      await this.settingsService.updateConfiguracoes(unidade_id, {
-        logo_url: logoUrl
-      });
+      // Atualiza configuração com nova URL do logo (sem validação de outros campos)
+      await this.settingsService.updateLogoOnly(unidade_id, logoUrl);
       
       console.log(`[SettingsController] Logo atualizado para unidade ${unidade_id}: ${logoUrl}`);
       

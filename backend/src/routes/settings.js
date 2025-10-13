@@ -23,11 +23,15 @@ router.get('/', authenticate(), async (req, res) => {
 
 /**
  * PUT /api/settings
- * Atualiza configurações da unidade
+ * Atualiza configurações da unidade (suporta multipart/form-data para logo)
  */
-router.put('/', authenticate(), async (req, res) => {
-  await settingsController.updateSettings(req, res);
-});
+router.put('/',
+  authenticate(),
+  settingsController.getUploadMiddleware(),
+  async (req, res) => {
+    await settingsController.updateSettings(req, res);
+  }
+);
 
 /**
  * POST /api/settings/logo
