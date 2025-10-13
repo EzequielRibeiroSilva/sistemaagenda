@@ -38,10 +38,16 @@ export interface PublicConfiguracoes {
   periodo_futuro_dias: number;
 }
 
-export interface HorarioFuncionamento {
+export interface HorarioAgente {
+  agente_id: number;
   dia_semana: number;
-  horarios_json: { inicio: string; fim: string }[];
-  is_aberto: boolean;
+  ativo: boolean;
+  periodos: { inicio: string; fim: string }[];
+}
+
+export interface PublicAgenteServico {
+  agente_id: number;
+  servico_id: number;
 }
 
 export interface SalonData {
@@ -49,7 +55,8 @@ export interface SalonData {
   configuracoes: PublicConfiguracoes;
   agentes: PublicAgente[];
   servicos: PublicServico[];
-  horarios_funcionamento: HorarioFuncionamento[];
+  agente_servicos: PublicAgenteServico[];
+  horarios_agentes: HorarioAgente[];
 }
 
 export interface SlotDisponivel {
