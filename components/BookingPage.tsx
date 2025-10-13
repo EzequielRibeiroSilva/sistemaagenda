@@ -249,41 +249,23 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     </div>
   );
 
-  const renderDateTimeSelection = () => {
-    // Gerar calendário infinito: 30 dias a partir de hoje
-    const generateCalendarDays = () => {
-      const days = [];
-      const today = new Date();
+  // Componente DateTimeSelectionStep com design melhorado e API real
+  const DateTimeSelectionStep: React.FC = () => {
+    const [viewDate, setViewDate] = useState(new Date()); // Inicializar com data atual, não mock
+    const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
+    const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 
-      for (let i = 0; i < 30; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
-        days.push(date);
-      }
-
-      return days;
+    const toISODateString = (date: Date) => {
+      const pad = (num: number) => num.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     };
-
-    const calendarDays = generateCalendarDays();
-
-    // Agrupar dias por mês para exibir cabeçalho do mês
-    const daysByMonth = calendarDays.reduce((acc, day) => {
-      const monthKey = `${day.getFullYear()}-${day.getMonth()}`;
-      if (!acc[monthKey]) {
-        acc[monthKey] = {
-          monthName: day.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-          days: []
-        };
-      }
-      acc[monthKey].days.push(day);
-      return acc;
-    }, {} as Record<string, { monthName: string; days: Date[] }>);
 
     // Função para buscar disponibilidade quando uma data é selecionada
     const handleDateSelect = async (date: Date) => {
       setSelectedDate(date);
       setTempSelectedTime('');
       setIsLoadingSlots(true);
+      setAvailableTimeSlots([]);
 
       try {
         if (!selectedAgent) {
@@ -294,125 +276,171 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         // Calcular duração total dos serviços selecionados
         const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
 
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = toISODateString(date);
         console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min)`);
 
         const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
 
         if (disponibilidade && disponibilidade.slots_disponiveis) {
-          // Converter array de strings para formato esperado pelo componente
-          const slots = disponibilidade.slots_disponiveis.map(hora => ({
-            hora_inicio: hora,
-            hora_fim: '', // Não usado na exibição
-            disponivel: true
-          }));
-
-          setAvailableSlots(slots);
-          console.log(`[BookingPage] ${slots.length} slots disponíveis carregados`);
+          setAvailableTimeSlots(disponibilidade.slots_disponiveis);
+          console.log(`[BookingPage] ${disponibilidade.slots_disponiveis.length} slots disponíveis carregados`);
         } else {
-          setAvailableSlots([]);
+          setAvailableTimeSlots([]);
           console.log('[BookingPage] Nenhum slot disponível');
         }
       } catch (error) {
         console.error('[BookingPage] Erro ao buscar disponibilidade:', error);
-        setAvailableSlots([]);
+        setAvailableTimeSlots([]);
       } finally {
         setIsLoadingSlots(false);
       }
     };
 
+    // Função para verificar se um dia tem slots disponíveis (para indicadores visuais)
+    const getDayAvailabilityIndicator = async (date: Date): Promise<number> => {
+      if (!selectedAgent) return 0;
+
+      try {
+        const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
+        const dateStr = toISODateString(date);
+        const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
+
+        if (disponibilidade && disponibilidade.slots_disponiveis) {
+          const slotsCount = disponibilidade.slots_disponiveis.length;
+          if (slotsCount <= 5) return 1;
+          else if (slotsCount <= 10) return 2;
+          else return 3;
+        }
+        return 0;
+      } catch {
+        return 0;
+      }
+    };
+
+    const Calendar = () => {
+      const handlePrevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
+      const handleNextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+
+      const year = viewDate.getFullYear();
+      const month = viewDate.getMonth();
+      const firstDayOfMonth = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const dayOfWeekOffset = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      return (
+        <div className="bg-white p-3 rounded-lg border border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={handlePrevMonth} className="p-2 rounded-full hover:bg-gray-100">
+              <ChevronLeft className="w-5 h-5 text-gray-500" />
+            </button>
+            <h3 className="font-bold text-gray-800 capitalize">
+              {viewDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}
+            </h3>
+            <button onClick={handleNextMonth} className="p-2 rounded-full hover:bg-gray-100">
+              <ChevronLeft className="w-5 h-5 text-gray-500 rotate-180" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-500 mb-2 uppercase">
+            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex'].map(d => <div key={d}>{d}</div>)}
+            <div className="text-yellow-600">Sáb</div>
+            <div className="text-yellow-600">Dom</div>
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: dayOfWeekOffset }).map((_, i) => <div key={`blank-${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const date = new Date(year, month, day);
+              const isAvailable = date >= today; // Simplificado: mostrar todos os dias futuros como clicáveis
+              const isSelected = selectedDate?.toDateString() === date.toDateString();
+
+              return (
+                <button
+                  key={day}
+                  disabled={!isAvailable}
+                  onClick={() => handleDateSelect(date)}
+                  className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${
+                    isSelected ? 'bg-gray-800 text-white' :
+                    isAvailable ? 'bg-lime-100/60 hover:bg-lime-200' : 'text-gray-300'
+                  }`}
+                >
+                  <span className={`font-semibold ${isSelected ? 'text-white' : isAvailable ? 'text-gray-800' : 'text-gray-400'}`}>
+                    {day}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div className="flex flex-col h-full">
         <StepHeader title="Escolha data e hora" onBack={() => resetToStep(3)} />
-        <div className="p-4 overflow-y-auto">
-          {/* Calendário infinito por mês */}
-          <div className="mb-6">
-            {Object.entries(daysByMonth).map(([monthKey, monthData]) => (
-              <div key={monthKey} className="mb-4">
-                {/* Cabeçalho do mês */}
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 capitalize">
-                  {monthData.monthName}
-                </h3>
+        <div className="p-4 overflow-y-auto space-y-4">
+          <Calendar />
+          {selectedDate && (
+            <div>
+              <div className="text-center font-semibold text-gray-700 py-3 mb-2 border-b-2 border-dotted">
+                Escolha um horário disponível {selectedDate.toLocaleDateString('pt-BR', {day: 'numeric', month: 'long'})}
+              </div>
 
-                {/* Dias do mês */}
-                <div className="grid grid-cols-7 gap-2 mb-4">
-                  {monthData.days.map(day => (
+              {/* Loading de slots */}
+              {isLoadingSlots && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-gray-600">Carregando horários...</span>
+                </div>
+              )}
+
+              {/* Slots disponíveis da API */}
+              {!isLoadingSlots && availableTimeSlots.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {availableTimeSlots.map(time => (
                     <button
-                      key={day.toISOString()}
-                      onClick={() => handleDateSelect(day)}
-                      className={`text-center p-3 rounded-lg border transition-colors ${
-                        selectedDate?.toDateString() === day.toDateString()
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white border-gray-300 text-gray-700 hover:border-blue-500'
+                      key={time}
+                      onClick={() => setTempSelectedTime(time)}
+                      className={`p-3 rounded-lg border font-semibold text-center transition-colors ${
+                        tempSelectedTime === time ? 'bg-gray-800 text-white border-gray-800' :
+                        'bg-lime-100/60 border-lime-200 text-gray-800 hover:border-lime-500'
                       }`}
                     >
-                      <p className="text-xs">{day.toLocaleDateString('pt-BR', { weekday: 'short' })}</p>
-                      <p className="font-bold text-lg">{day.getDate()}</p>
+                      {time}
                     </button>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
 
-          {/* Loading de slots */}
-          {isLoadingSlots && (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-              <span className="ml-2 text-gray-600">Carregando horários...</span>
-            </div>
-          )}
-
-          {/* Slots disponíveis */}
-          {!isLoadingSlots && availableSlots.length > 0 && (
-            <div>
-              <h4 className="text-md font-semibold text-gray-800 mb-3">
-                Horários disponíveis para {selectedDate?.toLocaleDateString('pt-BR')}
-              </h4>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                {availableSlots.map(slot => (
-                  <button
-                    key={slot.hora_inicio}
-                    onClick={() => setTempSelectedTime(slot.hora_inicio)}
-                    disabled={!slot.disponivel}
-                    className={`p-3 rounded-lg border-2 font-semibold text-center transition-colors ${
-                      tempSelectedTime === slot.hora_inicio
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : slot.disponivel
-                          ? 'bg-white border-gray-300 text-gray-800 hover:border-blue-500'
-                          : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {slot.hora_inicio}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Mensagem quando não há slots */}
-          {!isLoadingSlots && availableSlots.length === 0 && selectedDate && (
-            <div className="text-center py-8 text-gray-500">
-              <p>Nenhum horário disponível neste dia.</p>
-              <p className="text-sm mt-1">Tente selecionar outra data.</p>
+              {/* Mensagem quando não há slots */}
+              {!isLoadingSlots && availableTimeSlots.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Nenhum horário disponível neste dia.</p>
+                  <p className="text-sm mt-1">Tente selecionar outra data.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
         <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
-            <button
-              onClick={() => {
-                setSelectedTime(tempSelectedTime);
-                setCurrentStep(5);
-              }}
-              disabled={!tempSelectedTime}
-              className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
-            >
-                Próximo
-            </button>
+          <button
+            onClick={() => {
+              setSelectedTime(tempSelectedTime);
+              setCurrentStep(5);
+            }}
+            disabled={!tempSelectedTime || !selectedDate}
+            className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+          >
+            Próximo
+          </button>
         </div>
       </div>
     );
   };
+
+  const renderDateTimeSelection = () => <DateTimeSelectionStep />;
   
   const renderClientDetails = () => (
     <div className="flex flex-col h-full">
