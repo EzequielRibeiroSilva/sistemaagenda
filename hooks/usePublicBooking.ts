@@ -148,21 +148,28 @@ export const usePublicBooking = () => {
     }
   }, []);
 
-  // Buscar disponibilidade de um agente
-  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string): Promise<DisponibilidadeData | null> => {
+  // Buscar disponibilidade de um agente com duração dinâmica
+  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number): Promise<DisponibilidadeData | null> => {
     try {
-      console.log(`[usePublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data}`);
-      
-      const response = await fetch(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade?data=${data}`);
+      console.log(`[usePublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos || 60}min)`);
+
+      // Construir URL com parâmetro de duração
+      const url = new URL(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade`);
+      url.searchParams.set('data', data);
+      if (duracaoMinutos) {
+        url.searchParams.set('duration', duracaoMinutos.toString());
+      }
+
+      const response = await fetch(url.toString());
       const responseData = await response.json();
-      
+
       if (!response.ok || !responseData.success) {
         console.warn('[usePublicBooking] Erro na disponibilidade:', responseData.message);
         return null;
       }
-      
+
       return responseData.data;
-      
+
     } catch (err) {
       console.error('[usePublicBooking] Erro ao buscar disponibilidade:', err);
       return null;
