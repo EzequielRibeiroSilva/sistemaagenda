@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Check, MessageSquare, Eye, Upload } from './Icons';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
+import { getAssetUrl } from '../utils/api';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
@@ -42,15 +43,13 @@ interface SettingsPageProps {
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const {
         settings,
         loading,
         error,
         loadSettings,
-        updateSettings,
-        uploadLogo,
-        changePassword,
+        saveAllSettings,
         generateBookingLink,
         copyBookingLink,
         clearError
@@ -123,80 +122,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         }
     };
 
-    // Função para fazer upload do logo
-    const handleUploadLogo = async () => {
-        if (!logoFile) return;
+    // Função removida - usando apenas handleSaveAllSettings
 
-        setUploadingLogo(true);
-        try {
-            await uploadLogo(logoFile);
-            setLogoFile(null);
-            setLogoPreview(null);
-            alert('Logo atualizado com sucesso!');
-        } catch (err) {
-            alert('Erro ao fazer upload do logo. Tente novamente.');
-        } finally {
-            setUploadingLogo(false);
-        }
-    };
-
-    // Função para salvar configurações
-    const handleSaveSettings = async () => {
-        setSavingSettings(true);
-        try {
-            await updateSettings({
-                nome_negocio: businessName,
-                duracao_servico_horas: serviceDuration,
-                tempo_limite_agendar_horas: bookingTimeLimit,
-                permitir_cancelamento: allowCancellation,
-                tempo_limite_cancelar_horas: cancellationTimeLimit,
-                periodo_futuro_dias: futurePeriod,
-            });
-            alert('Configurações salvas com sucesso!');
-        } catch (err) {
-            alert('Erro ao salvar configurações. Tente novamente.');
-        } finally {
-            setSavingSettings(false);
-        }
-    };
-
-    // Função para alterar senha
-    const handleChangePassword = async () => {
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            alert('Preencha todos os campos de senha.');
-            return;
-        }
-
-        if (newPassword !== confirmPassword) {
-            alert('Nova senha e confirmação não coincidem.');
-            return;
-        }
-
-        if (newPassword.length < 6) {
-            alert('A nova senha deve ter pelo menos 6 caracteres.');
-            return;
-        }
-
-        setChangingPassword(true);
-        try {
-            await changePassword({
-                senha_atual: currentPassword,
-                nova_senha: newPassword,
-                confirmacao_senha: confirmPassword,
-            });
-
-            // Limpar campos
-            setCurrentPassword('');
-            setNewPassword('');
-            setConfirmPassword('');
-
-            alert('Senha alterada com sucesso!');
-        } catch (err) {
-            alert('Erro ao alterar senha. Verifique a senha atual.');
-        } finally {
-            setChangingPassword(false);
-        }
-    };
+    // Funções redundantes removidas - usando apenas handleSaveAllSettings
 
     // Função para copiar link de agendamento
     const handleCopyLink = async () => {
@@ -206,6 +134,68 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
             setTimeout(() => setCopied(false), 2000);
         } else {
             alert('Erro ao copiar link. Tente novamente.');
+        }
+    };
+
+    // Gerar link de reserva usando unidade_id real do AuthContext
+    const unidadeId = user?.unidade_id;
+    const bookingLink = unidadeId ? `${window.location.origin}/booking/${unidadeId}` : 'Carregando...';
+
+    // Função para salvar todas as definições (transação unificada)
+    const handleSaveAllSettings = async () => {
+        setSavingSettings(true);
+        clearError();
+
+        try {
+            // Validações no frontend
+            if (currentPassword && newPassword && confirmPassword) {
+                if (newPassword !== confirmPassword) {
+                    throw new Error('As senhas não coincidem');
+                }
+                if (newPassword.length < 6) {
+                    throw new Error('A nova senha deve ter pelo menos 6 caracteres');
+                }
+            }
+
+            // Chamar função unificada
+            const result = await saveAllSettings({
+                // Configurações
+                nome_negocio: businessName,
+                duracao_servico_horas: serviceDuration,
+                tempo_limite_agendar_horas: bookingTimeLimit,
+                permitir_cancelamento: allowCancellation,
+                tempo_limite_cancelar_horas: cancellationTimeLimit,
+                periodo_futuro_dias: futurePeriod,
+                // Logo
+                logoFile: logoFile || undefined,
+                // Senha
+                senha_atual: currentPassword || undefined,
+                nova_senha: newPassword || undefined,
+                confirmacao_senha: confirmPassword || undefined
+            });
+
+            // Atualizar AuthContext se logo foi alterada
+            if (logoFile && result && result.logo_url) {
+                updateUser({ avatarUrl: result.logo_url });
+            }
+
+            // Limpar estados após sucesso
+            if (logoFile) {
+                setLogoFile(null);
+                setLogoPreview(null);
+            }
+            if (currentPassword && newPassword && confirmPassword) {
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+            }
+
+            alert('Definições salvas com sucesso!');
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Erro ao salvar definições';
+            alert(`Erro: ${errorMessage}`);
+        } finally {
+            setSavingSettings(false);
         }
     };
 
@@ -240,7 +230,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   <input
                       type="text"
                       readOnly
-                      value={generateBookingLink()}
+                      value={bookingLink}
                       className="w-full bg-gray-100 border border-gray-300 text-gray-600 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                       onClick={handleCopyLink}
                   />
@@ -262,15 +252,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                           </>
                       )}
                   </button>
-                  <a
-                    href={generateBookingLink()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Visualizar
-                  </a>
               </div>
           </FormRow>
       </Card>
@@ -279,7 +260,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
           <FormRow label="Logo do Negócio">
               <div className="flex items-center gap-4">
                   <img
-                      src={logoPreview || settings?.logo_url || '/default-logo.png'}
+                      src={logoPreview || getAssetUrl(settings?.logo_url) || '/default-logo.png'}
                       alt="Logo do Negócio"
                       className="w-16 h-16 rounded-full object-cover bg-gray-200"
                   />
@@ -295,23 +276,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                           onChange={handleLogoChange}
                       />
                       {logoFile && (
-                          <button
-                              onClick={handleUploadLogo}
-                              disabled={uploadingLogo}
-                              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                          >
-                              {uploadingLogo ? (
-                                  <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                      Enviando...
-                                  </>
-                              ) : (
-                                  <>
-                                      <Upload className="w-4 h-4" />
-                                      Salvar Logo
-                                  </>
-                              )}
-                          </button>
+                          <p className="text-sm text-green-600 font-medium">
+                              Logo selecionada! Clique em "Salvar Definições" para aplicar.
+                          </p>
                       )}
                   </div>
               </div>
@@ -368,24 +335,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   max="730"
               />
           </FormRow>
-          <FormRow label="Salvar Configurações">
-              <button
-                  onClick={handleSaveSettings}
-                  disabled={savingSettings}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-              >
-                  {savingSettings ? (
-                      <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Salvando...
-                      </>
-                  ) : (
-                      <>
-                          <Check className="w-4 h-4" />
-                          Salvar Configurações
-                      </>
-                  )}
-              </button>
+          <FormRow label="">
+              <p className="text-sm text-gray-600">
+                  Configure os valores acima e clique em "Salvar Definições" no final da página.
+              </p>
           </FormRow>
       </Card>
 
@@ -414,24 +367,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 placeholder="Confirme a nova senha"
             />
         </FormRow>
-        <FormRow label="Alterar Senha">
-            <button
-                onClick={handleChangePassword}
-                disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
-                className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-            >
-                {changingPassword ? (
-                    <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Alterando...
-                    </>
-                ) : (
-                    <>
-                        <Check className="w-4 h-4" />
-                        Alterar Senha
-                    </>
-                )}
-            </button>
+        <FormRow label="">
+            <p className="text-sm text-gray-600">
+                Preencha os campos acima e clique em "Salvar Definições" para alterar sua senha.
+            </p>
         </FormRow>
       </Card>
 
@@ -451,8 +390,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
       </Card>
 
       <div className="pt-2">
-          <button className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">
-              Salvar Definições
+          <button
+              onClick={handleSaveAllSettings}
+              disabled={savingSettings}
+              className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors flex items-center gap-2"
+          >
+              {savingSettings ? (
+                  <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Salvando...
+                  </>
+              ) : (
+                  <>
+                      <Check className="w-4 h-4" />
+                      Salvar Definições
+                  </>
+              )}
           </button>
       </div>
     </div>

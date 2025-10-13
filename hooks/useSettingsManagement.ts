@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../utils/api';
 
 // Interfaces
 export interface SystemSettings {
@@ -56,7 +57,8 @@ export const useSettingsManagement = () => {
       throw new Error('Token de autenticação não encontrado');
     }
 
-    const response = await fetch(url, {
+    const fullUrl = `${API_BASE_URL}${url}`;
+    const response = await fetch(fullUrl, {
       ...options,
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -84,7 +86,7 @@ export const useSettingsManagement = () => {
     setError(null);
 
     try {
-      const response: ApiResponse<SystemSettings> = await authenticatedFetch('/api/settings');
+      const response: ApiResponse<SystemSettings> = await authenticatedFetch('/settings');
       
       if (response.success && response.data) {
         setSettings(response.data);
@@ -110,7 +112,7 @@ export const useSettingsManagement = () => {
     setError(null);
 
     try {
-      const response: ApiResponse<SystemSettings> = await authenticatedFetch('/api/settings', {
+      const response: ApiResponse<SystemSettings> = await authenticatedFetch('/settings', {
         method: 'PUT',
         body: JSON.stringify(data),
       });
@@ -147,7 +149,7 @@ export const useSettingsManagement = () => {
       const formData = new FormData();
       formData.append('logo', file);
 
-      const response = await fetch('/api/settings/logo', {
+      const response = await fetch(`${API_BASE_URL}/settings/logo`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -191,7 +193,7 @@ export const useSettingsManagement = () => {
     setError(null);
 
     try {
-      const response: ApiResponse<any> = await authenticatedFetch('/api/settings', {
+      const response: ApiResponse<any> = await authenticatedFetch('/settings', {
         method: 'PUT',
         body: JSON.stringify(passwordData),
       });
@@ -212,12 +214,12 @@ export const useSettingsManagement = () => {
 
   // Gerar link de agendamento
   const generateBookingLink = useCallback(() => {
-    if (!user?.unidadeId) {
+    if (!user?.unidade_id) {
       return '';
     }
-    
-    return `${window.location.origin}/reservar?unidade=${user.unidadeId}`;
-  }, [user?.unidadeId]);
+
+    return `${window.location.origin}/booking/${user.unidade_id}`;
+  }, [user?.unidade_id]);
 
   // Copiar link para clipboard
   const copyBookingLink = useCallback(async () => {
@@ -234,22 +236,102 @@ export const useSettingsManagement = () => {
     return false;
   }, [generateBookingLink]);
 
+  // Função unificada para salvar todas as definições
+  const saveAllSettings = useCallback(async (data: {
+    // Configurações
+    nome_negocio?: string;
+    duracao_servico_horas?: number;
+    tempo_limite_agendar_horas?: number;
+    permitir_cancelamento?: boolean;
+    tempo_limite_cancelar_horas?: number;
+    periodo_futuro_dias?: number;
+    // Logo
+    logoFile?: File;
+    // Senha
+    senha_atual?: string;
+    nova_senha?: string;
+    confirmacao_senha?: string;
+  }) => {
+    if (!user) {
+      throw new Error('Usuário não autenticado');
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Criar FormData para suportar multipart/form-data
+      const formData = new FormData();
+
+      // Adicionar configurações
+      if (data.nome_negocio !== undefined) formData.append('nome_negocio', data.nome_negocio);
+      if (data.duracao_servico_horas !== undefined) formData.append('duracao_servico_horas', data.duracao_servico_horas.toString());
+      if (data.tempo_limite_agendar_horas !== undefined) formData.append('tempo_limite_agendar_horas', data.tempo_limite_agendar_horas.toString());
+      if (data.permitir_cancelamento !== undefined) formData.append('permitir_cancelamento', data.permitir_cancelamento.toString());
+      if (data.tempo_limite_cancelar_horas !== undefined) formData.append('tempo_limite_cancelar_horas', data.tempo_limite_cancelar_horas.toString());
+      if (data.periodo_futuro_dias !== undefined) formData.append('periodo_futuro_dias', data.periodo_futuro_dias.toString());
+
+      // Adicionar logo (se houver)
+      if (data.logoFile) {
+        formData.append('logo', data.logoFile);
+      }
+
+      // Adicionar senha (se houver)
+      if (data.senha_atual && data.nova_senha && data.confirmacao_senha) {
+        formData.append('senha_atual', data.senha_atual);
+        formData.append('nova_senha', data.nova_senha);
+        formData.append('confirmacao_senha', data.confirmacao_senha);
+      }
+
+      // Fazer requisição unificada
+      const response = await fetch(`${API_BASE_URL}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // NÃO definir Content-Type para multipart/form-data (o browser define automaticamente)
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+      }
+
+      const result: ApiResponse<SystemSettings> = await response.json();
+
+      if (result.success && result.data) {
+        setSettings(result.data);
+        return result.data;
+      } else {
+        throw new Error(result.message || 'Erro ao salvar definições');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [user, token]);
+
   return {
     // Estado
     settings,
     loading,
     error,
-    
+
     // Ações
     loadSettings,
     updateSettings,
     uploadLogo,
     changePassword,
-    
+    saveAllSettings, // Nova função unificada
+
     // Utilitários
     generateBookingLink,
     copyBookingLink,
-    
+
     // Limpar erro
     clearError: () => setError(null),
   };

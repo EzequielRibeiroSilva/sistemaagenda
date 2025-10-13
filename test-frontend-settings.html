@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Frontend Settings</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste Frontend Settings</h1>
+    
+    <div>
+        <button onclick="testLogin()">1. Testar Login</button>
+        <button onclick="testSettings()">2. Testar Settings</button>
+        <button onclick="testFullFlow()">3. Testar Fluxo Completo</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let authToken = null;
+        let userData = null;
+
+        function addResult(type, title, content) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<h3>${title}</h3><pre>${JSON.stringify(content, null, 2)}</pre>`;
+            results.appendChild(div);
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'testando@gmail.com',
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    authToken = data.data.token;
+                    userData = data.data.user;
+                    addResult('success', '✅ Login Realizado', {
+                        status: response.status,
+                        user_id: userData.id,
+                        unidade_id: userData.unidade_id,
+                        role: userData.role,
+                        email: userData.email
+                    });
+                } else {
+                    addResult('error', '❌ Erro no Login', data);
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro de Conexão', { error: error.message });
+            }
+        }
+
+        async function testSettings() {
+            if (!authToken) {
+                addResult('error', '❌ Token Necessário', { message: 'Faça login primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/settings`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ Settings Carregadas', {
+                        status: response.status,
+                        settings: data.data
+                    });
+                } else {
+                    addResult('error', '❌ Erro ao Carregar Settings', {
+                        status: response.status,
+                        error: data
+                    });
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro de Conexão Settings', { error: error.message });
+            }
+        }
+
+        async function testFullFlow() {
+            document.getElementById('results').innerHTML = '';
+            await testLogin();
+            setTimeout(async () => {
+                await testSettings();
+            }, 1000);
+        }
+
+        // Teste automático ao carregar a página
+        window.onload = () => {
+            addResult('info', '🚀 Teste Iniciado', { 
+                message: 'Clique nos botões para testar cada funcionalidade',
+                api_base: API_BASE
+            });
+        };
+    </script>
+</body>
+</html>

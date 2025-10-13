@@ -52,9 +52,10 @@ class AuthMiddleware {
           });
         }
 
-        // Buscar avatar_url se for um agente
+        // Buscar avatar_url baseado no role do usuário
         let avatarUrl = null;
-        if (usuario.tipo_usuario === 'agent') {
+        if (usuario.role === 'AGENTE') {
+          // Para agentes: buscar avatar_url na tabela agentes
           const Agente = require('../models/Agente');
           const agenteModel = new Agente();
           const agente = await agenteModel.db('agentes')
@@ -64,6 +65,16 @@ class AuthMiddleware {
 
           if (agente) {
             avatarUrl = agente.avatar_url;
+          }
+        } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
+          // Para admins e masters: buscar logo_url das configurações da unidade
+          const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+          const { db } = require('../config/knex');
+          const configuracaoModel = new ConfiguracaoSistema(db);
+          const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
+
+          if (configuracao && configuracao.logo_url) {
+            avatarUrl = configuracao.logo_url;
           }
         }
 

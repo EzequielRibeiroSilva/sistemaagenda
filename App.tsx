@@ -208,7 +208,7 @@ const App: React.FC = () => {
       case 'services-extra-edit': return <EditExtraServicePage setActiveView={setActiveView} extraServiceId={editingExtraServiceId} />;
       case 'agents-list': return <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />;
       case 'agents-create': return <CreateAgentPage setActiveView={setActiveView} />;
-      case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'agent' ? user.agentId : editingAgentId} />;
+      case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'AGENTE' ? user.agentId : editingAgentId} />;
       case 'test-agents': return <TestAgentsPage />;
       case 'locations-list': return <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />;
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
