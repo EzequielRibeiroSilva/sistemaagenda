@@ -18,6 +18,51 @@ class ClienteController {
   }
 
   /**
+   * GET /api/clientes/search - Busca de clientes para modal de agendamento
+   * Busca por nome ou telefone para uso no NewAppointmentModal
+   */
+  async search(req, res) {
+    try {
+      const usuarioId = req.user.id;
+      const unidadeId = req.user.unidade_id;
+      const { q } = req.query; // Query de busca
+
+      // Validar se usuário tem unidade_id (Multi-Tenant)
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade para acessar clientes'
+        });
+      }
+
+      if (!q || q.trim().length < 2) {
+        return res.json({
+          success: true,
+          data: [],
+          message: 'Digite pelo menos 2 caracteres para buscar'
+        });
+      }
+
+      // Buscar clientes por nome ou telefone
+      const clientes = await this.clienteModel.searchByNameOrPhone(unidadeId, q.trim());
+
+      res.json({
+        success: true,
+        data: clientes,
+        message: `${clientes.length} clientes encontrados`
+      });
+
+    } catch (error) {
+      console.error('[ClienteController] Erro na busca de clientes:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * GET /api/clientes - Listagem de clientes com filtros
    * Suporta filtros por nome, telefone, ID, status de assinante
    */

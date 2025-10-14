@@ -95,23 +95,25 @@ class AgendamentoController extends BaseController {
     }
   }
 
-  // GET /api/agendamentos/:id - Buscar agendamento com serviços
+  // GET /api/agendamentos/:id - Buscar agendamento com serviços (com RBAC)
   async show(req, res) {
     try {
       const { id } = req.params;
       const usuarioId = req.user?.id;
-      
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
       if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
         });
       }
 
       const data = await this.model.findWithServicos(id);
-      
+
       if (!data) {
-        return res.status(404).json({ 
-          error: 'Agendamento não encontrado' 
+        return res.status(404).json({
+          error: 'Agendamento não encontrado'
         });
       }
 
@@ -123,18 +125,29 @@ class AgendamentoController extends BaseController {
         .first();
 
       if (!agendamento) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Acesso negado',
-          message: 'Você não tem permissão para ver este agendamento' 
+          message: 'Você não tem permissão para ver este agendamento'
         });
       }
-      
-      return res.json({ data });
+
+      // RBAC: AGENTE só pode ver seus próprios agendamentos
+      if (userRole === 'AGENTE' && userAgenteId && data.agente_id !== userAgenteId) {
+        return res.status(403).json({
+          error: 'Acesso negado',
+          message: 'Agentes só podem ver seus próprios agendamentos'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: data
+      });
     } catch (error) {
       console.error('Erro no show:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }
@@ -150,15 +163,17 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      const { 
-        cliente_id, 
-        agente_id, 
-        unidade_id, 
-        data_agendamento, 
-        hora_inicio, 
+      const {
+        cliente_id,
+        agente_id,
+        unidade_id,
+        data_agendamento,
+        hora_inicio,
         hora_fim,
-        servicos = [],
-        ...outrosDados 
+        servico_ids = [],
+        servico_extra_ids = [],
+        servicos = [], // Formato antigo para compatibilidade
+        ...outrosDados
       } = req.body;
 
       // Validações básicas
@@ -187,18 +202,44 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // Calcular valor total dos serviços
-      let valorTotal = 0;
-      if (servicos.length > 0) {
-        const servicosData = await this.model.db('servicos')
-          .whereIn('id', servicos.map(s => s.servico_id))
-          .select('id', 'preco');
-        
-        valorTotal = servicos.reduce((total, servico) => {
-          const servicoData = servicosData.find(s => s.id === servico.servico_id);
-          return total + (servico.preco_aplicado || servicoData?.preco || 0);
-        }, 0);
+      // Buscar dados dos serviços principais
+      let servicosData = [];
+      if (servico_ids.length > 0) {
+        servicosData = await this.model.db('servicos')
+          .whereIn('id', servico_ids)
+          .where('status', 'Ativo')
+          .where('unidade_id', unidade_id)
+          .select('id', 'nome', 'preco', 'duracao_minutos');
+
+        if (servicosData.length !== servico_ids.length) {
+          return res.status(400).json({
+            error: 'Serviços inválidos',
+            message: 'Um ou mais serviços não estão disponíveis'
+          });
+        }
       }
+
+      // Buscar dados dos serviços extras
+      let servicosExtrasData = [];
+      if (servico_extra_ids.length > 0) {
+        servicosExtrasData = await this.model.db('servicos_extras')
+          .whereIn('id', servico_extra_ids)
+          .where('status', 'Ativo')
+          .where('unidade_id', unidade_id)
+          .select('id', 'nome', 'preco', 'duracao_minutos');
+
+        if (servicosExtrasData.length !== servico_extra_ids.length) {
+          return res.status(400).json({
+            error: 'Serviços extras inválidos',
+            message: 'Um ou mais serviços extras não estão disponíveis'
+          });
+        }
+      }
+
+      // Calcular valor total
+      const valorServicos = servicosData.reduce((total, servico) => total + parseFloat(servico.preco), 0);
+      const valorExtras = servicosExtrasData.reduce((total, extra) => total + parseFloat(extra.preco), 0);
+      const valorTotal = valorServicos + valorExtras;
 
       const dadosAgendamento = {
         cliente_id,
@@ -214,7 +255,29 @@ class AgendamentoController extends BaseController {
       // Criar agendamento
       const agendamento = await this.model.create(dadosAgendamento);
 
-      // Criar relacionamentos com serviços
+      // Criar relacionamentos com serviços principais
+      if (servicosData.length > 0) {
+        const agendamentoServicos = servicosData.map(servico => ({
+          agendamento_id: agendamento.id,
+          servico_id: servico.id,
+          preco_aplicado: servico.preco
+        }));
+
+        await this.model.db('agendamento_servicos').insert(agendamentoServicos);
+      }
+
+      // Criar relacionamentos com serviços extras
+      if (servicosExtrasData.length > 0) {
+        const agendamentoServicosExtras = servicosExtrasData.map(extra => ({
+          agendamento_id: agendamento.id,
+          servico_extra_id: extra.id,
+          preco_aplicado: extra.preco
+        }));
+
+        await this.model.db('agendamento_servicos_extras').insert(agendamentoServicosExtras);
+      }
+
+      // Compatibilidade com formato antigo de serviços
       if (servicos.length > 0) {
         const agendamentoServicos = servicos.map(servico => ({
           agendamento_id: agendamento.id,
@@ -253,6 +316,7 @@ class AgendamentoController extends BaseController {
       }
 
       return res.status(201).json({
+        success: true,
         data: agendamentoCompleto,
         message: 'Agendamento criado com sucesso'
       });
@@ -384,6 +448,88 @@ class AgendamentoController extends BaseController {
     } catch (error) {
       console.error('Erro ao buscar dados completos:', error);
       return null;
+    }
+  }
+
+  // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
+  async finalize(req, res) {
+    try {
+      const { id } = req.params;
+      const { paymentMethod } = req.body;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Buscar agendamento
+      const agendamento = await this.model.db(this.model.tableName)
+        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+        .where('agendamentos.id', id)
+        .where('unidades.usuario_id', usuarioId)
+        .select('agendamentos.*')
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      // RBAC: AGENTE só pode finalizar seus próprios agendamentos
+      if (userRole === 'AGENTE' && userAgenteId && agendamento.agente_id !== userAgenteId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Agentes só podem finalizar seus próprios agendamentos'
+        });
+      }
+
+      // Verificar se já está finalizado
+      if (agendamento.status === 'Concluído') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento já está finalizado'
+        });
+      }
+
+      // Atualizar status para Concluído
+      const updateData = {
+        status: 'Concluído',
+        updated_at: new Date()
+      };
+
+      if (paymentMethod) {
+        updateData.payment_method = paymentMethod;
+      }
+
+      await this.model.db(this.model.tableName)
+        .where('id', id)
+        .update(updateData);
+
+      return res.json({
+        success: true,
+        message: 'Agendamento finalizado com sucesso',
+        data: {
+          id: parseInt(id),
+          status: 'Concluído',
+          payment_method: paymentMethod || null
+        }
+      });
+
+    } catch (error) {
+      console.error('Erro ao finalizar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
     }
   }
 }

@@ -37,6 +37,11 @@ class RBACMiddleware {
     };
   }
 
+  // Alias para requireRole (para compatibilidade)
+  requireAnyRole(allowedRoles) {
+    return this.requireRole(...allowedRoles);
+  }
+
   // Middleware para verificar permissões específicas
   requirePermission(permission) {
     return (req, res, next) => {
