@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Token - NewAppointmentModal</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Token - NewAppointmentModal</h1>
+    <p>Teste para verificar se o token está sendo armazenado e usado corretamente</p>
+
+    <div>
+        <button onclick="testLogin()">1. Fazer Login</button>
+        <button onclick="checkToken()">2. Verificar Token no localStorage</button>
+        <button onclick="testServicos()">3. Testar /api/servicos</button>
+        <button onclick="testExtras()">4. Testar /api/servicos/extras/list</button>
+        <button onclick="testAgentes()">5. Testar /api/agentes/list</button>
+        <button onclick="clearStorage()">🗑️ Limpar localStorage</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        
+        function addResult(type, title, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `
+                <strong>${title}</strong>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'testando@gmail.com',
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Salvar token como o LoginPage.tsx faz
+                    localStorage.setItem('authToken', data.data.token);
+                    localStorage.setItem('userEmail', data.data.user.email);
+                    if (data.data.refreshToken) {
+                        localStorage.setItem('refreshToken', data.data.refreshToken);
+                    }
+                    
+                    addResult('success', '✅ Login Realizado', {
+                        status: response.status,
+                        user_id: data.data.user.id,
+                        unidade_id: data.data.user.unidade_id,
+                        role: data.data.user.role,
+                        email: data.data.user.email,
+                        token_saved: 'authToken'
+                    });
+                } else {
+                    addResult('error', '❌ Erro no Login', data);
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro de Conexão', { error: error.message });
+            }
+        }
+
+        function checkToken() {
+            const authToken = localStorage.getItem('authToken');
+            const token = localStorage.getItem('token'); // Chave antiga
+            const userEmail = localStorage.getItem('userEmail');
+            const refreshToken = localStorage.getItem('refreshToken');
+            
+            addResult('info', '🔍 Verificação do localStorage', {
+                authToken: authToken ? `${authToken.substring(0, 50)}...` : 'NÃO ENCONTRADO',
+                token: token ? `${token.substring(0, 50)}...` : 'NÃO ENCONTRADO',
+                userEmail: userEmail || 'NÃO ENCONTRADO',
+                refreshToken: refreshToken ? `${refreshToken.substring(0, 50)}...` : 'NÃO ENCONTRADO'
+            });
+        }
+
+        async function testServicos() {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                addResult('warning', '⚠️ Token não encontrado', { message: 'Faça login primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/servicos`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ /api/servicos', {
+                        status: response.status,
+                        count: data.data?.length || 0,
+                        first_service: data.data?.[0] || null
+                    });
+                } else {
+                    addResult('error', '❌ /api/servicos', { status: response.status, ...data });
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro /api/servicos', { error: error.message });
+            }
+        }
+
+        async function testExtras() {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                addResult('warning', '⚠️ Token não encontrado', { message: 'Faça login primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/servicos/extras/list`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ /api/servicos/extras/list', {
+                        status: response.status,
+                        count: data.data?.length || 0,
+                        first_extra: data.data?.[0] || null
+                    });
+                } else {
+                    addResult('error', '❌ /api/servicos/extras/list', { status: response.status, ...data });
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro /api/servicos/extras/list', { error: error.message });
+            }
+        }
+
+        async function testAgentes() {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                addResult('warning', '⚠️ Token não encontrado', { message: 'Faça login primeiro' });
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/agentes/list`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ /api/agentes/list', {
+                        status: response.status,
+                        count: data.data?.length || 0,
+                        first_agent: data.data?.[0] || null
+                    });
+                } else {
+                    addResult('error', '❌ /api/agentes/list', { status: response.status, ...data });
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro /api/agentes/list', { error: error.message });
+            }
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            addResult('info', '🗑️ localStorage limpo', { message: 'Todos os dados removidos' });
+        }
+    </script>
+</body>
+</html>

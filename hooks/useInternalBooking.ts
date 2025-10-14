@@ -73,10 +73,12 @@ export interface CreateAgendamentoData {
   cliente_nome?: string;
   cliente_telefone?: string;
   agente_id: number;
+  unidade_id: number; // ✅ CAMPO OBRIGATÓRIO ADICIONADO
   servico_ids: number[];
   servico_extra_ids?: number[];
   data_agendamento: string;
   hora_inicio: string;
+  hora_fim: string; // ✅ CAMPO OBRIGATÓRIO ADICIONADO
   observacoes?: string;
 }
 
@@ -91,8 +93,12 @@ export const useInternalBooking = () => {
 
   // Função auxiliar para fazer requisições autenticadas
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
-    
+    const token = localStorage.getItem('authToken'); // Corrigido: usar 'authToken' em vez de 'token'
+
+    if (!token) {
+      throw new Error('Token de autenticação não encontrado. Faça login novamente.');
+    }
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -103,6 +109,14 @@ export const useInternalBooking = () => {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        // Token inválido ou expirado
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('userEmail');
+        throw new Error('Token inválido ou expirado. Faça login novamente.');
+      }
+
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
     }
@@ -184,21 +198,33 @@ export const useInternalBooking = () => {
   }, [makeAuthenticatedRequest]);
 
   // Criar cliente
-  const createCliente = useCallback(async (nome: string, telefone: string): Promise<InternalCliente | null> => {
+  const createCliente = useCallback(async (clienteData: {
+    primeiro_nome: string;
+    ultimo_nome: string;
+    telefone: string;
+  }): Promise<InternalCliente | null> => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const data = await makeAuthenticatedRequest(`${API_BASE_URL}/clientes`, {
         method: 'POST',
-        body: JSON.stringify({
-          primeiro_nome: nome.split(' ')[0] || '',
-          ultimo_nome: nome.split(' ').slice(1).join(' ') || '',
-          telefone: telefone,
-        }),
+        body: JSON.stringify(clienteData),
       });
 
-      return data.success ? data.data : null;
+      if (data.success) {
+        // Mapear resposta do backend para InternalCliente
+        return {
+          id: data.data.id,
+          nome_completo: data.data.name,
+          primeiro_nome: data.data.firstName,
+          ultimo_nome: data.data.lastName,
+          telefone: data.data.phone,
+          is_assinante: data.data.isSubscriber || false
+        };
+      }
+
+      return null;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente';
       setError(errorMessage);

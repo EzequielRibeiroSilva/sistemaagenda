@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste NewAppointmentModal - Dados Reais</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; max-height: 300px; }
+        .step { margin: 20px 0; padding: 15px; border: 2px solid #007bff; border-radius: 8px; }
+        .step h3 { margin-top: 0; color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste NewAppointmentModal - Dados Reais</h1>
+    <p>Simulação completa do fluxo do NewAppointmentModal com dados reais</p>
+
+    <div class="step">
+        <h3>Passo 1: Autenticação</h3>
+        <button onclick="testLogin()">🔐 Fazer Login</button>
+        <button onclick="checkToken()">🔍 Verificar Token</button>
+    </div>
+
+    <div class="step">
+        <h3>Passo 2: Carregar Dados Iniciais (useInternalBooking)</h3>
+        <button onclick="testServicos()">📋 Testar fetchServicos()</button>
+        <button onclick="testExtras()">➕ Testar fetchServicosExtras()</button>
+        <button onclick="testAgentes()">👥 Testar fetchAgentes()</button>
+    </div>
+
+    <div class="step">
+        <h3>Passo 3: Busca de Clientes</h3>
+        <button onclick="testSearchClientes()">🔍 Testar searchClientes()</button>
+        <button onclick="testCreateCliente()">👤 Testar createCliente()</button>
+    </div>
+
+    <div class="step">
+        <h3>Passo 4: Criação de Agendamento</h3>
+        <button onclick="testCreateAgendamento()">📅 Testar createAgendamento()</button>
+    </div>
+
+    <div class="step">
+        <h3>Utilitários</h3>
+        <button onclick="clearStorage()">🗑️ Limpar localStorage</button>
+        <button onclick="clearResults()">🧹 Limpar Resultados</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = null;
+        let userData = null;
+        
+        function addResult(type, title, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `
+                <strong>${title}</strong>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'testando@gmail.com',
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    authToken = data.data.token;
+                    userData = data.data.user;
+                    
+                    // Salvar no localStorage como o frontend faz
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('userEmail', userData.email);
+                    if (data.data.refreshToken) {
+                        localStorage.setItem('refreshToken', data.data.refreshToken);
+                    }
+                    
+                    addResult('success', '✅ Login Realizado', {
+                        user_id: userData.id,
+                        unidade_id: userData.unidade_id,
+                        role: userData.role,
+                        email: userData.email,
+                        token_length: authToken.length
+                    });
+                } else {
+                    addResult('error', '❌ Erro no Login', data);
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro de Conexão', { error: error.message });
+            }
+        }
+
+        function checkToken() {
+            const storedToken = localStorage.getItem('authToken');
+            addResult('info', '🔍 Verificação do Token', {
+                localStorage_authToken: storedToken ? `${storedToken.substring(0, 50)}...` : 'NÃO ENCONTRADO',
+                memory_authToken: authToken ? `${authToken.substring(0, 50)}...` : 'NÃO ENCONTRADO',
+                tokens_match: storedToken === authToken
+            });
+        }
+
+        async function makeAuthenticatedRequest(endpoint) {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('Token não encontrado. Faça login primeiro.');
+            }
+
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Token inválido ou expirado');
+                }
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        async function testServicos() {
+            try {
+                const data = await makeAuthenticatedRequest('/servicos');
+                addResult('success', '✅ fetchServicos() - /api/servicos', {
+                    success: data.success,
+                    count: data.data?.length || 0,
+                    first_service: data.data?.[0] ? {
+                        id: data.data[0].id,
+                        nome: data.data[0].nome,
+                        preco: data.data[0].preco,
+                        duracao_minutos: data.data[0].duracao_minutos
+                    } : null
+                });
+            } catch (error) {
+                addResult('error', '❌ Erro fetchServicos()', { error: error.message });
+            }
+        }
+
+        async function testExtras() {
+            try {
+                const data = await makeAuthenticatedRequest('/servicos/extras/list');
+                addResult('success', '✅ fetchServicosExtras() - /api/servicos/extras/list', {
+                    success: data.success,
+                    count: data.data?.length || 0,
+                    first_extra: data.data?.[0] ? {
+                        id: data.data[0].id,
+                        nome: data.data[0].nome,
+                        preco: data.data[0].preco,
+                        duracao_minutos: data.data[0].duracao_minutos
+                    } : null
+                });
+            } catch (error) {
+                addResult('error', '❌ Erro fetchServicosExtras()', { error: error.message });
+            }
+        }
+
+        async function testAgentes() {
+            try {
+                const data = await makeAuthenticatedRequest('/agentes/list');
+                addResult('success', '✅ fetchAgentes() - /api/agentes/list', {
+                    success: data.success,
+                    count: data.data?.length || 0,
+                    first_agent: data.data?.[0] ? {
+                        id: data.data[0].id,
+                        nome: data.data[0].nome,
+                        avatar_url: data.data[0].avatar_url
+                    } : null
+                });
+            } catch (error) {
+                addResult('error', '❌ Erro fetchAgentes()', { error: error.message });
+            }
+        }
+
+        async function testSearchClientes() {
+            try {
+                const data = await makeAuthenticatedRequest('/clientes/search?q=teste');
+                addResult('success', '✅ searchClientes() - /api/clientes/search', {
+                    success: data.success,
+                    count: data.data?.length || 0,
+                    query: 'teste',
+                    first_client: data.data?.[0] || null
+                });
+            } catch (error) {
+                addResult('error', '❌ Erro searchClientes()', { error: error.message });
+            }
+        }
+
+        async function testCreateCliente() {
+            try {
+                const clienteData = {
+                    primeiro_nome: 'Cliente',
+                    ultimo_nome: 'Teste',
+                    telefone: '+5511999999999'
+                };
+
+                const response = await fetch(`${API_BASE}/clientes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    },
+                    body: JSON.stringify(clienteData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ createCliente() - POST /api/clientes', {
+                        success: data.success,
+                        client_id: data.data?.id,
+                        client_name: data.data?.nome_completo
+                    });
+                } else {
+                    addResult('error', '❌ Erro createCliente()', data);
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro createCliente()', { error: error.message });
+            }
+        }
+
+        async function testCreateAgendamento() {
+            try {
+                const agendamentoData = {
+                    agente_id: 23, // ID do agente ezequiel
+                    servico_ids: [17], // ID do serviço "Corte de Cabelo"
+                    servico_extra_ids: [5], // ID do extra "Lavagem do Cabelo"
+                    data_agendamento: '2025-10-15',
+                    hora_inicio: '14:00',
+                    cliente_nome: 'Cliente Teste Modal',
+                    cliente_telefone: '+5511999999998'
+                };
+
+                const response = await fetch(`${API_BASE}/agendamentos`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    },
+                    body: JSON.stringify(agendamentoData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult('success', '✅ createAgendamento() - POST /api/agendamentos', {
+                        success: data.success,
+                        agendamento_id: data.data?.id,
+                        cliente_criado: data.data?.cliente_id
+                    });
+                } else {
+                    addResult('error', '❌ Erro createAgendamento()', data);
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro createAgendamento()', { error: error.message });
+            }
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            authToken = null;
+            userData = null;
+            addResult('info', '🗑️ localStorage limpo', { message: 'Todos os dados removidos' });
+        }
+    </script>
+</body>
+</html>
