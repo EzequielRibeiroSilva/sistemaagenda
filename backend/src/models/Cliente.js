@@ -308,6 +308,37 @@ class Cliente extends BaseModel {
 
     return cliente;
   }
+
+  /**
+   * Buscar clientes por nome ou telefone (para modal de agendamento)
+   * @param {number} unidadeId - ID da unidade (Multi-Tenant)
+   * @param {string} searchQuery - Termo de busca (nome ou telefone)
+   * @returns {Promise<Array>} Lista de clientes encontrados
+   */
+  async searchByNameOrPhone(unidadeId, searchQuery) {
+    const query = searchQuery.toLowerCase().trim();
+
+    return await this.db(this.tableName)
+      .where('unidade_id', unidadeId)
+      .where('status', 'Ativo')
+      .where(function() {
+        this.whereRaw('LOWER(primeiro_nome) LIKE ?', [`%${query}%`])
+          .orWhereRaw('LOWER(ultimo_nome) LIKE ?', [`%${query}%`])
+          .orWhereRaw('LOWER(CONCAT(primeiro_nome, \' \', ultimo_nome)) LIKE ?', [`%${query}%`])
+          .orWhere('telefone', 'LIKE', `%${query}%`)
+          .orWhere('telefone_limpo', 'LIKE', `%${query}%`);
+      })
+      .select(
+        'id',
+        'primeiro_nome',
+        'ultimo_nome',
+        'telefone',
+        'is_assinante',
+        this.db.raw('CONCAT(primeiro_nome, \' \', ultimo_nome) as nome_completo')
+      )
+      .orderBy('primeiro_nome', 'asc')
+      .limit(10); // Limitar resultados para performance
+  }
 }
 
 module.exports = Cliente;

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const AgenteController = require('../controllers/AgenteController');
 const { authenticate } = require('../middleware/authMiddleware');
-const { requireRole } = require('../middleware/rbacMiddleware');
+const rbacMiddleware = require('../middleware/rbacMiddleware');
 const { handleFormDataWithUpload } = require('../middleware/formDataMiddleware');
 
 // Instanciar controller
@@ -11,18 +11,21 @@ const agenteController = new AgenteController();
 // Middleware de autenticação para todas as rotas
 router.use(authenticate());
 
-// Middleware para exigir role ADMIN
-router.use(requireRole('ADMIN'));
-
 /**
  * @route GET /agentes/list
- * @desc Listagem leve de agentes para formulários
- * @access Private (ADMIN)
+ * @desc Listagem leve de agentes para formulários (com RBAC)
+ * @access Private (ADMIN ou AGENTE)
  * @returns { success: boolean, data: Array<{id: number, nome: string}>, message: string }
  */
-router.get('/list', async (req, res) => {
-  await agenteController.list(req, res);
-});
+router.get('/list',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  async (req, res) => {
+    await agenteController.list(req, res);
+  }
+);
+
+// Middleware para exigir role ADMIN nas demais rotas
+router.use(rbacMiddleware.requireRole('ADMIN'));
 
 /**
  * @route GET /agentes

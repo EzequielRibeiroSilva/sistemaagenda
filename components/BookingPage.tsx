@@ -156,6 +156,31 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     if (step <= 6) { setClientName(''); setClientPhone(''); }
   };
 
+  // Função para avançar da seleção de serviços (passo 3) para próximo passo
+  const handleAdvanceFromServices = async () => {
+    setSelectedServiceIds(tempSelectedServiceIds);
+
+    // Verificar se há extras disponíveis para os serviços selecionados
+    if (unidadeId && tempSelectedServiceIds.length > 0) {
+      try {
+        const extras = await getExtrasByServices(unidadeId, tempSelectedServiceIds);
+        if (extras.length === 0) {
+          // Não há extras disponíveis, pular para seleção de data/hora
+          console.log('[BookingPage] Nenhum extra disponível, pulando para seleção de data/hora');
+          setCurrentStep(5);
+          return;
+        }
+      } catch (error) {
+        console.error('[BookingPage] Erro ao verificar extras, pulando para seleção de data/hora:', error);
+        setCurrentStep(5);
+        return;
+      }
+    }
+
+    // Há extras disponíveis, ir para seleção de extras
+    setCurrentStep(4);
+  };
+
   const selectedAgent = useMemo(() => salonData?.agentes.find(a => a.id === selectedAgentId), [salonData, selectedAgentId]);
   const selectedServices = useMemo(() => salonData?.servicos.filter(s => selectedServiceIds.includes(s.id)) || [], [salonData, selectedServiceIds]);
 
@@ -313,10 +338,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       </div>
       <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
         <button
-          onClick={() => {
-            setSelectedServiceIds(tempSelectedServiceIds);
-            setCurrentStep(4);
-          }}
+          onClick={handleAdvanceFromServices}
           disabled={tempSelectedServiceIds.length === 0}
           className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
         >

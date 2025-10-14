@@ -8,15 +8,26 @@ class AgenteController {
   }
 
   /**
-   * GET /api/agentes/list - Listagem leve de agentes para formulários
-   * Retorna apenas id e nome dos agentes do usuário logado (todos os status para associações)
+   * GET /api/agentes/list - Listagem leve de agentes para formulários (com RBAC)
+   * ADMIN: Retorna todos os agentes da unidade
+   * AGENTE: Retorna apenas o próprio agente
    */
   async list(req, res) {
     try {
       const usuarioId = req.user.id;
+      const userRole = req.user.role;
+      const userAgenteId = req.user.agente_id;
 
-      // Busca otimizada apenas com id e nome
-      const agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
+      let agentes;
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        // AGENTE: Buscar apenas o próprio agente
+        const agenteData = await this.agenteModel.findById(userAgenteId);
+        agentes = agenteData ? [agenteData] : [];
+      } else {
+        // ADMIN: Buscar todos os agentes da unidade
+        agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
+      }
 
       // Formatar dados mínimos para formulários
       const agentesLeves = agentes.map(agente => ({
@@ -28,7 +39,7 @@ class AgenteController {
       res.status(200).json({
         success: true,
         data: agentesLeves,
-        message: 'Lista de agentes carregada com sucesso'
+        message: `Lista de agentes carregada com sucesso (${agentesLeves.length} agentes)`
       });
     } catch (error) {
       console.error('[AgenteController] Erro ao carregar lista de agentes:', error);

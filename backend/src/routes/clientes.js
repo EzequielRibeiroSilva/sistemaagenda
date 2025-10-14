@@ -14,6 +14,19 @@ router.use(authenticate());
 router.use(rbacMiddleware.requireRole('ADMIN'));
 
 /**
+ * GET /api/clientes/search
+ * Busca clientes por nome ou telefone para modal de agendamento
+ * Query params: ?q=termo_busca
+ * Acessível por ADMIN e AGENTE
+ */
+router.get('/search',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  async (req, res) => {
+    await clienteController.search(req, res);
+  }
+);
+
+/**
  * GET /api/clientes
  * Lista clientes da unidade do usuário logado com filtros opcionais
  * Query params: ?nome=termo&telefone=numero&id=123&is_assinante=true&status=Ativo
