@@ -20,6 +20,14 @@ router.get('/salao/:unidadeId', async (req, res) => {
 });
 
 /**
+ * GET /api/public/salao/:unidadeId/extras?servico_ids=1,2,3
+ * Buscar extras filtrados por serviços selecionados (lógica de UNIÃO)
+ */
+router.get('/salao/:unidadeId/extras', async (req, res) => {
+  await publicBookingController.getExtrasByServices(req, res);
+});
+
+/**
  * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD
  * Buscar disponibilidade de um agente em uma data específica
  */

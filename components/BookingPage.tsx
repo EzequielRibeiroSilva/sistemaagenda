@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase } from './Icons';
-import { usePublicBooking, SalonData, PublicAgente, PublicServico, SlotDisponivel } from '../hooks/usePublicBooking';
+import { usePublicBooking, SalonData, PublicAgente, PublicServico, PublicExtra, SlotDisponivel } from '../hooks/usePublicBooking';
 import { getAssetUrl } from '../utils/api';
 
 // --- Componentes da UI ---
@@ -40,13 +40,15 @@ interface BookingPageProps {
 }
 
 const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPreview }) => {
-  const { salonData, isLoading, error, loadSalonData, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento } = usePublicBooking();
+  const { salonData, isLoading, error, loadSalonData, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento, getExtrasByServices } = usePublicBooking();
 
   const [unidadeId, setUnidadeId] = useState<number | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
   const [selectedExtraServiceIds, setSelectedExtraServiceIds] = useState<number[]>([]);
+  const [filteredExtras, setFilteredExtras] = useState<PublicExtra[]>([]);
+  const [isLoadingExtras, setIsLoadingExtras] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
@@ -121,6 +123,29 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     }
   }, [salonData, currentStep]);
 
+  // Efeito para carregar extras filtrados quando serviços são selecionados
+  useEffect(() => {
+    const loadFilteredExtras = async () => {
+      if (!unidadeId || selectedServiceIds.length === 0) {
+        setFilteredExtras([]);
+        return;
+      }
+
+      setIsLoadingExtras(true);
+      try {
+        const extras = await getExtrasByServices(unidadeId, selectedServiceIds);
+        setFilteredExtras(extras);
+        console.log(`[BookingPage] Carregados ${extras.length} extras para os serviços selecionados`);
+      } catch (error) {
+        console.error('[BookingPage] Erro ao carregar extras filtrados:', error);
+        setFilteredExtras([]);
+      } finally {
+        setIsLoadingExtras(false);
+      }
+    };
+
+    loadFilteredExtras();
+  }, [unidadeId, selectedServiceIds, getExtrasByServices]);
 
   const resetToStep = (step: number) => {
     setCurrentStep(step);
@@ -309,16 +334,26 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         <div className="flex flex-col h-full">
             <StepHeader title="Deseja adicionar algum extra?" onBack={() => resetToStep(3)} />
             <div className="p-4 space-y-3 overflow-y-auto">
-                {/* Mapeia os serviços extras dos dados do salão */}
-                {salonData?.extras?.map(extra => (
-                    <SelectionCard
-                        key={extra.id}
-                        title={extra.name}
-                        subtitle={`${extra.duration} min - R$ ${extra.price.toFixed(2).replace('.', ',')}`}
-                        onClick={() => handleToggleExtraService(extra.id)}
-                        isSelected={tempSelectedExtraServiceIds.includes(extra.id)}
-                    />
-                ))}
+                {isLoadingExtras ? (
+                    <div className="text-center py-8">
+                        <p className="text-gray-500">Carregando extras disponíveis...</p>
+                    </div>
+                ) : filteredExtras.length === 0 ? (
+                    <div className="text-center py-8">
+                        <p className="text-gray-500">Nenhum serviço extra disponível para os serviços selecionados.</p>
+                        <p className="text-gray-400 text-sm mt-2">Você pode pular esta etapa.</p>
+                    </div>
+                ) : (
+                    filteredExtras.map(extra => (
+                        <SelectionCard
+                            key={extra.id}
+                            title={extra.name}
+                            subtitle={`${extra.duration} min - R$ ${extra.price.toFixed(2).replace('.', ',')}`}
+                            onClick={() => handleToggleExtraService(extra.id)}
+                            isSelected={tempSelectedExtraServiceIds.includes(extra.id)}
+                        />
+                    ))
+                )}
             </div>
             <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
                 <button

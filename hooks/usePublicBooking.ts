@@ -59,6 +59,11 @@ export interface PublicAgenteServico {
   servico_id: number;
 }
 
+export interface PublicServicoExtra {
+  servico_id: number;
+  servico_extra_id: number;
+}
+
 export interface SalonData {
   unidade: PublicUnidade;
   configuracoes: PublicConfiguracoes;
@@ -66,6 +71,7 @@ export interface SalonData {
   servicos: PublicServico[];
   extras: PublicExtra[];
   agente_servicos: PublicAgenteServico[];
+  servico_extras: PublicServicoExtra[];
   horarios_agentes: HorarioAgente[];
 }
 
@@ -226,6 +232,34 @@ export const usePublicBooking = () => {
     }
   }, []);
 
+  // Buscar extras filtrados por serviços selecionados
+  const getExtrasByServices = useCallback(async (unidadeId: number, servicoIds: number[]): Promise<PublicExtra[]> => {
+    try {
+      console.log('[usePublicBooking] Buscando extras para serviços:', servicoIds);
+
+      const servicoIdsStr = servicoIds.join(',');
+      const response = await fetch(`${API_BASE_URL}/public/salao/${unidadeId}/extras?servico_ids=${servicoIdsStr}`);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao buscar extras');
+      }
+
+      if (!data.success) {
+        throw new Error(data.message || 'Falha ao buscar extras');
+      }
+
+      console.log(`[usePublicBooking] Encontrados ${data.data.length} extras para os serviços selecionados`);
+      return data.data;
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error('[usePublicBooking] Erro ao buscar extras:', errorMessage);
+      return []; // Retorna array vazio em caso de erro
+    }
+  }, []);
+
   return {
     salonData,
     isLoading,
@@ -234,5 +268,6 @@ export const usePublicBooking = () => {
     findUnidadeBySlug,
     getAgenteDisponibilidade,
     createAgendamento,
+    getExtrasByServices,
   };
 };
