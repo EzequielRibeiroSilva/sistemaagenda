@@ -119,7 +119,7 @@ class WhatsAppService {
    * Gerar mensagem de confirmação de agendamento
    */
   generateAppointmentMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, hora_fim, servicos, valor_total } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, hora_fim, servicos, extras = [], valor_total } = agendamentoData;
     
     const dataFormatada = new Date(data_agendamento + 'T00:00:00').toLocaleDateString('pt-BR', {
       weekday: 'long',
@@ -129,6 +129,12 @@ class WhatsAppService {
     });
 
     const servicosTexto = servicos.map(s => `• ${s.nome} - R$ ${parseFloat(s.preco || 0).toFixed(2).replace('.', ',')}`).join('\n');
+
+    // Adicionar extras se houver
+    let extrasTexto = '';
+    if (extras && extras.length > 0) {
+      extrasTexto = `\n\n✨ *Serviços Extras:*\n${extras.map(e => `• ${e.nome} - R$ ${parseFloat(e.preco || 0).toFixed(2).replace('.', ',')}`).join('\n')}`;
+    }
 
     return `🎉 *Agendamento Confirmado!*
 
@@ -141,7 +147,7 @@ Olá, ${cliente.nome}! Seu agendamento na ${unidade.nome} foi CONFIRMADO!
 🕐 Horário: ${hora_inicio} às ${hora_fim}
 
 💼 *Serviços:*
-${servicosTexto}
+${servicosTexto}${extrasTexto}
 
 💰 *Valor Total: R$ ${parseFloat(valor_total || 0).toFixed(2).replace('.', ',')}*
 

@@ -66,6 +66,22 @@ class PublicBookingController {
         preco: parseFloat(servico.preco || 0)
       }));
 
+      // Buscar serviços extras ativos da unidade
+      const servicosExtrasRaw = await db('servicos_extras')
+        .where('unidade_id', unidadeId)
+        .where('status', 'Ativo')
+        .select('id', 'nome', 'descricao', 'preco', 'duracao_minutos', 'categoria');
+
+      // Converter preços para números e formatar para o frontend
+      const extras = servicosExtrasRaw.map(extra => ({
+        id: extra.id,
+        name: extra.nome,
+        description: extra.descricao,
+        price: parseFloat(extra.preco),
+        duration: extra.duracao_minutos,
+        category: extra.categoria
+      }));
+
       // Buscar associações agente-serviço para filtrar no frontend
       const associacoesAgenteServico = await db('agente_servicos')
         .whereIn('agente_id', agentes.map(a => a.id))
@@ -99,6 +115,7 @@ class PublicBookingController {
         },
         agentes,
         servicos,
+        extras,
         agente_servicos: associacoesAgenteServico,
         horarios_agentes: horariosAgentes
       };
@@ -383,6 +400,7 @@ class PublicBookingController {
         unidade_id,
         agente_id,
         servico_ids, // Array de IDs dos serviços
+        servico_extra_ids = [], // Array de IDs dos serviços extras (opcional)
         data_agendamento,
         hora_inicio,
         cliente_nome,
@@ -439,8 +457,33 @@ class PublicBookingController {
         });
       }
 
-      const duracaoTotalMinutos = servicos.reduce((total, servico) => total + servico.duracao_minutos, 0);
-      const valorTotal = servicos.reduce((total, servico) => total + parseFloat(servico.preco), 0);
+      // Buscar serviços extras se fornecidos
+      let servicosExtras = [];
+      if (servico_extra_ids.length > 0) {
+        servicosExtras = await trx('servicos_extras')
+          .whereIn('id', servico_extra_ids)
+          .where('status', 'Ativo')
+          .where('unidade_id', unidade_id)
+          .select('id', 'nome', 'preco', 'duracao_minutos');
+
+        if (servicosExtras.length !== servico_extra_ids.length) {
+          await trx.rollback();
+          return res.status(400).json({
+            success: false,
+            error: 'Serviços extras inválidos',
+            message: 'Um ou mais serviços extras não estão disponíveis'
+          });
+        }
+      }
+
+      // Calcular duração e valor total (serviços + extras)
+      const duracaoServicos = servicos.reduce((total, servico) => total + servico.duracao_minutos, 0);
+      const duracaoExtras = servicosExtras.reduce((total, extra) => total + extra.duracao_minutos, 0);
+      const duracaoTotalMinutos = duracaoServicos + duracaoExtras;
+
+      const valorServicos = servicos.reduce((total, servico) => total + parseFloat(servico.preco), 0);
+      const valorExtras = servicosExtras.reduce((total, extra) => total + parseFloat(extra.preco), 0);
+      const valorTotal = valorServicos + valorExtras;
 
       // Calcular hora_fim
       const horaInicioMinutos = this.timeToMinutes(hora_inicio);
@@ -519,6 +562,17 @@ class PublicBookingController {
 
       await trx('agendamento_servicos').insert(agendamentoServicos);
 
+      // Criar relacionamentos com serviços extras (se houver)
+      if (servicosExtras.length > 0) {
+        const agendamentoServicosExtras = servicosExtras.map(extra => ({
+          agendamento_id: agendamento.id,
+          servico_extra_id: extra.id,
+          preco_aplicado: extra.preco
+        }));
+
+        await trx('agendamento_servicos_extras').insert(agendamentoServicosExtras);
+      }
+
       await trx.commit();
 
       console.log(`[PublicBooking] Agendamento criado com sucesso: ID ${agendamento.id}`);
@@ -540,7 +594,8 @@ class PublicBookingController {
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,
         valor_total: agendamento.valor_total,
-        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco }))
+        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco })),
+        extras: servicosExtras.map(e => ({ nome: e.nome, preco: e.preco }))
       };
 
       // Enviar notificação WhatsApp (não bloquear a resposta)

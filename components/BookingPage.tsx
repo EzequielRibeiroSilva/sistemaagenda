@@ -46,6 +46,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+  const [selectedExtraServiceIds, setSelectedExtraServiceIds] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
@@ -57,6 +58,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // Estados temporários para seleções
   const [tempSelectedAgentId, setTempSelectedAgentId] = useState<number | null>(null);
   const [tempSelectedServiceIds, setTempSelectedServiceIds] = useState<number[]>([]);
+  const [tempSelectedExtraServiceIds, setTempSelectedExtraServiceIds] = useState<number[]>([]);
   const [tempSelectedTime, setTempSelectedTime] = useState<string | null>(null);
 
   // Estados para o novo calendário
@@ -124,8 +126,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     setCurrentStep(step);
     if (step <= 2) { setSelectedAgentId(null); setTempSelectedAgentId(null); }
     if (step <= 3) { setSelectedServiceIds([]); setTempSelectedServiceIds([]); }
-    if (step <= 4) { setSelectedDate(new Date()); setSelectedTime(null); setTempSelectedTime(null); setAvailableSlots([]); }
-    if (step <= 5) { setClientName(''); setClientPhone(''); }
+    if (step <= 4) { setSelectedExtraServiceIds([]); setTempSelectedExtraServiceIds([]); }
+    if (step <= 5) { setSelectedDate(new Date()); setSelectedTime(null); setTempSelectedTime(null); setAvailableSlots([]); }
+    if (step <= 6) { setClientName(''); setClientPhone(''); }
   };
 
   const selectedAgent = useMemo(() => salonData?.agentes.find(a => a.id === selectedAgentId), [salonData, selectedAgentId]);
@@ -184,6 +187,16 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         return prev.filter(id => id !== serviceId);
       } else {
         return [...prev, serviceId];
+      }
+    });
+  };
+
+  const handleToggleExtraService = (extraId: number) => {
+    setTempSelectedExtraServiceIds(prev => {
+      if (prev.includes(extraId)) {
+        return prev.filter(id => id !== extraId);
+      } else {
+        return [...prev, extraId];
       }
     });
   };
@@ -287,6 +300,41 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       </div>
     </div>
   );
+
+  const renderExtraServiceSelection = () => {
+    // Verifica se algum serviço extra foi selecionado para mudar o texto do botão
+    const hasSelection = tempSelectedExtraServiceIds.length > 0;
+
+    return (
+        <div className="flex flex-col h-full">
+            <StepHeader title="Deseja adicionar algum extra?" onBack={() => resetToStep(3)} />
+            <div className="p-4 space-y-3 overflow-y-auto">
+                {/* Mapeia os serviços extras dos dados do salão */}
+                {salonData?.extras?.map(extra => (
+                    <SelectionCard
+                        key={extra.id}
+                        title={extra.name}
+                        subtitle={`${extra.duration} min - R$ ${extra.price.toFixed(2).replace('.', ',')}`}
+                        onClick={() => handleToggleExtraService(extra.id)}
+                        isSelected={tempSelectedExtraServiceIds.includes(extra.id)}
+                    />
+                ))}
+            </div>
+            <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
+                <button
+                    onClick={() => {
+                        // Confirma a seleção e avança para a próxima etapa (passo 5)
+                        setSelectedExtraServiceIds(tempSelectedExtraServiceIds);
+                        setCurrentStep(5);
+                    }}
+                    className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                    {hasSelection ? 'Próximo' : 'Pular esta etapa'}
+                </button>
+            </div>
+        </div>
+    );
+  };
 
   // Função para buscar disponibilidade quando uma data é selecionada
   const handleDateSelect = async (date: Date) => {
@@ -445,7 +493,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     return (
       <div className="flex flex-col h-full">
-        <StepHeader title="Escolha data e hora" onBack={() => resetToStep(3)} />
+        <StepHeader title="Escolha data e hora" onBack={() => resetToStep(4)} />
         <div className="p-4 overflow-y-auto space-y-4">
           <Calendar />
           {selectedDate && (
@@ -494,7 +542,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <button
             onClick={() => {
               setSelectedTime(tempSelectedTime);
-              setCurrentStep(5);
+              setCurrentStep(6);
             }}
             disabled={!tempSelectedTime || !selectedDate}
             className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
@@ -508,7 +556,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const renderClientDetails = () => (
     <div className="flex flex-col h-full">
-      <StepHeader title="Seus dados" onBack={() => resetToStep(4)} />
+      <StepHeader title="Seus dados" onBack={() => resetToStep(5)} />
       <div className="p-4 space-y-4 overflow-y-auto">
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Nome Completo</label>
@@ -578,6 +626,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         unidade_id: unidadeId,
         agente_id: selectedAgentId,
         servico_ids: selectedServiceIds,
+        servico_extra_ids: selectedExtraServiceIds,
         data_agendamento: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD
         hora_inicio: selectedTime,
         cliente_nome: clientName.trim(),
@@ -592,7 +641,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (agendamentoCriado) {
         console.log('[BookingPage] Agendamento criado com sucesso:', agendamentoCriado.agendamento_id);
         console.log('[BookingPage] Cliente processado e WhatsApp enviado automaticamente');
-        setCurrentStep(6); // Ir para tela de sucesso
+        setCurrentStep(7); // Ir para tela de sucesso
       }
 
     } catch (error) {
@@ -705,9 +754,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     switch(currentStep) {
       case 2: return renderAgentSelection();
       case 3: return renderServiceSelection();
-      case 4: return renderDateTimeSelection();
-      case 5: return renderClientDetails();
-      case 6: return renderSuccess();
+      case 4: return renderExtraServiceSelection();
+      case 5: return renderDateTimeSelection();
+      case 6: return renderClientDetails();
+      case 7: return renderSuccess();
       default: return renderAgentSelection();
     }
   }

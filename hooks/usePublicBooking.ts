@@ -28,6 +28,15 @@ export interface PublicServico {
   categoria_id?: number;
 }
 
+export interface PublicExtra {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  duration: number;
+  category?: string;
+}
+
 export interface PublicConfiguracoes {
   nome_negocio: string;
   logo_url?: string;
@@ -55,6 +64,7 @@ export interface SalonData {
   configuracoes: PublicConfiguracoes;
   agentes: PublicAgente[];
   servicos: PublicServico[];
+  extras: PublicExtra[];
   agente_servicos: PublicAgenteServico[];
   horarios_agentes: HorarioAgente[];
 }
