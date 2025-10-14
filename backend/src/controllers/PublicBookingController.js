@@ -82,6 +82,13 @@ class PublicBookingController {
         category: extra.categoria
       }));
 
+      // Buscar associações serviço-extra para filtro condicional no frontend
+      const associacoesServicoExtra = await db('servico_servicos_extras')
+        .whereIn('servico_id', servicos.map(s => s.id))
+        .select('servico_id', 'servico_extra_id');
+
+      console.log(`[PublicBooking] Associações serviço-extra: ${associacoesServicoExtra.length} registros`);
+
       // Buscar associações agente-serviço para filtrar no frontend
       const associacoesAgenteServico = await db('agente_servicos')
         .whereIn('agente_id', agentes.map(a => a.id))
@@ -117,6 +124,7 @@ class PublicBookingController {
         servicos,
         extras,
         agente_servicos: associacoesAgenteServico,
+        servico_extras: associacoesServicoExtra,
         horarios_agentes: horariosAgentes
       };
 
@@ -134,6 +142,74 @@ class PublicBookingController {
         success: false,
         error: 'Erro interno do servidor',
         message: 'Erro ao carregar dados do salão'
+      });
+    }
+  }
+
+  /**
+   * GET /api/public/salao/:unidadeId/extras?servico_ids=1,2,3
+   * Buscar extras filtrados por serviços selecionados (lógica de UNIÃO)
+   */
+  async getExtrasByServices(req, res) {
+    try {
+      const { unidadeId } = req.params;
+      const { servico_ids } = req.query;
+
+      console.log(`[PublicBooking] Buscando extras para unidade ${unidadeId} e serviços:`, servico_ids);
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          error: 'ID da unidade é obrigatório'
+        });
+      }
+
+      if (!servico_ids) {
+        return res.status(400).json({
+          success: false,
+          error: 'IDs dos serviços são obrigatórios'
+        });
+      }
+
+      // Converter string para array se necessário
+      const servicoIds = Array.isArray(servico_ids) ? servico_ids : servico_ids.split(',').map(id => parseInt(id));
+
+      console.log(`[PublicBooking] Serviços processados:`, servicoIds);
+
+      // Buscar extras associados aos serviços selecionados (UNIÃO)
+      const extrasAssociados = await db('servicos_extras')
+        .join('servico_servicos_extras', 'servicos_extras.id', 'servico_servicos_extras.servico_extra_id')
+        .whereIn('servico_servicos_extras.servico_id', servicoIds)
+        .where('servicos_extras.unidade_id', unidadeId)
+        .where('servicos_extras.status', 'Ativo')
+        .distinct('servicos_extras.id', 'servicos_extras.nome', 'servicos_extras.descricao',
+                 'servicos_extras.preco', 'servicos_extras.duracao_minutos', 'servicos_extras.categoria')
+        .orderBy('servicos_extras.categoria', 'servicos_extras.nome');
+
+      // Formatar para o frontend
+      const extras = extrasAssociados.map(extra => ({
+        id: extra.id,
+        name: extra.nome,
+        description: extra.descricao,
+        price: parseFloat(extra.preco),
+        duration: extra.duracao_minutos,
+        category: extra.categoria
+      }));
+
+      console.log(`[PublicBooking] Encontrados ${extras.length} extras para os serviços selecionados`);
+
+      res.json({
+        success: true,
+        data: extras,
+        message: `${extras.length} serviços extras encontrados`
+      });
+
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao buscar extras por serviços:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
       });
     }
   }
