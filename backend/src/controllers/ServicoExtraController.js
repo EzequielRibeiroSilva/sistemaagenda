@@ -27,7 +27,8 @@ class ServicoExtraController extends BaseController {
       const servicosExtrasLeves = servicosExtras.map(servicoExtra => ({
         id: servicoExtra.id,
         nome: servicoExtra.nome,
-        preco: servicoExtra.preco
+        preco: servicoExtra.preco,
+        duracao_minutos: servicoExtra.duracao_minutos || 0 // Adicionar duracao_minutos
       }));
 
       console.log(`[ServicoExtraController] Lista leve: ${servicosExtrasLeves.length} serviços extras ativos`);

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 Validação Final - NewAppointmentModal</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .result { margin: 10px 0; padding: 15px; border-radius: 8px; border-left: 4px solid; }
+        .success { background: #d4edda; color: #155724; border-left-color: #28a745; }
+        .error { background: #f8d7da; color: #721c24; border-left-color: #dc3545; }
+        .info { background: #d1ecf1; color: #0c5460; border-left-color: #17a2b8; }
+        .warning { background: #fff3cd; color: #856404; border-left-color: #ffc107; }
+        button { margin: 5px; padding: 12px 20px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 6px; overflow-x: auto; max-height: 400px; font-size: 12px; }
+        .test-section { margin: 30px 0; padding: 20px; border: 2px solid #007bff; border-radius: 8px; }
+        .test-section h2 { margin-top: 0; color: #007bff; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-left: 10px; }
+        .status-pass { background: #28a745; color: white; }
+        .status-fail { background: #dc3545; color: white; }
+        .status-pending { background: #6c757d; color: white; }
+        .summary { background: #e9ecef; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Validação Final - NewAppointmentModal</h1>
+        <p>Teste completo de todos os componentes e fluxos do sistema de agendamento interno</p>
+
+        <div class="summary" id="summary">
+            <h3>📊 Resumo dos Testes</h3>
+            <div id="test-summary">Clique em "Executar Todos os Testes" para começar</div>
+        </div>
+
+        <div class="test-section">
+            <h2>🚀 Execução Automática</h2>
+            <button class="btn-success" onclick="runAllTests()">▶️ Executar Todos os Testes</button>
+            <button class="btn-warning" onclick="clearResults()">🧹 Limpar Resultados</button>
+            <button class="btn-danger" onclick="clearStorage()">🗑️ Reset Completo</button>
+        </div>
+
+        <div class="test-section">
+            <h2>🔐 Teste 1: Autenticação <span id="auth-status" class="status-badge status-pending">PENDENTE</span></h2>
+            <button class="btn-primary" onclick="testAuth()">Testar Login</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Teste 2: Carregamento de Dados <span id="data-status" class="status-badge status-pending">PENDENTE</span></h2>
+            <button class="btn-primary" onclick="testDataLoading()">Testar Dados</button>
+        </div>
+
+        <div class="test-section">
+            <h2>🔍 Teste 3: Busca de Clientes <span id="search-status" class="status-badge status-pending">PENDENTE</span></h2>
+            <button class="btn-primary" onclick="testClientSearch()">Testar Busca</button>
+        </div>
+
+        <div class="test-section">
+            <h2>👤 Teste 4: Criação de Cliente <span id="client-status" class="status-badge status-pending">PENDENTE</span></h2>
+            <button class="btn-primary" onclick="testClientCreation()">Testar Criação</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📅 Teste 5: Criação de Agendamento <span id="appointment-status" class="status-badge status-pending">PENDENTE</span></h2>
+            <button class="btn-primary" onclick="testAppointmentCreation()">Testar Agendamento</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let testResults = {
+            auth: false,
+            data: false,
+            search: false,
+            client: false,
+            appointment: false
+        };
+        
+        function addResult(type, title, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `
+                <strong>${title}</strong>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function updateStatus(testName, passed) {
+            const statusElement = document.getElementById(`${testName}-status`);
+            testResults[testName] = passed;
+            
+            if (passed) {
+                statusElement.textContent = 'PASSOU';
+                statusElement.className = 'status-badge status-pass';
+            } else {
+                statusElement.textContent = 'FALHOU';
+                statusElement.className = 'status-badge status-fail';
+            }
+            
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const total = Object.keys(testResults).length;
+            const passed = Object.values(testResults).filter(Boolean).length;
+            const failed = Object.values(testResults).filter(r => r === false).length;
+            const pending = total - passed - failed;
+            
+            document.getElementById('test-summary').innerHTML = `
+                <strong>Total: ${total}</strong> | 
+                <span style="color: #28a745;">✅ Passou: ${passed}</span> | 
+                <span style="color: #dc3545;">❌ Falhou: ${failed}</span> | 
+                <span style="color: #6c757d;">⏳ Pendente: ${pending}</span>
+                ${passed === total ? '<br><strong style="color: #28a745;">🎉 TODOS OS TESTES PASSARAM!</strong>' : ''}
+            `;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            addResult('info', '🗑️ localStorage limpo', { message: 'Reset completo realizado' });
+        }
+
+        async function makeAuthenticatedRequest(endpoint, options = {}) {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('Token não encontrado');
+            }
+
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    ...options.headers,
+                },
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        async function testAuth() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'testando@gmail.com',
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    localStorage.setItem('authToken', data.data.token);
+                    localStorage.setItem('userEmail', data.data.user.email);
+                    
+                    addResult('success', '✅ Teste 1: Autenticação', {
+                        status: 'PASSOU',
+                        user: data.data.user.email,
+                        role: data.data.user.role,
+                        unidade_id: data.data.user.unidade_id
+                    });
+                    updateStatus('auth', true);
+                } else {
+                    throw new Error(data.message || 'Login falhou');
+                }
+            } catch (error) {
+                addResult('error', '❌ Teste 1: Autenticação', { status: 'FALHOU', error: error.message });
+                updateStatus('auth', false);
+            }
+        }
+
+        async function testDataLoading() {
+            try {
+                const [servicos, extras, agentes] = await Promise.all([
+                    makeAuthenticatedRequest('/servicos'),
+                    makeAuthenticatedRequest('/servicos/extras/list'),
+                    makeAuthenticatedRequest('/agentes/list')
+                ]);
+
+                const hasServicos = servicos.success && servicos.data.length > 0;
+                const hasExtras = extras.success && extras.data.length > 0;
+                const hasAgentes = agentes.success && agentes.data.length > 0;
+
+                if (hasServicos && hasExtras && hasAgentes) {
+                    addResult('success', '✅ Teste 2: Carregamento de Dados', {
+                        status: 'PASSOU',
+                        servicos: servicos.data.length,
+                        extras: extras.data.length,
+                        agentes: agentes.data.length,
+                        sample_service: servicos.data[0],
+                        sample_extra: extras.data[0],
+                        sample_agent: agentes.data[0]
+                    });
+                    updateStatus('data', true);
+                } else {
+                    throw new Error('Dados insuficientes carregados');
+                }
+            } catch (error) {
+                addResult('error', '❌ Teste 2: Carregamento de Dados', { status: 'FALHOU', error: error.message });
+                updateStatus('data', false);
+            }
+        }
+
+        async function testClientSearch() {
+            try {
+                const searchResult = await makeAuthenticatedRequest('/clientes/search?q=teste');
+                
+                addResult('success', '✅ Teste 3: Busca de Clientes', {
+                    status: 'PASSOU',
+                    query: 'teste',
+                    results_count: searchResult.data.length,
+                    results: searchResult.data
+                });
+                updateStatus('search', true);
+            } catch (error) {
+                addResult('error', '❌ Teste 3: Busca de Clientes', { status: 'FALHOU', error: error.message });
+                updateStatus('search', false);
+            }
+        }
+
+        async function testClientCreation() {
+            try {
+                const clienteData = {
+                    primeiro_nome: 'Cliente',
+                    ultimo_nome: 'Teste Final',
+                    telefone: '+5511999999997'
+                };
+
+                const response = await fetch(`${API_BASE}/clientes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    },
+                    body: JSON.stringify(clienteData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    addResult('success', '✅ Teste 4: Criação de Cliente', {
+                        status: 'PASSOU',
+                        client_id: data.data.id,
+                        client_name: data.data.name,
+                        client_phone: data.data.phone
+                    });
+                    updateStatus('client', true);
+                } else {
+                    throw new Error(data.message || 'Criação de cliente falhou');
+                }
+            } catch (error) {
+                addResult('error', '❌ Teste 4: Criação de Cliente', { status: 'FALHOU', error: error.message });
+                updateStatus('client', false);
+            }
+        }
+
+        async function testAppointmentCreation() {
+            try {
+                const agendamentoData = {
+                    agente_id: 23,
+                    servico_ids: [17],
+                    servico_extra_ids: [5],
+                    data_agendamento: '2025-10-16',
+                    hora_inicio: '15:00',
+                    cliente_nome: 'Cliente Teste Final',
+                    cliente_telefone: '+5511999999996'
+                };
+
+                const response = await fetch(`${API_BASE}/agendamentos`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    },
+                    body: JSON.stringify(agendamentoData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    addResult('success', '✅ Teste 5: Criação de Agendamento', {
+                        status: 'PASSOU',
+                        agendamento_id: data.data.id,
+                        cliente_id: data.data.cliente_id,
+                        valor_total: data.data.valor_total
+                    });
+                    updateStatus('appointment', true);
+                } else {
+                    throw new Error(data.message || 'Criação de agendamento falhou');
+                }
+            } catch (error) {
+                addResult('error', '❌ Teste 5: Criação de Agendamento', { status: 'FALHOU', error: error.message });
+                updateStatus('appointment', false);
+            }
+        }
+
+        async function runAllTests() {
+            clearResults();
+            addResult('info', '🚀 Iniciando bateria completa de testes...', { timestamp: new Date().toISOString() });
+            
+            await testAuth();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDataLoading();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testClientSearch();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testClientCreation();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testAppointmentCreation();
+            
+            const allPassed = Object.values(testResults).every(Boolean);
+            addResult(allPassed ? 'success' : 'warning', 
+                allPassed ? '🎉 TODOS OS TESTES CONCLUÍDOS COM SUCESSO!' : '⚠️ Alguns testes falharam', 
+                { 
+                    summary: testResults,
+                    timestamp: new Date().toISOString()
+                }
+            );
+        }
+
+        // Inicializar summary
+        updateSummary();
+    </script>
+</body>
+</html>

@@ -1,40 +1,24 @@
 // FIX: Corrected the import statement for React and its hooks.
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronDown, ChevronUp } from './Icons';
 import type { Agent } from '../types';
 
-// Mock data - in a real app, this would be fetched based on the agentId
-const mockBookedSlots: { [key: string]: { [date: string]: string[] } } = {
-  'Eduardo Soares': {
-    '2025-10-06': ['10:00', '11:00', '14:00', '15:00', '16:00'],
-    '2025-10-07': ['09:00', '12:00', '13:00', '17:00'],
-    '2025-10-08': ['10:00', '11:00', '15:00', '16:00'],
-    '2025-10-25': ['10:00', '11:00', '14:00', '15:00', '16:00'],
-    '2025-11-03': ['09:00', '12:00', '13:00', '17:00'],
-    '2025-11-05': ['10:00', '11:00', '15:00', '16:00'],
-  },
-  'Ângelo Paixão': {
-    '2025-10-06': ['09:00', '10:00', '11:00', '12:00', '13:00'],
-    '2025-10-08': ['14:00', '15:00', '16:00'],
-  },
-  'Snake Filho': {
-     '2025-10-06': ['10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'],
-     '2025-10-07': ['09:00', '12:00', '13:00', '17:00', '18:00'],
-  }
-};
-
+const API_BASE_URL = 'http://localhost:3001/api';
 
 interface AvailabilityModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (dateTime: { date: Date, time: string }) => void;
   agentName: string | null;
+  agentId: number | null; // ✅ ADICIONADO: ID do agente para buscar disponibilidade real
 }
 
-const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, onSelect, agentName }) => {
+const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, onSelect, agentName, agentId }) => {
   const portalRoot = document.getElementById('portal-root');
   const [daysToShow, setDaysToShow] = useState(30);
+  const [availabilityData, setAvailabilityData] = useState<{ [date: string]: string[] }>({});
+  const [isLoading, setIsLoading] = useState(false);
 
   const days = useMemo(() => {
     const dayArray = [];
@@ -47,6 +31,63 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
     }
     return dayArray;
   }, [daysToShow]);
+
+  // ✅ FUNÇÃO PARA BUSCAR DISPONIBILIDADE REAL DA API
+  const fetchAvailabilityForDate = async (date: string, agenteId: number) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.error('[AvailabilityModal] Token não encontrado');
+        return [];
+      }
+
+      const response = await fetch(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade?data=${date}&duration=60`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`[AvailabilityModal] Erro ao buscar disponibilidade: ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      if (data.success && data.data.slots_disponiveis) {
+        return data.data.slots_disponiveis.map((slot: any) => slot.hora_inicio);
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[AvailabilityModal] Erro ao buscar disponibilidade:', error);
+      return [];
+    }
+  };
+
+  // ✅ EFFECT PARA CARREGAR DISPONIBILIDADE QUANDO MODAL ABRE
+  useEffect(() => {
+    if (isOpen && agentId) {
+      setIsLoading(true);
+      setAvailabilityData({});
+
+      // Buscar disponibilidade para os próximos dias
+      const loadAvailability = async () => {
+        const newAvailabilityData: { [date: string]: string[] } = {};
+
+        for (const day of days.slice(0, 7)) { // Carregar apenas os primeiros 7 dias
+          const dateStr = day.toISOString().split('T')[0]; // YYYY-MM-DD
+          const slots = await fetchAvailabilityForDate(dateStr, agentId);
+          newAvailabilityData[dateStr] = slots;
+        }
+
+        setAvailabilityData(newAvailabilityData);
+        setIsLoading(false);
+      };
+
+      loadAvailability();
+    }
+  }, [isOpen, agentId, days]);
 
   const groupedDays = useMemo(() => {
       return days.reduce((acc, date) => {
@@ -66,7 +107,8 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   };
 
-  const bookedSlotsForAgent = (agentName && mockBookedSlots[agentName]) || {};
+  // ✅ USAR DADOS REAIS EM VEZ DE MOCK
+  // const bookedSlotsForAgent = (agentName && mockBookedSlots[agentName]) || {};
   
   if (!isOpen || !portalRoot) return null;
 
@@ -96,7 +138,7 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
                         <h3 className="sticky top-[40px] bg-white h-10 flex items-center justify-center z-10 capitalize font-bold text-gray-700 text-center border-b border-gray-200 -mx-4 px-4">{monthYear}</h3>
                         {(monthDays as Date[]).map(day => {
                             const dateKey = toISODateString(day);
-                            const bookedTimes = bookedSlotsForAgent[dateKey] || [];
+                            const availableSlots = availabilityData[dateKey] || []; // ✅ USAR DADOS REAIS
                             const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
                             return (
@@ -110,20 +152,25 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
                                     <div className="flex-1 grid grid-cols-14 h-10 border-l border-gray-200" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
                                         {hours.map(hour => {
                                             const time = `${String(hour).padStart(2, '0')}:00`;
-                                            const isBooked = bookedTimes.includes(time);
-                                            
+                                            const isAvailable = availableSlots.includes(time); // ✅ USAR DADOS REAIS
+
                                             if (isWeekend) {
                                                return <div key={hour} className="h-full bg-repeat-space" style={{backgroundImage: `url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ef4444' fill-opacity='0.2' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E")`}}></div>
                                             }
 
-                                            if(isBooked) {
-                                                return <div key={hour} className="h-full bg-blue-500"></div>
+                                            if (isLoading) {
+                                                return <div key={hour} className="h-full bg-gray-200 animate-pulse"></div>
                                             }
-                                            
+
+                                            if (!isAvailable) {
+                                                return <div key={hour} className="h-full bg-red-200" title="Horário ocupado"></div>
+                                            }
+
                                             return (
-                                                <div 
-                                                    key={hour} 
-                                                    className="h-full bg-blue-100/50 hover:bg-green-400 cursor-pointer transition-colors"
+                                                <div
+                                                    key={hour}
+                                                    className="h-full bg-green-200 hover:bg-green-400 cursor-pointer transition-colors"
+                                                    title="Horário disponível - Clique para selecionar"
                                                     onClick={() => {
                                                         onSelect({ date: day, time });
                                                         onClose();
