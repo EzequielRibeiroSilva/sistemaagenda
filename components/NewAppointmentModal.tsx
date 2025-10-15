@@ -448,11 +448,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         }
     }, [date, selectedAgentId]);
 
+    // ✅ CORREÇÃO CRÍTICA: Recalcular preço sempre que serviços mudarem
     useEffect(() => {
-        if (isEditing) {
-            handleRecalculate();
-        }
-    }, [isEditing, selectedServices, selectedExtras, allServices, allExtras]);
+        handleRecalculate();
+    }, [selectedServices, selectedExtras, allServices, allExtras]);
 
     if (!isOpen || !portalRoot) return null;
 

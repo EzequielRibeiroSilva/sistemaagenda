@@ -15,6 +15,7 @@ const agentesRoutes = require('./agentes');
 const settingsRoutes = require('./settings');
 const publicRoutes = require('./public');
 const diagnosticsRoutes = require('./diagnostics');
+const testRoutes = require('./test');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -47,6 +48,9 @@ router.use('/public', publicRoutes);
 
 // Rotas de diagnóstico (MASTER ou desenvolvimento)
 router.use('/diagnostics', diagnosticsRoutes);
+
+// Rotas de teste (ADMIN apenas)
+router.use('/test', testRoutes);
 
 // Rotas de teste WhatsApp (desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
