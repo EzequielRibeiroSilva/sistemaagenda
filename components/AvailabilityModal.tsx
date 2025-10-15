@@ -71,11 +71,12 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
       setIsLoading(true);
       setAvailabilityData({});
 
-      // Buscar disponibilidade para os próximos dias
+      // Buscar disponibilidade para TODOS os dias (não apenas 7)
       const loadAvailability = async () => {
         const newAvailabilityData: { [date: string]: string[] } = {};
 
-        for (const day of days.slice(0, 7)) { // Carregar apenas os primeiros 7 dias
+        // ✅ CORREÇÃO CRÍTICA: Carregar TODOS os dias, não apenas 7
+        for (const day of days) { // Carregar todos os dias disponíveis
           const dateStr = day.toISOString().split('T')[0]; // YYYY-MM-DD
           const slots = await fetchAvailabilityForDate(dateStr, agentId);
           newAvailabilityData[dateStr] = slots;

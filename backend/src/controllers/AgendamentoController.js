@@ -1,12 +1,12 @@
 const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
-const EvolutionApiService = require('../services/EvolutionApiService');
+const WhatsAppService = require('../services/WhatsAppService'); // ✅ CORREÇÃO: Usar WhatsAppService
 const AuthService = require('../services/AuthService');
 
 class AgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
-    this.evolutionApi = new EvolutionApiService();
+    this.whatsAppService = new WhatsAppService(); // ✅ CORREÇÃO: Usar WhatsAppService
     this.authService = new AuthService();
   }
 
@@ -330,25 +330,31 @@ class AgendamentoController extends BaseController {
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
       try {
+        console.log('🔔 [WhatsApp] Iniciando envio de notificação...');
+
         // Buscar dados completos para a mensagem
         const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
+        console.log('📋 [WhatsApp] Dados completos obtidos:', {
+          cliente: dadosCompletos?.cliente?.nome,
+          telefone: dadosCompletos?.cliente?.telefone,
+          agente: dadosCompletos?.agente?.nome
+        });
 
         if (dadosCompletos && dadosCompletos.cliente.telefone) {
-          const template = this.evolutionApi.getTemplateNovoAgendamento(dadosCompletos);
-          const resultadoWhatsApp = await this.evolutionApi.enviarMensagem(
-            dadosCompletos.cliente.telefone,
-            template
-          );
+          // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
+          const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
           if (resultadoWhatsApp.success) {
-            console.log(`✅ WhatsApp enviado para cliente: ${dadosCompletos.cliente.nome}`);
+            console.log(`✅ [WhatsApp] Confirmação enviada para cliente: ${dadosCompletos.cliente.nome}`);
           } else {
-            console.log(`⚠️ Falha ao enviar WhatsApp para cliente: ${resultadoWhatsApp.error}`);
+            console.log(`⚠️ [WhatsApp] Falha ao enviar confirmação para cliente: ${JSON.stringify(resultadoWhatsApp.error)}`);
           }
+        } else {
+          console.log('⚠️ [WhatsApp] Dados incompletos - não foi possível enviar notificação');
         }
       } catch (whatsappError) {
         // Não falhar a criação do agendamento por erro no WhatsApp
-        console.error('❌ Erro ao enviar WhatsApp:', whatsappError.message);
+        console.error('❌ [WhatsApp] Erro ao enviar notificação:', whatsappError.message);
       }
 
       return res.status(201).json({
@@ -437,48 +443,86 @@ class AgendamentoController extends BaseController {
   // Método auxiliar para buscar dados completos do agendamento
   async buscarDadosCompletos(agendamentoId) {
     try {
-      const resultado = await this.model.db('agendamentos')
-        .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-        .join('agentes', 'agendamentos.agente_id', 'agentes.id')
-        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-        .leftJoin('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
-        .leftJoin('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-        .where('agendamentos.id', agendamentoId)
-        .select(
-          'agendamentos.*',
-          'clientes.nome as cliente_nome',
-          'clientes.telefone as cliente_telefone',
-          'clientes.email as cliente_email',
-          'agentes.nome as agente_nome',
-          'unidades.nome as unidade_nome',
-          'unidades.endereco as unidade_endereco',
-          'servicos.nome as servico_nome',
-          'servicos.preco as servico_preco'
-        )
+      console.log('🔍 [buscarDadosCompletos] Iniciando busca para agendamento ID:', agendamentoId);
+
+      // ✅ CORREÇÃO CRÍTICA: Buscar dados separadamente para evitar problemas de JOIN
+      const agendamento = await this.model.db('agendamentos')
+        .where('id', agendamentoId)
         .first();
 
-      if (!resultado) return null;
+      if (!agendamento) {
+        console.log('❌ [buscarDadosCompletos] Agendamento não encontrado');
+        return null;
+      }
 
-      // Formatar dados para o template
+      // Buscar cliente separadamente
+      const cliente = await this.model.db('clientes')
+        .where('id', agendamento.cliente_id)
+        .first();
+
+      // Buscar agente separadamente
+      const agente = await this.model.db('agentes')
+        .where('id', agendamento.agente_id)
+        .first();
+
+      // Buscar unidade separadamente
+      const unidade = await this.model.db('unidades')
+        .where('id', agendamento.unidade_id)
+        .first();
+
+      console.log('🔍 [buscarDadosCompletos] Dados encontrados:', {
+        agendamento: !!agendamento,
+        cliente: !!cliente,
+        agente: !!agente,
+        unidade: !!unidade
+      });
+
+      if (!cliente || !agente || !unidade) {
+        console.log('❌ [buscarDadosCompletos] Dados relacionados não encontrados');
+        return null;
+      }
+
+      // ✅ CORREÇÃO: Buscar serviços separadamente
+      const servicos = await this.model.db('agendamento_servicos')
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamento_servicos.agendamento_id', agendamentoId)
+        .select('servicos.nome', 'servicos.preco');
+
+      // ✅ CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
+      const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
+
+      console.log('🔍 [buscarDadosCompletos] Agendamento encontrado:', {
+        id: agendamento.id,
+        cliente: nomeCliente,
+        telefone: cliente?.telefone,
+        agente: agente?.nome,
+        servicos: servicos.length
+      });
+
+      // ✅ CORREÇÃO: Formatar dados para o template usando objetos separados
       return {
         cliente: {
-          nome: resultado.cliente_nome,
-          telefone: resultado.cliente_telefone,
-          email: resultado.cliente_email
+          nome: nomeCliente,
+          telefone: cliente.telefone,
+          email: cliente.email || null
         },
         agente: {
-          nome: resultado.agente_nome
+          nome: `${agente.nome} ${agente.sobrenome || ''}`.trim() // Nome completo do agente
         },
         unidade: {
-          nome: resultado.unidade_nome,
-          endereco: resultado.unidade_endereco
+          nome: unidade.nome,
+          endereco: unidade.endereco
         },
-        servico: {
-          nome: resultado.servico_nome || 'Serviço não especificado',
-          preco: resultado.servico_preco || resultado.valor_total || 0
-        },
-        data: new Date(resultado.data_agendamento).toLocaleDateString('pt-BR'),
-        hora: resultado.hora_inicio
+        // ✅ CORREÇÃO: Usar dados dos serviços buscados separadamente
+        servicos: servicos.map(s => ({
+          nome: s.nome,
+          preco: s.preco
+        })),
+        extras: [], // TODO: Buscar extras se necessário
+        data_agendamento: agendamento.data_agendamento,
+        hora_inicio: agendamento.hora_inicio,
+        hora_fim: agendamento.hora_fim,
+        valor_total: agendamento.valor_total
       };
 
     } catch (error) {
