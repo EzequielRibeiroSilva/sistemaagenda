@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Debug do Payload - Agendamento</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-left: 5px solid #007bff;
+        }
+        .test-section h2 {
+            margin: 0 0 20px 0;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .results {
+            margin-top: 30px;
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .result-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .result-item:last-child { border-bottom: none; }
+        .result-success { background: #d4edda; border-left: 4px solid #28a745; }
+        .result-error { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .result-info { background: #d1ecf1; border-left: 4px solid #17a2b8; }
+        .result-warning { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .json-display {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        .critical-info {
+            background: #fff5f5;
+            border: 2px solid #fed7d7;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .critical-info h3 {
+            color: #c53030;
+            margin: 0 0 15px 0;
+        }
+        .field-check {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+        }
+        .field-missing { background: #fed7d7; color: #c53030; }
+        .field-present { background: #c6f6d5; color: #2f855a; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Debug do Payload - Agendamento</h1>
+            <p>Diagnóstico Crítico: Identificar campos faltando no payload</p>
+        </div>
+
+        <div class="content">
+            <div class="critical-info">
+                <h3>🚨 PROBLEMA IDENTIFICADO:</h3>
+                <p><strong>Erro 400:</strong> "cliente_id, agente_id, unidade_id, data_agendamento, hora_inicio e hora_fim são obrigatórios"</p>
+                <p><strong>Causa:</strong> O frontend não está enviando todos os campos obrigatórios para o backend</p>
+                <p><strong>Solução:</strong> Identificar qual campo está faltando ou com valor null/undefined</p>
+            </div>
+
+            <div class="test-section">
+                <h2>🧪 Testes de Diagnóstico</h2>
+                <button class="btn btn-danger" onclick="testLogin()">🔐 1. Testar Login</button>
+                <button class="btn btn-primary" onclick="testUserData()">👤 2. Verificar Dados do Usuário</button>
+                <button class="btn btn-warning" onclick="testPayloadConstruction()">📋 3. Simular Construção do Payload</button>
+                <button class="btn btn-success" onclick="testCompleteFlow()">🚀 4. Teste Completo</button>
+                <button class="btn btn-danger" onclick="clearResults()">🧹 Limpar</button>
+            </div>
+
+            <div id="results" class="results"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        
+        function addResult(type, title, data = null) {
+            const results = document.getElementById('results');
+            const item = document.createElement('div');
+            item.className = `result-item result-${type}`;
+            
+            let content = `<strong>${title}</strong>`;
+            if (data) {
+                if (typeof data === 'object') {
+                    content += `<div class="json-display">${JSON.stringify(data, null, 2)}</div>`;
+                } else {
+                    content += `<div>${data}</div>`;
+                }
+            }
+            
+            item.innerHTML = content;
+            results.appendChild(item);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testLogin() {
+            try {
+                addResult('info', '🔐 Testando login...', { timestamp: new Date().toISOString() });
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'testando@gmail.com',
+                        senha: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    localStorage.setItem('authToken', data.data.token);
+                    addResult('success', '✅ Login realizado com sucesso', {
+                        token_preview: data.data.token.substring(0, 50) + '...',
+                        user_data: data.data.user
+                    });
+                } else {
+                    throw new Error(data.message || 'Falha no login');
+                }
+            } catch (error) {
+                addResult('error', '❌ Erro no login', { error: error.message });
+            }
+        }
+
+        async function testUserData() {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('Token não encontrado. Faça login primeiro.');
+                }
+
+                // Decodificar token JWT para ver os dados do usuário
+                const tokenParts = token.split('.');
+                if (tokenParts.length !== 3) {
+                    throw new Error('Token JWT inválido');
+                }
+
+                const payload = JSON.parse(atob(tokenParts[1]));
+                
+                addResult('info', '👤 Dados do usuário no token JWT', {
+                    user_id: payload.id,
+                    unidade_id: payload.unidade_id,
+                    role: payload.role,
+                    exp: new Date(payload.exp * 1000).toISOString(),
+                    token_valid: payload.exp * 1000 > Date.now()
+                });
+
+                // Verificar se unidade_id existe
+                if (!payload.unidade_id) {
+                    addResult('error', '❌ PROBLEMA CRÍTICO: unidade_id não encontrado no token', {
+                        message: 'O usuário não está associado a uma unidade',
+                        solution: 'Verificar cadastro do usuário no banco de dados'
+                    });
+                } else {
+                    addResult('success', '✅ unidade_id encontrado no token', {
+                        unidade_id: payload.unidade_id
+                    });
+                }
+
+            } catch (error) {
+                addResult('error', '❌ Erro ao verificar dados do usuário', { error: error.message });
+            }
+        }
+
+        async function testPayloadConstruction() {
+            try {
+                addResult('info', '📋 Simulando construção do payload...', { timestamp: new Date().toISOString() });
+
+                // Simular dados do formulário
+                const mockFormData = {
+                    selectedAgentId: 1,
+                    selectedServices: [1, 2],
+                    selectedExtras: [1],
+                    date: '15/10/2025',
+                    startTime: '10:00',
+                    endTime: '11:30',
+                    clientFirstName: 'João',
+                    clientLastName: 'Silva',
+                    clientPhone: '11999999999',
+                    selectedClient: null
+                };
+
+                // Simular dados do usuário
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('Token não encontrado. Faça login primeiro.');
+                }
+
+                const userPayload = JSON.parse(atob(token.split('.')[1]));
+
+                // Construir payload como no código real
+                const [dia, mes, ano] = mockFormData.date.split('/');
+                const dataFormatada = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+
+                const agendamentoData = {
+                    agente_id: mockFormData.selectedAgentId,
+                    servico_ids: mockFormData.selectedServices,
+                    servico_extra_ids: mockFormData.selectedExtras,
+                    data_agendamento: dataFormatada,
+                    hora_inicio: mockFormData.startTime,
+                    hora_fim: mockFormData.endTime,
+                    unidade_id: userPayload.unidade_id,
+                    observacoes: '',
+                    ...(mockFormData.selectedClient
+                        ? { cliente_id: mockFormData.selectedClient.id }
+                        : {
+                            cliente_nome: `${mockFormData.clientFirstName.trim()} ${mockFormData.clientLastName.trim()}`.trim(),
+                            cliente_telefone: `+55${mockFormData.clientPhone.replace(/\D/g, '')}`
+                        }
+                    )
+                };
+
+                addResult('success', '✅ Payload construído com sucesso', agendamentoData);
+
+                // Verificar campos obrigatórios
+                const camposObrigatorios = ['agente_id', 'unidade_id', 'data_agendamento', 'hora_inicio', 'hora_fim'];
+                const verificacao = {};
+                
+                camposObrigatorios.forEach(campo => {
+                    verificacao[campo] = {
+                        valor: agendamentoData[campo],
+                        presente: !!agendamentoData[campo],
+                        tipo: typeof agendamentoData[campo]
+                    };
+                });
+
+                // Verificar cliente
+                verificacao['cliente'] = {
+                    cliente_id: agendamentoData.cliente_id,
+                    cliente_nome: agendamentoData.cliente_nome,
+                    tem_cliente: !!(agendamentoData.cliente_id || agendamentoData.cliente_nome)
+                };
+
+                addResult('info', '🔍 Verificação de campos obrigatórios', verificacao);
+
+            } catch (error) {
+                addResult('error', '❌ Erro na construção do payload', { error: error.message });
+            }
+        }
+
+        async function testCompleteFlow() {
+            addResult('info', '🚀 Iniciando teste completo do fluxo...', { timestamp: new Date().toISOString() });
+            
+            await testLogin();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testUserData();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testPayloadConstruction();
+            
+            addResult('success', '🎉 Teste completo finalizado', {
+                message: 'Verifique os logs acima para identificar o problema',
+                next_steps: [
+                    '1. Verificar se unidade_id está presente no token',
+                    '2. Verificar se todos os campos obrigatórios estão sendo preenchidos',
+                    '3. Verificar se o payload está sendo construído corretamente',
+                    '4. Testar no frontend real com os logs adicionados'
+                ]
+            });
+        }
+
+        // Inicializar com informações
+        addResult('info', '🔍 Debug do Payload - Sistema de Agendamento', {
+            objetivo: 'Identificar por que o payload não contém todos os campos obrigatórios',
+            campos_obrigatorios: ['cliente_id', 'agente_id', 'unidade_id', 'data_agendamento', 'hora_inicio', 'hora_fim'],
+            erro_backend: 'cliente_id, agente_id, unidade_id, data_agendamento, hora_inicio e hora_fim são obrigatórios',
+            instrucoes: 'Execute os testes na ordem para identificar o problema'
+        });
+    </script>
+</body>
+</html>

@@ -324,12 +324,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
         const [hours, minutes] = startTimeStr.split(':').map(Number);
         if (isNaN(hours) || isNaN(minutes)) return '';
-        
+
         const startDate = new Date();
         startDate.setHours(hours, minutes, 0, 0);
 
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
-        
+
         const endHours = String(endDate.getHours()).padStart(2, '0');
         const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
 
@@ -532,16 +532,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 return;
             }
 
-            // Validação adicional de dados
-            console.log('[NewAppointmentModal] Dados do agendamento:', {
-                agente_id: selectedAgentId,
-                servico_ids: selectedServices,
-                servico_extra_ids: selectedExtras,
-                data_agendamento: dataFormatada,
-                hora_inicio: startTime,
-                hora_fim: endTime,
-                unidade_id: user.unidade_id,
-                cliente_info: selectedClient ? `ID: ${selectedClient.id}` : `Nome: ${clientFirstName} ${clientLastName}, Tel: ${clientPhone}`
+            // ✅ Validação final dos dados antes do envio
+            console.log('[NewAppointmentModal] Criando agendamento:', {
+                agente: allAgents.find(a => a.id === selectedAgentId)?.nome,
+                data: dataFormatada,
+                horario: `${startTime} - ${endTime}`,
+                cliente: selectedClient ? selectedClient.nome : `${clientFirstName} ${clientLastName}`,
+                servicos: selectedServices.length,
+                extras: selectedExtras.length
             });
 
             const agendamentoData = {
@@ -561,6 +559,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     }
                 )
             };
+
+
 
             if (isEditing) {
                 // Lógica de edição (implementar depois)

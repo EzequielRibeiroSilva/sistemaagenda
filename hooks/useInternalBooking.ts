@@ -258,11 +258,14 @@ export const useInternalBooking = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
+
+
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos`, {
         method: 'POST',
         body: JSON.stringify(data),
       });
+
 
       return response;
     } catch (err) {
