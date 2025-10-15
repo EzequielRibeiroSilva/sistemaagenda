@@ -165,6 +165,8 @@ class AgendamentoController extends BaseController {
 
       const {
         cliente_id,
+        cliente_nome,
+        cliente_telefone,
         agente_id,
         unidade_id,
         data_agendamento,
@@ -176,21 +178,55 @@ class AgendamentoController extends BaseController {
         ...outrosDados
       } = req.body;
 
-      // Validações básicas
-      if (!cliente_id || !agente_id || !unidade_id || !data_agendamento || !hora_inicio || !hora_fim) {
-        return res.status(400).json({ 
+      // Validações básicas - cliente_id OU (cliente_nome + cliente_telefone)
+      if (!agente_id || !unidade_id || !data_agendamento || !hora_inicio || !hora_fim) {
+        return res.status(400).json({
           error: 'Dados obrigatórios não fornecidos',
-          message: 'cliente_id, agente_id, unidade_id, data_agendamento, hora_inicio e hora_fim são obrigatórios' 
+          message: 'agente_id, unidade_id, data_agendamento, hora_inicio e hora_fim são obrigatórios'
+        });
+      }
+
+      // Validar cliente: deve ter cliente_id OU (cliente_nome + cliente_telefone)
+      if (!cliente_id && (!cliente_nome || !cliente_telefone)) {
+        return res.status(400).json({
+          error: 'Dados do cliente obrigatórios',
+          message: 'Deve fornecer cliente_id OU (cliente_nome + cliente_telefone)'
         });
       }
 
       // Verificar se a unidade pertence ao usuário
       const unidade = await this.model.db('unidades').where('id', unidade_id).where('usuario_id', usuarioId).first();
       if (!unidade) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Unidade inválida',
-          message: 'A unidade não pertence ao usuário ou não existe' 
+          message: 'A unidade não pertence ao usuário ou não existe'
         });
+      }
+
+      // 🔧 CRIAR CLIENTE AUTOMATICAMENTE SE NECESSÁRIO
+      let clienteIdFinal = cliente_id;
+      if (!cliente_id && cliente_nome && cliente_telefone) {
+        try {
+          const ClienteModel = require('../models/Cliente');
+          const clienteModel = new ClienteModel();
+
+          // Criar ou encontrar cliente
+          const clienteCriado = await clienteModel.findOrCreateForAgendamento(
+            cliente_telefone,
+            cliente_nome,
+            unidade_id
+          );
+
+          clienteIdFinal = clienteCriado.id;
+          console.log(`✅ Cliente criado/encontrado automaticamente: ID ${clienteIdFinal}, Nome: ${cliente_nome}`);
+
+        } catch (clienteError) {
+          console.error('❌ Erro ao criar cliente automaticamente:', clienteError);
+          return res.status(400).json({
+            error: 'Erro ao criar cliente',
+            message: 'Não foi possível criar o cliente automaticamente'
+          });
+        }
       }
 
       // Verificar conflito de horário
@@ -242,7 +278,7 @@ class AgendamentoController extends BaseController {
       const valorTotal = valorServicos + valorExtras;
 
       const dadosAgendamento = {
-        cliente_id,
+        cliente_id: clienteIdFinal, // ✅ USAR O ID DO CLIENTE (CRIADO OU EXISTENTE)
         agente_id,
         unidade_id,
         data_agendamento,
