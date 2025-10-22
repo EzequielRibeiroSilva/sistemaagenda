@@ -44,7 +44,12 @@ services:
       EVO_API_BASE_URL: https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/
       EVO_API_INTERNAL_URL: http://ssesmt-evolution-api_evolution-api:8080/
       EVO_API_INSTANCE_ID: D1737ABB6963-4720-8EE5-AE48DAE0BB18
-      EVO_API_KEY: SUA_API_KEY_AQUI
+      EVO_API_KEY: D1737ABB6963-4720-8EE5-AE48DAE0BB18
+      WHATSAPP_ENABLED: true
+      WHATSAPP_TEST_MODE: false
+      EVOLUTION_API_URL: https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/
+      EVOLUTION_API_KEY: D1737ABB6963-4720-8EE5-AE48DAE0BB18
+      EVOLUTION_INSTANCE_NAME: PAINEL-DE-AGENDAMENTOS
       ENABLE_WHATSAPP_NOTIFICATIONS: true
       REMINDER_24H_ENABLED: true
       REMINDER_1H_ENABLED: true

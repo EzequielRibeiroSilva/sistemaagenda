@@ -11,7 +11,18 @@ router.get('/', (req, res) => agendamentoController.index(req, res));
 router.get('/:id', (req, res) => agendamentoController.show(req, res));
 
 // POST /api/agendamentos - Criar novo agendamento
-router.post('/', (req, res) => agendamentoController.store(req, res));
+router.post('/', (req, res) => {
+  console.log('');
+  console.log('🚨🚨🚨 [ROTA] POST /api/agendamentos RECEBIDA! 🚨🚨🚨');
+  console.log('━'.repeat(80));
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('User:', req.user?.nome || 'N/A');
+  console.log('━'.repeat(80));
+  console.log('');
+  
+  agendamentoController.store(req, res);
+});
 
 // PUT /api/agendamentos/:id - Atualizar agendamento
 router.put('/:id', (req, res) => agendamentoController.update(req, res));

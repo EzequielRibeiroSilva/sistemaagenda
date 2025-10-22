@@ -51,9 +51,9 @@ class AgendamentoController extends BaseController {
           })
           .select(
             'agendamentos.*',
-            'clientes.nome as cliente_nome',
+            this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
             'clientes.telefone as cliente_telefone',
-            'agentes.nome as agente_nome',
+            this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
             'unidades.nome as unidade_nome'
           )
           .limit(parseInt(limit))
@@ -155,6 +155,13 @@ class AgendamentoController extends BaseController {
   // POST /api/agendamentos - Criar novo agendamento
   async store(req, res) {
     try {
+      console.log('');
+      console.log('🔥🔥🔥 [AGENDAMENTO] MÉTODO STORE INICIADO 🔥🔥🔥');
+      console.log('━'.repeat(80));
+      console.log('Payload recebido:', JSON.stringify(req.body, null, 2));
+      console.log('━'.repeat(80));
+      console.log('');
+      
       const usuarioId = req.user?.id;
       
       if (!usuarioId) {
@@ -327,34 +334,90 @@ class AgendamentoController extends BaseController {
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
 
+      console.log('🔥 [AGENDAMENTO] Agendamento criado com sucesso, ID:', agendamento.id);
+      console.log('🔥 [AGENDAMENTO] Iniciando bloco de envio WhatsApp...');
+      console.log('🔥 [AGENDAMENTO] WhatsAppService existe?', !!this.whatsAppService);
+
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
       try {
-        console.log('🔔 [WhatsApp] Iniciando envio de notificação...');
+        console.log('');
+        console.log('━'.repeat(80));
+        console.log('🔔 [WhatsApp] INICIANDO ENVIO DE NOTIFICAÇÃO');
+        console.log('━'.repeat(80));
+        console.log(`   Agendamento ID: ${agendamento.id}`);
+        console.log(`   Cliente ID: ${agendamento.cliente_id}`);
+        console.log('');
 
         // Buscar dados completos para a mensagem
+        console.log('🔍 [WhatsApp] Buscando dados completos do agendamento...');
         const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
-        console.log('📋 [WhatsApp] Dados completos obtidos:', {
-          cliente: dadosCompletos?.cliente?.nome,
-          telefone: dadosCompletos?.cliente?.telefone,
-          agente: dadosCompletos?.agente?.nome
-        });
+        
+        if (!dadosCompletos) {
+          console.error('❌ [WhatsApp] ERRO: buscarDadosCompletos retornou null');
+          console.error('   Verifique se o agendamento foi criado corretamente no banco');
+          console.log('━'.repeat(80));
+          console.log('');
+          return res.status(201).json({
+            success: true,
+            data: agendamentoCompleto,
+            message: 'Agendamento criado com sucesso (WhatsApp: dados incompletos)'
+          });
+        }
+        
+        console.log('✅ [WhatsApp] Dados completos obtidos:');
+        console.log(`   Cliente: ${dadosCompletos?.cliente?.nome}`);
+        console.log(`   Telefone: ${dadosCompletos?.cliente?.telefone}`);
+        console.log(`   Agente: ${dadosCompletos?.agente?.nome}`);
+        console.log(`   Unidade: ${dadosCompletos?.unidade?.nome}`);
+        console.log(`   Serviços: ${dadosCompletos?.servicos?.length || 0}`);
+        console.log('');
 
-        if (dadosCompletos && dadosCompletos.cliente.telefone) {
+        if (dadosCompletos && dadosCompletos.cliente && dadosCompletos.cliente.telefone) {
+          console.log('📤 [WhatsApp] Enviando mensagem de confirmação...');
+          console.log('');
+          
           // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
           const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
+          console.log('');
+          console.log('📊 [WhatsApp] Resultado do envio:');
+          console.log(JSON.stringify(resultadoWhatsApp, null, 2));
+          console.log('');
+
           if (resultadoWhatsApp.success) {
-            console.log(`✅ [WhatsApp] Confirmação enviada para cliente: ${dadosCompletos.cliente.nome}`);
+            console.log(`✅ [WhatsApp] SUCESSO! Confirmação enviada para: ${dadosCompletos.cliente.nome}`);
+            console.log(`   Telefone: ${dadosCompletos.cliente.telefone}`);
+            console.log(`   Message ID: ${resultadoWhatsApp.data?.key?.id || 'N/A'}`);
           } else {
-            console.log(`⚠️ [WhatsApp] Falha ao enviar confirmação para cliente: ${JSON.stringify(resultadoWhatsApp.error)}`);
+            console.error(`❌ [WhatsApp] FALHA ao enviar confirmação!`);
+            console.error(`   Cliente: ${dadosCompletos.cliente.nome}`);
+            console.error(`   Erro: ${JSON.stringify(resultadoWhatsApp.error)}`);
           }
         } else {
-          console.log('⚠️ [WhatsApp] Dados incompletos - não foi possível enviar notificação');
+          console.error('⚠️ [WhatsApp] DADOS INCOMPLETOS - não foi possível enviar notificação');
+          console.error('   Dados disponíveis:', {
+            temDadosCompletos: !!dadosCompletos,
+            temCliente: !!dadosCompletos?.cliente,
+            temTelefone: !!dadosCompletos?.cliente?.telefone,
+            telefone: dadosCompletos?.cliente?.telefone
+          });
         }
+        
+        console.log('━'.repeat(80));
+        console.log('');
+        
       } catch (whatsappError) {
         // Não falhar a criação do agendamento por erro no WhatsApp
-        console.error('❌ [WhatsApp] Erro ao enviar notificação:', whatsappError.message);
+        console.error('');
+        console.error('━'.repeat(80));
+        console.error('❌ [WhatsApp] ERRO CRÍTICO ao enviar notificação!');
+        console.error('━'.repeat(80));
+        console.error(`   Tipo: ${whatsappError.name}`);
+        console.error(`   Mensagem: ${whatsappError.message}`);
+        console.error(`   Stack: ${whatsappError.stack}`);
+        console.error('━'.repeat(80));
+        console.error('');
       }
 
       return res.status(201).json({
