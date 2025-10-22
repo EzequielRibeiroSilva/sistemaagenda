@@ -186,15 +186,16 @@ export const useAppointmentManagement = () => {
     const formattedTime = backendData.hora_inicio.substring(0, 5); // Remove segundos (:00)
     const dateTime = `${day} ${month}, ${year} - ${formattedTime}`;
 
-    // Formatar data de criação
-    const createdAt = new Date(backendData.created_at).toLocaleDateString('pt-BR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }) + ' - ' + new Date(backendData.created_at).toLocaleTimeString('pt-BR', {
+    // Formatar data de criação - Mesmo formato que dateTime: "22 outubro, 2025 - 10:00"
+    const createdDate = new Date(backendData.created_at);
+    const createdDay = createdDate.getDate();
+    const createdMonth = createdDate.toLocaleDateString('pt-BR', { month: 'long' });
+    const createdYear = createdDate.getFullYear();
+    const createdTime = createdDate.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit'
     });
+    const createdAt = `${createdDay} ${createdMonth}, ${createdYear} - ${createdTime}`;
 
     // Determinar serviço baseado na duração (placeholder logic)
     const duration = new Date(`1970-01-01T${backendData.hora_fim}:00`).getTime() -
