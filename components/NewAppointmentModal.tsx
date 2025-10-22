@@ -559,12 +559,20 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 )
             };
 
-
+            // 🔥 LOG DETALHADO DO PAYLOAD
+            console.log('🔥🔥🔥 [NewAppointmentModal] PAYLOAD COMPLETO ANTES DO ENVIO:');
+            console.log(JSON.stringify(agendamentoData, null, 2));
+            console.log('🔥 Estados dos campos:');
+            console.log('  clientFirstName:', clientFirstName);
+            console.log('  clientLastName:', clientLastName);
+            console.log('  clientPhone:', clientPhone);
+            console.log('  selectedClient:', selectedClient);
 
             if (isEditing) {
                 // Lógica de edição (implementar depois)
                 console.log('[NewAppointmentModal] Edição ainda não implementada');
             } else {
+                console.log('🚀 [NewAppointmentModal] Enviando requisição para createAgendamento...');
                 const resultado = await createAgendamento(agendamentoData);
                 if (resultado) {
                     alert('Agendamento criado com sucesso!');

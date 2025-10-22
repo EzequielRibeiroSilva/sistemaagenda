@@ -14,9 +14,9 @@ class Agendamento extends BaseModel {
       .where('unidades.usuario_id', usuarioId)
       .select(
         'agendamentos.*',
-        'clientes.nome as cliente_nome',
+        this.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
         'clientes.telefone as cliente_telefone',
-        'agentes.nome as agente_nome',
+        this.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
         'unidades.nome as unidade_nome'
       );
   }
@@ -31,9 +31,9 @@ class Agendamento extends BaseModel {
       .where('agendamentos.data_agendamento', data)
       .select(
         'agendamentos.*',
-        'clientes.nome as cliente_nome',
+        this.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
         'clientes.telefone as cliente_telefone',
-        'agentes.nome as agente_nome',
+        this.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
         'unidades.nome as unidade_nome'
       );
   }
@@ -46,7 +46,7 @@ class Agendamento extends BaseModel {
       .where('agendamentos.agente_id', agenteId)
       .select(
         'agendamentos.*',
-        'clientes.nome as cliente_nome',
+        this.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
         'clientes.telefone as cliente_telefone',
         'unidades.nome as unidade_nome'
       );

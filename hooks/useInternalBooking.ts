@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+// Usar a URL centralizada do utils/api.ts
 
 // Interfaces para dados internos
 export interface InternalServico {
@@ -259,13 +260,16 @@ export const useInternalBooking = () => {
       setIsLoading(true);
       setError(null);
 
-
+      console.log('🔥🔥🔥 [useInternalBooking] createAgendamento chamado');
+      console.log('📦 Dados recebidos:', JSON.stringify(data, null, 2));
+      console.log('🌐 URL:', `${API_BASE_URL}/agendamentos`);
 
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos`, {
         method: 'POST',
         body: JSON.stringify(data),
       });
 
+      console.log('✅ [useInternalBooking] Resposta recebida:', response);
 
       return response;
     } catch (err) {

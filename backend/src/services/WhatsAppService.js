@@ -7,10 +7,10 @@
 class WhatsAppService {
   constructor() {
     this.evolutionApiUrl = process.env.EVO_API_BASE_URL || process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-    this.evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
-    this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'painel-agendamento';
+    this.evolutionApiKey = process.env.EVO_API_KEY || process.env.EVOLUTION_API_KEY || '';
+    this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'PAINEL-DE-AGENDAMENTOS';
     this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
-    this.enabled = process.env.WHATSAPP_ENABLED === 'true';
+    this.enabled = process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true' || process.env.WHATSAPP_ENABLED === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
 
     console.log('[WhatsApp] Configuração:', {
@@ -34,19 +34,20 @@ class WhatsAppService {
    */
   formatPhoneNumber(phone) {
     // Remove todos os caracteres não numéricos
-    const cleanPhone = phone.replace(/\D/g, '');
+    let cleanPhone = phone.replace(/\D/g, '');
     
-    // Se não tem código do país, adiciona 55 (Brasil)
-    if (cleanPhone.length === 11 && cleanPhone.startsWith('11')) {
-      return `55${cleanPhone}@s.whatsapp.net`;
-    } else if (cleanPhone.length === 10) {
-      return `5511${cleanPhone}@s.whatsapp.net`;
-    } else if (cleanPhone.length === 13 && cleanPhone.startsWith('55')) {
-      return `${cleanPhone}@s.whatsapp.net`;
+    // Remove zero inicial se houver
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = cleanPhone.substring(1);
     }
     
-    // Fallback: assumir que já está no formato correto
-    return `${cleanPhone}@s.whatsapp.net`;
+    // Se não tem código do país (55), adiciona
+    if (!cleanPhone.startsWith('55')) {
+      cleanPhone = '55' + cleanPhone;
+    }
+    
+    // Retorna apenas o número limpo (Evolution API não precisa do @s.whatsapp.net)
+    return cleanPhone;
   }
 
   /**
@@ -87,26 +88,47 @@ class WhatsAppService {
       // Usar instanceName se disponível, senão usar instanceId
       const instanceIdentifier = this.instanceName || this.instanceId;
 
-      const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${instanceIdentifier}`, {
+      const payload = {
+        number: formattedPhone,
+        text: message,
+        delay: 1000
+      };
+
+      console.log(`[WhatsApp] Payload:`, JSON.stringify(payload, null, 2));
+      console.log(`[WhatsApp] URL: ${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`);
+      console.log(`[WhatsApp] API Key: ${this.evolutionApiKey ? '***' + this.evolutionApiKey.slice(-4) : 'MISSING'}`);
+
+      const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': this.evolutionApiKey
         },
-        body: JSON.stringify({
-          number: formattedPhone,
-          text: message
-        })
+        body: JSON.stringify(payload),
+        timeout: 30000 // 30 segundos de timeout
       });
 
       const data = await response.json();
 
+      console.log(`[WhatsApp] Response Status: ${response.status}`);
+      console.log(`[WhatsApp] Response Headers:`, Object.fromEntries(response.headers.entries()));
+
       if (response.ok) {
         console.log('[WhatsApp] Mensagem enviada com sucesso');
+        console.log('[WhatsApp] Response Data:', JSON.stringify(data, null, 2));
         return { success: true, data };
       } else {
-        console.error('[WhatsApp] Erro ao enviar mensagem:', data);
-        return { success: false, error: data };
+        console.error('[WhatsApp] Erro ao enviar mensagem:');
+        console.error(`  Status: ${response.status}`);
+        console.error(`  Data:`, JSON.stringify(data, null, 2));
+        return {
+          success: false,
+          error: {
+            status: response.status,
+            error: response.statusText,
+            response: data
+          }
+        };
       }
 
     } catch (error) {
