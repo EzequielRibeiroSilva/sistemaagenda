@@ -302,7 +302,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1600px] text-sm">
+                    <table className="w-full min-w-[1600px] text-sm table-fixed">
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="p-3 w-12 text-center font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10">
@@ -312,27 +312,27 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         onChange={handleSelectAll}
                                     />
                                 </th>
-                                {visibleColumns.id && <th className="p-3 w-24 text-left font-semibold text-gray-600 whitespace-nowrap">ID</th>}
-                                {visibleColumns.servico && <th className="p-3 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">SERVIÇO</th>}
-                                {visibleColumns.dataHora && <th className="p-3 w-44 text-left font-semibold text-gray-600 whitespace-nowrap">DATA/HORA</th>}
-                                {visibleColumns.tempoRestante && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">TEMPO RESTANTE</th>}
-                                {visibleColumns.agente && <th className="p-4 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">AGENTE</th>}
-                                {visibleColumns.cliente && <th className="p-4 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">CLIENTE</th>}
-                                {visibleColumns.estado && <th className="p-3 w-28 text-left font-semibold text-gray-600 whitespace-nowrap">ESTADO</th>}
-                                {visibleColumns.statusPagamento && <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
-                                {visibleColumns.criadoEm && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
-                                {visibleColumns.metodoPagamento && <th className="p-3 w-36 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
+                                {visibleColumns.id && <th className="p-3 w-28 text-left font-semibold text-gray-600 whitespace-nowrap">ID</th>}
+                                {visibleColumns.servico && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">SERVIÇO</th>}
+                                {visibleColumns.dataHora && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">DATA/HORA</th>}
+                                {visibleColumns.tempoRestante && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">TEMPO</th>}
+                                {visibleColumns.agente && <th className="p-4 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">AGENTE</th>}
+                                {visibleColumns.cliente && <th className="p-4 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CLIENTE</th>}
+                                {visibleColumns.estado && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">ESTADO</th>}
+                                {visibleColumns.statusPagamento && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
+                                {visibleColumns.criadoEm && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
+                                {visibleColumns.metodoPagamento && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
                             </tr>
                             <tr>
                                 <td className="p-3 border-t border-gray-200 sticky left-0 bg-gray-50 z-10"></td>
-                                {visibleColumns.id && <td className="p-3 w-24 border-t border-gray-200"><FilterInput type="text" name="id" value={filters.id} onChange={handleFilterChange} placeholder="Pesquisar ID" /></td>}
-                                {visibleColumns.servico && <td className="p-3 w-48 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
-                                {visibleColumns.dataHora && <td className="p-3 w-44 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
+                                {visibleColumns.id && <td className="p-3 w-28 border-t border-gray-200"><FilterInput type="text" name="id" value={filters.id} onChange={handleFilterChange} placeholder="Pesquisar ID" /></td>}
+                                {visibleColumns.servico && <td className="p-3 w-64 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
+                                {visibleColumns.dataHora && <td className="p-3 w-64 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
                                 {visibleColumns.tempoRestante && <td className="p-3 w-32 border-t border-gray-200"><FilterSelect name="timeRemainingStatus" value={filters.timeRemainingStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos</option><option value="soon">Próximo/Agora</option><option value="overdue">Passado</option><option value="pending">Futuro</option></FilterSelect></td>}
-                                {visibleColumns.agente && <td className="p-4 w-48 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={!!loggedInAgentId}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
-                                {visibleColumns.cliente && <td className="p-4 w-48 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
+                                {visibleColumns.agente && <td className="p-4 w-64 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={!!loggedInAgentId}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
+                                {visibleColumns.cliente && <td className="p-4 w-64 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
                                 {visibleColumns.estado && (
-                                    <td className="p-3 border-t border-gray-200">
+                                    <td className="p-3 w-32 border-t border-gray-200">
                                         <FilterSelect name="status" value={filters.status} onChange={handleFilterChange}>
                                             <option value="all">Mostrar Todos Os</option>
                                             <option value="Aprovado">Aprovado</option>
@@ -342,17 +342,17 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         </FilterSelect>
                                     </td>
                                 )}
-                                {visibleColumns.statusPagamento && <td className="p-3 border-t border-gray-200"><FilterSelect name="paymentStatus" value={filters.paymentStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos Os</option>{paymentStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
-                                {visibleColumns.criadoEm && <td className="p-3 border-t border-gray-200"><FilterInput type="text" name="createdAt" value={filters.createdAt} onChange={handleFilterChange} placeholder="Pesquisar Data Criação" /></td>}
+                                {visibleColumns.statusPagamento && <td className="p-3 w-64 border-t border-gray-200"><FilterSelect name="paymentStatus" value={filters.paymentStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos Os</option>{paymentStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
+                                {visibleColumns.criadoEm && <td className="p-3 w-64 border-t border-gray-200"><FilterInput type="text" name="createdAt" value={filters.createdAt} onChange={handleFilterChange} placeholder="Pesquisar Data Criação" /></td>}
                                 {visibleColumns.metodoPagamento && 
-                                    <td className="p-3 border-t border-gray-200">
+                                    <td className="p-3 w-64 border-t border-gray-200">
                                         <FilterSelect name="paymentMethod" value={filters.paymentMethod} onChange={handleFilterChange}>
                                             <option value="all">Método De Pagamento</option>
                                             {paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}
                                         </FilterSelect>
                                     </td>
                                 }
-                                <td className="p-3 border-t border-gray-200" colSpan={visibleColumns.metodoPagamento ? 1 : 2}>
+                                <td className="p-3 w-32 border-t border-gray-200" colSpan={visibleColumns.metodoPagamento ? 1 : 2}>
                                      <button
                                         onClick={handleClearFilters}
                                         className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
@@ -388,13 +388,13 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                                 onChange={() => handleSelectOne(app.id)}
                                             />
                                         </td>
-                                        {visibleColumns.id && <td className="p-3 w-24 text-gray-500 whitespace-nowrap">{app.id}</td>}
-                                        {visibleColumns.servico && <td className="p-3 w-48 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
-                                        {visibleColumns.dataHora && <td className="p-3 w-44 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
+                                        {visibleColumns.id && <td className="p-3 w-28 text-gray-500 whitespace-nowrap">{app.id}</td>}
+                                        {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
+                                        {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
                                         {visibleColumns.tempoRestante && <td className="p-3 w-32"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
-                                        {visibleColumns.agente && <td className="p-4 w-48"><div className="flex items-center gap-3"><img src={getAssetUrl(app.agent.avatar)} alt={app.agent.name} className="w-8 h-8 rounded-full object-cover border-2 border-gray-200" onError={(e) => { const target = e.target as HTMLImageElement; target.src = `https://i.pravatar.cc/150?u=${app.id}`; }} /><span className="font-medium text-gray-800 truncate">{app.agent.name}</span></div></td>}
+                                        {visibleColumns.agente && <td className="p-4 w-64"><div className="flex items-center gap-3"><img src={getAssetUrl(app.agent.avatar)} alt={app.agent.name} className="w-8 h-8 rounded-full object-cover border-2 border-gray-200" onError={(e) => { const target = e.target as HTMLImageElement; target.src = `https://i.pravatar.cc/150?u=${app.id}`; }} /><span className="font-medium text-gray-800 truncate">{app.agent.name}</span></div></td>}
                                         {visibleColumns.cliente && (
-                                            <td className="p-4 w-48">
+                                            <td className="p-4 w-64">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <span className="font-medium text-gray-800 truncate">{app.client.name}</span>
                                                     <button className="text-gray-400 hover:text-gray-700 p-1 flex-shrink-0">
@@ -403,10 +403,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                                 </div>
                                             </td>
                                         )}
-                                        {visibleColumns.estado && <td className="p-3 w-28"><StatusBadge status={app.status} /></td>}
-                                        {visibleColumns.statusPagamento && <td className="p-3 w-40 text-gray-600 whitespace-nowrap">{app.paymentStatus}</td>}
-                                        {visibleColumns.criadoEm && <td className="p-3 w-32 text-gray-600 whitespace-nowrap">{app.createdAt}</td>}
-                                        {visibleColumns.metodoPagamento && <td className="p-3 w-36 text-gray-600 whitespace-nowrap">{app.paymentMethod}</td>}
+                                        {visibleColumns.estado && <td className="p-3 w-32"><StatusBadge status={app.status} /></td>}
+                                        {visibleColumns.statusPagamento && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.paymentStatus}</td>}
+                                        {visibleColumns.criadoEm && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.createdAt}</td>}
+                                        {visibleColumns.metodoPagamento && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.paymentMethod}</td>}
                                     </tr>
                                 ))
                             )}
