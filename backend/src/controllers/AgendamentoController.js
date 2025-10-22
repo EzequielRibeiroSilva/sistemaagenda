@@ -35,38 +35,125 @@ class AgendamentoController extends BaseController {
         // Para paginação, precisamos filtrar por usuário através das unidades
         const filters = {};
         if (status) filters.status = status;
-        
+
         // Buscar agendamentos do usuário com paginação
         const offset = (parseInt(page) - 1) * parseInt(limit);
-        
-        data = await this.model.db(this.model.tableName)
+
+        // IMPLEMENTAÇÃO RBAC E ORDENAÇÃO INTELIGENTE
+        let baseQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
-          .where('unidades.usuario_id', usuarioId)
-          .modify(function(queryBuilder) {
-            if (status) {
-              queryBuilder.where('agendamentos.status', status);
-            }
-          })
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+
+        // RBAC: Aplicar filtros baseados no role do usuário
+        if (req.user?.role === 'AGENTE') {
+          // AGENTE: Buscar o agente_id através da tabela agentes
+          const agenteRecord = await this.model.db('agentes')
+            .where('usuario_id', req.user.id)
+            .select('id')
+            .first();
+
+          if (agenteRecord) {
+            baseQuery = baseQuery.where('agendamentos.agente_id', agenteRecord.id);
+          } else {
+            // Se não encontrou agente, retornar vazio
+            return res.json({
+              data: [],
+              pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: 0,
+                pages: 0
+              }
+            });
+          }
+        } else {
+          // ADMIN/MASTER: Ver todos da unidade
+          baseQuery = baseQuery.where('unidades.usuario_id', usuarioId);
+        }
+
+        // Aplicar filtros adicionais
+        baseQuery = baseQuery.modify(function(queryBuilder) {
+          if (status) {
+            queryBuilder.where('agendamentos.status', status);
+          }
+
+          // ORDENAÇÃO INTELIGENTE: Priorizar agendamentos próximos
+          // Filtrar agendamentos passados por padrão (exceto se status específico for solicitado)
+          if (!status) {
+            // Mostrar apenas agendamentos futuros ou em andamento
+            queryBuilder.where(function() {
+              this.where('agendamentos.data_agendamento', '>', this.client.raw('CURRENT_DATE'))
+                  .orWhere(function() {
+                    this.where('agendamentos.data_agendamento', '=', this.client.raw('CURRENT_DATE'))
+                        .where('agendamentos.hora_fim', '>', this.client.raw('CURRENT_TIME'));
+                  });
+            });
+          }
+        });
+
+        data = await baseQuery
           .select(
             'agendamentos.*',
             this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
             'clientes.telefone as cliente_telefone',
             this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
+            'agentes.avatar_url as agente_avatar_url', // ✅ CORREÇÃO CRÍTICA: Incluir avatar do agente
             'unidades.nome as unidade_nome'
           )
           .limit(parseInt(limit))
           .offset(offset)
-          .orderBy('agendamentos.data_agendamento', 'desc')
+          // ORDENAÇÃO INTELIGENTE: Agendamentos mais próximos primeiro
+          .orderBy('agendamentos.data_agendamento', 'asc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
-        const total = await this.model.db(this.model.tableName)
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .where('unidades.usuario_id', usuarioId)
+        // Aplicar os mesmos filtros RBAC na contagem total
+        let totalQuery = this.model.db(this.model.tableName)
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id');
+
+        // RBAC: Aplicar filtros baseados no role do usuário
+        if (req.user?.role === 'AGENTE') {
+          // AGENTE: Buscar o agente_id através da tabela agentes
+          const agenteRecord = await this.model.db('agentes')
+            .where('usuario_id', req.user.id)
+            .select('id')
+            .first();
+
+          if (agenteRecord) {
+            totalQuery = totalQuery.where('agendamentos.agente_id', agenteRecord.id);
+          } else {
+            // Se não encontrou agente, total é 0
+            const total = { count: 0 };
+            return res.json({
+              data: [],
+              pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: 0,
+                pages: 0
+              }
+            });
+          }
+        } else {
+          // ADMIN/MASTER: Ver todos da unidade
+          totalQuery = totalQuery.where('unidades.usuario_id', usuarioId);
+        }
+
+        const total = await totalQuery
           .modify(function(queryBuilder) {
             if (status) {
               queryBuilder.where('agendamentos.status', status);
+            }
+
+            // Aplicar o mesmo filtro de agendamentos futuros
+            if (!status) {
+              queryBuilder.where(function() {
+                this.where('agendamentos.data_agendamento', '>', this.client.raw('CURRENT_DATE'))
+                    .orWhere(function() {
+                      this.where('agendamentos.data_agendamento', '=', this.client.raw('CURRENT_DATE'))
+                          .where('agendamentos.hora_fim', '>', this.client.raw('CURRENT_TIME'));
+                    });
+              });
             }
           })
           .count('agendamentos.id as count')

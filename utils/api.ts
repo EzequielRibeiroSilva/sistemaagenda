@@ -4,10 +4,10 @@
  */
 
 // URL base da API (backend)
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // URL base para assets (uploads, avatares, etc.)
-export const ASSETS_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3000';
+export const ASSETS_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3001';
 
 /**
  * Constrói URL completa para assets (avatares, logos, etc.)
