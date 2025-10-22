@@ -1,20 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX } from './Icons';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX, Search } from './Icons';
 import type { AppointmentDetail, AppointmentStatus } from '../types';
-
-const mockAppointments: AppointmentDetail[] = [
-  { id: 4172, service: 'CORTE', dateTime: '27 Setembro, 2025 - 18:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 23:56', paymentMethod: 'Não definido'},
-  { id: 4171, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 23:55', paymentMethod: 'Não definido'},
-  { id: 4170, service: 'CORTE', dateTime: '27 Setembro, 2025 - 15:00', timeRemaining: '1 dias', timeRemainingStatus: 'pending', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 19:04', paymentMethod: 'Não definido'},
-  { id: 4169, service: 'CORTE', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '18 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 17:35', paymentMethod: 'Não definido'},
-  { id: 4168, service: 'CORTE', dateTime: '25 Setembro, 2025 - 17:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Charles Gesso', avatar: 'https://i.pravatar.cc/150?img=4' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Setembro, 2025 - 16:55', paymentMethod: 'Cartão Crédito'},
-  { id: 4167, service: 'CORTE', dateTime: '25 Setembro, 2025 - 18:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Cancelado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 16:55', paymentMethod: 'Não definido'},
-  { id: 4166, service: 'CORTE', dateTime: '25 Setembro, 2025 - 16:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Concluído', paymentStatus: 'Pago', createdAt: '25 Setembro, 2025 - 15:09', paymentMethod: 'PIX'},
-  { id: 4165, service: 'CORTE + BARBA', dateTime: '26 Setembro, 2025 - 18:00', timeRemaining: '17 horas', timeRemainingStatus: 'soon', agent: { name: 'Eduardo Soares', avatar: 'https://i.pravatar.cc/150?img=3' }, client: { name: 'José Raine', avatar: 'https://i.pravatar.cc/150?img=5' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 13:55', paymentMethod: 'Dinheiro'},
-  { id: 4164, service: 'CORTE', dateTime: '26 Setembro, 2025 - 09:00', timeRemaining: '7 horas', timeRemainingStatus: 'soon', agent: { name: 'Snake Filho', avatar: 'https://i.pravatar.cc/150?img=1' }, client: { name: 'Vicente Arley', avatar: 'https://i.pravatar.cc/150?img=2' }, status: 'Aprovado', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 12:56', paymentMethod: 'Cartão Débito'},
-  { id: 4163, service: 'CORTE', dateTime: '25 Setembro, 2025 - 14:00', timeRemaining: 'Passado', timeRemainingStatus: 'overdue', agent: { name: 'Ângelo Paixão', avatar: 'https://i.pravatar.cc/150?img=6' }, client: { name: 'Pedro Hugo', avatar: 'https://i.pravatar.cc/150?img=7' }, status: 'Não Compareceu', paymentStatus: 'Não Pago', createdAt: '25 Setembro, 2025 - 12:45', paymentMethod: 'Não definido'},
-];
-const TOTAL_APPOINTMENTS = 4087;
+import { useAppointmentManagement, AppointmentFilters } from '../hooks/useAppointmentManagement';
+import { useAuth } from '../contexts/AuthContext';
+import { getAssetUrl } from '../utils/api'; // ✅ CORREÇÃO: Importar getAssetUrl para avatars
 
 const ColumnToggle: React.FC<{ label: string; name: string; checked: boolean; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ label, name, checked, onChange }) => (
     <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
@@ -105,13 +94,25 @@ interface AppointmentsPageProps {
 }
 
 const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) => {
+    const { user } = useAuth();
+    const {
+        appointments,
+        isLoading,
+        error,
+        pagination,
+        agentOptions,
+        fetchAppointments,
+        updateAppointmentStatus,
+        deleteAppointment
+    } = useAppointmentManagement();
+
     const [isModalOpen, setModalOpen] = useState(false);
     const [visibleColumns, setVisibleColumns] = useState({
         id: true,
         servico: true,
         dataHora: true,
         tempoRestante: true,
-        selecionado: true,
+        agente: true, // Renomeado de 'selecionado' para 'agente'
         cliente: true,
         estado: true,
         statusPagamento: true,
@@ -126,6 +127,8 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         preco: false,
     });
     const [selectedAppointments, setSelectedAppointments] = useState<Record<number, boolean>>({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(10);
 
     const initialFilters = {
         id: '',
@@ -141,6 +144,25 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
 
     const [filters, setFilters] = useState(initialFilters);
+
+    // Buscar agendamentos quando filtros ou página mudarem
+    useEffect(() => {
+        const apiFilters: AppointmentFilters = {
+            page: currentPage,
+            limit: itemsPerPage,
+        };
+
+        if (filters.status !== 'all') {
+            apiFilters.status = filters.status;
+        }
+
+        // Se o usuário logado for um agente, filtrar apenas seus agendamentos
+        if (user?.role === 'AGENTE' && user?.agente_id) {
+            apiFilters.agente_id = user.agente_id;
+        }
+
+        fetchAppointments(apiFilters);
+    }, [currentPage, itemsPerPage, filters.status, fetchAppointments, user]);
     
     const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -152,9 +174,9 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
-    const serviceOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.service))], []);
-    const agentOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.agent.name))], []);
-    const paymentStatusOptions = useMemo(() => [...new Set(mockAppointments.map(a => a.paymentStatus))], []);
+    const serviceOptions = useMemo(() => [...new Set(appointments.map(a => a.service))], [appointments]);
+    // agentOptions agora vem do hook useAppointmentManagement
+    const paymentStatusOptions = useMemo(() => [...new Set(appointments.map(a => a.paymentStatus))], [appointments]);
     const paymentMethodOptions = ['Não definido', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'PIX'];
 
     const getRemainingTimeClass = (status: AppointmentDetail['timeRemainingStatus']) => {
@@ -167,31 +189,32 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
     
     const filteredAppointments = useMemo(() => {
-        const agentNameForFilter = loggedInAgentId === '1' ? 'Eduardo Soares' : null;
+        // Aplicar filtros locais (os filtros do servidor já foram aplicados)
+        return appointments.filter(app => {
+            const { id, service, dateTime, timeRemainingStatus, agent, client, paymentStatus, createdAt, paymentMethod } = filters;
 
-        return mockAppointments.filter(app => {
-            if (agentNameForFilter && app.agent.name !== agentNameForFilter) {
-                return false;
-            }
-
-            const { id, service, dateTime, timeRemainingStatus, agent, client, status, paymentStatus, createdAt, paymentMethod } = filters;
-            
             if (id && !String(app.id).toLowerCase().includes(id.toLowerCase())) return false;
             if (service !== 'all' && app.service !== service) return false;
             if (dateTime && !app.dateTime.toLowerCase().includes(dateTime.toLowerCase())) return false;
-
-            if (status !== 'all' && app.status !== status) return false;
-            if (agent !== 'all' && app.agent.name !== agent && !loggedInAgentId) return false;
+            if (timeRemainingStatus !== 'all' && app.timeRemainingStatus !== timeRemainingStatus) return false;
+            if (agent !== 'all' && app.agent.name !== agent) return false;
             if (paymentStatus !== 'all' && app.paymentStatus !== paymentStatus) return false;
             if (paymentMethod !== 'all' && app.paymentMethod !== paymentMethod) return false;
-            if (timeRemainingStatus !== 'all' && app.timeRemainingStatus !== timeRemainingStatus) return false;
-
-            if (client && !app.client.name.toLowerCase().includes(client.toLowerCase())) return false;
             if (createdAt && !app.createdAt.toLowerCase().includes(createdAt.toLowerCase())) return false;
-            
+
+            // Busca geral por cliente, agente ou ID
+            if (client) {
+                const searchTerm = client.toLowerCase();
+                const matchesClient = app.client.name.toLowerCase().includes(searchTerm);
+                const matchesAgent = app.agent.name.toLowerCase().includes(searchTerm);
+                const matchesId = String(app.id).includes(searchTerm);
+
+                if (!matchesClient && !matchesAgent && !matchesId) return false;
+            }
+
             return true;
         });
-    }, [filters, loggedInAgentId]);
+    }, [appointments, filters]);
 
     const allSelected = useMemo(() => 
         filteredAppointments.length > 0 && filteredAppointments.every(app => selectedAppointments[app.id]),
@@ -221,6 +244,23 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     
     const handleClearFilters = () => {
         setFilters(initialFilters);
+        setCurrentPage(1);
+    };
+
+    // Função para mudar página
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 1 && newPage <= pagination.pages) {
+            setCurrentPage(newPage);
+        }
+    };
+
+    // Função para atualizar status de agendamento
+    const handleStatusChange = async (appointmentId: number, newStatus: AppointmentStatus) => {
+        try {
+            await updateAppointmentStatus(appointmentId, newStatus);
+        } catch (error) {
+            console.error('Erro ao atualizar status:', error);
+        }
     };
 
     return (
@@ -228,12 +268,34 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Compromissos</h1>
-                    <p className="text-sm text-gray-500">Mostrando {filteredAppointments.length} de {TOTAL_APPOINTMENTS}</p>
+                    <p className="text-sm text-gray-500">
+                        Mostrando {filteredAppointments.length} de {pagination.total} agendamentos
+                        {isLoading && ' (Carregando...)'}
+                    </p>
+                    {error && (
+                        <p className="text-sm text-red-600 mt-1">
+                            Erro: {error}
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                        <Download className="w-4 h-4" />
-                        Baixar .csv
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="Buscar por cliente, agente ou ID..."
+                            value={filters.client}
+                            onChange={(e) => setFilters(prev => ({ ...prev, client: e.target.value }))}
+                            className="pl-8 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-80"
+                        />
+                        <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                    </div>
+                    <button
+                        onClick={() => fetchAppointments({ page: currentPage, limit: itemsPerPage })}
+                        disabled={isLoading}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                        <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
                     </button>
                 </div>
             </div>
@@ -250,25 +312,25 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         onChange={handleSelectAll}
                                     />
                                 </th>
-                                {visibleColumns.id && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">ID</th>}
-                                {visibleColumns.servico && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">SERVIÇO</th>}
-                                {visibleColumns.dataHora && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">DATA/HORA</th>}
-                                {visibleColumns.tempoRestante && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">TEMPO RESTANTE</th>}
-                                {visibleColumns.selecionado && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">SELECIONADO</th>}
-                                {visibleColumns.cliente && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">CLIENTE</th>}
-                                {visibleColumns.estado && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">ESTADO</th>}
-                                {visibleColumns.statusPagamento && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
-                                {visibleColumns.criadoEm && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
-                                {visibleColumns.metodoPagamento && <th className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
+                                {visibleColumns.id && <th className="p-3 w-24 text-left font-semibold text-gray-600 whitespace-nowrap">ID</th>}
+                                {visibleColumns.servico && <th className="p-3 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">SERVIÇO</th>}
+                                {visibleColumns.dataHora && <th className="p-3 w-44 text-left font-semibold text-gray-600 whitespace-nowrap">DATA/HORA</th>}
+                                {visibleColumns.tempoRestante && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">TEMPO RESTANTE</th>}
+                                {visibleColumns.agente && <th className="p-4 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">AGENTE</th>}
+                                {visibleColumns.cliente && <th className="p-4 w-48 text-left font-semibold text-gray-600 whitespace-nowrap">CLIENTE</th>}
+                                {visibleColumns.estado && <th className="p-3 w-28 text-left font-semibold text-gray-600 whitespace-nowrap">ESTADO</th>}
+                                {visibleColumns.statusPagamento && <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
+                                {visibleColumns.criadoEm && <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
+                                {visibleColumns.metodoPagamento && <th className="p-3 w-36 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
                             </tr>
                             <tr>
                                 <td className="p-3 border-t border-gray-200 sticky left-0 bg-gray-50 z-10"></td>
-                                {visibleColumns.id && <td className="p-3 border-t border-gray-200"><FilterInput type="text" name="id" value={filters.id} onChange={handleFilterChange} placeholder="Pesquisar ID" /></td>}
-                                {visibleColumns.servico && <td className="p-3 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
-                                {visibleColumns.dataHora && <td className="p-3 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
-                                {visibleColumns.tempoRestante && <td className="p-3 border-t border-gray-200"><FilterSelect name="timeRemainingStatus" value={filters.timeRemainingStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos Os</option><option value="soon">Em breve</option><option value="overdue">Passado</option><option value="pending">Pendente</option></FilterSelect></td>}
-                                {visibleColumns.selecionado && <td className="p-3 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={!!loggedInAgentId}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
-                                {visibleColumns.cliente && <td className="p-3 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
+                                {visibleColumns.id && <td className="p-3 w-24 border-t border-gray-200"><FilterInput type="text" name="id" value={filters.id} onChange={handleFilterChange} placeholder="Pesquisar ID" /></td>}
+                                {visibleColumns.servico && <td className="p-3 w-48 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
+                                {visibleColumns.dataHora && <td className="p-3 w-44 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
+                                {visibleColumns.tempoRestante && <td className="p-3 w-32 border-t border-gray-200"><FilterSelect name="timeRemainingStatus" value={filters.timeRemainingStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos</option><option value="soon">Próximo/Agora</option><option value="overdue">Passado</option><option value="pending">Futuro</option></FilterSelect></td>}
+                                {visibleColumns.agente && <td className="p-4 w-48 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={!!loggedInAgentId}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
+                                {visibleColumns.cliente && <td className="p-4 w-48 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
                                 {visibleColumns.estado && (
                                     <td className="p-3 border-t border-gray-200">
                                         <FilterSelect name="status" value={filters.status} onChange={handleFilterChange}>
@@ -302,39 +364,80 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredAppointments.map(app => (
-                                <tr key={app.id} className="border-t border-gray-200 hover:bg-gray-50">
-                                    <td className="p-3 text-center sticky left-0 bg-white hover:bg-gray-50 z-10">
-                                        <StyledCheckbox
-                                            checked={!!selectedAppointments[app.id]}
-                                            onChange={() => handleSelectOne(app.id)}
-                                        />
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={10} className="p-8 text-center text-gray-500">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <RotateCw className="w-4 h-4 animate-spin" />
+                                            Carregando agendamentos...
+                                        </div>
                                     </td>
-                                    {visibleColumns.id && <td className="p-3 text-gray-500 whitespace-nowrap">{app.id}</td>}
-                                    {visibleColumns.servico && <td className="p-3 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span>{app.service}</td>}
-                                    {visibleColumns.dataHora && <td className="p-3 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
-                                    {visibleColumns.tempoRestante && <td className="p-3"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
-                                    {visibleColumns.selecionado && <td className="p-3"><div className="flex items-center gap-2"><img src={app.agent.avatar} alt={app.agent.name} className="w-6 h-6 rounded-full" /><span className="font-medium text-gray-800 whitespace-nowrap">{app.agent.name}</span></div></td>}
-                                    {visibleColumns.cliente && <td className="p-3"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><img src={app.client.avatar} alt={app.client.name} className="w-6 h-6 rounded-full" /><span className="font-medium text-gray-800 whitespace-nowrap">{app.client.name}</span></div><button className="text-gray-400 hover:text-gray-700 p-1"><MoreHorizontal className="w-4 h-4" /></button></div></td>}
-                                    {visibleColumns.estado && <td className="p-3"><StatusBadge status={app.status} /></td>}
-                                    {visibleColumns.statusPagamento && <td className="p-3 text-gray-600 whitespace-nowrap">{app.paymentStatus}</td>}
-                                    {visibleColumns.criadoEm && <td className="p-3 text-gray-600 whitespace-nowrap">{app.createdAt}</td>}
-                                    {visibleColumns.metodoPagamento && <td className="p-3 text-gray-600 whitespace-nowrap">{app.paymentMethod}</td>}
                                 </tr>
-                            ))}
+                            ) : filteredAppointments.length === 0 ? (
+                                <tr>
+                                    <td colSpan={10} className="p-8 text-center text-gray-500">
+                                        {error ? 'Erro ao carregar agendamentos' : 'Nenhum agendamento encontrado'}
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredAppointments.map(app => (
+                                    <tr key={app.id} className="border-t border-gray-200 hover:bg-gray-50">
+                                        <td className="p-3 text-center sticky left-0 bg-white hover:bg-gray-50 z-10">
+                                            <StyledCheckbox
+                                                checked={!!selectedAppointments[app.id]}
+                                                onChange={() => handleSelectOne(app.id)}
+                                            />
+                                        </td>
+                                        {visibleColumns.id && <td className="p-3 w-24 text-gray-500 whitespace-nowrap">{app.id}</td>}
+                                        {visibleColumns.servico && <td className="p-3 w-48 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
+                                        {visibleColumns.dataHora && <td className="p-3 w-44 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
+                                        {visibleColumns.tempoRestante && <td className="p-3 w-32"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
+                                        {visibleColumns.agente && <td className="p-4 w-48"><div className="flex items-center gap-3"><img src={getAssetUrl(app.agent.avatar)} alt={app.agent.name} className="w-8 h-8 rounded-full object-cover border-2 border-gray-200" onError={(e) => { const target = e.target as HTMLImageElement; target.src = `https://i.pravatar.cc/150?u=${app.id}`; }} /><span className="font-medium text-gray-800 truncate">{app.agent.name}</span></div></td>}
+                                        {visibleColumns.cliente && (
+                                            <td className="p-4 w-48">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="font-medium text-gray-800 truncate">{app.client.name}</span>
+                                                    <button className="text-gray-400 hover:text-gray-700 p-1 flex-shrink-0">
+                                                        <MoreHorizontal className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        )}
+                                        {visibleColumns.estado && <td className="p-3 w-28"><StatusBadge status={app.status} /></td>}
+                                        {visibleColumns.statusPagamento && <td className="p-3 w-40 text-gray-600 whitespace-nowrap">{app.paymentStatus}</td>}
+                                        {visibleColumns.criadoEm && <td className="p-3 w-32 text-gray-600 whitespace-nowrap">{app.createdAt}</td>}
+                                        {visibleColumns.metodoPagamento && <td className="p-3 w-36 text-gray-600 whitespace-nowrap">{app.paymentMethod}</td>}
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
             
             <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-gray-600">
-                <p>Mostrando 1-10 de {TOTAL_APPOINTMENTS}</p>
+                <p>
+                    Mostrando {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total}
+                </p>
                 <div className="flex items-center gap-2">
                     <span>Página:</span>
-                    <span className="font-semibold text-gray-800">1</span>
+                    <span className="font-semibold text-gray-800">{currentPage}</span>
+                    <span>de {pagination.pages}</span>
                     <div className="flex items-center">
-                        <button className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50" disabled><ChevronLeft className="w-4 h-4" /></button>
-                        <button className="p-2 rounded-md hover:bg-gray-100"><ChevronRight className="w-4 h-4" /></button>
+                        <button
+                            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                            disabled={currentPage <= 1}
+                            onClick={() => handlePageChange(currentPage - 1)}
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                            disabled={currentPage >= pagination.pages}
+                            onClick={() => handlePageChange(currentPage + 1)}
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
             </div>
