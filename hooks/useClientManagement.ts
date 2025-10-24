@@ -109,8 +109,8 @@ export const useClientManagement = () => {
       setLoading(true);
       setError(null);
 
-      // Usar filtros fornecidos ou filtros atuais do estado
-      const currentFilters = newFilters || filters;
+      // ✅ CORREÇÃO: Usar filtros fornecidos (não depender do estado)
+      const currentFilters = newFilters !== undefined ? newFilters : filters;
 
       // Construir query string
       const queryParams = new URLSearchParams();

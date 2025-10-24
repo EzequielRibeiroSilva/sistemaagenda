@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Download, Plus, CheckCircle, ChevronLeft, ChevronRight, MoreHorizontal } from './Icons';
 import { useClientManagement, type ClientFilters } from '../hooks/useClientManagement';
 
@@ -38,10 +38,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     // ✅ CORREÇÃO: Carregar dados iniciais APENAS UMA VEZ
     useEffect(() => {
         applyFilters({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Array vazio = executa apenas uma vez
 
-    // Aplicar filtros com debounce (SEM applyFilters nas dependências)
+    // ✅ Aplicar filtros com debounce otimizado
     useEffect(() => {
+        // Não aplicar filtros se todos estiverem vazios (já carregado no mount)
+        if (!localFilters.id && !localFilters.name && !localFilters.phone) {
+            return;
+        }
+
         const timeoutId = setTimeout(() => {
             const apiFilters: ClientFilters = {};
 
@@ -61,17 +67,29 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         }, 500); // Debounce de 500ms
 
         return () => clearTimeout(timeoutId);
-    }, [localFilters]); // ✅ CORREÇÃO: Removido 'applyFilters' das dependências
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [localFilters]); // applyFilters é estável via useCallback
 
-    const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ✅ Memoizar handlers para evitar re-renders desnecessários
+    const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setLocalFilters(prev => ({ ...prev, [name]: value }));
-    };
+    }, []);
 
-    const handleClearFilters = () => {
+    const handleClearFilters = useCallback(() => {
         setLocalFilters({ id: '', name: '', phone: '' });
         clearFilters();
-    };
+    }, [clearFilters]);
+
+    // ✅ Memoizar valores computados
+    const hasActiveFilters = useMemo(() => {
+        return !!(localFilters.id || localFilters.name || localFilters.phone);
+    }, [localFilters]);
+
+    const displayText = useMemo(() => {
+        if (loading) return 'Carregando...';
+        return `Mostrando ${clients.length} de ${totalCount}`;
+    }, [loading, clients.length, totalCount]);
 
     return (
         <div className="space-y-6">
@@ -80,7 +98,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Clientes</h1>
                     <p className="text-sm text-gray-500">
-                        {loading ? 'Carregando...' : `Mostrando ${clients.length} de ${totalCount}`}
+                        {displayText}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -188,14 +206,24 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                             ) : clients.length === 0 ? (
                                 <tr>
                                     <td colSpan={4} className="p-8 text-center text-gray-500">
-                                        <div className="space-y-2">
-                                            <div>Nenhum cliente encontrado</div>
-                                            {(localFilters.id || localFilters.name || localFilters.phone) && (
+                                        <div className="space-y-3">
+                                            <div className="text-gray-600 font-medium">
+                                                {hasActiveFilters ? '🔍 Nenhum cliente encontrado com esses filtros' : '👥 Nenhum cliente cadastrado'}
+                                            </div>
+                                            {hasActiveFilters ? (
                                                 <button
                                                     onClick={handleClearFilters}
-                                                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                                                    className="text-blue-600 hover:text-blue-800 underline text-sm font-medium"
                                                 >
                                                     Limpar filtros para ver todos os clientes
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setActiveView('clients-add')}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                    Cadastrar Primeiro Cliente
                                                 </button>
                                             )}
                                         </div>
@@ -255,7 +283,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-gray-600">
-                <p>Mostrando {clients.length} de {totalCount}</p>
+                <p>{displayText}</p>
                 <div className="flex items-center gap-2">
                     <span>Página:</span>
                     <span className="font-semibold text-gray-800">1</span>
