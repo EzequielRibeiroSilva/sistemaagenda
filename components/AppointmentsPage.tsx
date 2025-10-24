@@ -302,7 +302,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1600px] text-sm table-fixed">
+                    <table className="w-full min-w-[1700px] text-sm table-fixed">
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="p-3 w-12 text-center font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10">
@@ -322,6 +322,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 {visibleColumns.statusPagamento && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS DE PAGAMENTO</th>}
                                 {visibleColumns.criadoEm && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CRIADO EM</th>}
                                 {visibleColumns.metodoPagamento && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO DE PAGAMENTO</th>}
+                                <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
                             </tr>
                             <tr>
                                 <td className="p-3 border-t border-gray-200 sticky left-0 bg-gray-50 z-10"></td>
@@ -352,10 +353,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         </FilterSelect>
                                     </td>
                                 }
-                                <td className="p-3 w-32 border-t border-gray-200" colSpan={visibleColumns.metodoPagamento ? 1 : 2}>
+                                <td className="p-3 w-40 border-t border-gray-200">
                                      <button
                                         onClick={handleClearFilters}
-                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 whitespace-nowrap"
                                     >
                                         <RotateCw className="w-3 h-3" />
                                         Limpar
