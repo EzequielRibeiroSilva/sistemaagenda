@@ -153,27 +153,16 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
   };
 
   const handleDeleteLocation = async (id: number) => {
-    console.log("🔍 DEBUG: ID a ser excluído:", id);
-    console.log("🔍 DEBUG: Tipo do ID:", typeof id);
-
     if (!confirm('Tem certeza que deseja excluir este local? Esta ação não pode ser desfeita.')) {
-      console.log("🔍 DEBUG: Usuário cancelou a exclusão");
       return;
     }
 
-    console.log("🔍 DEBUG: Usuário confirmou a exclusão, iniciando processo...");
     setDeleteLoading(id);
-
-    console.log("🔍 DEBUG: Chamando deleteUnit com ID:", id);
     const success = await deleteUnit(id);
-    console.log("🔍 DEBUG: Resultado do deleteUnit:", success);
-
     setDeleteLoading(null);
 
     if (!success) {
-      console.error('❌ DEBUG: Erro ao excluir unidade - success =', success);
-    } else {
-      console.log("✅ DEBUG: Exclusão reportada como sucesso");
+      console.error('Erro ao excluir unidade');
     }
   };
 

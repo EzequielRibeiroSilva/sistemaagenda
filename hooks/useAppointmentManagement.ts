@@ -270,8 +270,6 @@ export const useAppointmentManagement = () => {
       if (response.pagination) {
         setPagination(response.pagination);
       }
-
-      console.log(`✅ Agendamentos carregados: ${transformedAppointments.length}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar agendamentos';
       setError(errorMessage);

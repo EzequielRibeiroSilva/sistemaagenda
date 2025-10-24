@@ -65,7 +65,6 @@ export const useExtraServiceManagement = () => {
       if (data.success) {
         const extraServicesData = Array.isArray(data.data) ? data.data : [];
         setExtraServices(extraServicesData);
-        console.log('✅ Serviços extras carregados:', extraServicesData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar serviços extras');
       }
@@ -99,7 +98,6 @@ export const useExtraServiceManagement = () => {
       if (data.success) {
         const servicesData = Array.isArray(data.data) ? data.data : [];
         setServices(servicesData);
-        console.log('✅ Serviços principais carregados:', servicesData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
@@ -130,7 +128,6 @@ export const useExtraServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço extra carregado:', data.data.nome);
         return data.data;
       } else {
         throw new Error(data.message || 'Erro ao carregar serviço extra');
@@ -154,8 +151,6 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🚀 Criando serviço extra:', extraServiceData);
-
       const response = await fetch('http://localhost:3001/api/servicos/extras', {
         method: 'POST',
         headers: {
@@ -168,7 +163,6 @@ export const useExtraServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço extra criado:', data.data.nome);
         return { success: true, data: data.data };
       } else {
         throw new Error(data.message || 'Erro ao criar serviço extra');
@@ -193,8 +187,6 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🔄 Atualizando serviço extra:', id, extraServiceData);
-
       const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
         method: 'PUT',
         headers: {
@@ -207,7 +199,6 @@ export const useExtraServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço extra atualizado:', data.data.nome);
         return { success: true, data: data.data };
       } else {
         throw new Error(data.message || 'Erro ao atualizar serviço extra');
@@ -243,7 +234,6 @@ export const useExtraServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço extra deletado');
         return { success: true };
       } else {
         throw new Error(data.message || 'Erro ao deletar serviço extra');
