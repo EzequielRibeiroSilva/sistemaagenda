@@ -232,7 +232,10 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       Object.entries(agentData).forEach(([key, value]) => {
         if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento') {
           formData.append(key, JSON.stringify(value));
-        } else if (value !== null && value !== undefined) {
+        } else if (key === 'avatar' && value instanceof File) {
+          // ✅ CORREÇÃO: Adicionar arquivo sem converter para string
+          formData.append(key, value);
+        } else if (value !== null && value !== undefined && !(value instanceof File)) {
           formData.append(key, value.toString());
         }
       });

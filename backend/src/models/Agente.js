@@ -76,50 +76,84 @@ class Agente extends BaseModel {
 
   // Buscar agentes com dados calculados (para grid)
   async findWithCalculatedData(usuarioId) {
-    const agentes = await this.findByUsuario(usuarioId);
-    
-    // Para cada agente, calcular dados adicionais
-    const agentesComDados = await Promise.all(
-      agentes.map(async (agente) => {
-        // Contar agendamentos
-        const agendamentosCount = await this.db('agendamentos')
-          .where('agente_id', agente.id)
-          .where('status', 'Aprovado')
-          .count('* as total')
-          .first();
+    try {
+      console.log('🔍 [Agente.findWithCalculatedData] Buscando agentes para usuário:', usuarioId);
+      
+      const agentes = await this.findByUsuario(usuarioId);
+      console.log('📋 [Agente.findWithCalculatedData] Agentes encontrados:', agentes.length);
+      
+      // Para cada agente, calcular dados adicionais
+      const agentesComDados = await Promise.all(
+        agentes.map(async (agente) => {
+          try {
+            // ✅ CORREÇÃO: Contar apenas agendamentos do dia corrente
+            const hoje = new Date();
+            const dataHoje = hoje.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+            
+            const agendamentosCount = await this.db('agendamentos')
+              .where('agente_id', agente.id)
+              .where('status', 'Aprovado')
+              .where('data_agendamento', dataHoje)
+              .count('* as total')
+              .first();
 
-        // Buscar horários de hoje
-        const hoje = new Date().getDay(); // 0=Domingo, 1=Segunda, etc.
-        const horariosHoje = await this.db('horarios_funcionamento')
-          .where('agente_id', agente.id)
-          .where('dia_semana', hoje)
-          .where('ativo', true)
-          .first();
+            // Buscar horários de hoje
+            const diaSemana = hoje.getDay(); // 0=Domingo, 1=Segunda, etc.
+            const horariosHoje = await this.db('horarios_funcionamento')
+              .where('agente_id', agente.id)
+              .where('dia_semana', diaSemana)
+              .where('ativo', true)
+              .first();
 
-        // Buscar disponibilidade semanal
-        const disponibilidadeSemanal = await this.db('horarios_funcionamento')
-          .where('agente_id', agente.id)
-          .where('ativo', true)
-          .select('dia_semana', 'periodos');
+            // Buscar disponibilidade semanal
+            const disponibilidadeSemanal = await this.db('horarios_funcionamento')
+              .where('agente_id', agente.id)
+              .where('ativo', true)
+              .select('dia_semana', 'periodos');
 
-        return {
-          ...agente,
-          reservations: parseInt(agendamentosCount.total) || 0,
-          todayHours: this.formatarHorariosHoje(horariosHoje),
-          availability: this.formatarDisponibilidadeSemanal(disponibilidadeSemanal)
-        };
-      })
-    );
+            return {
+              ...agente,
+              reservations: parseInt(agendamentosCount.total) || 0,
+              todayHours: this.formatarHorariosHoje(horariosHoje),
+              availability: this.formatarDisponibilidadeSemanal(disponibilidadeSemanal)
+            };
+          } catch (error) {
+            console.error(`❌ [Agente.findWithCalculatedData] Erro ao processar agente ${agente.id}:`, error);
+            throw error;
+          }
+        })
+      );
 
-    return agentesComDados;
+      console.log('✅ [Agente.findWithCalculatedData] Dados calculados com sucesso');
+      return agentesComDados;
+    } catch (error) {
+      console.error('❌ [Agente.findWithCalculatedData] Erro geral:', error);
+      throw error;
+    }
   }
 
   // Método auxiliar para formatar horários de hoje
   formatarHorariosHoje(horarios) {
-    if (!horarios || !horarios.periodos) return 'Não disponível';
+    if (!horarios || !horarios.periodos) {
+      return ''; // ✅ Retorna vazio se não houver horários configurados para hoje
+    }
     
-    const periodos = horarios.periodos;
-    return periodos.map(p => `${p.start} - ${p.end}`).join('  ');
+    try {
+      // Parse do JSON se for string
+      const periodos = typeof horarios.periodos === 'string' 
+        ? JSON.parse(horarios.periodos) 
+        : horarios.periodos;
+      
+      if (!Array.isArray(periodos) || periodos.length === 0) {
+        return ''; // ✅ Retorna vazio se não houver períodos
+      }
+      
+      // ✅ Formatar: "08:00-12:00 14:00-21:00" (sem espaços extras)
+      return periodos.map(p => `${p.inicio || p.start}-${p.fim || p.end}`).join(' ');
+    } catch (error) {
+      console.error('❌ Erro ao formatar horários:', error);
+      return '';
+    }
   }
 
   // Método auxiliar para formatar disponibilidade semanal
@@ -129,9 +163,22 @@ class Agente extends BaseModel {
 
     for (let i = 0; i < 7; i++) {
       const horarioDia = horarios.find(h => h.dia_semana === i);
+      
+      let temPeriodos = false;
+      if (horarioDia) {
+        try {
+          const periodos = typeof horarioDia.periodos === 'string' 
+            ? JSON.parse(horarioDia.periodos) 
+            : horarioDia.periodos;
+          temPeriodos = Array.isArray(periodos) && periodos.length > 0;
+        } catch (error) {
+          console.error('Erro ao parsear períodos:', error);
+        }
+      }
+      
       disponibilidade.push({
         day: diasSemana[i],
-        available: !!horarioDia && horarioDia.periodos.length > 0
+        available: temPeriodos
       });
     }
 
@@ -182,6 +229,9 @@ class Agente extends BaseModel {
       }
 
       // 4. Criar horários de funcionamento (se agenda personalizada)
+      console.log('📅 [createWithTransaction] agenda_personalizada:', agenteData.agenda_personalizada);
+      console.log('📅 [createWithTransaction] horariosData:', JSON.stringify(horariosData, null, 2));
+      
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
         const horariosFormatados = horariosData.map(horario => ({
           agente_id: finalAgenteId,
@@ -190,7 +240,10 @@ class Agente extends BaseModel {
           ativo: true
         }));
 
+        console.log('✅ [createWithTransaction] Inserindo horários:', horariosFormatados.length);
         await trx('horarios_funcionamento').insert(horariosFormatados);
+      } else {
+        console.log('⚠️ [createWithTransaction] Nenhum horário será criado (agenda não personalizada ou sem dados)');
       }
 
       return finalAgenteId;

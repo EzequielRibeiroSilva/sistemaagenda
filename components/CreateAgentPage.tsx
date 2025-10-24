@@ -154,6 +154,12 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   };
 
   const handleSave = async () => {
+    // ✅ PROTEÇÃO: Evitar duplo submit
+    if (isSubmitting) {
+      console.log('⚠️ Formulário já está sendo enviado, ignorando clique duplicado');
+      return;
+    }
+
     if (!formData.nome || !formData.email) {
       alert('Nome e email são obrigatórios.');
       return;
@@ -177,6 +183,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
 
       const agentData = {
         ...formData,
+        avatar: avatarFile, // ✅ CORREÇÃO: Incluir arquivo do avatar
         agenda_personalizada: customSchedule,
         servicos_oferecidos: selectedServices,
         horarios_funcionamento: customSchedule ? (() => {
