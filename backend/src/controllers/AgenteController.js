@@ -60,9 +60,11 @@ class AgenteController {
     try {
       const usuarioId = req.user.id;
       
-
+      console.log('🔍 [AgenteController.index] Iniciando busca de agentes para usuário:', usuarioId);
       
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
+      
+      console.log('📊 [AgenteController.index] Agentes encontrados:', agentes.length);
       
       // Formatar dados para o frontend
       const agentesFormatados = agentes.map(agente => ({
@@ -82,7 +84,7 @@ class AgenteController {
         comissao_percentual: agente.comissao_percentual
       }));
       
-
+      console.log('✅ [AgenteController.index] Agentes formatados com sucesso');
       
       res.status(200).json({
         success: true,
@@ -90,12 +92,14 @@ class AgenteController {
         message: 'Agentes listados com sucesso'
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao listar agentes:', error);
+      console.error('❌ [AgenteController] Erro ao listar agentes:', error);
+      console.error('Stack trace:', error.stack);
       
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
-        message: 'Erro ao listar agentes'
+        message: 'Erro ao listar agentes',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
@@ -258,6 +262,32 @@ class AgenteController {
       // porque unidadeIdDoToken já vem do JWT validado
       console.log(`🔒 [SEGURANÇA] Criando agente na unidade ${unidadeIdNum} do usuário ${usuarioId}`);
 
+      // ✅ VERIFICAÇÃO: Checar se email já existe
+      const emailExistente = await this.agenteModel.db('agentes')
+        .where('email', email)
+        .first();
+
+      if (emailExistente) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email já está em uso',
+          message: 'Este email já está cadastrado no sistema'
+        });
+      }
+
+      // Verificar também na tabela de usuários
+      const emailUsuarioExistente = await this.agenteModel.db('usuarios')
+        .where('email', email)
+        .first();
+
+      if (emailUsuarioExistente) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email já está em uso',
+          message: 'Este email já está cadastrado no sistema'
+        });
+      }
+
       // Hash da senha se fornecida
       let senhaHash = null;
       if (senha) {
@@ -266,6 +296,11 @@ class AgenteController {
 
       // URL do avatar (do upload ou padrão)
       const finalAvatarUrl = req.avatarUrl || avatar_url || null;
+      
+      // ✅ DEBUG: Log do avatar
+      console.log('🖼️ [Avatar Debug] req.avatarUrl:', req.avatarUrl);
+      console.log('🖼️ [Avatar Debug] avatar_url (body):', avatar_url);
+      console.log('🖼️ [Avatar Debug] finalAvatarUrl:', finalAvatarUrl);
 
       // Dados do agente
       const agenteData = {
@@ -284,6 +319,13 @@ class AgenteController {
         comissao_percentual: comissao_percentual || 0,
         status: 'Ativo'
       };
+
+      // ✅ DEBUG: Log dos dados antes de criar
+      console.log('📋 [AgenteController.store] Dados do agente:', {
+        agenda_personalizada: agenteData.agenda_personalizada,
+        servicosIds: servicosIds.length,
+        horariosData: horariosData.length
+      });
 
       // Criar agente com transação (incluindo usuário para login)
       const agenteId = await this.agenteModel.createWithTransaction(

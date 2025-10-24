@@ -61,14 +61,22 @@ const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; onDelete
             ))}
         </div>
         <div className="my-4 border-t border-gray-200"></div>
-        <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center">
-                <span className="text-gray-500 mr-2">Hoje</span>
+        {agent.todayHours && agent.todayHours.trim() !== '' && (
+            <div className="flex items-center justify-between text-sm mb-2">
+                <div className="flex items-center">
+                    <span className="text-gray-500 mr-2">Horários</span>
+                    <span className="font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded text-xs">{agent.status}</span>
+                </div>
+                <p className="text-gray-600 text-xs">{agent.todayHours}</p>
+            </div>
+        )}
+        {!agent.todayHours || agent.todayHours.trim() === '' && (
+            <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-500">Status</span>
                 <span className="font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded text-xs">{agent.status}</span>
             </div>
-            <p className="text-gray-600">{agent.todayHours}</p>
-        </div>
-        <div className="flex items-center justify-between text-sm mt-2">
+        )}
+        <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">Reservas</span>
             <span className="font-bold text-gray-800 text-lg">{agent.reservations}</span>
         </div>
