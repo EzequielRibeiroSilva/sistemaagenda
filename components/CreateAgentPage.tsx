@@ -126,7 +126,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   };
 
   const handleScheduleChange = (newSchedule: any) => {
-    console.log('📅 Schedule alterado:', newSchedule); // ✅ DEBUG: Log da agenda
     setSchedule(newSchedule);
   };
 
@@ -173,14 +172,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     setIsSubmitting(true);
 
     try {
-      // ✅ DEBUG: Logs detalhados antes do envio
-      console.log('🚀 CreateAgent - handleSave chamado');
-      console.log('📋 FormData:', formData);
-      console.log('🔄 CustomSchedule:', customSchedule);
-      console.log('📅 Schedule atual:', schedule);
-      console.log('🛠️ Serviços selecionados:', selectedServices);
-      console.log('🔒 SEGURANÇA: unidade_id será definido pelo backend via token JWT');
-
       const agentData = {
         ...formData,
         avatar: avatarFile, // ✅ CORREÇÃO: Incluir arquivo do avatar
@@ -209,9 +200,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
             }));
         })() : []
       };
-
-      // ✅ DEBUG: Log do payload final
-      console.log('📤 Payload final sendo enviado:', agentData);
 
       const success = await createAgent(agentData);
       
@@ -372,7 +360,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
               type="checkbox"
               checked={customSchedule}
               onChange={(e) => {
-                console.log('🔄 Toggle customSchedule:', e.target.checked); // ✅ DEBUG: Log do toggle
                 setCustomSchedule(e.target.checked);
               }}
               className="mr-2"

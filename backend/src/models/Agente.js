@@ -77,10 +77,7 @@ class Agente extends BaseModel {
   // Buscar agentes com dados calculados (para grid)
   async findWithCalculatedData(usuarioId) {
     try {
-      console.log('🔍 [Agente.findWithCalculatedData] Buscando agentes para usuário:', usuarioId);
-      
       const agentes = await this.findByUsuario(usuarioId);
-      console.log('📋 [Agente.findWithCalculatedData] Agentes encontrados:', agentes.length);
       
       // Para cada agente, calcular dados adicionais
       const agentesComDados = await Promise.all(
@@ -124,7 +121,6 @@ class Agente extends BaseModel {
         })
       );
 
-      console.log('✅ [Agente.findWithCalculatedData] Dados calculados com sucesso');
       return agentesComDados;
     } catch (error) {
       console.error('❌ [Agente.findWithCalculatedData] Erro geral:', error);
@@ -229,9 +225,6 @@ class Agente extends BaseModel {
       }
 
       // 4. Criar horários de funcionamento (se agenda personalizada)
-      console.log('📅 [createWithTransaction] agenda_personalizada:', agenteData.agenda_personalizada);
-      console.log('📅 [createWithTransaction] horariosData:', JSON.stringify(horariosData, null, 2));
-      
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
         const horariosFormatados = horariosData.map(horario => ({
           agente_id: finalAgenteId,
@@ -240,10 +233,7 @@ class Agente extends BaseModel {
           ativo: true
         }));
 
-        console.log('✅ [createWithTransaction] Inserindo horários:', horariosFormatados.length);
         await trx('horarios_funcionamento').insert(horariosFormatados);
-      } else {
-        console.log('⚠️ [createWithTransaction] Nenhum horário será criado (agenda não personalizada ou sem dados)');
       }
 
       return finalAgenteId;

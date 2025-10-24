@@ -125,14 +125,12 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     schedule: legacySchedule,
     onChange: legacyOnChange
 }) => {
-    console.log('🚀 AgentScheduleEditor renderizado com:', { scheduleData, onScheduleChange });
     const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
     const [isInitialized, setIsInitialized] = useState(false);
 
     // Converter dados da API para formato interno (nova interface) - APENAS UMA VEZ
     useEffect(() => {
         if (scheduleData && Array.isArray(scheduleData) && !isInitialized) {
-            console.log('🔄 AgentScheduleEditor: Inicializando dados da API');
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
             const convertedSchedule: ScheduleData = {};
 
@@ -164,7 +162,6 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
 
             setSchedule(convertedSchedule);
             setIsInitialized(true);
-            console.log('✅ AgentScheduleEditor: Dados inicializados com sucesso');
         }
     }, [scheduleData, isInitialized]);
 

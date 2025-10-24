@@ -63,7 +63,6 @@ interface EditAgentPageProps {
 }
 
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
-    console.log('🔄 EditAgentPage renderizado com agentId:', agentId);
     const { fetchAgentById, updateAgent, loading, error } = useAgentManagement();
     const { user, updateUser } = useAuth();
     const [agentData, setAgentData] = useState<AgentDetails | null>(null);
@@ -121,9 +120,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     if (avatarUrl) {
                         const fullUrl = avatarUrl.startsWith('http') ? avatarUrl : getAssetUrl(avatarUrl);
                         setAvatarPreview(fullUrl);
-                        console.log('🖼️ Avatar preview definido:', fullUrl);
-                    } else {
-                        console.log('⚠️ Nenhum avatar encontrado para o agente');
                     }
                 }
                 if (isMounted) {
@@ -192,13 +188,10 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     }, [checkedServices, agentData?.servicos_disponiveis]);
 
     const handleSave = async () => {
-        console.log('🚀 handleSave CHAMADO!');
         if (!agentData) {
-            console.log('❌ agentData é null, saindo...');
             return;
         }
 
-        console.log('✅ agentData existe, continuando...');
         setIsSaving(true);
         try {
             // Coletar apenas os IDs dos serviços marcados
@@ -216,17 +209,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 agenda_personalizada: isCustomSchedule,
                 servicos_oferecidos: servicosSelecionados,
                 horarios_funcionamento: isCustomSchedule ? scheduleData : [],
-                avatar: avatarFile // Incluir arquivo de avatar se houver
+                avatar: avatarFile 
             };
-
-            // DEBUG: Log dos dados que estão sendo enviados
-            console.log('🔍 DEBUG - Dados sendo enviados:', {
-                status: status, // ✅ CORREÇÃO: Log do status
-                agenda_personalizada: isCustomSchedule,
-                horarios_funcionamento: updateData.horarios_funcionamento,
-                scheduleData: scheduleData,
-                updateData: updateData // Log completo dos dados
-            });
 
             const result = await updateAgent(agentData.id, updateData);
 
@@ -289,7 +273,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                                         alt="Preview"
                                         className="w-full h-full object-cover"
                                         onError={(e) => {
-                                            console.error('❌ Erro ao carregar avatar:', avatarPreview);
                                             const target = e.target as HTMLImageElement;
                                             target.style.display = 'none';
                                             const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -414,10 +397,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
 
             <div className="pt-2">
                 <button
-                    onClick={() => {
-                        console.log('🖱️ Botão Salvar clicado!');
-                        handleSave();
-                    }}
+                    onClick={handleSave}
                     disabled={isSaving}
                     className={`font-semibold px-8 py-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
                         isSaving

@@ -66,7 +66,6 @@ export const useServiceManagement = () => {
 
       if (data.success) {
         const servicesData = Array.isArray(data.data) ? data.data : [];
-        console.log('✅ Lista leve de serviços carregada:', servicesData.length);
         return servicesData;
       } else {
         throw new Error(data.message || 'Erro ao carregar lista de serviços');
@@ -101,7 +100,6 @@ export const useServiceManagement = () => {
       if (data.success) {
         const servicesData = Array.isArray(data.data) ? data.data : [];
         setServices(servicesData);
-        console.log('✅ Serviços completos carregados:', servicesData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
@@ -135,7 +133,6 @@ export const useServiceManagement = () => {
       if (data.success) {
         const agentsData = Array.isArray(data.data) ? data.data : [];
         setAgents(agentsData);
-        console.log('✅ Agentes carregados:', agentsData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar agentes');
       }
@@ -166,7 +163,6 @@ export const useServiceManagement = () => {
       if (data.success) {
         const extraServicesData = Array.isArray(data.data) ? data.data : [];
         setExtraServices(extraServicesData);
-        console.log('✅ Serviços extras carregados:', extraServicesData.length);
       } else {
         throw new Error(data.message || 'Erro ao carregar serviços extras');
       }
@@ -197,7 +193,6 @@ export const useServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço carregado:', data.data.nome);
         return data.data;
       } else {
         throw new Error(data.message || 'Erro ao carregar serviço');
@@ -221,8 +216,6 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🚀 Criando serviço:', serviceData);
-
       const response = await fetch('http://localhost:3001/api/servicos', {
         method: 'POST',
         headers: {
@@ -235,7 +228,6 @@ export const useServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço criado:', data.data.nome);
         return { success: true, data: data.data };
       } else {
         throw new Error(data.message || 'Erro ao criar serviço');
@@ -274,7 +266,6 @@ export const useServiceManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Serviço atualizado:', data.data.nome);
         return { success: true, data: data.data };
       } else {
         throw new Error(data.message || 'Erro ao atualizar serviço');

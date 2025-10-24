@@ -66,11 +66,8 @@ const handleFormDataWithUpload = (req, res, next) => {
     });
 
     bb.on('file', (fieldname, file, info) => {
-      console.log('📁 [FormData] Arquivo recebido:', fieldname, info);
-
       if (fieldname === 'avatar') {
         fileProcessing = true;
-        console.log('🖼️ [FormData] Processando avatar...');
 
         // Processar upload de avatar
         const { filename, encoding, mimeType } = info;
@@ -98,7 +95,6 @@ const handleFormDataWithUpload = (req, res, next) => {
 
         writeStream.on('close', () => {
           req.avatarUrl = `/uploads/avatars/${newFilename}`;
-          console.log('✅ [FormData] Avatar salvo com sucesso:', req.avatarUrl);
           files.push({
             fieldname,
             filename: newFilename,

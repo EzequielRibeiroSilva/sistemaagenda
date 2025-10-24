@@ -67,14 +67,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                     }
                 }
 
-                // Log para auditoria (apenas em desenvolvimento)
-                if (import.meta.env.DEV) {
-                    console.log('✅ Login realizado com sucesso:', {
-                        email: data.data.user.email,
-                        role: data.data.user.role,
-                        redirectTo: data.data.redirectTo
-                    });
-                }
 
                 // Chamar callback de sucesso com dados da API
                 onLoginSuccess({

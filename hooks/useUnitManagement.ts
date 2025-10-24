@@ -105,17 +105,11 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
 
   // Função para fazer requisições autenticadas
   const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}) => {
-    console.log("🔍 DEBUG FETCH: Iniciando requisição para:", url);
-    console.log("🔍 DEBUG FETCH: Método:", options.method || 'GET');
-    console.log("🔍 DEBUG FETCH: Token presente:", !!token);
-    console.log("🔍 DEBUG FETCH: Autenticado:", isAuthenticated);
-
     if (!token || !isAuthenticated) {
       throw new Error('Token de autenticação não encontrado');
     }
 
     const fullUrl = `${API_BASE_URL}${url}`;
-    console.log("🔍 DEBUG FETCH: URL completa:", fullUrl);
 
     const response = await fetch(fullUrl, {
       ...options,
@@ -126,59 +120,32 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
       },
     });
 
-    console.log("🔍 DEBUG FETCH: Status HTTP recebido:", response.status);
-    console.log("🔍 DEBUG FETCH: Status Text:", response.statusText);
-    console.log("🔍 DEBUG FETCH: Response OK:", response.ok);
-
     if (!response.ok) {
-      console.log("❌ DEBUG FETCH: Resposta não OK, processando erro...");
       const errorData = await response.json().catch(() => ({}));
-      console.log("❌ DEBUG FETCH: Dados do erro:", errorData);
       const errorMessage = errorData.message || errorData.error || `Erro HTTP ${response.status}: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
     const jsonData = await response.json();
-    console.log("✅ DEBUG FETCH: JSON parseado com sucesso:", {
-      success: jsonData.success,
-      message: jsonData.message,
-      hasData: !!jsonData.data
-    });
-
     return jsonData;
   }, [token, isAuthenticated]);
 
   // Buscar todas as unidades
   const fetchUnits = useCallback(async () => {
-    console.log("🔍 DEBUG FETCH_UNITS: Iniciando busca de unidades...");
     try {
       setLoading(true);
       setError(null);
 
       const response = await authenticatedFetch('/unidades');
 
-      console.log("🔍 DEBUG FETCH_UNITS: Resposta recebida:", {
-        success: response.success,
-        dataLength: response.data?.length || 0,
-        limitInfo: response.limitInfo
-      });
-
-      if (response.data) {
-        console.log("🔍 DEBUG FETCH_UNITS: IDs das unidades recebidas:", response.data.map((u: any) => u.id));
-      }
-
       setUnits(response.data || []);
       setLimitInfo(response.limitInfo || null);
-
-      console.log("✅ DEBUG FETCH_UNITS: Estado atualizado com sucesso");
     } catch (err) {
-      console.error("❌ DEBUG FETCH_UNITS: Erro ao buscar unidades:", err);
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar unidades';
       setError(errorMessage);
       console.error('Erro ao buscar unidades:', err);
     } finally {
       setLoading(false);
-      console.log("🔍 DEBUG FETCH_UNITS: setLoading(false) executado");
     }
   }, [authenticatedFetch]);
 
@@ -206,7 +173,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
       const response = await authenticatedFetch('/agentes/list');
 
       if (response.success) {
-        console.log('🔍 DEBUG AGENTS LIST: Dados recebidos do /agentes/list:', response.data);
         setAgents(response.data || []);
       } else {
         throw new Error(response.message || 'Erro ao buscar agentes');
@@ -311,45 +277,23 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
 
   // Deletar unidade (apenas MASTER)
   const deleteUnit = useCallback(async (id: number): Promise<boolean> => {
-    console.log("🔍 DEBUG HOOK: deleteUnit chamado com ID:", id);
-    console.log("🔍 DEBUG HOOK: Tipo do ID:", typeof id);
-
     try {
       setLoading(true);
       setError(null);
 
-      console.log("🔍 DEBUG HOOK: Fazendo requisição DELETE para:", `/unidades/${id}`);
       const response = await authenticatedFetch(`/unidades/${id}`, {
         method: 'DELETE',
       });
 
-      console.log("🔍 DEBUG HOOK: Resposta da API recebida:", {
-        status: response?.status,
-        success: response?.success,
-        message: response?.message,
-        data: response?.data ? 'presente' : 'ausente'
-      });
-
-      console.log("🔍 DEBUG HOOK: Iniciando re-fetch da lista de unidades...");
       await fetchUnits();
-      console.log("🔍 DEBUG HOOK: Re-fetch concluído");
-
-      console.log("✅ DEBUG HOOK: deleteUnit retornando true (sucesso)");
       return true;
     } catch (err) {
-      console.error("❌ DEBUG HOOK: Erro capturado no catch:", err);
-      console.error("❌ DEBUG HOOK: Tipo do erro:", typeof err);
-      console.error("❌ DEBUG HOOK: Stack trace:", err instanceof Error ? err.stack : 'N/A');
-
       const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar unidade';
       setError(errorMessage);
       console.error('Erro ao deletar unidade:', err);
-
-      console.log("❌ DEBUG HOOK: deleteUnit retornando false (erro)");
       return false;
     } finally {
       setLoading(false);
-      console.log("🔍 DEBUG HOOK: setLoading(false) executado");
     }
   }, [authenticatedFetch, fetchUnits]);
 
