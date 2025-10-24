@@ -113,7 +113,6 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: 
                     alt={name}
                     className="w-8 h-8 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -248,8 +247,14 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // ✅ VALIDAÇÕES COMPLETAS
         if (!nome.trim()) {
-            setSubmitError('Nome é obrigatório');
+            setSubmitError('Nome do serviço é obrigatório');
+            return;
+        }
+
+        if (duracaoMinutos < 1) {
+            setSubmitError('Duração deve ser maior que zero');
             return;
         }
 
@@ -273,30 +278,27 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
 
             const serviceData = {
                 nome: nome.trim(),
-                descricao: descricao.trim(),
+                descricao: descricao.trim() || '',
                 duracao_minutos: duracaoMinutos,
-                preco: preco,
+                preco: parseFloat(String(preco)),
                 comissao_percentual: comissaoPercentual,
                 status: status,
                 agentes_ids: agentesIds,
                 extras_ids: extrasIds
             };
 
-            console.log('🚀 Enviando dados do serviço:', serviceData);
-
             const result = await createService(serviceData);
 
             if (result.success) {
-                console.log('✅ Serviço criado com sucesso!');
+                alert('Serviço criado com sucesso!');
                 if (setActiveView) {
-                    setActiveView('services-list'); // Voltar para a lista de serviços
+                    setActiveView('services-list');
                 }
             } else {
                 setSubmitError(result.error || 'Erro ao criar serviço');
             }
         } catch (error) {
-            console.error('❌ Erro ao criar serviço:', error);
-            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
+            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido ao criar serviço');
         } finally {
             setSubmitting(false);
         }
@@ -461,9 +463,9 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                 <div className="pt-2">
                     <button
                         type="submit"
-                        disabled={submitting || !nome.trim()}
+                        disabled={submitting || !nome.trim() || duracaoMinutos < 1}
                         className={`font-semibold px-6 py-2.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                            submitting || !nome.trim()
+                            submitting || !nome.trim() || duracaoMinutos < 1
                                 ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                                 : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
