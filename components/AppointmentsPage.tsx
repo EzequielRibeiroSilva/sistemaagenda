@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX, Search } from './Icons';
+import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX } from './Icons';
 import type { AppointmentDetail, AppointmentStatus } from '../types';
 import { useAppointmentManagement, AppointmentFilters } from '../hooks/useAppointmentManagement';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,32 +44,6 @@ const FilterSelect: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({
         {children}
     </select>
 );
-
-const StyledCheckbox: React.FC<{
-  checked: boolean;
-  onChange: () => void;
-  indeterminate?: boolean;
-}> = ({ checked, onChange, indeterminate = false }) => {
-  return (
-    <div
-      onClick={onChange}
-      className={`w-5 h-5 flex items-center justify-center border-2 rounded cursor-pointer transition-colors
-        ${checked || indeterminate ? 'bg-blue-600 border-blue-600' : 'border-gray-400 bg-white'}
-      `}
-      role="checkbox"
-      aria-checked={indeterminate ? 'mixed' : checked}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="sr-only"
-      />
-      {checked && <Check className="w-3 h-3 text-white" />}
-      {indeterminate && !checked && <div className="w-2 h-0.5 bg-white" />}
-    </div>
-  );
-};
 
 const StatusBadge: React.FC<{ status: AppointmentStatus }> = ({ status }) => {
     const statusStyles: { [key in AppointmentStatus]: { icon: React.ReactNode; text: string; className: string } } = {
@@ -126,7 +100,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         pagamentoDeParte: false,
         preco: false,
     });
-    const [selectedAppointments, setSelectedAppointments] = useState<Record<number, boolean>>({});
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(10);
 
@@ -216,31 +189,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         });
     }, [appointments, filters]);
 
-    const allSelected = useMemo(() => 
-        filteredAppointments.length > 0 && filteredAppointments.every(app => selectedAppointments[app.id]),
-        [selectedAppointments, filteredAppointments]
-    );
-
-    const isIndeterminate = useMemo(() => 
-        filteredAppointments.some(app => selectedAppointments[app.id]) && !allSelected,
-        [selectedAppointments, allSelected, filteredAppointments]
-    );
-
-    const handleSelectAll = () => {
-        const newSelectedState = !allSelected;
-        const newSelectedAppointments = filteredAppointments.reduce((acc, app) => {
-            acc[app.id] = newSelectedState;
-            return acc;
-        }, {} as Record<number, boolean>);
-        setSelectedAppointments(newSelectedAppointments);
-    };
-
-    const handleSelectOne = (id: number) => {
-        setSelectedAppointments(prev => ({
-            ...prev,
-            [id]: !prev[id]
-        }));
-    };
     
     const handleClearFilters = () => {
         setFilters(initialFilters);
@@ -278,40 +226,21 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                         </p>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Buscar por cliente, agente ou ID..."
-                            value={filters.client}
-                            onChange={(e) => setFilters(prev => ({ ...prev, client: e.target.value }))}
-                            className="pl-8 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-80"
-                        />
-                        <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
-                    </div>
-                    <button
-                        onClick={() => fetchAppointments({ page: currentPage, limit: itemsPerPage })}
-                        disabled={isLoading}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                    >
-                        <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                        Atualizar
-                    </button>
-                </div>
+                <button
+                    onClick={() => fetchAppointments({ page: currentPage, limit: itemsPerPage })}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                    <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    Atualizar
+                </button>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1700px] text-sm table-fixed">
+                    <table className="w-full min-w-[1600px] text-sm table-fixed">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="p-3 w-12 text-center font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10">
-                                    <StyledCheckbox 
-                                        checked={allSelected}
-                                        indeterminate={isIndeterminate}
-                                        onChange={handleSelectAll}
-                                    />
-                                </th>
                                 {visibleColumns.id && <th className="p-3 w-28 text-left font-semibold text-gray-600 whitespace-nowrap">ID</th>}
                                 {visibleColumns.servico && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">SERVIÇO</th>}
                                 {visibleColumns.dataHora && <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">DATA/HORA</th>}
@@ -325,7 +254,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
                             </tr>
                             <tr>
-                                <td className="p-3 border-t border-gray-200 sticky left-0 bg-gray-50 z-10"></td>
                                 {visibleColumns.id && <td className="p-3 w-28 border-t border-gray-200"><FilterInput type="text" name="id" value={filters.id} onChange={handleFilterChange} placeholder="Pesquisar ID" /></td>}
                                 {visibleColumns.servico && <td className="p-3 w-64 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
                                 {visibleColumns.dataHora && <td className="p-3 w-64 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
@@ -383,12 +311,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                             ) : (
                                 filteredAppointments.map(app => (
                                     <tr key={app.id} className="border-t border-gray-200 hover:bg-gray-50">
-                                        <td className="p-3 text-center sticky left-0 bg-white hover:bg-gray-50 z-10">
-                                            <StyledCheckbox
-                                                checked={!!selectedAppointments[app.id]}
-                                                onChange={() => handleSelectOne(app.id)}
-                                            />
-                                        </td>
                                         {visibleColumns.id && <td className="p-3 w-28 text-gray-500 whitespace-nowrap">{app.id}</td>}
                                         {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
                                         {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
