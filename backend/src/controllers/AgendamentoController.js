@@ -78,10 +78,12 @@ class AgendamentoController extends BaseController {
             queryBuilder.where('agendamentos.status', status);
           }
 
-          // ORDENAÇÃO INTELIGENTE: Priorizar agendamentos próximos
-          // Filtrar agendamentos passados por padrão (exceto se status específico for solicitado)
+          // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
+          // Todos os agendamentos do dia devem ser exibidos para permitir edição
+          // O usuário pode editar agendamentos no final do expediente
+          // Comentado o filtro que estava ocultando agendamentos passados:
+          /*
           if (!status) {
-            // Mostrar apenas agendamentos futuros ou em andamento
             queryBuilder.where(function() {
               this.where('agendamentos.data_agendamento', '>', this.client.raw('CURRENT_DATE'))
                   .orWhere(function() {
@@ -90,6 +92,7 @@ class AgendamentoController extends BaseController {
                   });
             });
           }
+          */
         });
 
         data = await baseQuery
@@ -145,7 +148,9 @@ class AgendamentoController extends BaseController {
               queryBuilder.where('agendamentos.status', status);
             }
 
-            // Aplicar o mesmo filtro de agendamentos futuros
+            // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados no total também
+            // Comentado o filtro que estava ocultando agendamentos passados:
+            /*
             if (!status) {
               queryBuilder.where(function() {
                 this.where('agendamentos.data_agendamento', '>', this.client.raw('CURRENT_DATE'))
@@ -155,6 +160,7 @@ class AgendamentoController extends BaseController {
                     });
               });
             }
+            */
           })
           .count('agendamentos.id as count')
           .first();
@@ -527,8 +533,15 @@ class AgendamentoController extends BaseController {
       const { id } = req.params;
       const usuarioId = req.user?.id;
       
+      console.log('🔄 [AgendamentoController.update] Iniciando atualização');
+      console.log('   ID do agendamento:', id);
+      console.log('   Usuário ID:', usuarioId);
+      console.log('   Body recebido:', JSON.stringify(req.body, null, 2));
+      
       if (!usuarioId) {
+        console.error('❌ [AgendamentoController.update] Usuário não autenticado');
         return res.status(401).json({ 
+          success: false,
           error: 'Usuário não autenticado' 
         });
       }
@@ -541,49 +554,97 @@ class AgendamentoController extends BaseController {
         .select('agendamentos.*')
         .first();
 
+      console.log('🔍 [AgendamentoController.update] Agendamento encontrado:', agendamento ? 'SIM' : 'NÃO');
+
       if (!agendamento) {
+        console.error('❌ [AgendamentoController.update] Agendamento não encontrado');
         return res.status(404).json({ 
+          success: false,
           error: 'Agendamento não encontrado ou acesso negado' 
         });
       }
 
-      const { hora_inicio, hora_fim, agente_id, data_agendamento } = req.body;
+      // ✅ CORREÇÃO: Extrair apenas campos válidos da tabela agendamentos
+      const {
+        hora_inicio,
+        hora_fim,
+        agente_id,
+        data_agendamento,
+        status,
+        forma_pagamento, // Frontend envia forma_pagamento
+        observacoes,
+        cliente_id,
+        unidade_id
+      } = req.body;
+
+      // ✅ CORREÇÃO: Mapear forma_pagamento para metodo_pagamento (nome correto na tabela)
+      const dadosParaAtualizar = {};
+
+      if (hora_inicio !== undefined) dadosParaAtualizar.hora_inicio = hora_inicio;
+      if (hora_fim !== undefined) dadosParaAtualizar.hora_fim = hora_fim;
+      if (agente_id !== undefined) dadosParaAtualizar.agente_id = agente_id;
+      if (data_agendamento !== undefined) dadosParaAtualizar.data_agendamento = data_agendamento;
+      if (status !== undefined) dadosParaAtualizar.status = status;
+      if (forma_pagamento !== undefined) dadosParaAtualizar.metodo_pagamento = forma_pagamento; // ✅ CORREÇÃO
+      if (observacoes !== undefined) dadosParaAtualizar.observacoes = observacoes;
+      if (cliente_id !== undefined) dadosParaAtualizar.cliente_id = cliente_id;
+      if (unidade_id !== undefined) dadosParaAtualizar.unidade_id = unidade_id;
+
+      console.log('📋 [AgendamentoController.update] Campos extraídos:', {
+        hora_inicio,
+        hora_fim,
+        agente_id,
+        data_agendamento,
+        status,
+        forma_pagamento: `${forma_pagamento} → metodo_pagamento`,
+        observacoes,
+        cliente_id,
+        unidade_id
+      });
+
+      console.log('📋 [AgendamentoController.update] Dados para atualizar (filtrados):', dadosParaAtualizar);
 
       // Verificar conflito de horário se horário foi alterado
       if ((hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
           (hora_fim && hora_fim !== agendamento.hora_fim) ||
           (agente_id && agente_id !== agendamento.agente_id) ||
           (data_agendamento && data_agendamento !== agendamento.data_agendamento)) {
-        
+
         const novoAgenteId = agente_id || agendamento.agente_id;
         const novaData = data_agendamento || agendamento.data_agendamento;
         const novaHoraInicio = hora_inicio || agendamento.hora_inicio;
         const novaHoraFim = hora_fim || agendamento.hora_fim;
 
         const hasConflict = await this.model.checkConflict(
-          novoAgenteId, 
-          novaData, 
-          novaHoraInicio, 
-          novaHoraFim, 
+          novoAgenteId,
+          novaData,
+          novaHoraInicio,
+          novaHoraFim,
           parseInt(id)
         );
-        
+
         if (hasConflict) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: 'Conflito de horário',
-            message: 'O agente já possui um agendamento neste horário' 
+            message: 'O agente já possui um agendamento neste horário'
           });
         }
       }
 
-      const data = await this.model.update(id, req.body);
+      console.log('💾 [AgendamentoController.update] Chamando model.update...');
+      const data = await this.model.update(id, dadosParaAtualizar); // ✅ CORREÇÃO: usar dados filtrados
+      console.log('✅ [AgendamentoController.update] Atualização concluída:', data);
+      
       return res.json({ 
+        success: true,
         data,
         message: 'Agendamento atualizado com sucesso' 
       });
     } catch (error) {
-      console.error('Erro ao atualizar agendamento:', error);
+      console.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
+      console.error('   Stack:', error.stack);
       return res.status(500).json({ 
+        success: false,
         error: 'Erro interno do servidor',
         message: error.message 
       });

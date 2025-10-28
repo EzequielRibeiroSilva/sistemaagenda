@@ -70,6 +70,9 @@ const ServiceMultiSelectDropdown: React.FC<{
     onChange: (selected: number[]) => void;
     placeholder: string;
 }> = ({ label, options, selectedOptions, onChange, placeholder }) => {
+    // ✅ LOG PARA DEBUG: Verificar prop selectedOptions
+    console.log(`🔍 RENDER [ServiceMultiSelectDropdown] - selectedOptions Prop:`, selectedOptions);
+
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -363,12 +366,22 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     };
 
     const handleRecalculate = () => {
+        // USAR ESTADOS DIRETAMENTE - sem parâmetros
+        console.log('🔄 [NewAppointmentModal] Recalculando preço com estados:', {
+            selectedServices,
+            selectedExtras,
+            allServicesLoaded: allServices.length > 0,
+            allExtrasLoaded: allExtras.length > 0
+        });
+
         let currentTotal = 0;
 
         selectedServices.forEach(serviceId => {
             const service = allServices.find(s => s.id === serviceId);
             if (service) {
                 currentTotal += parseFloat(service.preco.toString());
+            } else {
+                console.warn(`⚠️ Preço: Serviço ID ${serviceId} não encontrado em allServices.`);
             }
         });
 
@@ -376,9 +389,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             const extra = allExtras.find(e => e.id === extraId);
             if (extra) {
                 currentTotal += parseFloat(extra.preco.toString());
+            } else {
+                console.warn(`⚠️ Preço: Extra ID ${extraId} não encontrado em allExtras.`);
             }
         });
 
+        console.log(`💰 [NewAppointmentModal] Preço total recalculado para: ${currentTotal}`);
         setTotalPrice(currentTotal);
     };
 
@@ -420,59 +436,65 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     // Extrair IDs dos serviços e extras
                     const servicoIds = details.servicos?.map(s => s.id) || [];
                     const extraIds = details.extras?.map(e => e.id) || [];
-                    
+
+                    console.log('🔍 [NewAppointmentModal] Serviços encontrados:', {
+                        servicosArray: details.servicos,
+                        servicoIds,
+                        extrasArray: details.extras,
+                        extraIds
+                    });
+
                     setSelectedServices(servicoIds);
                     setSelectedExtras(extraIds);
                     setSelectedAgentId(details.agente_id);
                     setStatus(details.status as AppointmentStatus);
                     setStartTime(details.hora_inicio.substring(0, 5));
                     setEndTime(details.hora_fim.substring(0, 5));
+
+                    console.log('🔍 [NewAppointmentModal] Dados básicos preenchidos:', {
+                        agente_id: details.agente_id,
+                        status: details.status,
+                        hora_inicio: details.hora_inicio,
+                        hora_fim: details.hora_fim
+                    });
                     
-                    // Formatar data para DD/MM/AAAA
-                    console.log('🔍 [NewAppointmentModal] details.data_agendamento:', details.data_agendamento);
-                    console.log('🔍 [NewAppointmentModal] typeof details.data_agendamento:', typeof details.data_agendamento);
-
+                    // ✅ CORREÇÃO: Formatar data sem conversão de timezone
                     if (details.data_agendamento) {
-                        // Criar objeto Date diretamente da string ISO (sem adicionar T00:00:00)
-                        const dateObj = new Date(details.data_agendamento);
-                        console.log('🔍 [NewAppointmentModal] dateObj:', dateObj);
-                        console.log('🔍 [NewAppointmentModal] dateObj.getDate():', dateObj.getDate());
-                        console.log('🔍 [NewAppointmentModal] dateObj.getMonth():', dateObj.getMonth());
-                        console.log('🔍 [NewAppointmentModal] dateObj.getFullYear():', dateObj.getFullYear());
-
-                        // Verificar se a data é válida
-                        if (!isNaN(dateObj.getTime())) {
-                            const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
-                            console.log('🔍 [NewAppointmentModal] formattedDate:', formattedDate);
-                            setDate(formattedDate);
-                        } else {
-                            console.error('❌ [NewAppointmentModal] Data inválida após parsing!');
-                            setDate('');
-                        }
+                        // A data vem como "2025-10-28T00:00:00.000Z". Pegamos apenas a parte da data.
+                        const [ano, mes, dia] = details.data_agendamento.substring(0, 10).split('-');
+                        const formattedDate = `${dia}/${mes}/${ano}`;
+                        console.log(`� [NewAppointmentModal] Data corrigida (sem timezone): ${formattedDate}`);
+                        setDate(formattedDate);
                     } else {
-                        console.error('❌ [NewAppointmentModal] data_agendamento é null/undefined!');
+                        console.error('❌ [NewAppointmentModal] data_agendamento não recebida!');
                         setDate('');
                     }
-                    
-                    // Dados do cliente
-                    const clienteNome = details.cliente?.nome_completo || '';
-                    const clienteTelefone = details.cliente?.telefone || '';
-                    const nameParts = clienteNome.split(' ');
-                    setClientFirstName(nameParts[0] || '');
-                    setClientLastName(nameParts.slice(1).join(' ') || '');
-                    setClientPhone(clienteTelefone.replace('+55', '').trim());
-                    
-                    // Se temos cliente_id, buscar dados completos
-                    if (details.cliente_id) {
-                        setSelectedClient({
+
+                    // ✅ CORREÇÃO: Centralizar e validar dados do cliente
+                    if (details.cliente) {
+                        const nameParts = (details.cliente.nome_completo || '').split(' ');
+                        const clientData = {
                             id: details.cliente_id,
                             primeiro_nome: nameParts[0] || '',
                             ultimo_nome: nameParts.slice(1).join(' ') || '',
-                            nome_completo: clienteNome,
-                            telefone: clienteTelefone,
-                            email: '',
-                            is_assinante: false
-                        });
+                            nome_completo: details.cliente.nome_completo,
+                            telefone: details.cliente.telefone || '',
+                            email: details.cliente.email || '',
+                            is_assinante: details.cliente.is_assinante || false
+                        };
+                        setSelectedClient(clientData);
+                        setClientFirstName(clientData.primeiro_nome);
+                        setClientLastName(clientData.ultimo_nome);
+                        setClientPhone((clientData.telefone || '').replace('+55', '').trim());
+                        console.log('👤 [NewAppointmentModal] Cliente preenchido:', clientData);
+                    } else {
+                        // Se a API não retornar o objeto cliente, os campos ficarão vazios.
+                        // Isso indica um problema no backend (a API deveria retornar os dados do cliente).
+                        console.warn('⚠️ [NewAppointmentModal] Nenhum objeto `cliente` retornado pela API para este agendamento.');
+                        setSelectedClient(null);
+                        setClientFirstName('');
+                        setClientLastName('');
+                        setClientPhone('');
                     }
                     
                     console.log('📊 [NewAppointmentModal] Dados preenchidos:', {
@@ -480,15 +502,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         extraIds,
                         agente: details.agente_id,
                         cliente: clienteNome,
-                        data: dateObj,
+                        data: parsedDateObj,
                         horario: `${details.hora_inicio} - ${details.hora_fim}`
                     });
 
-                    // Calcular preço total após carregar os dados (com pequeno delay para garantir que os estados foram atualizados)
-                    console.log('💰 [NewAppointmentModal] Calculando preço total...');
-                    setTimeout(() => {
-                        handleRecalculate();
-                    }, 100);
+                    // ❌ REMOVIDO: Cálculo direto (será feito pelo useEffect dedicado)
+                    console.log('💰 [NewAppointmentModal] Estados preenchidos, aguardando useEffect para calcular preço...');
                 }
             } catch (error) {
                 console.error('❌ [NewAppointmentModal] Erro ao carregar detalhes:', error);
@@ -566,15 +585,41 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         }
     }, [date, selectedAgentId]);
 
-    // ✅ CORREÇÃO CRÍTICA: Recalcular preço sempre que serviços mudarem
+    // ✅ RESTAURADO: useEffect dedicado ao cálculo de preço (com lógica corrigida)
     useEffect(() => {
-        handleRecalculate();
+        console.log('⚙️ [NewAppointmentModal] useEffect de cálculo de preço disparado.');
+        // Só calcular se as listas de serviços/extras JÁ estiverem carregadas
+        if (allServices.length > 0 || allExtras.length > 0) {
+            handleRecalculate();
+        } else {
+            console.log('⏳ [NewAppointmentModal] Aguardando allServices/allExtras para calcular preço.');
+        }
+        // Depender de TUDO que afeta o preço
     }, [selectedServices, selectedExtras, allServices, allExtras]);
 
     if (!isOpen || !portalRoot) return null;
 
     const handleDateTimeSelect = (selectedDateTime: { date: Date, time: string }) => {
+        console.log('🔍 [NewAppointmentModal] handleDateTimeSelect chamado com:', selectedDateTime);
+
+        if (!selectedDateTime) {
+            console.error('❌ [NewAppointmentModal] selectedDateTime é undefined');
+            return;
+        }
+
         const { date: selectedDate, time: selectedTime } = selectedDateTime;
+
+        if (!selectedDate) {
+            console.error('❌ [NewAppointmentModal] selectedDate é undefined');
+            return;
+        }
+
+        if (!selectedTime) {
+            console.error('❌ [NewAppointmentModal] selectedTime é undefined');
+            return;
+        }
+
+        console.log('✅ [NewAppointmentModal] Dados válidos:', { selectedDate, selectedTime });
         setDate(`${String(selectedDate.getDate()).padStart(2, '0')}/${String(selectedDate.getMonth() + 1).padStart(2, '0')}/${selectedDate.getFullYear()}`);
         setStartTime(selectedTime);
     };
@@ -689,6 +734,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             if (isEditing && appointmentId) {
                 // Atualizar agendamento existente
                 console.log('🔄 [NewAppointmentModal] Atualizando agendamento ID:', appointmentId);
+                console.log('🔄 [NewAppointmentModal] Status selecionado:', status);
+                console.log('🔄 [NewAppointmentModal] Forma de pagamento:', paymentMethod);
                 
                 const updateData = {
                     agente_id: selectedAgentId,
@@ -698,6 +745,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     hora_inicio: startTime,
                     hora_fim: endTime,
                     status: status,
+                    forma_pagamento: paymentMethod, // ✅ Adicionar forma de pagamento
                     observacoes: '',
                     ...(selectedClient
                         ? { cliente_id: selectedClient.id }
@@ -708,14 +756,24 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     )
                 };
                 
-                console.log('📦 [NewAppointmentModal] Dados de atualização:', updateData);
-                const resultado = await updateAgendamento(appointmentId, updateData);
+                console.log('📦 [NewAppointmentModal] Dados de atualização COMPLETOS:', JSON.stringify(updateData, null, 2));
                 
-                if (resultado) {
-                    alert('Agendamento atualizado com sucesso!');
-                    onClose();
-                    // Recarregar página para atualizar calendário
-                    window.location.reload();
+                try {
+                    const resultado = await updateAgendamento(appointmentId, updateData);
+                    console.log('✅ [NewAppointmentModal] Resultado da atualização:', resultado);
+                    
+                    if (resultado) {
+                        alert('Agendamento atualizado com sucesso!');
+                        onClose();
+                        // Recarregar página para atualizar calendário
+                        window.location.reload();
+                    } else {
+                        console.error('❌ [NewAppointmentModal] Resultado é null/undefined');
+                        throw new Error('Resposta vazia do servidor');
+                    }
+                } catch (updateError) {
+                    console.error('❌ [NewAppointmentModal] Erro detalhado na atualização:', updateError);
+                    throw updateError;
                 }
             } else {
                 console.log('🚀 [NewAppointmentModal] Enviando requisição para createAgendamento...');

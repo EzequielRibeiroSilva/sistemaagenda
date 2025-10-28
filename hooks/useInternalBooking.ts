@@ -310,16 +310,27 @@ export const useInternalBooking = () => {
       setIsLoading(true);
       setError(null);
       
+      console.log('🔄 [useInternalBooking.updateAgendamento] Iniciando atualização');
+      console.log('   ID:', id);
+      console.log('   URL:', `${API_BASE_URL}/agendamentos/${id}`);
+      console.log('   Dados:', JSON.stringify(data, null, 2));
+      
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
 
+      console.log('✅ [useInternalBooking.updateAgendamento] Resposta recebida:', response);
+      console.log('   response.success:', response?.success);
+      console.log('   response.data:', response?.data);
+      console.log('   response.message:', response?.message);
+
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar agendamento';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao atualizar agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking.updateAgendamento] Erro:', errorMessage);
+      console.error('   Erro completo:', err);
       throw err;
     } finally {
       setIsLoading(false);
