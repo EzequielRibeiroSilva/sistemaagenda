@@ -395,22 +395,6 @@ class AgenteController {
         horariosData = typeof horarios_funcionamento === 'string'
           ? JSON.parse(horarios_funcionamento)
           : (horarios_funcionamento || []);
-
-        // ✅ DEBUG: Log detalhado dos dados recebidos
-        console.log('🔍 DEBUG BACKEND - Dados de atualização recebidos:');
-        console.log('  📋 horarios_funcionamento (raw):', horarios_funcionamento);
-        console.log('  📋 horariosData (parsed):', JSON.stringify(horariosData, null, 2));
-        console.log('  📋 agenda_personalizada:', agenda_personalizada, '(tipo:', typeof agenda_personalizada, ')');
-        console.log('  📋 Quantidade de dias com horários:', horariosData.length);
-        
-        // Validar estrutura dos períodos
-        if (horariosData.length > 0) {
-          const primeiroDia = horariosData[0];
-          console.log('  📋 Estrutura do primeiro dia:', JSON.stringify(primeiroDia, null, 2));
-          if (primeiroDia.periodos && primeiroDia.periodos.length > 0) {
-            console.log('  📋 Estrutura do primeiro período:', JSON.stringify(primeiroDia.periodos[0], null, 2));
-          }
-        }
       } catch (e) {
         console.error('❌ Erro ao parsear horarios_funcionamento:', e);
         horariosData = [];
