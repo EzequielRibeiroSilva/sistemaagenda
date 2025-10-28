@@ -242,11 +242,20 @@ class Agente extends BaseModel {
 
   // Atualizar agente com transação (incluindo usuário)
   async updateWithTransaction(agenteId, agenteData, servicosIds, horariosData) {
-    return await this.db.transaction(async (trx) => {
-      // 1. Buscar agente atual para obter usuario_id
-      const agenteAtual = await trx(this.tableName)
-        .where('id', agenteId)
-        .first();
+    try {
+      return await this.db.transaction(async (trx) => {
+        console.log('🔄 [Agente.updateWithTransaction] Iniciando transação para agente:', agenteId);
+        
+        // 1. Buscar agente atual para obter usuario_id
+        const agenteAtual = await trx(this.tableName)
+          .where('id', agenteId)
+          .first();
+        
+        if (!agenteAtual) {
+          throw new Error(`Agente ${agenteId} não encontrado`);
+        }
+        
+        console.log('✅ [Agente.updateWithTransaction] Agente encontrado:', agenteAtual.nome);
 
       // 2. Gerenciar usuário associado
       let usuarioId = agenteAtual.usuario_id;
@@ -255,14 +264,24 @@ class Agente extends BaseModel {
         // Se tem senha, precisa ter usuário
         if (usuarioId) {
           // Verificar se o email já existe em outro usuário
+          console.log('🔍 [Validação Email] Verificando email:', agenteData.email);
+          console.log('🔍 [Validação Email] Usuario ID atual:', usuarioId);
+          
           const emailExistente = await trx('usuarios')
             .where('email', agenteData.email)
             .where('id', '!=', usuarioId)
             .first();
 
           if (emailExistente) {
+            console.error('❌ [Validação Email] Email duplicado encontrado:', {
+              email: agenteData.email,
+              usuario_id_existente: emailExistente.id,
+              usuario_id_atual: usuarioId
+            });
             throw new Error('Este email já está cadastrado no sistema');
           }
+          
+          console.log('✅ [Validação Email] Email disponível para atualização');
 
           // Atualizar usuário existente
           const usuarioData = {
@@ -299,14 +318,25 @@ class Agente extends BaseModel {
       } else if (usuarioId) {
         // Se não tem senha mas tinha usuário, atualizar dados básicos
         // Verificar se o email já existe em outro usuário
+        console.log('🔍 [Validação Email - Sem Senha] Verificando email:', agenteData.email);
+        console.log('🔍 [Validação Email - Sem Senha] Usuario ID atual:', usuarioId);
+        
         const emailExistente = await trx('usuarios')
           .where('email', agenteData.email)
           .where('id', '!=', usuarioId)
           .first();
 
         if (emailExistente) {
+          console.error('❌ [Validação Email - Sem Senha] Email duplicado encontrado:', {
+            email: agenteData.email,
+            usuario_id_existente: emailExistente.id,
+            usuario_id_atual: usuarioId,
+            nome_existente: emailExistente.nome
+          });
           throw new Error('Este email já está cadastrado no sistema');
         }
+        
+        console.log('✅ [Validação Email - Sem Senha] Email disponível para atualização');
 
         const usuarioData = {
           nome: `${agenteData.nome} ${agenteData.sobrenome || ''}`.trim(),
@@ -342,18 +372,42 @@ class Agente extends BaseModel {
       await trx('horarios_funcionamento').where('agente_id', agenteId).del();
 
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
-        const horariosFormatados = horariosData.map(horario => ({
-          agente_id: agenteId,
-          dia_semana: horario.dia_semana,
-          periodos: JSON.stringify(horario.periodos),
-          ativo: true
-        }));
+        // ✅ DEBUG: Log dos horários antes de salvar
+        console.log('💾 [Agente.updateWithTransaction] Salvando horários:');
+        console.log('  📋 Agenda personalizada:', agenteData.agenda_personalizada);
+        console.log('  📋 Quantidade de dias:', horariosData.length);
+        
+        const horariosFormatados = horariosData.map((horario, index) => {
+          const formatted = {
+            agente_id: agenteId,
+            dia_semana: horario.dia_semana,
+            periodos: JSON.stringify(horario.periodos),
+            ativo: true
+          };
+          
+          if (index === 0) {
+            console.log('  📋 Exemplo do primeiro dia formatado:', JSON.stringify(formatted, null, 2));
+          }
+          
+          return formatted;
+        });
 
         await trx('horarios_funcionamento').insert(horariosFormatados);
+        console.log('✅ [Agente.updateWithTransaction] Horários salvos com sucesso');
+      } else {
+        console.log('⚠️ [Agente.updateWithTransaction] Horários NÃO salvos:', {
+          agenda_personalizada: agenteData.agenda_personalizada,
+          horariosData_length: horariosData?.length || 0
+        });
       }
 
-      return agenteId;
-    });
+        return agenteId;
+      });
+    } catch (error) {
+      console.error('❌ [Agente.updateWithTransaction] Erro na transação:', error);
+      console.error('❌ Stack trace:', error.stack);
+      throw error; // Re-throw para o controller tratar
+    }
   }
 }
 

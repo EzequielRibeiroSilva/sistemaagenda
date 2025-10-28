@@ -14,7 +14,7 @@ type ScheduleData = {
 interface ScheduleDay {
   dia_semana: number;
   is_aberto?: boolean; // Opcional, será calculado se não existir
-  periodos: { inicio: string; fim: string }[];
+  periodos: { start: string; end: string }[]; // ✅ CORREÇÃO: Backend usa "start" e "end"
 }
 
 interface AgentScheduleEditorProps {
@@ -146,10 +146,11 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
             scheduleData.forEach((dayData) => {
                 const dayName = dayNames[dayData.dia_semana];
                 if (dayName) {
-                    const periods = dayData.periodos ? dayData.periodos.map((periodo, periodIndex) => ({
+                    // ✅ CORREÇÃO: Suportar tanto "inicio/fim" (legado) quanto "start/end" (novo)
+                    const periods = dayData.periodos ? dayData.periodos.map((periodo: any, periodIndex) => ({
                         id: periodIndex + 1,
-                        start: periodo.inicio,
-                        end: periodo.fim
+                        start: periodo.start || periodo.inicio || '09:00',
+                        end: periodo.end || periodo.fim || '17:00'
                     })) : [];
 
                     convertedSchedule[dayName] = {
@@ -184,15 +185,26 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
         if (onScheduleChange) {
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
 
+            // ✅ CORREÇÃO: Enviar apenas dias ativos com períodos válidos
+            // Backend espera campos "start" e "end", não "inicio" e "fim"
             const apiScheduleData: ScheduleDay[] = dayNames
-                .map((dayName, index) => ({
-                    dia_semana: index,
-                    is_aberto: newSchedule[dayName]?.isActive || false,
-                    periodos: newSchedule[dayName]?.periods ? newSchedule[dayName].periods.map(period => ({
-                        inicio: period.start,
-                        fim: period.end
-                    })) : []
-                }));
+                .map((dayName, index) => {
+                    const daySchedule = newSchedule[dayName];
+                    const isActive = daySchedule?.isActive || false;
+                    const hasPeriods = daySchedule?.periods && daySchedule.periods.length > 0;
+
+                    return {
+                        dia_semana: index,
+                        is_aberto: isActive && hasPeriods,
+                        // ✅ CORREÇÃO CRÍTICA: Usar "start" e "end" (não "inicio" e "fim")
+                        periodos: (isActive && hasPeriods) ? daySchedule.periods.map(period => ({
+                            start: period.start,
+                            end: period.end
+                        })) : []
+                    };
+                })
+                // ✅ CORREÇÃO: Filtrar apenas dias com períodos válidos
+                .filter(day => day.periodos.length > 0);
 
             onScheduleChange(apiScheduleData);
         }

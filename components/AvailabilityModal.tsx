@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, ChevronDown, ChevronUp } from './Icons';
 import type { Agent } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3000/api';
 
 interface AvailabilityModalProps {
   isOpen: boolean;

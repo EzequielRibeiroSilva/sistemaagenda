@@ -212,6 +212,14 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 avatar: avatarFile 
             };
 
+            // ✅ DEBUG: Log do payload antes de enviar
+            console.log('📤 [EditAgentPage] Enviando atualização:');
+            console.log('  📋 Agente ID:', agentData.id);
+            console.log('  📋 Agenda personalizada:', updateData.agenda_personalizada);
+            console.log('  📋 Horários (quantidade):', updateData.horarios_funcionamento.length);
+            console.log('  📋 Horários (dados):', JSON.stringify(updateData.horarios_funcionamento, null, 2));
+            console.log('  📋 Serviços:', updateData.servicos_oferecidos);
+
             const result = await updateAgent(agentData.id, updateData);
 
             if (result) {
