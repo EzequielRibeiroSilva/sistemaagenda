@@ -242,12 +242,34 @@ export const useInternalBooking = () => {
       setIsLoading(true);
       setError(null);
       
+      console.log('🌐 [useInternalBooking] fetchAgendamentoDetalhes chamado com ID:', id);
+      console.log('🌐 [useInternalBooking] URL:', `${API_BASE_URL}/agendamentos/${id}`);
+      
       const data = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos/${id}`);
-      return data.success ? data.data : null;
+      
+      console.log('🌐 [useInternalBooking] Resposta bruta:', data);
+      console.log('🌐 [useInternalBooking] Tipo da resposta:', typeof data);
+      console.log('🌐 [useInternalBooking] data.success:', data?.success);
+      console.log('🌐 [useInternalBooking] data.data:', data?.data);
+      console.log('🌐 [useInternalBooking] Chaves da resposta:', data ? Object.keys(data) : 'null');
+      
+      if (!data) {
+        console.error('❌ [useInternalBooking] Resposta é null ou undefined!');
+        return null;
+      }
+      
+      if (!data.success) {
+        console.error('❌ [useInternalBooking] data.success é false ou undefined!');
+        console.error('❌ [useInternalBooking] Mensagem de erro:', data.error || data.message);
+        return null;
+      }
+      
+      return data.data;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar detalhes do agendamento';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao buscar detalhes do agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar detalhes do agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro completo:', err);
       return null;
     } finally {
       setIsLoading(false);

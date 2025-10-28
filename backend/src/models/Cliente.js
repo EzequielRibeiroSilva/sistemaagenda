@@ -16,6 +16,31 @@ class Cliente extends BaseModel {
   }
 
   /**
+   * Sobrescrever findById para usar apenas campos existentes na tabela clientes
+   * @param {number} id - ID do cliente
+   * @returns {Promise<Object|null>} Cliente encontrado ou null
+   */
+  async findById(id) {
+    return await this.db(this.tableName)
+      .where('id', id)
+      .select(
+        'id',
+        'primeiro_nome',
+        'ultimo_nome',
+        'telefone',
+        'telefone_limpo',
+        'is_assinante',
+        'data_inicio_assinatura',
+        'status',
+        'whatsapp_id',
+        'unidade_id',
+        'created_at',
+        'updated_at'
+      )
+      .first();
+  }
+
+  /**
    * Buscar todos os clientes de uma unidade com filtros opcionais
    * @param {number} unidadeId - ID da unidade (Multi-Tenant)
    * @param {Object} filtros - Filtros opcionais
