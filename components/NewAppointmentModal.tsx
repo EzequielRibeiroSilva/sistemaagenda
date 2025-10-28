@@ -224,6 +224,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         fetchAgentes,
         searchClientes,
         createCliente,
+        fetchAgendamentoDetalhes,
         createAgendamento,
         updateAgendamento,
         finalizeAgendamento,
@@ -258,6 +259,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [isSearchingClient, setIsSearchingClient] = useState(false);
     const [clientSearchQuery, setClientSearchQuery] = useState('');
     const [totalPrice, setTotalPrice] = useState(0);
+    const [appointmentId, setAppointmentId] = useState<number | null>(null);
+    const [isLoadingAppointment, setIsLoadingAppointment] = useState(false);
 
     const isEditing = !!appointmentData;
 
@@ -379,55 +382,170 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         setTotalPrice(currentTotal);
     };
 
+    // Carregar detalhes do agendamento quando modal abrir em modo de edição
     useEffect(() => {
-        if (isOpen) {
-            setIsSearchingClient(false);
-            setClientSearchQuery('');
-            setTotalPrice(0);
-            if (isEditing && appointmentData) {
-                setSelectedServices([appointmentData.service]);
-                setSelectedExtras([]);
-                // TODO: Mapear appointmentData.agentName para selectedAgentId
-                // setSelectedAgentId(appointmentData.agentId);
-                setStatus(appointmentData.status);
-                const [start, end] = appointmentData.time.split('-');
-                setStartTime(start);
-                setEndTime(end);
-                const nameParts = appointmentData.client.split(' ');
-                setClientFirstName(nameParts[0] || '');
-                setClientLastName(nameParts.slice(1).join(' '));
-                setClientPhone('11961234567'); // Mock phone
-                const dateObj = new Date(2025, 8, 30); // Mock date from appointment
-                setDate(`${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`);
-            } else if (newSlotData) {
-                setSelectedServices([]);
-                setSelectedExtras([]);
-                // TODO: Mapear newSlotData.agent.name para selectedAgentId
-                // setSelectedAgentId(newSlotData.agent.id);
-                setStartTime(`${String(newSlotData.start).padStart(2,'0')}:00`);
-                setEndTime('');
-                const dateObj = newSlotData.date;
-                setDate(`${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`);
-                setClientFirstName('');
-                setClientLastName('');
-                setClientPhone('');
-                setStatus('Aprovado');
-            } else {
-                // Reset form
-                 setSelectedServices([]);
-                 setSelectedExtras([]);
-                 setSelectedAgentId(allAgents.length === 1 ? allAgents[0]?.id : null); // Auto-select se só há um agente
-                 setDate('');
-                 setStartTime('');
-                 setEndTime('');
-                 setClientFirstName('');
-                 setClientLastName('');
-                 setClientPhone('');
-                 setSelectedClient(null);
-                 setStatus('Aprovado');
+        console.log('🔎 [NewAppointmentModal] useEffect EXECUTADO');
+        console.log('🔎 [NewAppointmentModal] isOpen:', isOpen);
+        console.log('🔎 [NewAppointmentModal] isEditing:', isEditing);
+        console.log('🔎 [NewAppointmentModal] appointmentData:', appointmentData);
+        console.log('🔎 [NewAppointmentModal] appointmentData?.id:', appointmentData?.id);
+        
+        const loadAppointmentDetails = async () => {
+            if (!isOpen || !isEditing || !appointmentData?.id) {
+                console.log('⚠️ [NewAppointmentModal] Condições não atendidas para carregar detalhes');
+                console.log('   - isOpen:', isOpen);
+                console.log('   - isEditing:', isEditing);
+                console.log('   - appointmentData?.id:', appointmentData?.id);
+                return;
             }
+            
+            setIsLoadingAppointment(true);
+            try {
+                console.log('🔍 [NewAppointmentModal] Buscando detalhes do agendamento:', appointmentData.id);
+                console.log('🔍 [NewAppointmentModal] Tipo do ID:', typeof appointmentData.id);
+                console.log('🔍 [NewAppointmentModal] ID parseado:', parseInt(appointmentData.id));
+                
+                const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
+                
+                console.log('🔍 [NewAppointmentModal] Resposta recebida:', details);
+                console.log('🔍 [NewAppointmentModal] details é null?', details === null);
+                console.log('🔍 [NewAppointmentModal] details é undefined?', details === undefined);
+                
+                if (details) {
+                    console.log('✅ [NewAppointmentModal] Detalhes carregados:', details);
+                    
+                    // Preencher formulário com dados do agendamento
+                    setAppointmentId(details.id);
+                    
+                    // Extrair IDs dos serviços e extras
+                    const servicoIds = details.servicos?.map(s => s.id) || [];
+                    const extraIds = details.extras?.map(e => e.id) || [];
+                    
+                    setSelectedServices(servicoIds);
+                    setSelectedExtras(extraIds);
+                    setSelectedAgentId(details.agente_id);
+                    setStatus(details.status as AppointmentStatus);
+                    setStartTime(details.hora_inicio.substring(0, 5));
+                    setEndTime(details.hora_fim.substring(0, 5));
+                    
+                    // Formatar data para DD/MM/AAAA
+                    console.log('🔍 [NewAppointmentModal] details.data_agendamento:', details.data_agendamento);
+                    console.log('🔍 [NewAppointmentModal] typeof details.data_agendamento:', typeof details.data_agendamento);
+
+                    if (details.data_agendamento) {
+                        // Criar objeto Date diretamente da string ISO (sem adicionar T00:00:00)
+                        const dateObj = new Date(details.data_agendamento);
+                        console.log('🔍 [NewAppointmentModal] dateObj:', dateObj);
+                        console.log('🔍 [NewAppointmentModal] dateObj.getDate():', dateObj.getDate());
+                        console.log('🔍 [NewAppointmentModal] dateObj.getMonth():', dateObj.getMonth());
+                        console.log('🔍 [NewAppointmentModal] dateObj.getFullYear():', dateObj.getFullYear());
+
+                        // Verificar se a data é válida
+                        if (!isNaN(dateObj.getTime())) {
+                            const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
+                            console.log('🔍 [NewAppointmentModal] formattedDate:', formattedDate);
+                            setDate(formattedDate);
+                        } else {
+                            console.error('❌ [NewAppointmentModal] Data inválida após parsing!');
+                            setDate('');
+                        }
+                    } else {
+                        console.error('❌ [NewAppointmentModal] data_agendamento é null/undefined!');
+                        setDate('');
+                    }
+                    
+                    // Dados do cliente
+                    const clienteNome = details.cliente?.nome_completo || '';
+                    const clienteTelefone = details.cliente?.telefone || '';
+                    const nameParts = clienteNome.split(' ');
+                    setClientFirstName(nameParts[0] || '');
+                    setClientLastName(nameParts.slice(1).join(' ') || '');
+                    setClientPhone(clienteTelefone.replace('+55', '').trim());
+                    
+                    // Se temos cliente_id, buscar dados completos
+                    if (details.cliente_id) {
+                        setSelectedClient({
+                            id: details.cliente_id,
+                            primeiro_nome: nameParts[0] || '',
+                            ultimo_nome: nameParts.slice(1).join(' ') || '',
+                            nome_completo: clienteNome,
+                            telefone: clienteTelefone,
+                            email: '',
+                            is_assinante: false
+                        });
+                    }
+                    
+                    console.log('📊 [NewAppointmentModal] Dados preenchidos:', {
+                        servicoIds,
+                        extraIds,
+                        agente: details.agente_id,
+                        cliente: clienteNome,
+                        data: dateObj,
+                        horario: `${details.hora_inicio} - ${details.hora_fim}`
+                    });
+
+                    // Calcular preço total após carregar os dados (com pequeno delay para garantir que os estados foram atualizados)
+                    console.log('💰 [NewAppointmentModal] Calculando preço total...');
+                    setTimeout(() => {
+                        handleRecalculate();
+                    }, 100);
+                }
+            } catch (error) {
+                console.error('❌ [NewAppointmentModal] Erro ao carregar detalhes:', error);
+            } finally {
+                setIsLoadingAppointment(false);
+            }
+        };
+
+        loadAppointmentDetails();
+    }, [isOpen, isEditing, appointmentData?.id, fetchAgendamentoDetalhes]);
+
+    // Resetar formulário quando modal abrir (APENAS para novos agendamentos)
+    useEffect(() => {
+        if (!isOpen) return;
+
+        // ⚠️ IMPORTANTE: Só resetar se NÃO for edição
+        if (isEditing) {
+            console.log('🔄 [NewAppointmentModal] Modal aberto em modo EDIÇÃO - não resetando campos');
+            return;
         }
-    }, [isOpen, appointmentData, newSlotData, isEditing, allAgents]);
+
+        console.log('🔄 [NewAppointmentModal] Modal aberto em modo NOVO - resetando campos');
+
+        setIsSearchingClient(false);
+        setClientSearchQuery('');
+        setTotalPrice(0);
+
+        // Se é novo slot (não é edição)
+        if (newSlotData) {
+            setSelectedServices([]);
+            setSelectedExtras([]);
+            setStartTime(`${String(newSlotData.start).padStart(2,'0')}:00`);
+            setEndTime('');
+            const dateObj = newSlotData.date;
+            setDate(`${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`);
+            setClientFirstName('');
+            setClientLastName('');
+            setClientPhone('');
+            setSelectedClient(null);
+            setStatus('Aprovado');
+        }
+        // Se não é edição nem novo slot, resetar tudo
+        else {
+            setSelectedServices([]);
+            setSelectedExtras([]);
+            setSelectedAgentId(allAgents.length === 1 ? allAgents[0]?.id : null);
+            setDate('');
+            setStartTime('');
+            setEndTime('');
+            setClientFirstName('');
+            setClientLastName('');
+            setClientPhone('');
+            setSelectedClient(null);
+            setStatus('Aprovado');
+            setAppointmentId(null);
+        }
+    }, [isOpen, isEditing, newSlotData, allAgents]);
 
     useEffect(() => {
         if (startTime && (selectedServices.length > 0 || selectedExtras.length > 0)) {
@@ -568,9 +686,37 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             console.log('  clientPhone:', clientPhone);
             console.log('  selectedClient:', selectedClient);
 
-            if (isEditing) {
-                // Lógica de edição (implementar depois)
-                console.log('[NewAppointmentModal] Edição ainda não implementada');
+            if (isEditing && appointmentId) {
+                // Atualizar agendamento existente
+                console.log('🔄 [NewAppointmentModal] Atualizando agendamento ID:', appointmentId);
+                
+                const updateData = {
+                    agente_id: selectedAgentId,
+                    servico_ids: selectedServices,
+                    servico_extra_ids: selectedExtras,
+                    data_agendamento: dataFormatada,
+                    hora_inicio: startTime,
+                    hora_fim: endTime,
+                    status: status,
+                    observacoes: '',
+                    ...(selectedClient
+                        ? { cliente_id: selectedClient.id }
+                        : {
+                            cliente_nome: `${clientFirstName.trim()} ${clientLastName.trim()}`.trim(),
+                            cliente_telefone: `+55${clientPhone.replace(/\D/g, '')}`
+                        }
+                    )
+                };
+                
+                console.log('📦 [NewAppointmentModal] Dados de atualização:', updateData);
+                const resultado = await updateAgendamento(appointmentId, updateData);
+                
+                if (resultado) {
+                    alert('Agendamento atualizado com sucesso!');
+                    onClose();
+                    // Recarregar página para atualizar calendário
+                    window.location.reload();
+                }
             } else {
                 console.log('🚀 [NewAppointmentModal] Enviando requisição para createAgendamento...');
                 const resultado = await createAgendamento(agendamentoData);
@@ -694,7 +840,16 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        {/* Loading Indicator */}
+                        {isLoadingAppointment && (
+                            <div className="flex items-center justify-center py-12">
+                                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                                <span className="ml-3 text-gray-600 font-medium">Carregando detalhes do agendamento...</span>
+                            </div>
+                        )}
+                        
                         {/* Service Section */}
+                        {!isLoadingAppointment && (
                         <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-4">
                             <ServiceMultiSelectDropdown
                                 label="Escolha Do Serviço"
@@ -771,8 +926,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                 </FormField>
                             </div>
                         </div>
+                        )}
 
                         {/* Client Section */}
+                        {!isLoadingAppointment && (
                         <FormSection
                             title="Cliente"
                             actions={!isSearchingClient && (
@@ -784,8 +941,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         >
                            {renderClientContent()}
                         </FormSection>
+                        )}
 
                         {/* Price Section */}
+                        {!isLoadingAppointment && (
                         <FormSection
                             title="Total do Serviço"
                             actions={
@@ -806,9 +965,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                 </div>
                             </div>
                         </FormSection>
+                        )}
                         
                         {/* Payment Section - Only shows on edit */}
-                        {isEditing && (
+                        {!isLoadingAppointment && isEditing && (
                             <FormSection title="Finalizar Agendamento">
                                 <div className="space-y-4">
                                      <div className="text-sm space-y-2 text-gray-600 p-3 bg-gray-50 rounded-lg">

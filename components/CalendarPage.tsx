@@ -2,84 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Agent, Service, Appointment, UnavailableBlock, ScheduleSlot, Location } from '../types';
 import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
+import { useCalendarData } from '../hooks/useCalendarData';
+import type { CalendarAgent, CalendarService, CalendarLocation, CalendarAppointment } from '../hooks/useCalendarData';
+import { useAuth } from '../contexts/AuthContext';
 
-const agents: Agent[] = [
-    { id: '1', name: 'Eduardo Soares', avatar: 'https://picsum.photos/id/1005/100/100' },
-    { id: '2', name: 'Ângelo Paixão', avatar: 'https://picsum.photos/id/1011/100/100' },
-    { id: '3', name: 'Snake Filho', avatar: 'https://picsum.photos/id/1012/100/100' },
-];
-
-const services: Service[] = [
-    { id: 'corte', name: 'CORTE', color: 'bg-blue-600', textColor: 'text-white' },
-    { id: 'barba', name: 'CORTE + BARBA', color: 'bg-cyan-500', textColor: 'text-white' },
-    { id: 'outro', name: 'SERVIÇO', color: 'bg-fuchsia-500', textColor: 'text-white' },
-];
-
-const locations: Location[] = [
-    { id: 'loc1', name: 'Local Principal' },
-    { id: 'loc2', name: 'Unidade Filial' },
-];
-
-const appointments: (Appointment & { date: string })[] = [
-    // Data from week view
-    { id: 'a1', agentId: '1', serviceId: 'corte', locationId: 'loc1', startTime: '14:00', endTime: '15:00', date: '2025-10-08' },
-    { id: 'a2', agentId: '1', serviceId: 'corte', locationId: 'loc2', startTime: '15:00', endTime: '16:00', date: '2025-10-09' },
-    { id: 'a3', agentId: '1', serviceId: 'corte', locationId: 'loc1', startTime: '17:00', endTime: '18:00', date: '2025-10-10' },
-    { id: 'a4', agentId: '1', serviceId: 'corte', locationId: 'loc2', startTime: '18:00', endTime: '19:00', date: '2025-10-07' },
-    { id: 'a5', agentId: '1', serviceId: 'barba', locationId: 'loc1', startTime: '19:00', endTime: '20:00', date: '2025-10-06' },
-    { id: 'b1', agentId: '3', serviceId: 'corte', locationId: 'loc1', startTime: '09:00', endTime: '10:00', date: '2025-10-06' },
-    { id: 'b2', agentId: '3', serviceId: 'corte', locationId: 'loc2', startTime: '10:00', endTime: '11:00', date: '2025-10-07' },
-    { id: 'b3', agentId: '3', serviceId: 'corte', locationId: 'loc1', startTime: '14:00', endTime: '15:00', date: '2025-10-08' },
-    { id: 'b4', agentId: '3', serviceId: 'corte', locationId: 'loc2', startTime: '17:00', endTime: '18:00', date: '2025-10-09' },
-    { id: 'b5', agentId: '3', serviceId: 'corte', locationId: 'loc1', startTime: '18:00', endTime: '19:00', date: '2025-10-10' },
-    // New data for month view
-    { id: 'c1', agentId: '1', serviceId: 'corte', locationId: 'loc1', startTime: '11:00', endTime: '12:00', date: '2025-10-01' },
-    { id: 'c2', agentId: '1', serviceId: 'barba', locationId: 'loc2', startTime: '15:00', endTime: '16:30', date: '2025-10-02' },
-    { id: 'c3', agentId: '1', serviceId: 'corte', locationId: 'loc1', startTime: '10:00', endTime: '11:00', date: '2025-10-03' },
-    { id: 'c4', agentId: '1', serviceId: 'outro', locationId: 'loc2', startTime: '09:00', endTime: '10:30', date: '2025-10-04' },
-    { id: 'c5', agentId: '2', serviceId: 'corte', locationId: 'loc1', startTime: '14:00', endTime: '15:00', date: '2025-10-01' },
-    { id: 'c6', agentId: '2', serviceId: 'corte', locationId: 'loc2', startTime: '16:00', endTime: '17:00', date: '2025-10-02' },
-    { id: 'c7', agentId: '3', serviceId: 'barba', locationId: 'loc1', startTime: '18:00', endTime: '19:00', date: '2025-10-03' },
-    { id: 'c8', agentId: '3', serviceId: 'corte', locationId: 'loc2', startTime: '11:00', endTime: '12:00', date: '2025-10-04' },
-    { id: 'c9', agentId: '2', serviceId: 'corte', locationId: 'loc1', startTime: '10:00', endTime: '11:00', date: '2025-10-07' },
-    { id: 'c10', agentId: '3', serviceId: 'corte', locationId: 'loc2', startTime: '16:00', endTime: '17:00', date: '2025-10-06' },
-];
-
-const unavailableBlocks: (UnavailableBlock & { date?: string })[] = [
-    // Week view data
-    { id: 'u1', agentId: '1', startTime: '12:00', endTime: '14:00' },
-    { id: 'u2', agentId: '2', startTime: '09:00', endTime: '13:00' },
-    { id: 'u3', agentId: '1', startTime: '12:00', endTime: '14:00', date: '2025-10-06' },
-    { id: 'u4', agentId: '1', startTime: '12:00', endTime: '14:00', date: '2025-10-07' },
-    { id: 'u5', agentId: '1', startTime: '12:00', endTime: '14:00', date: '2025-10-08' },
-    { id: 'u6', agentId: '1', startTime: '12:00', endTime: '14:00', date: '2025-10-09' },
-    { id: 'u7', agentId: '1', startTime: '12:00', endTime: '14:00', date: '2025-10-10' },
-    { id: 'u8', agentId: '1', startTime: '13:00', endTime: '21:00', date: '2025-10-11' },
-    { id: 'u9', agentId: '1', startTime: '09:00', endTime: '21:00', date: '2025-10-12' },
-    // New month view data
-    { id: 'm1', agentId: '1', startTime: '09:00', endTime: '11:00', date: '2025-10-01' },
-    { id: 'm2', agentId: '2', startTime: '10:00', endTime: '14:00', date: '2025-10-01' },
-    { id: 'm3', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-05' },
-    { id: 'm4', agentId: '1', startTime: '09:00', endTime: '21:00', date: '2025-10-13' },
-    { id: 'm5', agentId: '2', startTime: '09:00', endTime: '21:00', date: '2025-10-14' },
-    { id: 'm6', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-15' },
-    { id: 'm7', agentId: '1', startTime: '09:00', endTime: '15:00', date: '2025-10-16' },
-    { id: 'm8', agentId: '2', startTime: '15:00', endTime: '21:00', date: '2025-10-17' },
-    { id: 'm9', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-18' },
-    { id: 'm10', agentId: '1', startTime: '09:00', endTime: '21:00', date: '2025-10-19' },
-    { id: 'm11', agentId: '2', startTime: '09:00', endTime: '21:00', date: '2025-10-20' },
-    { id: 'm12', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-21' },
-    { id: 'm13', agentId: '1', startTime: '14:00', endTime: '21:00', date: '2025-10-22' },
-    { id: 'm14', agentId: '2', startTime: '09:00', endTime: '14:00', date: '2025-10-23' },
-    { id: 'm15', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-24' },
-    { id: 'm16', agentId: '1', startTime: '09:00', endTime: '21:00', date: '2025-10-25' },
-    { id: 'm17', agentId: '2', startTime: '09:00', endTime: '21:00', date: '2025-10-26' },
-    { id: 'm18', agentId: '3', startTime: '09:00', endTime: '21:00', date: '2025-10-27' },
-    { id: 'm19', agentId: '1', startTime: '09:00', endTime: '12:00', date: '2025-10-28' },
-    { id: 'm20', agentId: '2', startTime: '12:00', endTime: '21:00', date: '2025-10-29' },
-    { id: 'm21', agentId: '3', startTime: '09:00', endTime: '17:00', date: '2025-10-30' },
-    { id: 'm22', agentId: '1', startTime: '17:00', endTime: '21:00', date: '2025-10-31' },
-];
+// Dados mock removidos - agora usando dados reais do backend via useCalendarData hook
 
 const HeaderDropdown: React.FC<{
   options: string[],
@@ -194,6 +121,23 @@ interface CalendarPageProps {
 }
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }) => {
+    // Hook de autenticação para acessar dados do usuário
+    const { user } = useAuth();
+    
+    // Hook para buscar dados reais do backend
+    const {
+        agents: backendAgents,
+        services: backendServices,
+        locations: backendLocations,
+        appointments: backendAppointments,
+        unavailableBlocks: backendUnavailableBlocks,
+        unitSchedules,
+        isLoading,
+        error,
+        loadAllData,
+        fetchAppointments
+    } = useCalendarData();
+
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState('Dia');
     const [showFilters, setShowFilters] = useState(false);
@@ -206,10 +150,95 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
 
+    // Converter dados do backend para formato do componente
+    const agents: Agent[] = useMemo(() => {
+        return backendAgents.map(agent => ({
+            id: agent.id,
+            name: agent.name,
+            avatar: agent.avatar
+        }));
+    }, [backendAgents]);
+
+    const services: Service[] = useMemo(() => {
+        return backendServices.map(service => ({
+            id: service.id,
+            name: service.name,
+            color: service.color,
+            textColor: service.textColor
+        }));
+    }, [backendServices]);
+
+    const locations: Location[] = useMemo(() => {
+        return backendLocations.map(location => ({
+            id: location.id,
+            name: location.name
+        }));
+    }, [backendLocations]);
+    
+    // Detectar se é plano Single ou Multi
+    const isSinglePlan = user.plano === 'Single' || locations.length === 1;
+    const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
+
+    const appointments: (Appointment & { date: string })[] = useMemo(() => {
+        return backendAppointments.map(appointment => ({
+            id: appointment.id,
+            agentId: appointment.agentId,
+            serviceId: appointment.serviceId,
+            locationId: appointment.locationId,
+            startTime: appointment.startTime,
+            endTime: appointment.endTime,
+            date: appointment.date
+        }));
+    }, [backendAppointments]);
+
+    const unavailableBlocks: (UnavailableBlock & { date?: string })[] = useMemo(() => {
+        return backendUnavailableBlocks.map(block => ({
+            id: block.id,
+            agentId: block.agentId,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            date: block.date
+        }));
+    }, [backendUnavailableBlocks]);
+
     const today = new Date();
 
-    const START_HOUR_DAY = 8;
-    const END_HOUR_DAY = 21;
+    // Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
+    const { startHour, endHour } = useMemo(() => {
+        // Se há unidade selecionada, usar seus horários de funcionamento
+        if (selectedLocationFilter && selectedLocationFilter !== 'all' && unitSchedules[selectedLocationFilter]) {
+            const schedules = unitSchedules[selectedLocationFilter];
+            
+            // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
+            let minHour = 23;
+            let maxHour = 0;
+            
+            schedules.forEach(schedule => {
+                if (schedule.is_aberto && schedule.horarios_json && schedule.horarios_json.length > 0) {
+                    schedule.horarios_json.forEach(periodo => {
+                        const startH = parseInt(periodo.inicio.split(':')[0]);
+                        const endH = parseInt(periodo.fim.split(':')[0]);
+                        
+                        if (startH < minHour) minHour = startH;
+                        if (endH > maxHour) maxHour = endH;
+                    });
+                }
+            });
+            
+            // Se encontrou horários válidos, usar eles
+            if (minHour < 23 && maxHour > 0) {
+                console.log(`📅 [CalendarPage] Usando horários da unidade: ${minHour}:00 - ${maxHour}:00`);
+                return { startHour: minHour, endHour: maxHour };
+            }
+        }
+        
+        // Fallback: usar horários padrão
+        console.log('📅 [CalendarPage] Usando horários padrão: 8:00 - 21:00');
+        return { startHour: 8, endHour: 21 };
+    }, [selectedLocationFilter, unitSchedules]);
+
+    const START_HOUR_DAY = startHour;
+    const END_HOUR_DAY = endHour;
     const hoursDay = Array.from({ length: END_HOUR_DAY - START_HOUR_DAY + 1 }, (_, i) => i + START_HOUR_DAY);
 
     const START_HOUR_WEEK = 9;
@@ -224,7 +253,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             return agents.filter(agent => agent.id === loggedInAgentId);
         }
         return agents;
-    }, [loggedInAgentId]);
+    }, [loggedInAgentId, agents]);
 
     const displayedAgents = useMemo(() => {
         if (view !== 'Semana' && selectedAgentFilter !== 'all') {
@@ -241,28 +270,120 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             setSelectedAgentId(loggedInAgentId);
         }
     }, [loggedInAgentId]);
+    
+    // Log controlado para debug (apenas quando dados mudarem)
+    useEffect(() => {
+        console.log('🔍 [CalendarPage] Estado atualizado:', {
+            userRole,
+            loggedInAgentId,
+            totalAgents: agents.length,
+            allAgents: allAgents.length,
+            displayedAgents: displayedAgents.length,
+            totalServices: services.length,  // ← NOVO
+            totalAppointments: appointments.length,
+            currentDate: toISODateString(currentDate),
+            agentsList: agents.map(a => ({ id: a.id, name: a.name })),
+            allAgentsList: allAgents.map(a => ({ id: a.id, name: a.name })),
+            servicesList: services.map(s => ({ id: s.id, name: s.name })),  // ← NOVO
+            appointmentsSample: appointments.slice(0, 3).map(a => ({
+                id: a.id,
+                agentId: a.agentId,
+                serviceId: a.serviceId,  // ← NOVO
+                date: a.date,
+                time: `${a.startTime}-${a.endTime}`
+            }))
+        });
+    }, [agents.length, allAgents.length, displayedAgents.length, services.length, appointments.length, currentDate]);
 
-    const handleAppointmentClick = (app: Appointment & { date: string }) => {
-        const agent = agents.find(a => a.id === app.agentId);
-        const service = services.find(s => s.id === app.serviceId);
-        if (!agent || !service) return;
+    // Inicializar filtro de local automaticamente quando há apenas uma unidade
+    useEffect(() => {
+        if (locations.length === 0) return;
+        
+        // Se é plano Single ou há apenas uma unidade, auto-selecionar
+        if (isSinglePlan && selectedLocationFilter === 'all') {
+            console.log('🔧 [CalendarPage] Auto-selecting single location:', locations[0]);
+            setSelectedLocationFilter(locations[0].id);
+        }
+        
+        // Se é plano Multi e usuário tem unidade_id, usar essa unidade
+        if (isMultiPlan && user.unidade_id && selectedLocationFilter === 'all') {
+            const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
+            if (userLocation) {
+                console.log('🔧 [CalendarPage] Auto-selecting user location:', userLocation);
+                setSelectedLocationFilter(userLocation.id);
+            }
+        }
+    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
 
-        const appointmentDetails: ScheduleSlot['details'] = {
-            id: app.id,
-            service: service.name,
-            client: 'Cliente Exemplo', // Placeholder as client info is not in this component's data
-            agentName: agent.name,
-            agentEmail: `${agent.name.split(' ')[0].toLowerCase()}@email.com`, // Placeholder email
-            agentPhone: 'N/A',
-            date: new Date(app.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }),
-            time: `${app.startTime}-${app.endTime}`,
-            serviceId: app.serviceId,
-            locationId: app.locationId,
-            status: 'Aprovado', // Placeholder
+    // Recarregar agendamentos quando a data ou view mudar
+    useEffect(() => {
+        const loadAppointmentsForDateRange = async () => {
+            let startDate: string;
+            let endDate: string;
+
+            if (view === 'Dia') {
+                // Para view de dia, buscar apenas o dia atual
+                startDate = toISODateString(currentDate);
+                endDate = startDate;
+            } else if (view === 'Semana') {
+                // Para view de semana, buscar a semana completa
+                const { start, end } = getWeekRange(currentDate);
+                startDate = toISODateString(start);
+                endDate = toISODateString(end);
+            } else {
+                // Para view de mês, buscar o mês completo
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                startDate = toISODateString(firstDay);
+                endDate = toISODateString(lastDay);
+            }
+
+            await fetchAppointments({
+                startDate,
+                endDate
+            });
         };
 
-        setModalData({ appointment: appointmentDetails });
+        loadAppointmentsForDateRange();
+    }, [currentDate, view, fetchAppointments]);
+
+    const handleAppointmentClick = (app: Appointment & { date: string }) => {
+        console.log('🔵🔵🔵 [CalendarPage] CLIQUE NO AGENDAMENTO DETECTADO!');
+        console.log('📋 [CalendarPage] Dados do agendamento:', {
+            id: app.id,
+            agentId: app.agentId,
+            serviceId: app.serviceId,
+            locationId: app.locationId,
+            date: app.date,
+            startTime: app.startTime,
+            endTime: app.endTime
+        });
+        
+        // Passar apenas o ID do agendamento para o modal buscar os detalhes completos
+        const modalPayload = { 
+            appointment: { 
+                id: app.id,
+                // Dados mínimos para o modal saber que é edição
+                service: '',
+                client: '',
+                agentName: '',
+                agentEmail: '',
+                agentPhone: '',
+                date: '',
+                time: '',
+                serviceId: app.serviceId,
+                locationId: app.locationId,
+                status: 'PENDENTE'
+            } 
+        };
+        
+        console.log('📦 [CalendarPage] Payload para o modal:', modalPayload);
+        setModalData(modalPayload);
+        console.log('✅ [CalendarPage] setModalData executado');
         setModalOpen(true);
+        console.log('✅ [CalendarPage] setModalOpen(true) executado');
     };
     
     const handleSlotClick = (slotInfo: { agent: Agent, startTime: string, date: Date }) => {
@@ -335,9 +456,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const timeToPercentageDay = (time: string) => {
         const [h, m] = time.split(':').map(Number);
-        const totalMinutes = (h + m / 60) - START_HOUR_DAY;
-        const totalDuration = END_HOUR_DAY - START_HOUR_DAY;
-        return (totalMinutes / totalDuration) * 100;
+        // Calcular minutos totais desde START_HOUR_DAY
+        const totalMinutes = (h - START_HOUR_DAY) * 60 + m;
+        const totalDurationMinutes = (END_HOUR_DAY - START_HOUR_DAY) * 60;
+        return (totalMinutes / totalDurationMinutes) * 100;
     };
     
     const timeToPositionStyleWeek = (startTime: string, endTime: string) => {
@@ -422,13 +544,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         }
     };
 
-    const renderDayView = () => (
+    const renderDayView = () => {
+        
+        return (
         <div className="flex-1 overflow-auto p-4">
             <div className="flex">
                 <div className="w-20 text-sm text-right pr-2">
-                    <div className="h-10"></div>
                     {hoursDay.map(hour => (
-                        <div key={hour} className="h-16 -mt-2.5">
+                        <div key={hour} className="h-16 flex items-center justify-end">
                             <span className="text-gray-500">{hour}:00</span>
                         </div>
                     ))}
@@ -442,7 +565,26 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
                             (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
                         );
+                        
+                        // Debug: Log do filtro de agendamentos
+                        if (agent.id === '23' || agent.id === '25' || agent.id === '27') {
+                            console.log(`🔍 [CalendarPage] Filtro para agente ${agent.name} (ID: ${agent.id}):`, {
+                                dateStr,
+                                totalAppointments: appointments.length,
+                                appointmentsForThisAgent: agentAppointments.length,
+                                appointmentsSample: appointments.slice(0, 2).map(a => ({
+                                    id: a.id,
+                                    agentId: a.agentId,
+                                    agentIdType: typeof a.agentId,
+                                    date: a.date,
+                                    match: a.agentId === agent.id && a.date === dateStr
+                                })),
+                                agentIdType: typeof agent.id
+                            });
+                        }
+                        
                         const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
+                        
                         
                         const busySlots = [
                             ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime })),
@@ -466,12 +608,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                         return (
                             <div key={agent.id} className="relative border-l border-gray-200">
-                                <div className="flex items-center gap-2 p-2 h-10 sticky top-0 bg-white z-10 border-b border-gray-200 -mt-4 pt-0">
-                                    <img src={agent.avatar} alt={agent.name} className="w-6 h-6 rounded-full" />
-                                    <span className="text-sm font-medium text-gray-800">{agent.name}</span>
-                                </div>
-                                <div className="absolute inset-0 top-10">
-                                    {hoursDay.slice(1).map(hour => <div key={`line-${hour}`} className="h-16 border-t border-gray-200"></div>)}
+                                <div className="absolute inset-0">
+                                    {hoursDay.map(hour => (
+                                        <div key={`line-${hour}`} className="h-16 border-t border-gray-200"></div>
+                                    ))}
                                 </div>
 
                                 {availableSlots.map((slot, index) => {
@@ -481,7 +621,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         <div
                                             key={`avail-${index}`}
                                             className="absolute w-full group cursor-pointer z-0"
-                                            style={{ top: `calc(${top}% + 40px)`, height: `${height}%` }}
+                                            style={{ top: `${top}%`, height: `${height}%` }}
                                             onClick={() => handleSlotClick({ agent, startTime: slot.start, date: currentDate })}
                                         >
                                             <div className="w-full h-full opacity-0 group-hover:opacity-100 bg-blue-50 transition-opacity flex items-center justify-center">
@@ -492,16 +632,48 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 })}
 
                                 {agentAppointments.map(app => {
-                                    const service = services.find(s => s.id === app.serviceId);
-                                    if (!service) return null;
+                                    let service = services.find(s => s.id === app.serviceId);
+                                    
+                                    // Fallback: se serviço não encontrado, usar o primeiro disponível
+                                    if (!service && services.length > 0) {
+                                        service = services[0];
+                                    }
+                                    
+                                    if (!service) {
+                                        return null;
+                                    }
+                                    
                                     const top = timeToPercentageDay(app.startTime);
                                     const height = timeToPercentageDay(app.endTime) - top;
+                                    
+                                    // 🔍 DEBUG: Log detalhado do cálculo de posição
+                                    if (app.startTime === '14:00') {
+                                        console.log('🐛 [DEBUG] Cálculo de posição para 14:00:', {
+                                            appointmentId: app.id,
+                                            startTime: app.startTime,
+                                            endTime: app.endTime,
+                                            START_HOUR_DAY,
+                                            END_HOUR_DAY,
+                                            topPercentage: top,
+                                            heightPercentage: height,
+                                            finalTopStyle: `calc(${top}% + 40px)`,
+                                            expectedPosition: '14:00 line',
+                                            calculation: {
+                                                startHour: 14,
+                                                startMinutes: 0,
+                                                totalMinutesFromStart: (14 - START_HOUR_DAY) * 60,
+                                                totalDurationMinutes: (END_HOUR_DAY - START_HOUR_DAY) * 60,
+                                                percentage: ((14 - START_HOUR_DAY) * 60) / ((END_HOUR_DAY - START_HOUR_DAY) * 60) * 100
+                                            }
+                                        });
+                                    }
+                                    
                                     return (
                                         <div 
                                           key={app.id} 
                                           onClick={() => handleAppointmentClick(app)}
                                           className={`absolute w-full p-2 rounded-lg ${service.color} ${service.textColor} cursor-pointer hover:opacity-90 transition-opacity z-10`} 
-                                          style={{ top: `calc(${top}% + 40px)`, height: `${height}%` }}>
+                                          style={{ top: `${top}%`, height: `${height}%` }}>
                                             <p className="font-bold text-xs">{service.name}</p>
                                             <p className="text-xs">{app.startTime} - {app.endTime}</p>
                                         </div>
@@ -511,7 +683,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     const top = timeToPercentageDay(block.startTime);
                                     const height = timeToPercentageDay(block.endTime) - top;
                                     return (
-                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-10" style={{ top: `calc(${top}% + 40px)`, height: `${height}%` }}>
+                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-10" style={{ top: `${top}%`, height: `${height}%` }}>
                                              <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)', backgroundSize: '10px 10px' }}></div>
                                         </div>
                                     )
@@ -523,6 +695,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             </div>
         </div>
     );
+    };
     
     const renderWeekView = () => {
         const selectedAgent = allAgents.find(a => a.id === selectedAgentId);
@@ -537,7 +710,15 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             onClick={() => setSelectedAgentId(agent.id)}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${selectedAgentId === agent.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100 border-gray-300'}`}
                         >
-                            <img src={agent.avatar} alt={agent.name} className="w-6 h-6 rounded-full" />
+                            <img 
+                                src={agent.avatar} 
+                                alt={agent.name} 
+                                className="w-6 h-6 rounded-full object-cover"
+                                onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(agent.name)}&background=random`;
+                                }}
+                            />
                             {agent.name}
                         </button>
                     ))}
@@ -748,6 +929,32 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+            {/* Mensagem de erro */}
+            {error && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4 m-4">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-sm text-red-700">{error}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Indicador de loading */}
+            {isLoading && (
+                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                        <p className="mt-4 text-gray-600">Carregando agendamentos...</p>
+                    </div>
+                </div>
+            )}
+
             <div className="p-4 border-b border-gray-200">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-baseline gap-4">
@@ -770,7 +977,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         <button onClick={handleNext} className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                             <ChevronRight className="h-5 w-5 text-gray-600" />
                         </button>
-                        {userRole === 'ADMIN' && (
+                        {userRole === 'ADMIN' && isMultiPlan && (
                             <HeaderDropdown
                                 options={locationOptionsForHeader}
                                 selected={selectedLocationName}
@@ -807,31 +1014,55 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             </div>
 
             {view === 'Dia' && (
-                <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                    <button onClick={handlePrev}><ChevronLeft className="h-5 w-5 text-gray-400" /></button>
-                    <div className="flex items-center gap-1 overflow-x-auto mx-2">
-                    {daysInCurrentMonth.map(day => {
-                        const isSelected = day.getDate() === currentDate.getDate() && day.getMonth() === currentDate.getMonth();
-                        const isToday = day.getDate() === today.getDate() && day.getMonth() === today.getMonth() && day.getFullYear() === today.getFullYear();
-                        
-                        let buttonClass = 'h-8 w-8 flex-shrink-0 rounded-full text-sm font-medium ';
-                        if (isSelected) {
-                            buttonClass += 'bg-blue-600 text-white';
-                        } else if (isToday) {
-                            buttonClass += 'bg-blue-100 text-blue-700 font-bold';
-                        } else {
-                            buttonClass += 'hover:bg-gray-100 text-gray-700';
-                        }
+                <>
+                    {/* Barra de números do mês */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+                        <button onClick={handlePrev}><ChevronLeft className="h-5 w-5 text-gray-400" /></button>
+                        <div className="flex items-center gap-1 overflow-x-auto mx-2">
+                        {daysInCurrentMonth.map(day => {
+                            const isSelected = day.getDate() === currentDate.getDate() && day.getMonth() === currentDate.getMonth();
+                            const isToday = day.getDate() === today.getDate() && day.getMonth() === today.getMonth() && day.getFullYear() === today.getFullYear();
+                            
+                            let buttonClass = 'h-8 w-8 flex-shrink-0 rounded-full text-sm font-medium ';
+                            if (isSelected) {
+                                buttonClass += 'bg-blue-600 text-white';
+                            } else if (isToday) {
+                                buttonClass += 'bg-blue-100 text-blue-700 font-bold';
+                            } else {
+                                buttonClass += 'hover:bg-gray-100 text-gray-700';
+                            }
 
-                        return (
-                            <button key={day.getDate()} onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.getDate()))} className={buttonClass}>
-                                {day.getDate()}
-                            </button>
-                        )
-                    })}
+                            return (
+                                <button key={day.getDate()} onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.getDate()))} className={buttonClass}>
+                                    {day.getDate()}
+                                </button>
+                            )
+                        })}
+                        </div>
+                        <button onClick={handleNext}><ChevronRight className="h-5 w-5 text-gray-400" /></button>
                     </div>
-                    <button onClick={handleNext}><ChevronRight className="h-5 w-5 text-gray-400" /></button>
-                </div>
+                    
+                    {/* Header dos agentes - FIXO */}
+                    <div className="flex border-b-2 border-gray-300 bg-white shadow-sm">
+                        <div className="w-20 flex-shrink-0"></div>
+                        <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${displayedAgents.length}, minmax(0, 1fr))` }}>
+                            {displayedAgents.map(agent => (
+                                <div key={agent.id} className="flex items-center gap-2 px-3 py-2.5 border-l border-gray-200">
+                                    <img 
+                                        src={agent.avatar} 
+                                        alt={agent.name} 
+                                        className="w-7 h-7 rounded-full object-cover ring-2 ring-white"
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(agent.name)}&background=random`;
+                                        }}
+                                    />
+                                    <span className="text-sm font-semibold text-gray-900">{agent.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </>
             )}
             
             {view === 'Dia' && renderDayView()}

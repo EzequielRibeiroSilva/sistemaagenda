@@ -204,7 +204,7 @@ const App: React.FC = () => {
     switch (activeView) {
       case 'admin-dashboard': return <AdminDashboardPage searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''} />;
       case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
-      case 'calendar': return <CalendarPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
+      case 'calendar': return <CalendarPage loggedInAgentId={user.role === 'AGENTE' ? user.agentId : null} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
       case 'clients-list': return <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />;
       case 'clients-add': return <AddClientPage setActiveView={setActiveView} />;

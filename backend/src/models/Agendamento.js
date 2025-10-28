@@ -70,18 +70,73 @@ class Agendamento extends BaseModel {
     const agendamento = await this.findById(id);
     if (!agendamento) return null;
 
+    // Buscar serviços do agendamento
     const servicos = await this.db('agendamento_servicos')
       .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
       .where('agendamento_servicos.agendamento_id', id)
       .select(
+        'servicos.id',
         'servicos.nome',
+        'servicos.preco',
         'servicos.duracao_minutos',
         'agendamento_servicos.preco_aplicado'
       );
 
+    // Buscar extras do agendamento
+    const extras = await this.db('agendamento_servicos_extras')
+      .join('servicos_extras', 'agendamento_servicos_extras.servico_extra_id', 'servicos_extras.id')
+      .where('agendamento_servicos_extras.agendamento_id', id)
+      .select(
+        'servicos_extras.id',
+        'servicos_extras.nome',
+        'servicos_extras.preco',
+        'servicos_extras.duracao_minutos',
+        'agendamento_servicos_extras.preco_aplicado'
+      );
+
+    // Buscar dados do cliente
+    let cliente = null;
+    if (agendamento.cliente_id) {
+      cliente = await this.db('clientes')
+        .where('id', agendamento.cliente_id)
+        .select('id', 'primeiro_nome', 'ultimo_nome', 'telefone')
+        .first();
+
+      // Combinar primeiro_nome e ultimo_nome em nome_completo
+      if (cliente) {
+        cliente.nome_completo = `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
+      }
+    }
+
+    // Buscar dados do agente
+    let agente = null;
+    if (agendamento.agente_id) {
+      agente = await this.db('agentes')
+        .where('id', agendamento.agente_id)
+        .select('id', 'nome', 'email', 'telefone')
+        .first();
+    }
+
+    // Extrair IDs dos serviços e extras
+    const servico_ids = servicos.map(s => s.id);
+    const servico_extra_ids = extras.map(e => e.id);
+
+    console.log('🔍 [Agendamento.findWithServicos] agendamento.data_agendamento:', agendamento.data_agendamento);
+    console.log('🔍 [Agendamento.findWithServicos] typeof agendamento.data_agendamento:', typeof agendamento.data_agendamento);
+
     return {
       ...agendamento,
-      servicos
+      servicos,
+      extras,
+      cliente: cliente || {
+        nome_completo: agendamento.cliente_nome || '',
+        telefone: agendamento.cliente_telefone || ''
+      },
+      agente: agente || {
+        nome: 'Agente não encontrado'
+      },
+      servico_ids,
+      servico_extra_ids
     };
   }
 
