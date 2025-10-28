@@ -155,11 +155,20 @@ class AgenteController {
           duracao_minutos: s.duracao_minutos
         })),
         servicos_atuais_ids: agente.servicos_oferecidos.map(s => s.id),
-        // Horários formatados
-        horarios_funcionamento: agente.horarios_funcionamento.map(h => ({
-          dia_semana: h.dia_semana,
-          periodos: typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos
-        }))
+        // Horários formatados - ✅ CORREÇÃO: Normalizar para formato "start/end"
+        horarios_funcionamento: agente.horarios_funcionamento.map(h => {
+          const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
+          // Normalizar períodos para usar "start" e "end" (não "inicio" e "fim")
+          const periodosNormalizados = Array.isArray(periodos) ? periodos.map(p => ({
+            start: p.start || p.inicio || '09:00',
+            end: p.end || p.fim || '17:00'
+          })) : [];
+          
+          return {
+            dia_semana: h.dia_semana,
+            periodos: periodosNormalizados
+          };
+        })
       };
       
 
@@ -387,13 +396,23 @@ class AgenteController {
           ? JSON.parse(horarios_funcionamento)
           : (horarios_funcionamento || []);
 
-        // DEBUG: Log dos dados recebidos
-        console.log('🔍 DEBUG BACKEND - Dados recebidos:');
-        console.log('horarios_funcionamento (raw):', horarios_funcionamento);
-        console.log('horariosData (parsed):', JSON.stringify(horariosData, null, 2));
-        console.log('agenda_personalizada:', agenda_personalizada);
+        // ✅ DEBUG: Log detalhado dos dados recebidos
+        console.log('🔍 DEBUG BACKEND - Dados de atualização recebidos:');
+        console.log('  📋 horarios_funcionamento (raw):', horarios_funcionamento);
+        console.log('  📋 horariosData (parsed):', JSON.stringify(horariosData, null, 2));
+        console.log('  📋 agenda_personalizada:', agenda_personalizada, '(tipo:', typeof agenda_personalizada, ')');
+        console.log('  📋 Quantidade de dias com horários:', horariosData.length);
+        
+        // Validar estrutura dos períodos
+        if (horariosData.length > 0) {
+          const primeiroDia = horariosData[0];
+          console.log('  📋 Estrutura do primeiro dia:', JSON.stringify(primeiroDia, null, 2));
+          if (primeiroDia.periodos && primeiroDia.periodos.length > 0) {
+            console.log('  📋 Estrutura do primeiro período:', JSON.stringify(primeiroDia.periodos[0], null, 2));
+          }
+        }
       } catch (e) {
-        console.error('Erro ao parsear horarios_funcionamento:', e);
+        console.error('❌ Erro ao parsear horarios_funcionamento:', e);
         horariosData = [];
       }
 
@@ -495,7 +514,9 @@ class AgenteController {
         message: 'Agente atualizado com sucesso'
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao atualizar agente:', error);
+      console.error('❌ [AgenteController] Erro ao atualizar agente:', error);
+      console.error('❌ Stack trace:', error.stack);
+      console.error('❌ Mensagem:', error.message);
 
       // Tratar erros específicos
       if (error.message.includes('duplicate key') && error.message.includes('email')) {
@@ -509,7 +530,8 @@ class AgenteController {
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
-        message: 'Erro ao atualizar agente'
+        message: error.message || 'Erro ao atualizar agente',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   }

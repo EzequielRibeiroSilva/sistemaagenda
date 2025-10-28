@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
 export interface Agent {
   id: number;
@@ -285,16 +285,26 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       // Criar FormData para suportar upload de arquivos
       const formData = new FormData();
 
+      // ✅ DEBUG: Log dos dados antes de criar FormData
+      console.log('🔧 [useAgentManagement] Preparando FormData:');
+      console.log('  📋 agentData:', agentData);
+
       // Adicionar dados do agente
       Object.entries(agentData).forEach(([key, value]) => {
         if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento') {
-          formData.append(key, JSON.stringify(value));
+          const jsonValue = JSON.stringify(value);
+          formData.append(key, jsonValue);
+          console.log(`  ✅ ${key}:`, jsonValue);
         } else if (key === 'avatar' && value instanceof File) {
           formData.append(key, value);
+          console.log(`  ✅ ${key}: [File] ${value.name}`);
         } else if (value !== null && value !== undefined) {
           formData.append(key, value.toString());
+          console.log(`  ✅ ${key}:`, value.toString());
         }
       });
+
+      console.log('📤 [useAgentManagement] Enviando PUT para:', `${API_BASE_URL}/agentes/${id}`);
 
       const response = await fetch(`${API_BASE_URL}/agentes/${id}`, {
         method: 'PUT',
@@ -305,24 +315,30 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
         body: formData,
       });
 
+      console.log('📥 [useAgentManagement] Resposta recebida:', response.status, response.statusText);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('❌ [useAgentManagement] Erro na resposta:', errorData);
         throw new Error(errorData.message || `Erro HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
+      console.log('✅ [useAgentManagement] Resultado:', result);
 
       if (result.success) {
         // ✅ CORREÇÃO: Não recarregar automaticamente para evitar loops
         // A lista será recarregada quando o usuário voltar para AgentsPage
+        console.log('✅ [useAgentManagement] Atualização bem-sucedida!');
         return result.data; // Retornar os dados da resposta
       } else {
+        console.error('❌ [useAgentManagement] Falha na atualização:', result.message);
         throw new Error(result.message || 'Erro ao atualizar agente');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('Erro ao atualizar agente:', err);
+      console.error('❌ [useAgentManagement] Erro ao atualizar agente:', err);
       return null;
     } finally {
       setLoading(false);
