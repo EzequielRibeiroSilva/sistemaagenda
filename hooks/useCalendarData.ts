@@ -221,7 +221,7 @@ export const useCalendarData = () => {
   // Buscar agentes
   const fetchAgents = useCallback(async () => {
     try {
-      console.log('🔍 [useCalendarData] Buscando agentes...');
+      console.log('🔍 [useCalendarData] Buscando agentes... (ESTÁVEL)');
       console.log('🔍 [useCalendarData] URL:', `${API_BASE_URL}/agentes`);
       console.log('🔍 [useCalendarData] User:', user);
       
@@ -263,7 +263,7 @@ export const useCalendarData = () => {
   // Buscar serviços
   const fetchServices = useCallback(async () => {
     try {
-      console.log('🔍 [useCalendarData] Buscando serviços...');
+      console.log('🔍 [useCalendarData] Buscando serviços... (ESTÁVEL)');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/servicos`);
       
       console.log('🔍 [useCalendarData] Resposta RAW de serviços:', response);
@@ -290,7 +290,7 @@ export const useCalendarData = () => {
   // Buscar unidades (locais)
   const fetchLocations = useCallback(async () => {
     try {
-      console.log('🔍 [useCalendarData] Buscando unidades...');
+      console.log('🔍 [useCalendarData] Buscando unidades... (ESTÁVEL)');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
       
       console.log('🔍 [useCalendarData] Resposta de unidades:', response);
@@ -335,20 +335,37 @@ export const useCalendarData = () => {
     status?: string;
   }) => {
     try {
+      console.log('🔍 [useCalendarData] Buscando agendamentos... (ESTÁVEL)');
+
+      // 🛡️ CORREÇÃO DEFENSIVA: Se os filtros não existirem, criar filtro padrão para hoje
+      const today = new Date();
+      const pad = (num: number) => num.toString().padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+      const safeFilters = filters || {
+        startDate: todayStr,
+        endDate: todayStr
+      };
+
+      console.log('🛡️ [useCalendarData] Filtros seguros:', safeFilters);
       const url = new URL(`${API_BASE_URL}/agendamentos`);
       
-      // Por enquanto, buscar todos os agendamentos sem filtro de data
-      // O backend atual não suporta filtros de data_inicio/data_fim
-      // TODO: Implementar filtros de data no backend
-      
-      if (filters?.agente_id) {
-        url.searchParams.set('agente_id', filters.agente_id.toString());
+      // ✅ OTIMIZAÇÃO: Usar filtros do backend para melhor performance
+      // O backend suporta filtro data_agendamento para buscar agendamentos de uma data específica
+
+      if (safeFilters.startDate && safeFilters.endDate && safeFilters.startDate === safeFilters.endDate) {
+        // Se startDate === endDate, usar filtro específico de data do backend
+        url.searchParams.set('data_agendamento', safeFilters.startDate);
       }
-      if (filters?.unidade_id) {
-        url.searchParams.set('unidade_id', filters.unidade_id.toString());
+
+      if (safeFilters.agente_id) {
+        url.searchParams.set('agente_id', safeFilters.agente_id.toString());
       }
-      if (filters?.status) {
-        url.searchParams.set('status', filters.status);
+      if (safeFilters.unidade_id) {
+        url.searchParams.set('unidade_id', safeFilters.unidade_id.toString());
+      }
+      if (safeFilters.status) {
+        url.searchParams.set('status', safeFilters.status);
       }
 
       // Adicionar paginação para buscar todos os registros
@@ -359,7 +376,7 @@ export const useCalendarData = () => {
       
       console.log('🔍 [useCalendarData] fetchAppointments - Response:', {
         total: response.data?.length || 0,
-        filters: filters
+        filters: safeFilters
       });
       
       const appointmentsData = response.data || [];
@@ -369,18 +386,62 @@ export const useCalendarData = () => {
         console.log('🔍 [useCalendarData] Transformed appointments:', transformedAppointments.length);
         console.log('   Sample:', transformedAppointments.slice(0, 3));
         
-        // Filtrar por data no frontend se filtros foram fornecidos
-        if (filters?.startDate || filters?.endDate) {
-          transformedAppointments = transformedAppointments.filter((app: CalendarAppointment) => {
-            if (filters.startDate && app.date < filters.startDate) return false;
-            if (filters.endDate && app.date > filters.endDate) return false;
-            return true;
+        // 🔎 DEBUG SÊNIOR: Inspecionar estrutura de datas ANTES do filtro
+        if (transformedAppointments.length > 0) {
+          console.log('🔎 [useCalendarData] Amostra de Datas ANTES do filtro:');
+          transformedAppointments.slice(0, 10).forEach((appt: CalendarAppointment, index) => {
+            console.log(`   ${index + 1}. ID=${appt.id}, date="${appt.date}", startTime="${appt.startTime}", agentId="${appt.agentId}"`);
           });
-          
-          console.log('🔍 [useCalendarData] After date filter:', transformedAppointments.length);
         }
         
+        // Filtrar por data no frontend apenas se necessário (quando não usamos filtro específico do backend)
+        if ((filters?.startDate || filters?.endDate) && !(filters?.startDate === filters?.endDate)) {
+          console.log('🎯 [useCalendarData] Aplicando Filtros de Data no Frontend:', {
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            startDateType: typeof filters.startDate,
+            endDateType: typeof filters.endDate
+          });
+
+          transformedAppointments = transformedAppointments.filter((app: CalendarAppointment) => {
+            const passesStartDate = !filters.startDate || app.date >= filters.startDate;
+            const passesEndDate = !filters.endDate || app.date <= filters.endDate;
+            const passes = passesStartDate && passesEndDate;
+
+            // Log detalhado para cada agendamento que FALHA no filtro
+            if (!passes) {
+              console.log(`   ❌ Filtrado: ID=${app.id}, date="${app.date}", startDate="${filters.startDate}", endDate="${filters.endDate}", passesStart=${passesStartDate}, passesEnd=${passesEndDate}`);
+            }
+
+            return passes;
+          });
+
+          console.log('🔍 [useCalendarData] After frontend date filter:', transformedAppointments.length);
+
+          // 🔎 DEBUG: Mostrar quais agendamentos PASSARAM no filtro
+          if (transformedAppointments.length > 0) {
+            console.log('✅ [useCalendarData] Agendamentos que PASSARAM no filtro:');
+            transformedAppointments.slice(0, 10).forEach((appt: CalendarAppointment, index) => {
+              console.log(`   ${index + 1}. ID=${appt.id}, date="${appt.date}"`);
+            });
+          }
+        } else if (filters?.startDate === filters?.endDate) {
+          console.log('🚀 [useCalendarData] Usando filtro otimizado do backend para data específica:', filters.startDate);
+        }
+
         setAppointments(transformedAppointments);
+        console.log('✅ [useCalendarData] Agendamentos salvos no estado:', transformedAppointments.length);
+
+        // 🔍 DEBUG CRÍTICO: Mostrar amostra dos agendamentos salvos
+        if (transformedAppointments.length > 0) {
+          console.log('📋 [useCalendarData] AMOSTRA dos agendamentos salvos no estado:');
+          transformedAppointments.slice(0, 5).forEach((appt: CalendarAppointment, index) => {
+            console.log(`   ${index + 1}. ID=${appt.id}, date="${appt.date}", agentId="${appt.agentId}", startTime="${appt.startTime}"`);
+          });
+        } else {
+          console.log('⚠️ [useCalendarData] NENHUM agendamento foi salvo no estado!');
+        }
+
         return transformedAppointments;
       }
       return [];
@@ -412,15 +473,20 @@ export const useCalendarData = () => {
     startDate?: string;
     endDate?: string;
   }) => {
+    console.log('🚀 [useCalendarData] loadAllData chamado com filtros:', dateFilters);
+
     if (!isAuthenticated) {
+      console.log('❌ [useCalendarData] loadAllData: usuário não autenticado');
       return;
     }
 
     try {
+      console.log('⏳ [useCalendarData] loadAllData: iniciando carregamento...');
       setIsLoading(true);
       setError(null);
 
-      // Carregar dados em paralelo
+      // Carregar dados em paralelo (agora com funções estáveis)
+      console.log('📡 [useCalendarData] loadAllData: carregando dados em paralelo...');
       await Promise.all([
         fetchAgents(),
         fetchServices(),
@@ -429,12 +495,15 @@ export const useCalendarData = () => {
         fetchUnavailableBlocks(dateFilters)
       ]);
 
+      console.log('✅ [useCalendarData] loadAllData: todos os dados carregados com sucesso! (FUNÇÕES ESTÁVEIS)');
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar dados do calendário';
       setError(errorMessage);
-      console.error('❌ Erro ao carregar dados:', errorMessage);
+      console.error('❌ [useCalendarData] loadAllData: erro ao carregar dados:', errorMessage);
     } finally {
       setIsLoading(false);
+      console.log('🏁 [useCalendarData] loadAllData: carregamento finalizado');
     }
   }, [isAuthenticated, fetchAgents, fetchServices, fetchLocations, fetchAppointments, fetchUnavailableBlocks]);
 
@@ -532,9 +601,24 @@ export const useCalendarData = () => {
 
   // Carregar dados iniciais quando autenticar
   useEffect(() => {
+    console.log('🔄 [useCalendarData] useEffect inicial - isAuthenticated:', isAuthenticated);
     if (isAuthenticated) {
-      loadAllData();
+      console.log('✅ [useCalendarData] Usuário autenticado, carregando dados iniciais...');
+
+      // 🔧 CORREÇÃO: Sempre passar filtros válidos para loadAllData
+      const initialDate = new Date();
+      const pad = (num: number) => num.toString().padStart(2, '0');
+      const todayStr = `${initialDate.getFullYear()}-${pad(initialDate.getMonth() + 1)}-${pad(initialDate.getDate())}`;
+
+      const initialFilters = {
+        startDate: todayStr,
+        endDate: todayStr
+      };
+
+      console.log('📅 [useCalendarData] Filtros iniciais:', initialFilters);
+      loadAllData(initialFilters);
     } else {
+      console.log('❌ [useCalendarData] Usuário não autenticado, limpando dados...');
       // Limpar dados quando desautenticar
       setAgents([]);
       setServices([]);

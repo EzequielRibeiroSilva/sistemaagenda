@@ -12,11 +12,19 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
     const [isOpen, setIsOpen] = useState(false);
     
     // State for range selection
-    const [startDate, setStartDate] = useState<Date | null>(selectedRange?.startDate || null);
-    const [endDate, setEndDate] = useState<Date | null>(selectedRange?.endDate || null);
-    
+    const [startDate, setStartDate] = useState<Date | null>(() => {
+        return selectedRange?.startDate || null;
+    });
+    const [endDate, setEndDate] = useState<Date | null>(() => {
+        return selectedRange?.endDate || null;
+    });
+
     // State for view navigation
-    const [viewDate, setViewDate] = useState(selectedDate || selectedRange?.startDate || new Date());
+    const [viewDate, setViewDate] = useState(() => {
+        if (selectedDate) return selectedDate;
+        if (selectedRange && selectedRange.startDate) return selectedRange.startDate;
+        return new Date();
+    });
 
     const datePickerRef = useRef<HTMLDivElement>(null);
 
@@ -34,7 +42,14 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
 
     useEffect(() => {
         if (isOpen) {
-            setViewDate(selectedDate || selectedRange?.startDate || new Date());
+            if (selectedDate) {
+                setViewDate(selectedDate);
+            } else if (selectedRange && selectedRange.startDate) {
+                setViewDate(selectedRange.startDate);
+            } else {
+                setViewDate(new Date());
+            }
+
             if (mode === 'range') {
                 setStartDate(selectedRange?.startDate || null);
                 setEndDate(selectedRange?.endDate || null);
@@ -89,11 +104,17 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         if (mode === 'single' && selectedDate) {
             return selectedDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
         }
-        if (mode === 'range' && selectedRange?.startDate && selectedRange?.endDate) {
+
+        if (mode === 'range') {
+            if (!selectedRange || !selectedRange.startDate || !selectedRange.endDate) {
+                return 'Selecione a data';
+            }
+
             const start = selectedRange.startDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
             const end = selectedRange.endDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
             return `${start} - ${end}`;
         }
+
         return 'Selecione a data';
     };
 
