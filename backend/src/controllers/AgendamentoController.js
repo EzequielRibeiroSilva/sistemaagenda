@@ -110,6 +110,19 @@ class AgendamentoController extends BaseController {
           .orderBy('agendamentos.data_agendamento', 'asc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
+        // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
+        for (const agendamento of data) {
+          const servicos = await this.model.db('agendamento_servicos')
+            .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+            .where('agendamento_servicos.agendamento_id', agendamento.id)
+            .select(
+              'servicos.id',
+              'servicos.nome',
+              'agendamento_servicos.preco_aplicado as preco'
+            );
+          agendamento.servicos = servicos;
+        }
+
         // Aplicar os mesmos filtros RBAC na contagem total
         let totalQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id');
