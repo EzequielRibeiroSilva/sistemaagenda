@@ -7,7 +7,7 @@ class Agendamento extends BaseModel {
 
   // Buscar agendamentos por usuário (através das unidades)
   async findByUsuario(usuarioId) {
-    return await this.db(this.tableName)
+    const agendamentos = await this.db(this.tableName)
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -19,11 +19,26 @@ class Agendamento extends BaseModel {
         this.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
         'unidades.nome as unidade_nome'
       );
+
+    // ✅ Incluir serviços para cada agendamento
+    for (const agendamento of agendamentos) {
+      const servicos = await this.db('agendamento_servicos')
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamento_servicos.agendamento_id', agendamento.id)
+        .select(
+          'servicos.id',
+          'servicos.nome',
+          'agendamento_servicos.preco_aplicado as preco'
+        );
+      agendamento.servicos = servicos;
+    }
+
+    return agendamentos;
   }
 
   // Buscar agendamentos por data
   async findByData(data, usuarioId) {
-    return await this.db(this.tableName)
+    const agendamentos = await this.db(this.tableName)
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -36,6 +51,21 @@ class Agendamento extends BaseModel {
         this.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
         'unidades.nome as unidade_nome'
       );
+
+    // ✅ Incluir serviços para cada agendamento
+    for (const agendamento of agendamentos) {
+      const servicos = await this.db('agendamento_servicos')
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamento_servicos.agendamento_id', agendamento.id)
+        .select(
+          'servicos.id',
+          'servicos.nome',
+          'agendamento_servicos.preco_aplicado as preco'
+        );
+      agendamento.servicos = servicos;
+    }
+
+    return agendamentos;
   }
 
   // Buscar agendamentos por agente

@@ -124,7 +124,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     // Hook de autenticação para acessar dados do usuário
     const { user } = useAuth();
     
-    // Hook para buscar dados reais do backend (TODOS OS STATUS VISUAIS)
+    // Hook para buscar dados reais do backend (LÓGICA DIÁRIA APLICADA NA SEMANAL)
     const {
         agents: backendAgents,
         services: backendServices,
@@ -263,7 +263,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return allAgents;
     }, [allAgents, selectedAgentFilter, view]);
     
-    const [selectedAgentId, setSelectedAgentId] = useState(allAgents[0]?.id || '1');
+    const [selectedAgentId, setSelectedAgentId] = useState('');
     
     useEffect(() => {
         if (loggedInAgentId) {
@@ -271,6 +271,21 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             setSelectedAgentId(loggedInAgentId);
         }
     }, [loggedInAgentId]);
+
+    // 🔧 CORREÇÃO DEFINITIVA: Auto-selecionar primeiro agente disponível
+    useEffect(() => {
+        // Se não há agente selecionado e há agentes disponíveis, selecionar o primeiro
+        if (allAgents.length > 0 && !selectedAgentId) {
+            const firstAgentId = allAgents[0].id;
+            console.log('🔧 [CalendarPage] Auto-selecionando primeiro agente:', {
+                firstAgentId,
+                firstAgentName: allAgents[0].name,
+                view,
+                allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name }))
+            });
+            setSelectedAgentId(firstAgentId);
+        }
+    }, [allAgents, selectedAgentId, view]);
     
     // Log controlado para debug (apenas quando dados mudarem)
     useEffect(() => {
@@ -297,6 +312,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         
         // 🔍 DEBUG CRÍTICO: Mostrar TODOS os agendamentos
         console.log('📋 [CalendarPage] TODOS OS AGENDAMENTOS:', appointments);
+
+        // 🔍 DEBUG CRÍTICO: Comparar IDs dos agentes
+        console.log('🆔 [CalendarPage] COMPARAÇÃO DE IDs:', {
+            selectedAgentId,
+            selectedAgentIdType: typeof selectedAgentId,
+            allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name, type: typeof a.id })),
+            appointmentAgentIds: [...new Set(appointments.map(a => a.agentId))].map(id => ({ id, type: typeof id })),
+            lucasAndradeInAgents: allAgents.find(a => a.name.includes('Lucas')),
+            lucasAndradeAppointments: appointments.filter(a => a.agentId === '25').length
+        });
         
         // 🔍 DEBUG: Agrupar por data
         const appointmentsByDate = appointments.reduce((acc, app) => {
@@ -479,34 +504,63 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return (totalMinutes / totalDurationMinutes) * 100;
     };
     
-    const timeToPositionStyleWeek = (startTime: string, endTime: string) => {
+    const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: string | null | undefined) => {
+        // ✅ Log de Entrada + Validação
+        console.log(`📐 [timeToPositionStyleWeek] INPUT: startTime=${startTime}, endTime=${endTime}`);
+        if (!startTime || !endTime || typeof startTime !== 'string' || typeof endTime !== 'string' || !startTime.includes(':') || !endTime.includes(':')) {
+            console.error(`❌ [timeToPositionStyleWeek] Horários inválidos recebidos!`, { startTime, endTime });
+            return { top: '0%', height: '0%', display: 'none' }; // Ocultar se inválido
+        }
+
         const [startH, startM] = startTime.split(':').map(Number);
         const [endH, endM] = endTime.split(':').map(Number);
 
+        // ✅ Validar se a conversão para número funcionou
+        if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
+             console.error(`❌ [timeToPositionStyleWeek] Falha ao converter horas/minutos para número!`, { startTime, endTime });
+             return { top: '0%', height: '0%', display: 'none' };
+        }
+
         const startTotalMinutes = (startH - START_HOUR_WEEK) * 60 + startM;
         const endTotalMinutes = (endH - START_HOUR_WEEK) * 60 + endM;
-
         const totalDurationMinutes = (END_HOUR_WEEK - START_HOUR_WEEK) * 60;
-        
+
+        // ✅ Evitar divisão por zero e durações negativas
+        if (totalDurationMinutes <= 0) {
+             console.error(`❌ [timeToPositionStyleWeek] Duração total do dia inválida!`, { START_HOUR_WEEK, END_HOUR_WEEK });
+             return { top: '0%', height: '0%', display: 'none' };
+        }
+        if (endTotalMinutes <= startTotalMinutes) {
+             console.warn(`⚠️ [timeToPositionStyleWeek] Horário final (${endTime}) é menor ou igual ao inicial (${startTime}). Ajustando altura mínima.`);
+        }
+
         const top = (startTotalMinutes / totalDurationMinutes) * 100;
         const height = ((endTotalMinutes - startTotalMinutes) / totalDurationMinutes) * 100;
 
-        return { top: `${top}%`, height: `${height}%` };
+        // ✅ Log de Saída Detalhado
+        const styleResult = { top: `${top}%`, height: `${height}%` };
+        console.log(`📐✅ [timeToPositionStyleWeek] OUTPUT para ${startTime}-${endTime}:`, styleResult);
+
+        return styleResult;
     };
 
     const timeToPositionStyleMonth = (startTime: string, endTime: string) => {
         const [startH, startM] = startTime.split(':').map(Number);
         const [endH, endM] = endTime.split(':').map(Number);
-    
+
         const startTotalMinutes = (startH - START_HOUR_MONTH) * 60 + startM;
         const endTotalMinutes = (endH - START_HOUR_MONTH) * 60 + endM;
-    
+
         const totalDurationMinutes = (END_HOUR_MONTH - START_HOUR_MONTH) * 60;
-            
+
         const left = (startTotalMinutes / totalDurationMinutes) * 100;
         const width = ((endTotalMinutes - startTotalMinutes) / totalDurationMinutes) * 100;
-    
-        return { left: `${Math.max(0, left)}%`, width: `${Math.min(100, width)}%` };
+
+        // 🔍 DEBUG: Log detalhado do posicionamento
+        const result = { left: `${Math.max(0, left)}%`, width: `${Math.min(100, width)}%` };
+        console.log(`📐 [timeToPositionStyleMonth] ${startTime}-${endTime}: left=${left.toFixed(1)}%, width=${width.toFixed(1)}%`, result);
+
+        return result;
     };
 
     const formatHeaderDate = () => {
@@ -581,8 +635,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                         // O usuário pode editar/finalizar agendamentos a qualquer momento
                         const agentAppointments = appointments.filter(a =>
-                            a.agentId === agent.id && 
-                            a.date === dateStr && 
+                            a.agentId === agent.id.toString() &&
+                            a.date === dateStr &&
                             (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
                             (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
                         );
@@ -598,7 +652,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 id: a.id,
                                 agentId: a.agentId,
                                 agentIdType: typeof a.agentId,
-                                agentMatch: a.agentId === agent.id,
+                                agentMatch: a.agentId === agent.id.toString(),
                                 serviceId: a.serviceId,
                                 locationId: a.locationId,
                                 time: `${a.startTime}-${a.endTime}`
@@ -619,7 +673,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     agentId: a.agentId,
                                     agentIdType: typeof a.agentId,
                                     date: a.date,
-                                    match: a.agentId === agent.id && a.date === dateStr
+                                    match: a.agentId === agent.id.toString() && a.date === dateStr
                                 })),
                                 agentIdType: typeof agent.id
                             });
@@ -674,7 +728,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 })}
 
                                 {agentAppointments.map(app => {
-                                    let service = services.find(s => s.id === app.serviceId);
+                                    let service = services.find(s => s.id.toString() === app.serviceId);
                                     
                                     // Fallback: se serviço não encontrado, usar o primeiro disponível
                                     if (!service && services.length > 0) {
@@ -711,34 +765,58 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     }
                                     
                                     // ✅ DEFINIR CLASSES CONDICIONAIS PARA TODOS OS ESTADOS ESPECIAIS
+                                    const isApproved = app.status === 'Aprovado';
                                     const isCompleted = app.status === 'Concluído';
                                     const isCancelled = app.status === 'Cancelado';
                                     const isNoShow = app.status === 'Não Compareceu';
 
                                     let cardClasses, iconComponent;
 
-                                    if (isCompleted) {
-                                        cardClasses = 'bg-blue-100 text-blue-800 border border-blue-200';
+                                    if (isApproved) {
+                                        // ✅ APROVADO: #2663EB (azul escuro)
+                                        cardClasses = 'text-white border border-blue-600';
+                                        iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
+                                    } else if (isCompleted) {
+                                        // ✅ CONCLUÍDO: #DBEAFE (azul claro)
+                                        cardClasses = 'text-blue-800 border border-blue-300';
                                         iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
                                     } else if (isCancelled) {
-                                        cardClasses = 'bg-red-100 text-red-800 border border-red-200';
+                                        // ❌ CANCELADO: #FFE2E2 (vermelho claro)
+                                        cardClasses = 'text-red-800 border border-red-300';
                                         iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
                                     } else if (isNoShow) {
-                                        cardClasses = 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+                                        // ⚠️ NÃO COMPARECEU: #FEF9C3 (amarelo claro)
+                                        cardClasses = 'text-yellow-800 border border-yellow-300';
                                         iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
                                     } else {
                                         cardClasses = `${service.color} ${service.textColor}`;
                                         iconComponent = null;
                                     }
 
-                                    const hasSpecialStatus = isCompleted || isCancelled || isNoShow;
+                                    const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
+
+                                    // ✅ DEFINIR COR DE FUNDO CORRETA
+                                    let backgroundColor = '';
+                                    if (isApproved) {
+                                        backgroundColor = '#2663EB'; // Azul escuro para aprovado
+                                    } else if (isCompleted) {
+                                        backgroundColor = '#DBEAFE'; // Azul claro para concluído
+                                    } else if (isCancelled) {
+                                        backgroundColor = '#FFE2E2'; // Vermelho claro para cancelado
+                                    } else if (isNoShow) {
+                                        backgroundColor = '#FEF9C3'; // Amarelo claro para não compareceu
+                                    }
 
                                     return (
                                         <div
                                           key={app.id}
                                           onClick={() => handleAppointmentClick(app)}
                                           className={`absolute w-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10`}
-                                          style={{ top: `${top}%`, height: `${height}%` }}>
+                                          style={{
+                                              top: `${top}%`,
+                                              height: `${height}%`,
+                                              ...(backgroundColor && { backgroundColor })
+                                          }}>
                                             <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                             <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                             {/* Ícones para estados especiais */}
@@ -765,7 +843,34 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     };
     
     const renderWeekView = () => {
+        // ✅ PASSO 1: VERIFICAR SE DADOS ESSENCIAIS ESTÃO CARREGADOS
+        if (services.length === 0 || allAgents.length === 0) {
+            console.log('⏳ [renderWeekView] Aguardando carregamento de services e allAgents...', {
+                servicesLength: services.length,
+                allAgentsLength: allAgents.length
+            });
+            return <div className="p-4 text-center text-gray-500">Carregando dados da semana...</div>;
+        }
+
         const selectedAgent = allAgents.find(a => a.id === selectedAgentId);
+        
+        // 🔍 DEBUG CRÍTICO: Verificar selectedAgentId e agendamentos
+        console.log('🔍 [renderWeekView] ESTADO INICIAL:', {
+            selectedAgentId,
+            selectedAgentIdType: typeof selectedAgentId,
+            selectedAgent: selectedAgent ? { id: selectedAgent.id, name: selectedAgent.name } : 'NÃO ENCONTRADO',
+            allAgentsIds: allAgents.map(a => ({ id: a.id, type: typeof a.id, name: a.name })),
+            totalAppointments: appointments.length,
+            weekDays: weekDays.map(d => toISODateString(d)),
+            appointmentsSample: appointments.slice(0, 5).map(a => ({
+                id: a.id,
+                agentId: a.agentId,
+                agentIdType: typeof a.agentId,
+                date: a.date,
+                serviceId: a.serviceId,
+                time: `${a.startTime}-${a.endTime}`
+            }))
+        });
 
         return (
         <>
@@ -809,10 +914,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                     </div>
                     
                     <div className="flex flex-1">
-                        <div className="w-20 flex-shrink-0 text-sm text-right pr-2">
+                        <div className="w-20 flex-shrink-0 text-sm text-right pr-2 border-r border-gray-200">
                              {hoursWeek.map(hour => (
-                                <div key={hour} className="h-16 -mt-3 relative">
-                                    <span className="absolute right-2 text-gray-500">{hour}:00</span>
+                                <div key={hour} className="h-16 flex items-start justify-end pt-1 relative">
+                                    <span className="text-gray-600 font-medium text-xs bg-white px-1">{hour}:00</span>
                                 </div>
                             ))}
                         </div>
@@ -825,13 +930,32 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
+
+                                // 🔧 APLICAR EXATAMENTE A MESMA LÓGICA DA VISÃO DIÁRIA (QUE FUNCIONA)
                                 const agentAppointments = appointments.filter(a =>
-                                    a.agentId === selectedAgentId &&
+                                    a.agentId === selectedAgentId.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
                                     (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
                                 );
-                                const agentUnavailable = unavailableBlocks.filter(b => b.agentId === selectedAgentId && (b.date === dateStr || !b.date));
+
+                                // 🔍 DEBUG CRÍTICO: Comparar com visão diária
+                                console.log(`🔍 [WeekView vs DayView] Comparação para ${dateStr}:`, {
+                                    selectedAgentId,
+                                    selectedAgentIdType: typeof selectedAgentId,
+                                    totalAppointments: appointments.length,
+                                    appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
+                                    appointmentsForAgent: appointments.filter(a => a.agentId === selectedAgentId.toString()).length,
+                                    finalFiltered: agentAppointments.length,
+                                    sampleAppointment: appointments.find(a => a.date === dateStr) || 'Nenhum para esta data',
+                                    filters: {
+                                        serviceFilter: selectedServiceFilter,
+                                        locationFilter: selectedLocationFilter
+                                    }
+                                });
+
+
+                                const agentUnavailable = unavailableBlocks.filter(b => b.agentId === selectedAgentId.toString() && (b.date === dateStr || !b.date));
                                 
                                 const busySlots = [
                                     ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime })),
@@ -873,37 +997,87 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ))}
                                     
                                     {agentAppointments.map(app => {
-                                        const service = services.find(s => s.id === app.serviceId);
-                                        if (!service) return null;
+                                        // ✅ Buscar serviço usando o ID real do banco de dados
+                                        const service = services.find(s => s.id.toString() === app.serviceId);
+
+                                        if (!service) {
+                                            console.error(`❌ [renderWeekView] SERVIÇO NÃO ENCONTRADO! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
+                                            return null;
+                                        }
+
+                                        const style = timeToPositionStyleWeek(app.startTime, app.endTime);
+
+                                        // ✅ Log Final Antes de Renderizar o Card
+                                        console.log(`🎨 [renderWeekView] Renderizando Card Agendamento ID ${app.id}:`, {
+                                            startTime: app.startTime,
+                                            endTime: app.endTime,
+                                            status: app.status,
+                                            calculatedStyle: style,
+                                            serviceName: service.name,
+                                            dateStr // Adicionado para contexto
+                                        });
+                                        // 🔍 DEBUG CRÍTICO: Investigar status dos agendamentos
+                                        console.log(`🔍 [DEBUG STATUS] App ID ${app.id}:`, {
+                                            status: app.status,
+                                            statusType: typeof app.status,
+                                            statusLength: app.status?.length,
+                                            serviceColor: service.color,
+                                            serviceTextColor: service.textColor,
+                                            allAppData: app
+                                        });
+
                                         // ✅ DEFINIR CLASSES CONDICIONAIS PARA TODOS OS ESTADOS ESPECIAIS
+                                        const isApproved = app.status === 'Aprovado';
                                         const isCompleted = app.status === 'Concluído';
                                         const isCancelled = app.status === 'Cancelado';
                                         const isNoShow = app.status === 'Não Compareceu';
 
                                         let cardClasses, iconComponent;
 
-                                        if (isCompleted) {
-                                            cardClasses = 'bg-blue-100 text-blue-800 border border-blue-200';
+                                        if (isApproved) {
+                                            // ✅ APROVADO: #2663EB (azul escuro)
+                                            cardClasses = 'text-white border border-blue-600';
+                                            iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
+                                        } else if (isCompleted) {
+                                            // ✅ CONCLUÍDO: #DBEAFE (azul claro)
+                                            cardClasses = 'text-blue-800 border border-blue-300';
                                             iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
                                         } else if (isCancelled) {
-                                            cardClasses = 'bg-red-100 text-red-800 border border-red-200';
+                                            // ❌ CANCELADO: #FFE2E2 (vermelho claro)
+                                            cardClasses = 'text-red-800 border border-red-300';
                                             iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
                                         } else if (isNoShow) {
-                                            cardClasses = 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+                                            // ⚠️ NÃO COMPARECEU: #FEF9C3 (amarelo claro)
+                                            cardClasses = 'text-yellow-800 border border-yellow-300';
                                             iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
                                         } else {
                                             cardClasses = `${service.color} ${service.textColor}`;
                                             iconComponent = null;
                                         }
 
-                                        const hasSpecialStatus = isCompleted || isCancelled || isNoShow;
+                                        const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
+
+                                        // ✅ DEFINIR COR DE FUNDO CORRETA (IGUAL AO GRID DIÁRIO)
+                                        let backgroundColor = '';
+                                        if (isApproved) {
+                                            backgroundColor = '#2663EB'; // Azul escuro para aprovado
+                                        } else if (isCompleted) {
+                                            backgroundColor = '#DBEAFE'; // Azul claro para concluído
+                                        } else if (isCancelled) {
+                                            backgroundColor = '#FFE2E2'; // Vermelho claro para cancelado
+                                        } else if (isNoShow) {
+                                            backgroundColor = '#FEF9C3'; // Amarelo claro para não compareceu
+                                        }
 
                                         return (
                                             <div
                                               key={app.id}
                                               onClick={() => handleAppointmentClick(app)}
                                               className={`absolute w-[calc(100%-4px)] ml-[2px] p-2 rounded-lg ${cardClasses} z-10 cursor-pointer hover:opacity-90 transition-opacity`}
-                                              style={timeToPositionStyleWeek(app.startTime, app.endTime)}>
+                                              style={{
+                                                  ...style,
+                                                  ...(backgroundColor && { backgroundColor })
+                                              }}>
                                                 <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                                 <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                                 {/* Ícones para estados especiais */}
@@ -944,7 +1118,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                     const dateStr = toISODateString(day);
                     const isToday = toISODateString(today) === dateStr;
                     return (
-                        <div key={dateStr} className="flex min-h-[60px]">
+                        <div key={dateStr} className="flex min-h-[80px]">
                             <div className={`w-40 p-3 flex-shrink-0 relative ${isToday ? 'bg-blue-50' : ''}`}>
                                 {isToday && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>}
                                 <div className="flex items-center gap-2">
@@ -957,11 +1131,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
                                 const agentAppointments = appointments.filter(a =>
-                                    a.agentId === agent.id &&
+                                    a.agentId === agent.id.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
                                     (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
                                 );
+
+                                // 🔍 DEBUG: Log dos agendamentos encontrados
+                                if (agentAppointments.length > 0) {
+                                    console.log(`📅 [GRID MENSAL] ${dateStr} - Agente ${agent.name}: ${agentAppointments.length} agendamentos`, agentAppointments.map(a => `${a.id}:${a.status}`));
+                                }
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
                                 
                                 const busySlots = [
@@ -986,61 +1165,80 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 
                                 return (
                                 <div key={agent.id} className="flex-1 p-1 border-l border-gray-200">
-                                    <div className="relative w-full h-full min-h-[52px]">
+                                    <div className="relative w-full h-full min-h-[72px]">
                                         {availableSlots.map((slot, index) => (
                                             <div
                                                 key={`avail-${index}`}
-                                                className="absolute h-full rounded bg-blue-50 opacity-0 hover:opacity-100 cursor-pointer transition-opacity z-0"
+                                                className="absolute h-6 rounded bg-blue-50 opacity-0 hover:opacity-100 cursor-pointer transition-opacity z-0"
                                                 style={timeToPositionStyleMonth(slot.start, slot.end)}
                                                 onClick={() => handleSlotClick({ agent, startTime: slot.start, date: day })}
                                             ></div>
                                         ))}
 
-                                        {agentAppointments.map(app => {
-                                            const service = services.find(s => s.id === app.serviceId);
-                                            if (!service) return null;
-                                            // ✅ DEFINIR CLASSES CONDICIONAIS PARA TODOS OS ESTADOS ESPECIAIS
+                                        {agentAppointments.map((app, index) => {
+                                            // ✅ Buscar serviço usando o ID real do banco de dados
+                                            const service = services.find(s => s.id.toString() === app.serviceId);
+                                            if (!service) {
+                                                console.error(`❌ [GRID MENSAL] Serviço não encontrado! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
+                                                return null;
+                                            }
+
+                                            // ✅ REFATORAR: Classes e Background Unificados
+                                            const isApproved = app.status === 'Aprovado';
                                             const isCompleted = app.status === 'Concluído';
                                             const isCancelled = app.status === 'Cancelado';
                                             const isNoShow = app.status === 'Não Compareceu';
 
-                                            let cardClasses, indicatorComponent, tooltipSuffix;
+                                            let cardClasses = '';
+                                            let indicatorComponent = null;
+                                            let tooltipSuffix = '';
 
-                                            if (isCompleted) {
-                                                cardClasses = 'bg-blue-100 border border-blue-200';
-                                                indicatorComponent = <div className="absolute bottom-0 right-0 h-1.5 w-1.5 bg-blue-500 rounded-full m-0.5"></div>;
+                                            if (isApproved) {
+                                                // ✅ APROVADO: bg-* direto na classe
+                                                cardClasses = 'bg-blue-600 border border-blue-700 text-white';
+                                                indicatorComponent = <div className="absolute bottom-0 right-0 h-1.5 w-1.5 bg-white rounded-full m-0.5 opacity-75"></div>;
+                                                tooltipSuffix = ' - Aprovado';
+                                            } else if (isCompleted) {
+                                                // ✅ CONCLUÍDO: bg-* direto na classe
+                                                cardClasses = 'bg-blue-100 border border-blue-300 text-blue-800';
+                                                indicatorComponent = <div className="absolute bottom-0 right-0 h-1.5 w-1.5 bg-blue-400 rounded-full m-0.5"></div>;
                                                 tooltipSuffix = ' - Concluído';
                                             } else if (isCancelled) {
-                                                cardClasses = 'bg-red-100 border border-red-200';
+                                                // ❌ CANCELADO: bg-* direto na classe
+                                                cardClasses = 'bg-red-100 border border-red-300 text-red-800';
                                                 indicatorComponent = <div className="absolute bottom-0 right-0 h-1.5 w-1.5 bg-red-500 rounded-full m-0.5"></div>;
                                                 tooltipSuffix = ' - Cancelado';
                                             } else if (isNoShow) {
-                                                cardClasses = 'bg-yellow-100 border border-yellow-200';
+                                                // ⚠️ NÃO COMPARECEU: bg-* direto na classe
+                                                cardClasses = 'bg-yellow-100 border border-yellow-300 text-yellow-800';
                                                 indicatorComponent = <div className="absolute bottom-0 right-0 h-1.5 w-1.5 bg-yellow-500 rounded-full m-0.5"></div>;
                                                 tooltipSuffix = ' - Não Compareceu';
                                             } else {
-                                                cardClasses = service.color;
+                                                // Fallback para cor do serviço
+                                                cardClasses = service.color || 'bg-gray-200 border border-gray-300';
                                                 indicatorComponent = null;
                                                 tooltipSuffix = '';
                                             }
+
+                                            // ✅ CALCULAR posição horizontal E vertical
+                                            const positionStyle = timeToPositionStyleMonth(app.startTime, app.endTime);
+                                            const topPosition = index * 28; // 28px = 6px (h-6) + 2px gap entre cards
 
                                             return (
                                                 <div
                                                   key={app.id}
                                                   onClick={() => handleAppointmentClick(app)}
-                                                  className={`absolute h-full rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-10`}
-                                                  style={timeToPositionStyleMonth(app.startTime, app.endTime)}
-                                                  // Tooltip com status do agendamento
+                                                  className={`absolute h-6 rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-20`}
+                                                  style={{ ...positionStyle, top: `${topPosition}px` }}
                                                   title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}`}
                                                 >
-                                                    {/* Indicadores visuais para estados especiais */}
                                                     {indicatorComponent}
                                                 </div>
                                             )
                                         })}
                                          {agentUnavailable.map(block => {
                                             return (
-                                                <div key={block.id} className="absolute h-full bg-red-50 z-10" style={timeToPositionStyleMonth(block.startTime, block.endTime)}>
+                                                <div key={block.id} className="absolute h-6 bg-red-50 z-10" style={timeToPositionStyleMonth(block.startTime, block.endTime)}>
                                                      <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255, 100, 100, 0.3) 2px, rgba(255, 100, 100, 0.3) 4px)'}}></div>
                                                 </div>
                                             )
