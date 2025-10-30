@@ -36,7 +36,7 @@ const HeaderDropdown: React.FC<{
                 <ChevronDown className="h-4 w-4 ml-2" />
             </button>
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl z-20 border border-gray-200">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl z-30 border border-gray-200">
                     {options.map(option => (
                         <button
                             key={option}
@@ -93,7 +93,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
                 <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-20 py-1">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-30 py-1">
                     {options.map(option => (
                         <a
                             key={option.value}
@@ -244,7 +244,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const START_HOUR_WEEK = 9;
     const END_HOUR_WEEK = 21;
-    const hoursWeek = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK }, (_, i) => i + START_HOUR_WEEK);
+    // ✅ CORREÇÃO: Grid visual tem slots de 9h até 21h (inclusive), total de 13 slots
+    // Array: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    const hoursWeek = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK + 1 }, (_, i) => i + START_HOUR_WEEK);
 
     const START_HOUR_MONTH = 9;
     const END_HOUR_MONTH = 21;
@@ -500,7 +502,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         const [h, m] = time.split(':').map(Number);
         // Calcular minutos totais desde START_HOUR_DAY
         const totalMinutes = (h - START_HOUR_DAY) * 60 + m;
-        const totalDurationMinutes = (END_HOUR_DAY - START_HOUR_DAY) * 60;
+        
+        // ✅ CORREÇÃO CRÍTICA: O grid visual tem (END_HOUR_DAY - START_HOUR_DAY + 1) slots
+        // Exemplo: Se START=8 e END=21, temos 14 slots [8h, 9h, ..., 21h]
+        // O vão total vai do início de START_HOUR_DAY (8:00) até o FIM de END_HOUR_DAY (22:00)
+        // Portanto: totalDuration = (END_HOUR_DAY + 1) - START_HOUR_DAY = 14 horas
+        const totalDurationMinutes = ((END_HOUR_DAY + 1) - START_HOUR_DAY) * 60;
+        
         return (totalMinutes / totalDurationMinutes) * 100;
     };
     
@@ -523,7 +531,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const startTotalMinutes = (startH - START_HOUR_WEEK) * 60 + startM;
         const endTotalMinutes = (endH - START_HOUR_WEEK) * 60 + endM;
-        const totalDurationMinutes = (END_HOUR_WEEK - START_HOUR_WEEK) * 60;
+        
+        // ✅ CORREÇÃO CRÍTICA: O grid visual tem (END_HOUR_WEEK - START_HOUR_WEEK + 1) slots
+        // Exemplo: Se START=9 e END=21, temos 13 slots [9h, 10h, ..., 21h]
+        // O vão total vai do início de START_HOUR_WEEK (9:00) até o FIM de END_HOUR_WEEK (22:00)
+        // Portanto: totalDuration = (END_HOUR_WEEK + 1) - START_HOUR_WEEK = 13 horas
+        const totalDurationMinutes = ((END_HOUR_WEEK + 1) - START_HOUR_WEEK) * 60;
 
         // ✅ Evitar divisão por zero e durações negativas
         if (totalDurationMinutes <= 0) {
@@ -622,8 +635,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             <div className="flex">
                 <div className="w-20 text-sm text-right pr-2">
                     {hoursDay.map(hour => (
-                        <div key={hour} className="h-16 flex items-center justify-end">
-                            <span className="text-gray-500">{hour}:00</span>
+                        <div key={hour} className="h-16 flex items-start justify-end pt-1">
+                            <span className="text-gray-600 font-medium text-xs">{hour}:00</span>
                         </div>
                     ))}
                 </div>
@@ -739,30 +752,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         return null;
                                     }
                                     
+                                    // ✅ CÁLCULO PRECISO: Alinhar cards com as linhas de horário
+                                    // Cada linha tem 64px (h-16), e os horários estão centralizados com items-center
+                                    // O card deve começar exatamente onde o horário está centralizado
                                     const top = timeToPercentageDay(app.startTime);
                                     const height = timeToPercentageDay(app.endTime) - top;
-                                    
-                                    // 🔍 DEBUG: Log detalhado do cálculo de posição
-                                    if (app.startTime === '14:00') {
-                                        console.log('🐛 [DEBUG] Cálculo de posição para 14:00:', {
-                                            appointmentId: app.id,
-                                            startTime: app.startTime,
-                                            endTime: app.endTime,
-                                            START_HOUR_DAY,
-                                            END_HOUR_DAY,
-                                            topPercentage: top,
-                                            heightPercentage: height,
-                                            finalTopStyle: `calc(${top}% + 40px)`,
-                                            expectedPosition: '14:00 line',
-                                            calculation: {
-                                                startHour: 14,
-                                                startMinutes: 0,
-                                                totalMinutesFromStart: (14 - START_HOUR_DAY) * 60,
-                                                totalDurationMinutes: (END_HOUR_DAY - START_HOUR_DAY) * 60,
-                                                percentage: ((14 - START_HOUR_DAY) * 60) / ((END_HOUR_DAY - START_HOUR_DAY) * 60) * 100
-                                            }
-                                        });
-                                    }
                                     
                                     // ✅ DEFINIR CLASSES CONDICIONAIS PARA TODOS OS ESTADOS ESPECIAIS
                                     const isApproved = app.status === 'Aprovado';
@@ -811,7 +805,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         <div
                                           key={app.id}
                                           onClick={() => handleAppointmentClick(app)}
-                                          className={`absolute w-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10`}
+                                          className={`absolute w-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10 flex flex-col justify-center`}
                                           style={{
                                               top: `${top}%`,
                                               height: `${height}%`,
@@ -828,7 +822,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     const top = timeToPercentageDay(block.startTime);
                                     const height = timeToPercentageDay(block.endTime) - top;
                                     return (
-                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-10" style={{ top: `${top}%`, height: `${height}%` }}>
+                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-5" style={{ top: `${top}%`, height: `${height}%` }}>
                                              <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)', backgroundSize: '10px 10px' }}></div>
                                         </div>
                                     )
@@ -898,7 +892,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             </div>
              <div className="flex-1 overflow-auto">
                 <div className="flex flex-col">
-                    <div className="flex sticky top-0 bg-white z-10 border-b border-gray-200">
+                    <div className="flex sticky top-0 bg-white z-20 border-b border-gray-200">
                         <div className="w-20 flex-shrink-0"></div>
                         <div className="flex-1 grid grid-cols-7">
                             {weekDays.map(day => {
@@ -1088,7 +1082,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                     {agentUnavailable.map(block => {
                                         return (
-                                            <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-10" style={timeToPositionStyleWeek(block.startTime, block.endTime)}>
+                                            <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-5" style={timeToPositionStyleWeek(block.startTime, block.endTime)}>
                                                  <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 100, 100, 0.2) 4px, rgba(255, 100, 100, 0.2) 8px)'}}></div>
                                             </div>
                                         )
@@ -1104,7 +1098,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const renderMonthView = () => (
         <div className="flex-1 overflow-auto">
-            <div className="flex sticky top-0 bg-white z-10 border-b border-gray-200">
+            <div className="flex sticky top-0 bg-white z-20 border-b border-gray-200">
                 <div className="w-40 p-3 font-semibold text-gray-700">Data Selecionada</div>
                 {displayedAgents.map(agent => (
                     <div key={agent.id} className="flex-1 p-3 font-semibold text-gray-700 flex items-center gap-2 border-l border-gray-200">
@@ -1118,8 +1112,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                     const dateStr = toISODateString(day);
                     const isToday = toISODateString(today) === dateStr;
                     return (
-                        <div key={dateStr} className="flex min-h-[80px]">
-                            <div className={`w-40 p-3 flex-shrink-0 relative ${isToday ? 'bg-blue-50' : ''}`}>
+                        <div key={dateStr} className="flex h-12">
+                            <div className={`w-40 px-3 py-1 flex-shrink-0 relative ${isToday ? 'bg-blue-50' : ''} flex items-center`}>
                                 {isToday && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>}
                                 <div className="flex items-center gap-2">
                                      <span className={`font-bold text-lg ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>{day.getDate()}</span>
@@ -1164,12 +1158,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 }
                                 
                                 return (
-                                <div key={agent.id} className="flex-1 p-1 border-l border-gray-200">
-                                    <div className="relative w-full h-full min-h-[72px]">
+                                <div key={agent.id} className="flex-1 px-1 border-l border-gray-200 flex items-center">
+                                    <div className="relative w-full h-6 bg-gray-50 rounded">
                                         {availableSlots.map((slot, index) => (
                                             <div
                                                 key={`avail-${index}`}
-                                                className="absolute h-6 rounded bg-blue-50 opacity-0 hover:opacity-100 cursor-pointer transition-opacity z-0"
+                                                className="absolute h-full rounded bg-blue-50 opacity-0 hover:opacity-100 cursor-pointer transition-opacity z-0"
                                                 style={timeToPositionStyleMonth(slot.start, slot.end)}
                                                 onClick={() => handleSlotClick({ agent, startTime: slot.start, date: day })}
                                             ></div>
@@ -1220,16 +1214,15 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                                 tooltipSuffix = '';
                                             }
 
-                                            // ✅ CALCULAR posição horizontal E vertical
+                                            // ✅ CALCULAR apenas posição horizontal (sem empilhamento vertical)
                                             const positionStyle = timeToPositionStyleMonth(app.startTime, app.endTime);
-                                            const topPosition = index * 28; // 28px = 6px (h-6) + 2px gap entre cards
 
                                             return (
                                                 <div
                                                   key={app.id}
                                                   onClick={() => handleAppointmentClick(app)}
-                                                  className={`absolute h-6 rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-20`}
-                                                  style={{ ...positionStyle, top: `${topPosition}px` }}
+                                                  className={`absolute h-full rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-10`}
+                                                  style={positionStyle}
                                                   title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}`}
                                                 >
                                                     {indicatorComponent}
@@ -1238,7 +1231,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         })}
                                          {agentUnavailable.map(block => {
                                             return (
-                                                <div key={block.id} className="absolute h-6 bg-red-50 z-10" style={timeToPositionStyleMonth(block.startTime, block.endTime)}>
+                                                <div key={block.id} className="absolute h-full bg-red-50 z-5" style={timeToPositionStyleMonth(block.startTime, block.endTime)}>
                                                      <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255, 100, 100, 0.3) 2px, rgba(255, 100, 100, 0.3) 4px)'}}></div>
                                                 </div>
                                             )
