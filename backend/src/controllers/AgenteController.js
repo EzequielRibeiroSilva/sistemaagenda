@@ -155,7 +155,7 @@ class AgenteController {
           duracao_minutos: s.duracao_minutos
         })),
         servicos_atuais_ids: agente.servicos_oferecidos.map(s => s.id),
-        // Horários formatados - ✅ CORREÇÃO: Normalizar para formato "start/end"
+        // Horários formatados - ✅ CORREÇÃO: Normalizar para formato "start/end" + incluir unidade_id
         horarios_funcionamento: agente.horarios_funcionamento.map(h => {
           const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
           // Normalizar períodos para usar "start" e "end" (não "inicio" e "fim")
@@ -166,12 +166,11 @@ class AgenteController {
           
           return {
             dia_semana: h.dia_semana,
+            unidade_id: h.unidade_id, // ✅ CRÍTICO: Incluir unidade_id para suporte multi-unidade
             periodos: periodosNormalizados
           };
         })
       };
-      
-
       
       res.status(200).json({
         success: true,
@@ -230,6 +229,7 @@ class AgenteController {
       // Parse de dados JSON se vieram como string (FormData)
       let servicosIds = [];
       let horariosData = [];
+      let agendasMultiUnidade = [];
 
       try {
         servicosIds = typeof servicos_oferecidos === 'string'
@@ -239,10 +239,26 @@ class AgenteController {
         console.error('Erro ao parsear servicos_oferecidos:', e);
       }
 
+      // ✅ ETAPA 6: Suporte para agendas_multi_unidade
+      const { agendas_multi_unidade } = req.body;
       try {
-        horariosData = typeof horarios_funcionamento === 'string'
-          ? JSON.parse(horarios_funcionamento)
-          : (horarios_funcionamento || []);
+        if (agendas_multi_unidade) {
+          agendasMultiUnidade = typeof agendas_multi_unidade === 'string'
+            ? JSON.parse(agendas_multi_unidade)
+            : agendas_multi_unidade;
+        }
+      } catch (e) {
+        console.error('Erro ao parsear agendas_multi_unidade:', e);
+      }
+
+      // Usar agendas_multi_unidade se disponível, senão usar formato legado
+      try {
+        const { horarios_funcionamento } = req.body;
+        if (!agendasMultiUnidade.length && horarios_funcionamento) {
+          horariosData = typeof horarios_funcionamento === 'string'
+            ? JSON.parse(horarios_funcionamento)
+            : horarios_funcionamento;
+        }
       } catch (e) {
         console.error('Erro ao parsear horarios_funcionamento:', e);
       }
@@ -263,7 +279,6 @@ class AgenteController {
 
       // ✅ SEGURANÇA: Não precisa verificar se unidade pertence ao usuário
       // porque unidadeIdDoToken já vem do JWT validado
-      console.log(`🔒 [SEGURANÇA] Criando agente na unidade ${unidadeIdNum} do usuário ${usuarioId}`);
 
       // ✅ VERIFICAÇÃO: Checar se email já existe
       const emailExistente = await this.agenteModel.db('agentes')
@@ -318,11 +333,25 @@ class AgenteController {
         status: 'Ativo'
       };
 
+      // ✅ ETAPA 6: Validar conflitos de agenda multi-unidade
+      const horariosParaValidar = agendasMultiUnidade.length > 0 ? agendasMultiUnidade : horariosData;
+      
+      if (horariosParaValidar.length > 0) {
+        const conflito = this.validateScheduleConflicts(horariosParaValidar);
+        if (conflito) {
+          return res.status(400).json({
+            success: false,
+            error: 'Conflito de agenda',
+            message: conflito
+          });
+        }
+      }
+
       // Criar agente com transação (incluindo usuário para login)
       const agenteId = await this.agenteModel.createWithTransaction(
         agenteData,
         servicosIds,
-        horariosData
+        agendasMultiUnidade.length > 0 ? agendasMultiUnidade : horariosData
       );
 
 
@@ -381,6 +410,7 @@ class AgenteController {
       // Parse de dados JSON se vieram como string (FormData)
       let servicosIds = [];
       let horariosData = [];
+      let agendasMultiUnidade = [];
 
       try {
         servicosIds = typeof servicos_oferecidos === 'string'
@@ -391,10 +421,26 @@ class AgenteController {
         servicosIds = [];
       }
 
+      // ✅ ETAPA 6: Suporte para agendas_multi_unidade
+      const { agendas_multi_unidade } = req.body;
       try {
-        horariosData = typeof horarios_funcionamento === 'string'
-          ? JSON.parse(horarios_funcionamento)
-          : (horarios_funcionamento || []);
+        if (agendas_multi_unidade) {
+          agendasMultiUnidade = typeof agendas_multi_unidade === 'string'
+            ? JSON.parse(agendas_multi_unidade)
+            : agendas_multi_unidade;
+        }
+      } catch (e) {
+        console.error('Erro ao parsear agendas_multi_unidade:', e);
+      }
+
+      // Usar agendas_multi_unidade se disponível, senão usar formato legado
+      try {
+        const { horarios_funcionamento } = req.body;
+        if (!agendasMultiUnidade.length && horarios_funcionamento) {
+          horariosData = typeof horarios_funcionamento === 'string'
+            ? JSON.parse(horarios_funcionamento)
+            : horarios_funcionamento;
+        }
       } catch (e) {
         console.error('❌ Erro ao parsear horarios_funcionamento:', e);
         horariosData = [];
@@ -482,12 +528,25 @@ class AgenteController {
         updated_at: new Date()
       };
 
+      // ✅ ETAPA 6: Validar conflitos de agenda multi-unidade
+      const horariosParaValidar = agendasMultiUnidade.length > 0 ? agendasMultiUnidade : horariosData;
+      if (horariosParaValidar.length > 0) {
+        const conflito = this.validateScheduleConflicts(horariosParaValidar);
+        if (conflito) {
+          return res.status(400).json({
+            success: false,
+            error: 'Conflito de agenda',
+            message: conflito
+          });
+        }
+      }
+
       // Atualizar agente com transação
       await this.agenteModel.updateWithTransaction(
         agenteId,
         agenteData,
         servicosIds,
-        horariosData
+        agendasMultiUnidade.length > 0 ? agendasMultiUnidade : horariosData
       );
 
 
@@ -598,6 +657,66 @@ class AgenteController {
         message: 'Erro ao excluir agente'
       });
     }
+  }
+
+  /**
+   * ✅ ETAPA 6: Validar conflitos de agenda multi-unidade
+   * Garante que um agente não esteja alocado em dois lugares no mesmo horário/dia
+   * @param {Array} agendas - Array de agendas com dia_semana, unidade_id e periodos
+   * @returns {string|null} - Mensagem de erro se houver conflito, null caso contrário
+   */
+  validateScheduleConflicts(agendas) {
+    if (!agendas || agendas.length === 0) {
+      return null;
+    }
+
+    // Agrupar agendas por dia da semana
+    const agendasPorDia = {};
+    
+    agendas.forEach(agenda => {
+      const diaSemana = agenda.dia_semana;
+      if (!agendasPorDia[diaSemana]) {
+        agendasPorDia[diaSemana] = [];
+      }
+      agendasPorDia[diaSemana].push(agenda);
+    });
+
+    // Verificar conflitos em cada dia
+    for (const [diaSemana, agendasDoDia] of Object.entries(agendasPorDia)) {
+      // Se há apenas uma agenda no dia, não há conflito
+      if (agendasDoDia.length < 2) {
+        continue;
+      }
+
+      // Verificar sobreposição de períodos entre diferentes unidades
+      for (let i = 0; i < agendasDoDia.length; i++) {
+        for (let j = i + 1; j < agendasDoDia.length; j++) {
+          const agenda1 = agendasDoDia[i];
+          const agenda2 = agendasDoDia[j];
+
+          // Verificar se são unidades diferentes
+          if (agenda1.unidade_id !== agenda2.unidade_id) {
+            // Verificar sobreposição de períodos
+            for (const periodo1 of agenda1.periodos) {
+              for (const periodo2 of agenda2.periodos) {
+                const inicio1 = periodo1.inicio;
+                const fim1 = periodo1.fim;
+                const inicio2 = periodo2.inicio;
+                const fim2 = periodo2.fim;
+
+                // Verificar sobreposição: (inicio1 < fim2) && (inicio2 < fim1)
+                if (inicio1 < fim2 && inicio2 < fim1) {
+                  const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+                  return `Conflito de agenda: o agente já está alocado na Unidade ${agenda1.unidade_id} na ${diasSemana[diaSemana]} das ${inicio1} às ${fim1}, e você tentou alocar ele na Unidade ${agenda2.unidade_id} no mesmo dia das ${inicio2} às ${fim2}.`;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return null; // Sem conflitos
   }
 }
 

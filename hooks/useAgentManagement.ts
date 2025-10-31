@@ -56,6 +56,24 @@ export interface Service {
   duracao_minutos: number;
 }
 
+// ✅ ETAPA 1: Interfaces para suporte multi-unidade
+export interface UnitSchedulePeriod {
+  inicio: string;
+  fim: string;
+}
+
+export interface UnitSchedule {
+  dia_semana: number; // 0=Dom a 6=Sáb
+  is_aberto: boolean;
+  periodos: UnitSchedulePeriod[];
+}
+
+export interface UnitData {
+  id: number;
+  nome: string;
+  horarios_funcionamento: UnitSchedule[]; // Limites de horário da unidade
+}
+
 export interface CreateAgentData {
   nome: string;
   sobrenome: string;
@@ -66,13 +84,24 @@ export interface CreateAgentData {
   avatar?: File;
   biografia?: string;
   nome_exibicao?: string;
-  unidade_id: number;
-  agenda_personalizada: boolean;
+  unidade_id?: number;
+  status?: 'Ativo' | 'Bloqueado';
+  agenda_personalizada?: boolean;
   observacoes?: string;
   data_admissao?: string;
   comissao_percentual?: number;
   servicos_oferecidos: number[];
-  horarios_funcionamento: Array<{
+  // ✅ ETAPA 3: Suporte para agendas multi-unidade (novo formato)
+  agendas_multi_unidade?: Array<{
+    dia_semana: number;
+    unidade_id: number;
+    periodos: Array<{
+      inicio: string;
+      fim: string;
+    }>;
+  }>;
+  // Formato legado (para compatibilidade)
+  horarios_funcionamento?: Array<{
     dia_semana: number;
     periodos: Array<{
       start: string;
@@ -87,6 +116,10 @@ export interface UseAgentManagementReturn {
   services: Service[];
   loading: boolean;
   error: string | null;
+  
+  // ✅ ETAPA 1: Novos campos para suporte multi-unidade
+  adminPlan: 'Single' | 'Multi';
+  availableUnits: UnitData[];
   
   // Ações
   fetchAgents: () => Promise<void>;
@@ -105,9 +138,15 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // ✅ ETAPA 1: Estados para suporte multi-unidade
+  const [availableUnits, setAvailableUnits] = useState<UnitData[]>([]);
 
   // Usar AuthContext
-  const { token, isAuthenticated, logout: authLogout } = useAuth();
+  const { token, isAuthenticated, user, logout: authLogout } = useAuth();
+  
+  // ✅ ETAPA 1: Extrair adminPlan do contexto de autenticação
+  const adminPlan: 'Single' | 'Multi' = user?.plano || 'Single';
 
   // Função para fazer requisições autenticadas
   const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}) => {
@@ -187,6 +226,36 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     }
   }, [authenticatedFetch, isAuthenticated, token]);
 
+  // ✅ ETAPA 1: Buscar unidades disponíveis (com horários de funcionamento)
+  const fetchAvailableUnits = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      return;
+    }
+
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch('/unidades');
+
+      if (response.success !== false && response.data) {
+        // Mapear unidades para o formato esperado
+        const unitsData: UnitData[] = response.data.map((unit: any) => ({
+          id: unit.id,
+          nome: unit.nome,
+          horarios_funcionamento: unit.horarios_funcionamento || []
+        }));
+        
+        setAvailableUnits(unitsData);
+      } else {
+        throw new Error(response.message || 'Erro ao buscar unidades');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error('Erro ao buscar unidades:', err);
+      // Não definir erro global para não bloquear outras operações
+    }
+  }, [authenticatedFetch, isAuthenticated, token]);
+
   // Buscar agente por ID
   const fetchAgentById = useCallback(async (id: number): Promise<AgentDetails | null> => {
     if (!isAuthenticated || !token) {
@@ -229,7 +298,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
       // Adicionar dados do agente
       Object.entries(agentData).forEach(([key, value]) => {
-        if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento') {
+        if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento' || key === 'agendas_multi_unidade') {
           formData.append(key, JSON.stringify(value));
         } else if (key === 'avatar' && value instanceof File) {
           // ✅ CORREÇÃO: Adicionar arquivo sem converter para string
@@ -285,9 +354,9 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       // Criar FormData para suportar upload de arquivos
       const formData = new FormData();
 
-      // Adicionar dados do agente
+      // Adicionar dados do agente ao FormData
       Object.entries(agentData).forEach(([key, value]) => {
-        if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento') {
+        if (key === 'servicos_oferecidos' || key === 'horarios_funcionamento' || key === 'agendas_multi_unidade') {
           formData.append(key, JSON.stringify(value));
         } else if (key === 'avatar' && value instanceof File) {
           formData.append(key, value);
@@ -370,7 +439,9 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       // Executar as funções diretamente para evitar dependências circulares
       const loadData = async () => {
         try {
-          // Buscar serviços primeiro (necessário para criar agentes)
+          // ✅ ETAPA 1: Buscar unidades primeiro (necessário para validação de agendas)
+          if (isMounted) await fetchAvailableUnits();
+          // Buscar serviços (necessário para criar agentes)
           if (isMounted) await fetchServices();
           // Depois buscar agentes
           if (isMounted) await fetchAgents();
@@ -387,6 +458,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       if (isMounted) {
         setAgents([]);
         setServices([]);
+        setAvailableUnits([]);
         setError(null);
       }
     }
@@ -401,6 +473,9 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     services,
     loading,
     error,
+    // ✅ ETAPA 1: Expor adminPlan e availableUnits
+    adminPlan,
+    availableUnits,
     fetchAgents,
     fetchServices,
     fetchAgentById,
