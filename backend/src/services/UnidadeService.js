@@ -125,11 +125,15 @@ class UnidadeService {
         if (unidadeData.agentes_ids && Array.isArray(unidadeData.agentes_ids) && unidadeData.agentes_ids.length > 0) {
           console.log(`🔗 Associando ${unidadeData.agentes_ids.length} agentes à unidade ${novaUnidade.id}`);
 
-          // Verificar se os agentes pertencem ao usuário
+          // Verificar se os agentes pertencem ao usuário (diretamente OU através de unidades)
           const agentesValidos = await trx('agentes')
-            .whereIn('id', unidadeData.agentes_ids)
-            .where('usuario_id', userId)
-            .select('id');
+            .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+            .whereIn('agentes.id', unidadeData.agentes_ids)
+            .where(function() {
+              this.where('agentes.usuario_id', userId)  // Agentes diretos do usuário
+                  .orWhere('unidades.usuario_id', userId);  // Agentes através de unidades
+            })
+            .select('agentes.id');
 
           if (agentesValidos.length !== unidadeData.agentes_ids.length) {
             throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');
@@ -358,11 +362,15 @@ class UnidadeService {
           await trx('agente_unidades').where('unidade_id', unidadeId).del();
 
           if (Array.isArray(updateData.agentes_ids) && updateData.agentes_ids.length > 0) {
-            // Verificar se os agentes pertencem ao usuário
+            // Verificar se os agentes pertencem ao usuário (diretamente OU através de unidades)
             const agentesValidos = await trx('agentes')
-              .whereIn('id', updateData.agentes_ids)
-              .where('usuario_id', userId)
-              .select('id');
+              .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+              .whereIn('agentes.id', updateData.agentes_ids)
+              .where(function() {
+                this.where('agentes.usuario_id', userId)  // Agentes diretos do usuário
+                    .orWhere('unidades.usuario_id', userId);  // Agentes através de unidades
+              })
+              .select('agentes.id');
 
             if (agentesValidos.length !== updateData.agentes_ids.length) {
               throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');

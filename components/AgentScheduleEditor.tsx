@@ -185,8 +185,8 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
         if (onScheduleChange) {
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
 
-            // ✅ CORREÇÃO: Enviar apenas dias ativos com períodos válidos
-            // Backend espera campos "start" e "end", não "inicio" e "fim"
+            // ⚠️ REGRA CRÍTICA: Backend SEMPRE espera 7 dias, mesmo os fechados
+            // Dias fechados devem ter: is_aberto: false, periodos: []
             const apiScheduleData: ScheduleDay[] = dayNames
                 .map((dayName, index) => {
                     const daySchedule = newSchedule[dayName];
@@ -196,15 +196,13 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
                     return {
                         dia_semana: index,
                         is_aberto: isActive && hasPeriods,
-                        // ✅ CORREÇÃO CRÍTICA: Usar "start" e "end" (não "inicio" e "fim")
                         periodos: (isActive && hasPeriods) ? daySchedule.periods.map(period => ({
-                            start: period.start,
-                            end: period.end
+                            inicio: period.start,
+                            fim: period.end
                         })) : []
                     };
-                })
-                // ✅ CORREÇÃO: Filtrar apenas dias com períodos válidos
-                .filter(day => day.periodos.length > 0);
+                });
+                // ❌ REMOVIDO .filter() - Backend precisa receber TODOS os 7 dias
 
             onScheduleChange(apiScheduleData);
         }

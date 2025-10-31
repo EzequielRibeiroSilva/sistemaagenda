@@ -3,15 +3,7 @@ import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
-
-// Função para gerar horários padrão (todos fechados)
-const getDefaultSchedule = () => {
-  return Array.from({ length: 7 }, (_, index) => ({
-    dia_semana: index, // 0 = Domingo, 1 = Segunda, etc.
-    is_aberto: false,
-    periodos: []
-  }));
-};
+import { getDefaultSchedule } from '../utils/schedule';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -251,8 +243,8 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
             endereco: formData.endereco.trim(),
             telefone: formData.telefone.trim(),
             status: formData.status,
-            agentes_ids: selectedAgentIds.length > 0 ? selectedAgentIds : undefined,
-            servicos_ids: selectedServiceIds.length > 0 ? selectedServiceIds : undefined,
+            agentes_ids: selectedAgentIds as number[], // Garante type safety
+            servicos_ids: selectedServiceIds as number[], // Garante type safety
             horarios_funcionamento: schedule
         });
 

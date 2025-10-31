@@ -3,13 +3,7 @@ import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from '.
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
-
-// Tipos para os dados do formulário
-interface ScheduleDay {
-  dia_semana: number;
-  is_aberto: boolean;
-  periodos: { inicio: string; fim: string }[];
-}
+import { getDefaultSchedule, mergeWithDefaultSchedule, type ScheduleDay } from '../utils/schedule';
 
 // Reusable components (copied from CreateLocationPage)
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
@@ -160,13 +154,7 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
     const [selectedServices, setSelectedServices] = useState<Set<number>>(new Set());
 
     // Estado para horários (7 dias da semana)
-    const [scheduleData, setScheduleData] = useState<ScheduleDay[]>(
-        Array.from({ length: 7 }, (_, index) => ({
-            dia_semana: index,
-            is_aberto: false,
-            periodos: []
-        }))
-    );
+    const [scheduleData, setScheduleData] = useState<ScheduleDay[]>(getDefaultSchedule());
 
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -198,8 +186,7 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
                     // Preencher horários de funcionamento
                     if (unit.horarios_funcionamento && Array.isArray(unit.horarios_funcionamento)) {
-                        const horariosOrdenados = unit.horarios_funcionamento
-                            .sort((a, b) => a.dia_semana - b.dia_semana)
+                        const horariosDoBackend = unit.horarios_funcionamento
                             .map(horario => ({
                                 dia_semana: horario.dia_semana,
                                 is_aberto: horario.is_aberto,
@@ -209,7 +196,9 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                                 })) : []
                             }));
 
-                        setScheduleData(horariosOrdenados);
+                        // Usar função utilitária para mesclar com 7 dias padrão
+                        const horariosCompletos = mergeWithDefaultSchedule(horariosDoBackend);
+                        setScheduleData(horariosCompletos); // Garante sempre 7 dias
                     }
                 }
                 setIsLoading(false);
@@ -315,10 +304,10 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
             nome: formData.nome.trim(),
             endereco: formData.endereco.trim(),
             telefone: formData.telefone.trim(),
-            status: formData.status, // Incluir status no payload
-            agentes_ids: Array.from(selectedAgents),
-            servicos_ids: Array.from(selectedServices),
-            horarios_semanais: scheduleData
+            status: formData.status,
+            agentes_ids: Array.from(selectedAgents) as number[],
+            servicos_ids: Array.from(selectedServices) as number[],
+            horarios_semanais: scheduleData // Array com 7 dias garantido
         };
 
         const success = await updateUnit(locationId, updateData);
