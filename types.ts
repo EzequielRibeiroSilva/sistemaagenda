@@ -138,3 +138,16 @@ export interface Location {
     id: string;
     name: string;
 }
+
+// ✅ ETAPA 2: Interfaces para Sistema de Agendas Multi-Unidade
+export interface AgentUnitScheduleState {
+  unidade_id: number;
+  unidade_nome: string;
+  agenda_personalizada: boolean;
+  schedule: {
+    [dayName: string]: {
+      isActive: boolean;
+      periods: { id: number; start: string; end: string }[];
+    };
+  };
+}

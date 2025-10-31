@@ -229,6 +229,7 @@ class Agente extends BaseModel {
         const horariosFormatados = horariosData.map(horario => ({
           agente_id: finalAgenteId,
           dia_semana: horario.dia_semana,
+          unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
           periodos: JSON.stringify(horario.periodos),
           ativo: true
         }));
@@ -350,6 +351,7 @@ class Agente extends BaseModel {
         const horariosFormatados = horariosData.map((horario) => ({
           agente_id: agenteId,
           dia_semana: horario.dia_semana,
+          unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
           periodos: JSON.stringify(horario.periodos),
           ativo: true
         }));

@@ -17,6 +17,13 @@ interface ScheduleDay {
   periodos: { start: string; end: string }[]; // ✅ CORREÇÃO: Backend usa "start" e "end"
 }
 
+// ✅ ETAPA 5: Interface para limites de horário da unidade
+interface UnitScheduleLimit {
+  dia_semana: number;
+  is_aberto: boolean;
+  periodos: { inicio: string; fim: string }[];
+}
+
 interface AgentScheduleEditorProps {
   // Nova interface (para EditAgentPage)
   scheduleData?: ScheduleDay[];
@@ -25,6 +32,9 @@ interface AgentScheduleEditorProps {
   // Interface legada (para CreateAgentPage)
   schedule?: any;
   onChange?: (schedule: any) => void;
+  
+  // ✅ ETAPA 5: Limites de horário da unidade
+  unitScheduleLimits?: UnitScheduleLimit[];
 }
 
 const initialSchedule: ScheduleData = {
@@ -42,7 +52,8 @@ const DayScheduleRow: React.FC<{
   schedule: DayScheduleData;
   onToggle: () => void;
   onUpdatePeriods: (periods: TimePeriod[]) => void;
-}> = ({ dayName, schedule, onToggle, onUpdatePeriods }) => {
+  unitLimit?: { is_aberto: boolean; periodos: { inicio: string; fim: string }[] };
+}> = ({ dayName, schedule, onToggle, onUpdatePeriods, unitLimit }) => {
   const [isEditing, setIsEditing] = useState(false); // Todos os dias iniciam fechados
   const { isActive, periods } = schedule;
 
@@ -55,6 +66,18 @@ const DayScheduleRow: React.FC<{
   };
 
   const handlePeriodChange = (id: number, field: 'start' | 'end', value: string) => {
+    // ✅ ETAPA 5: Validar contra limites da unidade
+    if (unitLimit && unitLimit.is_aberto && unitLimit.periodos.length > 0) {
+      const isValid = unitLimit.periodos.some(limite => {
+        return value >= limite.inicio && value <= limite.fim;
+      });
+      
+      if (!isValid) {
+        alert(`Horário inválido! ${dayName} - A unidade funciona apenas nos seguintes horários: ${unitLimit.periodos.map(p => `${p.inicio}-${p.fim}`).join(', ')}`);
+        return;
+      }
+    }
+    
     onUpdatePeriods(periods.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
@@ -123,7 +146,8 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     scheduleData,
     onScheduleChange,
     schedule: legacySchedule,
-    onChange: legacyOnChange
+    onChange: legacyOnChange,
+    unitScheduleLimits
 }) => {
     const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
     const [isInitialized, setIsInitialized] = useState(false);
@@ -232,15 +256,23 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     
     return (
         <div>
-            {Object.entries(schedule).map(([dayName, dayData]) => (
-                <DayScheduleRow
-                    key={dayName}
-                    dayName={dayName}
-                    schedule={dayData}
-                    onToggle={() => handleToggleDay(dayName)}
-                    onUpdatePeriods={(periods) => handleUpdatePeriods(dayName, periods)}
-                />
-            ))}
+            {Object.entries(schedule).map(([dayName, dayData]) => {
+                // ✅ ETAPA 5: Buscar limites da unidade para este dia
+                const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
+                const dayIndex = dayNames.indexOf(dayName);
+                const unitLimit = unitScheduleLimits?.find(limit => limit.dia_semana === dayIndex);
+                
+                return (
+                    <DayScheduleRow
+                        key={dayName}
+                        dayName={dayName}
+                        schedule={dayData}
+                        onToggle={() => handleToggleDay(dayName)}
+                        onUpdatePeriods={(periods) => handleUpdatePeriods(dayName, periods)}
+                        unitLimit={unitLimit}
+                    />
+                );
+            })}
         </div>
     );
 }

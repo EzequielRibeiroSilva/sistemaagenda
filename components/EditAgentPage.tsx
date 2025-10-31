@@ -228,7 +228,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 throw new Error('Erro ao atualizar agente');
             }
         } catch (error) {
-            console.error('Erro ao salvar:', error);
             alert('Erro ao salvar alterações: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
         } finally {
             setIsSaving(false);

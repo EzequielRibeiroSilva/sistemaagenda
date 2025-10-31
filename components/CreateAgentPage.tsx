@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Check, ImagePlaceholder } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useAgentManagement } from '../hooks/useAgentManagement';
+import { AgentUnitScheduleState } from '../types';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -91,24 +92,18 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   });
   
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
-  const [customSchedule, setCustomSchedule] = useState(false);
-  const [schedule, setSchedule] = useState<any>({
-    'Segunda-feira': { isActive: false, periods: [] },
-    'Terça': { isActive: false, periods: [] },
-    'Quarta-feira': { isActive: false, periods: [] },
-    'Quinta': { isActive: false, periods: [] },
-    'Sexta-feira': { isActive: false, periods: [] },
-    'Sábado': { isActive: false, periods: [] },
-    'Domingo': { isActive: false, periods: [] }
-  }); // ✅ CORREÇÃO: Inicializar com estrutura dos 7 dias
+  
+  // ✅ ETAPA 3: Novo estado para agendas multi-unidade
+  const [agentSchedules, setAgentSchedules] = useState<AgentUnitScheduleState[]>([]);
+  
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Hook para gerenciamento de agentes
-  const { services, createAgent, loading, error } = useAgentManagement();
+  // ✅ ETAPA 3: Hook para gerenciamento de agentes (com adminPlan e availableUnits)
+  const { services, createAgent, loading, error, adminPlan, availableUnits } = useAgentManagement();
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -125,8 +120,41 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     );
   };
 
-  const handleScheduleChange = (newSchedule: any) => {
-    setSchedule(newSchedule);
+  // ✅ ETAPA 3: Inicializar agentSchedules com base nas unidades disponíveis
+  useEffect(() => {
+    if (availableUnits.length > 0 && agentSchedules.length === 0) {
+      const initialSchedules: AgentUnitScheduleState[] = availableUnits.map(unit => ({
+        unidade_id: unit.id,
+        unidade_nome: unit.nome,
+        agenda_personalizada: false,
+        schedule: {
+          'Segunda-feira': { isActive: false, periods: [] },
+          'Terça': { isActive: false, periods: [] },
+          'Quarta-feira': { isActive: false, periods: [] },
+          'Quinta': { isActive: false, periods: [] },
+          'Sexta-feira': { isActive: false, periods: [] },
+          'Sábado': { isActive: false, periods: [] },
+          'Domingo': { isActive: false, periods: [] }
+        }
+      }));
+      setAgentSchedules(initialSchedules);
+    }
+  }, [availableUnits, agentSchedules.length]);
+
+  const handleScheduleChange = (unidadeId: number, newSchedule: any) => {
+    setAgentSchedules(prev => prev.map(item => 
+      item.unidade_id === unidadeId 
+        ? { ...item, schedule: newSchedule }
+        : item
+    ));
+  };
+
+  const handleToggleCustomSchedule = (unidadeId: number, checked: boolean) => {
+    setAgentSchedules(prev => prev.map(item => 
+      item.unidade_id === unidadeId 
+        ? { ...item, agenda_personalizada: checked }
+        : item
+    ));
   };
 
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,7 +183,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   const handleSave = async () => {
     // ✅ PROTEÇÃO: Evitar duplo submit
     if (isSubmitting) {
-      console.log('⚠️ Formulário já está sendo enviado, ignorando clique duplicado');
       return;
     }
 
@@ -172,33 +199,40 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     setIsSubmitting(true);
 
     try {
-      const agentData = {
-        ...formData,
-        avatar: avatarFile, // ✅ CORREÇÃO: Incluir arquivo do avatar
-        agenda_personalizada: customSchedule,
-        servicos_oferecidos: selectedServices,
-        horarios_funcionamento: customSchedule ? (() => {
-          // ✅ CORREÇÃO: Mapear nomes dos dias para números
-          const dayNameToNumber: Record<string, number> = {
-            'Domingo': 0,
-            'Segunda-feira': 1,
-            'Terça': 2,
-            'Quarta-feira': 3,
-            'Quinta': 4,
-            'Sexta-feira': 5,
-            'Sábado': 6
-          };
+      // ✅ ETAPA 3: Mapear agentSchedules para formato do backend
+      const dayNameToNumber: Record<string, number> = {
+        'Domingo': 0,
+        'Segunda-feira': 1,
+        'Terça': 2,
+        'Quarta-feira': 3,
+        'Quinta': 4,
+        'Sexta-feira': 5,
+        'Sábado': 6
+      };
 
-          return Object.entries(schedule)
+      const schedulesToSubmit = agentSchedules
+        .filter(item => item.agenda_personalizada)
+        .flatMap(item => {
+          return Object.entries(item.schedule)
             .filter(([_, dayData]: [string, any]) => dayData.isActive && dayData.periods.length > 0)
             .map(([dayName, dayData]: [string, any]) => ({
               dia_semana: dayNameToNumber[dayName],
+              unidade_id: item.unidade_id, // ✅ CHAVE: Incluir unidade_id
               periodos: dayData.periods.map((period: any) => ({
                 inicio: period.start,
                 fim: period.end
               }))
             }));
-        })() : []
+        });
+
+      const agentData = {
+        ...formData,
+        avatar: avatarFile,
+        servicos_oferecidos: selectedServices,
+        // ✅ ETAPA 3: Enviar agendas multi-unidade
+        agendas_multi_unidade: schedulesToSubmit,
+        // ✅ CORREÇÃO CRÍTICA: Definir agenda_personalizada quando há agendas customizadas
+        agenda_personalizada: schedulesToSubmit.length > 0
       };
 
       const success = await createAgent(agentData);
@@ -232,6 +266,20 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* ✅ ETAPA 3: Validação de pré-condição - Exigir unidade antes de criar agente */}
+      {availableUnits.length === 0 && !loading && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800 font-semibold">⚠️ Nenhuma unidade encontrada</p>
+          <p className="text-yellow-700 text-sm mt-1">Você precisa criar pelo menos uma unidade antes de cadastrar agentes.</p>
+          <button
+            onClick={() => setActiveView('locations')}
+            className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
+          >
+            Ir para Unidades
+          </button>
         </div>
       )}
 
@@ -352,34 +400,42 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         )}
       </FormCard>
 
-      <FormCard 
-        title="Agenda Semanal"
-        rightContent={
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={customSchedule}
-              onChange={(e) => {
-                setCustomSchedule(e.target.checked);
-              }}
-              className="mr-2"
-            />
-            <span className="text-sm text-gray-600">Agenda personalizada</span>
-          </label>
-        }
-      >
-        {customSchedule ? (
-          <AgentScheduleEditor
-            schedule={schedule}
-            onChange={handleScheduleChange}
-          />
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            <p>Usando agenda padrão da unidade</p>
-            <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
-          </div>
-        )}
-      </FormCard>
+      {/* ✅ ETAPA 3: Renderizar uma seção de agenda para cada unidade */}
+      {agentSchedules.map((agentUnitSchedule) => {
+        const unitData = availableUnits.find(u => u.id === agentUnitSchedule.unidade_id);
+        const unitLimits = unitData?.horarios_funcionamento;
+
+        return (
+          <FormCard 
+            key={agentUnitSchedule.unidade_id}
+            title={`Agenda - ${unitData?.nome || 'Unidade'}`}
+            rightContent={
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={agentUnitSchedule.agenda_personalizada}
+                  onChange={(e) => handleToggleCustomSchedule(agentUnitSchedule.unidade_id, e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-600">Agenda personalizada</span>
+              </label>
+            }
+          >
+            {agentUnitSchedule.agenda_personalizada ? (
+              <AgentScheduleEditor
+                schedule={agentUnitSchedule.schedule}
+                onChange={(newSchedule) => handleScheduleChange(agentUnitSchedule.unidade_id, newSchedule)}
+                unitScheduleLimits={unitLimits}
+              />
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>Usando agenda padrão da unidade</p>
+                <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
+              </div>
+            )}
+          </FormCard>
+        );
+      })}
 
       <div className="flex justify-end space-x-4">
         <button
@@ -391,7 +447,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         </button>
         <button
           onClick={handleSave}
-          disabled={isSubmitting || loading}
+          disabled={isSubmitting || loading || availableUnits.length === 0}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
         >
           {isSubmitting ? (
