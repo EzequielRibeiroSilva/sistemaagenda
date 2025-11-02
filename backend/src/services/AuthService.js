@@ -43,6 +43,7 @@ class AuthService {
       nome: user.nome,
       role: user.role, // Nova coluna role (MASTER, ADMIN, AGENTE)
       unidade_id: user.unidade_id, // Nova coluna unidade_id
+      agente_id: user.agente_id, // ✅ CRÍTICO: ID do agente na tabela agentes (para role='AGENTE')
       tipo_usuario: user.tipo_usuario, // Mantido para compatibilidade
       plano: user.plano,
       limite_unidades: user.limite_unidades,
@@ -118,19 +119,22 @@ class AuthService {
         throw new Error('Credenciais inválidas');
       }
 
-      // Buscar avatar_url baseado no role do usuário
+      // Buscar avatar_url e agente_id baseado no role do usuário
       let avatarUrl = null;
+      let agenteId = null;
       if (usuario.role === 'AGENTE') {
-        // Para agentes: buscar avatar_url na tabela agentes
+        // Para agentes: buscar avatar_url e id na tabela agentes
         const Agente = require('../models/Agente');
         const agenteModel = new Agente();
         const agente = await agenteModel.db('agentes')
           .where('usuario_id', usuario.id)
-          .select('avatar_url')
+          .select('id', 'avatar_url')
           .first();
 
         if (agente) {
           avatarUrl = agente.avatar_url;
+          agenteId = agente.id; // ✅ CRÍTICO: Guardar o ID do agente
+          console.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}`);
         }
       } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
         // Para admins e masters: buscar logo_url das configurações da unidade
@@ -144,13 +148,21 @@ class AuthService {
         }
       }
 
+      // ✅ CRÍTICO: Adicionar agente_id ao objeto usuario antes de gerar o token
+      if (agenteId) {
+        usuario.agente_id = agenteId;
+      }
+
       // Gerar tokens
       const accessToken = this.generateToken(usuario);
       const refreshToken = this.generateRefreshToken(usuario);
 
-      // Remover senha do objeto de retorno e adicionar avatar_url
+      // Remover senha do objeto de retorno e adicionar avatar_url e agente_id
       const { senha_hash, ...usuarioSemSenha } = usuario;
       usuarioSemSenha.avatar_url = avatarUrl;
+      if (agenteId) {
+        usuarioSemSenha.agente_id = agenteId;
+      }
 
       return {
         token: accessToken,

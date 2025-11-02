@@ -14,10 +14,14 @@ class AgendamentoController extends BaseController {
   async index(req, res) {
     try {
       const usuarioId = req.user?.id;
-      
+      const userRole = req.user?.role;
+
+      console.log(`🚀 [AgendamentoController.index] INÍCIO - usuarioId=${usuarioId}, role=${userRole}`);
+      console.log(`🚀 [AgendamentoController.index] Query params:`, req.query);
+
       if (!usuarioId) {
-        return res.status(401).json({ 
-          error: 'Usuário não autenticado' 
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
         });
       }
 
@@ -26,7 +30,38 @@ class AgendamentoController extends BaseController {
       let data;
 
       if (data_agendamento) {
-        data = await this.model.findByData(data_agendamento, usuarioId);
+        // ✅ CORREÇÃO CRÍTICA: Para AGENTE, filtrar por agente_id diretamente
+        if (userRole === 'AGENTE') {
+          // Buscar o agente_id do usuário logado
+          const agenteRecord = await this.model.db('agentes')
+            .where('usuario_id', usuarioId)
+            .select('id')
+            .first();
+
+          if (agenteRecord) {
+            console.log(`🔍 [AgendamentoController] AGENTE detectado. Buscando agendamentos para agente_id=${agenteRecord.id}, data=${data_agendamento}`);
+            const allAgendamentos = await this.model.findByAgente(agenteRecord.id);
+            console.log(`🔍 [AgendamentoController] Total agendamentos encontrados: ${allAgendamentos.length}`);
+
+            // Filtrar apenas pela data específica
+            data = allAgendamentos.filter(agendamento => {
+              const agendamentoDate = agendamento.data_agendamento;
+              // Converter Date para string no formato YYYY-MM-DD
+              const dateString = agendamentoDate instanceof Date
+                ? agendamentoDate.toISOString().split('T')[0]
+                : agendamentoDate;
+              console.log(`🔍 [AgendamentoController] Comparando: ${dateString} === ${data_agendamento}`);
+              return dateString === data_agendamento;
+            });
+            console.log(`🔍 [AgendamentoController] Agendamentos após filtro de data: ${data.length}`);
+          } else {
+            console.log(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${usuarioId}`);
+            data = [];
+          }
+        } else {
+          // Para ADMIN/MASTER, usar o método original
+          data = await this.model.findByData(data_agendamento, usuarioId);
+        }
       } else if (agente_id) {
         data = await this.model.findByAgente(parseInt(agente_id));
       } else if (cliente_id) {

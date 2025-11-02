@@ -9,15 +9,14 @@ const unidadeController = new UnidadeController();
 // Middleware de autenticação para todas as rotas
 router.use(authenticate());
 
-// Middleware para exigir role ADMIN ou MASTER em todas as rotas
-router.use(rbacMiddleware.requireRole('ADMIN', 'MASTER'));
-
 /**
  * GET /api/unidades
- * Lista unidades do usuário logado (ADMIN vê suas unidades, MASTER vê todas)
+ * Lista unidades do usuário logado (ADMIN vê suas unidades, MASTER vê todas, AGENTE vê suas unidades)
  * Query params: ?status=Ativo|Bloqueado
+ * ✅ CORREÇÃO: AGENTE precisa ver locais para o dropdown do calendário
  */
 router.get('/',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
   rbacMiddleware.auditLog('LISTAR_UNIDADES'),
   async (req, res) => {
     await unidadeController.index(req, res);
@@ -27,14 +26,19 @@ router.get('/',
 /**
  * GET /api/unidades/:id
  * Busca uma unidade específica
- * ADMIN só pode ver suas próprias unidades, MASTER pode ver qualquer uma
+ * ADMIN só pode ver suas próprias unidades, MASTER pode ver qualquer uma, AGENTE pode ver suas unidades
+ * ✅ CORREÇÃO: AGENTE precisa acessar detalhes de locais
  */
 router.get('/:id',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
   rbacMiddleware.auditLog('VISUALIZAR_UNIDADE'),
   async (req, res) => {
     await unidadeController.show(req, res);
   }
 );
+
+// ✅ Middleware para exigir role ADMIN ou MASTER APENAS em operações de escrita
+router.use(rbacMiddleware.requireRole('ADMIN', 'MASTER'));
 
 /**
  * POST /api/unidades

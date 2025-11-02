@@ -84,6 +84,7 @@ class AuthMiddleware {
           // Garantir que as informações RBAC estejam disponíveis
           role: usuario.role || decoded.role,
           unidade_id: usuario.unidade_id || decoded.unidade_id,
+          agente_id: decoded.agente_id, // ✅ CRÍTICO: ID do agente na tabela agentes (para role='AGENTE')
           avatar_url: avatarUrl
         };
         req.token = token;

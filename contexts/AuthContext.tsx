@@ -96,7 +96,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setRefreshToken(storedRefreshToken);
               setUser({
                 role: frontendRole,
-                agentId: validationData.data.id?.toString() || null,
+                // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar agente_id do backend, não o user.id
+                agentId: validationData.data.agente_id?.toString() || null,
                 email: storedUserEmail,
                 avatarUrl: validationData.data.avatar_url || null,
                 permissions: validationData.data.permissions,
@@ -168,7 +169,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setRefreshToken(loginData.refreshToken || null);
     setUser({
       role: frontendRole,
-      agentId: loginData.user.id?.toString() || null,
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar agente_id do backend, não o user.id
+      agentId: loginData.user.agente_id?.toString() || null,
       email: loginData.email,
       avatarUrl: loginData.user.avatar_url || null,
       permissions: loginData.permissions,

@@ -293,16 +293,21 @@ export const useCalendarData = () => {
       console.log('🔍 [useCalendarData] Buscando unidades... (ESTÁVEL)');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
       
-      console.log('🔍 [useCalendarData] Resposta de unidades:', response);
+      console.log('🔍 [useCalendarData] Resposta RAW de unidades:', response);
       
-      if (response.success && response.data) {
-        const transformedLocations = response.data.map(transformLocation);
+      // ✅ CORREÇÃO: API pode retornar { success, data } OU array direto
+      const locationsData = response.data || response;
+      console.log('🔍 [useCalendarData] locationsData:', locationsData);
+      console.log('🔍 [useCalendarData] É array?', Array.isArray(locationsData));
+      
+      if (Array.isArray(locationsData)) {
+        const transformedLocations = locationsData.map(transformLocation);
         console.log('✅ [useCalendarData] Unidades transformadas:', transformedLocations);
         setLocations(transformedLocations);
         
         // Buscar horários de funcionamento para cada unidade
         const schedulesMap: Record<string, UnitSchedule[]> = {};
-        for (const location of response.data) {
+        for (const location of locationsData) {
           try {
             const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}`);
             if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
@@ -318,7 +323,7 @@ export const useCalendarData = () => {
         return transformedLocations;
       }
       
-      console.warn('⚠️ [useCalendarData] Resposta de unidades sem success ou data');
+      console.warn('⚠️ [useCalendarData] locationsData não é array!');
       return [];
     } catch (err) {
       console.error('❌ Erro ao buscar unidades:', err);
@@ -468,12 +473,10 @@ export const useCalendarData = () => {
     }
   }, []);
 
-  // Carregar todos os dados iniciais
-  const loadAllData = useCallback(async (dateFilters?: {
-    startDate?: string;
-    endDate?: string;
-  }) => {
-    console.log('🚀 [useCalendarData] loadAllData chamado com filtros:', dateFilters);
+  // Carregar todos os dados iniciais (APENAS dados estáticos)
+  // ✅ CORREÇÃO: CalendarPage é responsável por buscar agendamentos com filtros corretos
+  const loadAllData = useCallback(async () => {
+    console.log('🚀 [useCalendarData] loadAllData chamado (apenas dados estáticos)');
 
     if (!isAuthenticated) {
       console.log('❌ [useCalendarData] loadAllData: usuário não autenticado');
@@ -485,17 +488,16 @@ export const useCalendarData = () => {
       setIsLoading(true);
       setError(null);
 
-      // Carregar dados em paralelo (agora com funções estáveis)
-      console.log('📡 [useCalendarData] loadAllData: carregando dados em paralelo...');
+      // ✅ CORREÇÃO: Carregar APENAS dados estáticos (agentes, serviços, locais)
+      // CalendarPage buscará agendamentos com filtros corretos (agentId para AGENTE)
+      console.log('📡 [useCalendarData] loadAllData: carregando dados estáticos em paralelo...');
       await Promise.all([
         fetchAgents(),
         fetchServices(),
-        fetchLocations(),
-        fetchAppointments(dateFilters),
-        fetchUnavailableBlocks(dateFilters)
+        fetchLocations()
       ]);
 
-      console.log('✅ [useCalendarData] loadAllData: todos os dados carregados com sucesso! (FUNÇÕES ESTÁVEIS)');
+      console.log('✅ [useCalendarData] loadAllData: dados estáticos carregados com sucesso!');
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar dados do calendário';
@@ -505,7 +507,7 @@ export const useCalendarData = () => {
       setIsLoading(false);
       console.log('🏁 [useCalendarData] loadAllData: carregamento finalizado');
     }
-  }, [isAuthenticated, fetchAgents, fetchServices, fetchLocations, fetchAppointments, fetchUnavailableBlocks]);
+  }, [isAuthenticated, fetchAgents, fetchServices, fetchLocations]);
 
   // Criar novo agendamento
   const createAppointment = useCallback(async (appointmentData: {
@@ -603,20 +605,9 @@ export const useCalendarData = () => {
   useEffect(() => {
     console.log('🔄 [useCalendarData] useEffect inicial - isAuthenticated:', isAuthenticated);
     if (isAuthenticated) {
-      console.log('✅ [useCalendarData] Usuário autenticado, carregando dados iniciais...');
-
-      // 🔧 CORREÇÃO: Sempre passar filtros válidos para loadAllData
-      const initialDate = new Date();
-      const pad = (num: number) => num.toString().padStart(2, '0');
-      const todayStr = `${initialDate.getFullYear()}-${pad(initialDate.getMonth() + 1)}-${pad(initialDate.getDate())}`;
-
-      const initialFilters = {
-        startDate: todayStr,
-        endDate: todayStr
-      };
-
-      console.log('📅 [useCalendarData] Filtros iniciais:', initialFilters);
-      loadAllData(initialFilters);
+      console.log('✅ [useCalendarData] Usuário autenticado, carregando dados estáticos...');
+      // ✅ CORREÇÃO: loadAllData agora não recebe parâmetros (apenas dados estáticos)
+      loadAllData();
     } else {
       console.log('❌ [useCalendarData] Usuário não autenticado, limpando dados...');
       // Limpar dados quando desautenticar
