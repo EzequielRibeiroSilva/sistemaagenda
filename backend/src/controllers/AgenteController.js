@@ -54,13 +54,44 @@ class AgenteController {
 
   /**
    * GET /api/agentes - Listagem de agentes (Grid)
-   * Retorna todos os agentes da unidade do ADMIN logado
+   * ✅ CORREÇÃO: ADMIN e AGENTE podem ver todos os agentes da empresa
+   * O frontend faz o filtro por loggedInAgentId quando necessário
    */
   async index(req, res) {
     try {
-      const usuarioId = req.user.id;
+      let usuarioId = req.user.id;
+      const userRole = req.user.role;
+      const userAgenteId = req.user.agente_id;
       
+      console.log(`🔍 [AgenteController] index - INÍCIO`);
+      console.log(`   Role: ${userRole}`);
+      console.log(`   UsuarioId (req.user.id): ${usuarioId}`);
+      console.log(`   AgenteId (req.user.agente_id): ${userAgenteId}`);
+      
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        console.log(`🔍 [AgenteController] Condição AGENTE detectada. Buscando agente_id=${userAgenteId}...`);
+        const agente = await this.agenteModel.findById(userAgenteId);
+        console.log(`🔍 [AgenteController] Agente encontrado:`, agente ? { id: agente.id, usuario_id: agente.usuario_id, nome: agente.nome } : null);
+        
+        if (agente && agente.usuario_id) {
+          const usuarioIdAntes = usuarioId;
+          usuarioId = agente.usuario_id;
+          console.log(`✅ [AgenteController] AGENTE detectado. Mudando usuario_id de ${usuarioIdAntes} para ${usuarioId}`);
+        } else {
+          console.log(`❌ [AgenteController] ERRO: Agente não encontrado ou sem usuario_id!`);
+        }
+      } else {
+        console.log(`🔍 [AgenteController] Não é AGENTE ou agente_id ausente. Usando usuario_id=${usuarioId} diretamente.`);
+      }
+      
+      console.log(`🔍 [AgenteController] Chamando findWithCalculatedData(${usuarioId})...`);
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
+      
+      console.log(`✅ [AgenteController] Encontrados ${agentes.length} agentes para usuario_id ${usuarioId}`);
+      if (agentes.length > 0) {
+        console.log(`   Agentes IDs: ${agentes.map(a => a.id).join(', ')}`);
+      }
       
       // Formatar dados para o frontend
       const agentesFormatados = agentes.map(agente => ({
@@ -83,7 +114,7 @@ class AgenteController {
       res.status(200).json({
         success: true,
         data: agentesFormatados,
-        message: 'Agentes listados com sucesso'
+        message: `Agentes listados com sucesso (${agentesFormatados.length} agentes)`
       });
     } catch (error) {
       console.error('❌ [AgenteController] Erro ao listar agentes:', error);

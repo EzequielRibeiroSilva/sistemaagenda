@@ -9,15 +9,47 @@ class UnidadeController extends BaseController {
   }
 
   // GET /api/unidades - Buscar unidades do usuário logado com informações de limite
+  // ✅ CORREÇÃO: ADMIN, MASTER e AGENTE podem ver unidades da empresa
   async index(req, res) {
     try {
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
       const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
 
       if (!usuarioId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
+      }
+
+      console.log(`🔍 [UnidadeController] index - INÍCIO`);
+      console.log(`   Role: ${userRole}`);
+      console.log(`   UsuarioId (req.user.id): ${usuarioId}`);
+      console.log(`   AgenteId (req.user.agente_id): ${userAgenteId}`);
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar apenas a unidade onde ele trabalha
+      if (userRole === 'AGENTE' && userAgenteId) {
+        console.log(`🔍 [UnidadeController] Condição AGENTE detectada. Buscando agente_id=${userAgenteId}...`);
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.findById(userAgenteId);
+        console.log(`🔍 [UnidadeController] Agente encontrado:`, agente ? { id: agente.id, usuario_id: agente.usuario_id, nome: agente.nome, unidade_id: agente.unidade_id } : null);
+
+        if (agente && agente.unidade_id) {
+          // ✅ NOVA LÓGICA: Para AGENTE, retornar apenas a unidade onde ele trabalha
+          console.log(`✅ [UnidadeController] AGENTE detectado. Buscando unidade_id=${agente.unidade_id} do agente`);
+          const data = await this.model.db('unidades')
+            .where('id', agente.unidade_id)
+            .select('*');
+
+          console.log(`✅ [UnidadeController] Encontradas ${data.length} unidades para agente_id ${userAgenteId}`);
+          return res.json(data);
+        } else {
+          console.log(`❌ [UnidadeController] ERRO: Agente não encontrado ou sem unidade_id!`);
+          return res.json([]);
+        }
+      } else {
+        console.log(`🔍 [UnidadeController] Não é AGENTE ou agente_id ausente. Usando usuario_id=${usuarioId} diretamente.`);
       }
 
       const { status } = req.query;
@@ -27,7 +59,7 @@ class UnidadeController extends BaseController {
         filters.status = status;
       }
 
-      // Para MASTER, listar todas as unidades; para ADMIN, apenas suas unidades
+      // Para MASTER, listar todas as unidades; para ADMIN/AGENTE, apenas unidades da empresa
       let result;
       if (userRole === 'MASTER') {
         // MASTER vê todas as unidades do sistema
@@ -42,13 +74,20 @@ class UnidadeController extends BaseController {
           }
         };
       } else {
-        // ADMIN vê apenas suas unidades com informações de limite
+        // ✅ CORREÇÃO: ADMIN e AGENTE veem unidades da empresa (filtradas por usuario_id)
+        // Para AGENTE, req.user.id é o ID do usuário ADMIN que criou o agente
+        console.log(`🔍 [UnidadeController] Chamando listUnidadesWithLimit(${usuarioId}, ${JSON.stringify(filters)})...`);
         result = await this.unidadeService.listUnidadesWithLimit(usuarioId, filters);
+      }
+
+      console.log(`✅ [UnidadeController] Encontradas ${result.data?.length || 0} unidades para usuario_id ${usuarioId}`);
+      if (result.data && result.data.length > 0) {
+        console.log(`   Unidades IDs: ${result.data.map(u => u.id).join(', ')}`);
       }
 
       return res.json(result);
     } catch (error) {
-      console.error('Erro ao buscar unidades:', error);
+      console.error('❌ [UnidadeController] Erro ao buscar unidades:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message

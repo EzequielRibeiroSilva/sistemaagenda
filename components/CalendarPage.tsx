@@ -150,6 +150,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
 
+    // 🔍 DEBUG: Verificar se dados estão sendo carregados
+    useEffect(() => {
+        console.log('🔍 [CalendarPage] Dados do useCalendarData:', {
+            backendAgents: backendAgents.length,
+            backendServices: backendServices.length,
+            backendLocations: backendLocations.length,
+            backendAppointments: backendAppointments.length,
+            isLoading,
+            error,
+            locations: backendLocations
+        });
+    }, [backendAgents.length, backendServices.length, backendLocations.length, backendAppointments.length, isLoading, error]);
+
     // Converter dados do backend para formato do componente
     const agents: Agent[] = useMemo(() => {
         return backendAgents.map(agent => ({
@@ -270,9 +283,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     useEffect(() => {
         if (loggedInAgentId) {
             setSelectedAgentFilter(loggedInAgentId);
-            setSelectedAgentId(loggedInAgentId);
+            // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar o ID do agente do array allAgents, não o loggedInAgentId
+            // O loggedInAgentId pode ser diferente do agent.id no array
+            if (allAgents.length > 0) {
+                const agentInList = allAgents.find(a => a.id === loggedInAgentId);
+                if (agentInList) {
+                    setSelectedAgentId(agentInList.id);
+                } else {
+                    // Se não encontrar, usar o primeiro agente disponível
+                    setSelectedAgentId(allAgents[0].id);
+                }
+            }
         }
-    }, [loggedInAgentId]);
+    }, [loggedInAgentId, allAgents]);
 
     // 🔧 CORREÇÃO DEFINITIVA: Auto-selecionar primeiro agente disponível
     useEffect(() => {
@@ -339,29 +362,58 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         console.log(`📍 [CalendarPage] Agendamentos para ${currentDateStr}:`, appointmentsForToday);
     }, [agents.length, allAgents.length, displayedAgents.length, services.length, appointments.length, currentDate]);
 
-    // Inicializar filtro de local automaticamente quando há apenas uma unidade
+    // ✅ REFATORADO: Auto-seleção de local baseada no PLANO, não no ROLE
+    // Aplica-se a ADMIN e AGENTE em plano Multi
     useEffect(() => {
-        if (locations.length === 0) return;
-        
-        // Se é plano Single ou há apenas uma unidade, auto-selecionar
-        if (isSinglePlan && selectedLocationFilter === 'all') {
+        if (locations.length === 0 || selectedLocationFilter !== 'all') return;
+
+        // Caso 1: Plano Single (sempre seleciona o primeiro)
+        if (isSinglePlan) {
             console.log('🔧 [CalendarPage] Auto-selecting single location:', locations[0]);
             setSelectedLocationFilter(locations[0].id);
+            return;
         }
-        
-        // Se é plano Multi e usuário tem unidade_id, usar essa unidade
-        if (isMultiPlan && user.unidade_id && selectedLocationFilter === 'all') {
-            const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
-            if (userLocation) {
-                console.log('🔧 [CalendarPage] Auto-selecting user location:', userLocation);
-                setSelectedLocationFilter(userLocation.id);
-            }
-        }
-    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
 
-    // Recarregar agendamentos quando a data ou view mudar
+        if (isMultiPlan) {
+            // Caso 2: Plano Multi e usuário AGENTE - usar unidade do agente
+            if (userRole === 'AGENTE' && loggedInAgentId) {
+                const agentData = backendAgents.find(a => a.id.toString() === loggedInAgentId);
+                if (agentData && agentData.unidade_id) {
+                    const agentLocation = locations.find(l => l.id === agentData.unidade_id.toString());
+                    if (agentLocation) {
+                        console.log('🔧 [CalendarPage] Auto-selecting agent location:', agentLocation);
+                        setSelectedLocationFilter(agentLocation.id);
+                        return;
+                    }
+                }
+            }
+
+            // Caso 3: Plano Multi e usuário (Admin/Gestor) tem unidade padrão.
+            if (user.unidade_id) {
+                const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
+                if (userLocation) {
+                    console.log('🔧 [CalendarPage] Auto-selecting user default location:', userLocation);
+                    setSelectedLocationFilter(userLocation.id);
+                    return;
+                }
+            }
+
+            // Caso 4 (Generalizado): Plano Multi, sem unidade padrão (ADMIN ou Agente multi-local).
+            // Seleciona o primeiro da lista para quebrar o deadlock.
+            console.log('🔧 [CalendarPage] Multi-Plan: Auto-selecting first available location:', locations[0]);
+            setSelectedLocationFilter(locations[0].id);
+        }
+    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id, userRole, loggedInAgentId, backendAgents]);
+
+    // Recarregar agendamentos quando a data, view, LOCAL ou AGENTE LOGADO mudar
     useEffect(() => {
         const loadAppointmentsForDateRange = async () => {
+            // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
+            if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+                console.log('🚫 [CalendarPage] Busca de agendamentos bloqueada. Aguardando seleção de local.');
+                return;
+            }
+
             let startDate: string;
             let endDate: string;
 
@@ -384,14 +436,29 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 endDate = toISODateString(lastDay);
             }
 
-            await fetchAppointments({
+            // ✅ CORREÇÃO CRÍTICA: Usar user.agentId (ID do agente) ao invés de user.id (ID do usuário)
+            const params: { startDate: string, endDate: string, unidade_id?: number, agente_id?: number } = {
                 startDate,
-                endDate
-            });
+                endDate,
+            };
+
+            if (loggedInAgentId) {
+                // 🔧 CORREÇÃO: Para AGENTE, usar user.agentId (ID na tabela agentes) ao invés de user.id (ID na tabela usuarios)
+                // loggedInAgentId já contém o ID correto do agente (ex: 23), não o ID do usuário (ex: 131)
+                params.agente_id = parseInt(loggedInAgentId);
+                console.log('🔧 [CalendarPage] AGENTE detectado. Usando agente_id:', params.agente_id);
+            } else if (selectedLocationFilter !== 'all') {
+                // Se é ADMIN, backend filtra por unidade_id
+                params.unidade_id = parseInt(selectedLocationFilter);
+                console.log('🔧 [CalendarPage] ADMIN detectado. Usando unidade_id:', params.unidade_id);
+            }
+
+            console.log('🚀 [CalendarPage] Buscando agendamentos com filtros:', params);
+            await fetchAppointments(params);
         };
 
         loadAppointmentsForDateRange();
-    }, [currentDate, view, fetchAppointments]);
+    }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
     const handleAppointmentClick = (app: Appointment & { date: string }) => {
         console.log('🔵🔵🔵 [CalendarPage] CLIQUE NO AGENDAMENTO DETECTADO!');
@@ -629,6 +696,21 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     };
 
     const renderDayView = () => {
+        // 🛡️ GUARD CLAUSE: Impedir renderização se Multi-Plan sem local selecionado
+        // REGRA DE NEGÓCIO: Usuários em plano Multi NUNCA devem visualizar agendamentos de múltiplos locais misturados
+        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+            return (
+                <div className="flex-1 flex items-center justify-center p-10">
+                    <div className="text-center">
+                        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <h3 className="mt-2 text-sm font-semibold text-gray-900">Nenhum local selecionado</h3>
+                        <p className="mt-1 text-sm text-gray-500">Por favor, selecione um local no menu acima para visualizar a agenda.</p>
+                    </div>
+                </div>
+            );
+        }
         
         return (
         <div className="flex-1 overflow-auto p-4">
@@ -647,11 +729,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
                         // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                         // O usuário pode editar/finalizar agendamentos a qualquer momento
+                        // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
                         const agentAppointments = appointments.filter(a =>
                             a.agentId === agent.id.toString() &&
                             a.date === dateStr &&
                             (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
-                            (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
+                            a.locationId === selectedLocationFilter
                         );
                         
                         // 🔍 DEBUG DETALHADO: Log para TODOS os agentes
@@ -837,6 +920,34 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     };
     
     const renderWeekView = () => {
+        // � DEBUG CRÍTICO: Log inicial da renderWeekView
+        console.log('🚀 [renderWeekView] INÍCIO DA RENDERIZAÇÃO:', {
+            isMultiPlan,
+            selectedLocationFilter,
+            appointments: appointments.length,
+            services: services.length,
+            allAgents: allAgents.length,
+            selectedAgentId,
+            currentDate: toISODateString(currentDate)
+        });
+
+        // �🛡️ GUARD CLAUSE: Impedir renderização se Multi-Plan sem local selecionado
+        // REGRA DE NEGÓCIO: Usuários em plano Multi NUNCA devem visualizar agendamentos de múltiplos locais misturados
+        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+            console.log('❌ [renderWeekView] BLOQUEADO: Multi-Plan sem local selecionado');
+            return (
+                <div className="flex-1 flex items-center justify-center p-10">
+                    <div className="text-center">
+                        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <h3 className="mt-2 text-sm font-semibold text-gray-900">Nenhum local selecionado</h3>
+                        <p className="mt-1 text-sm text-gray-500">Por favor, selecione um local no menu acima para visualizar a agenda.</p>
+                    </div>
+                </div>
+            );
+        }
+        
         // ✅ PASSO 1: VERIFICAR SE DADOS ESSENCIAIS ESTÃO CARREGADOS
         if (services.length === 0 || allAgents.length === 0) {
             console.log('⏳ [renderWeekView] Aguardando carregamento de services e allAgents...', {
@@ -924,29 +1035,39 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
-
-                                // 🔧 APLICAR EXATAMENTE A MESMA LÓGICA DA VISÃO DIÁRIA (QUE FUNCIONA)
+                                // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
                                 const agentAppointments = appointments.filter(a =>
                                     a.agentId === selectedAgentId.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
-                                    (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
+                                    a.locationId === selectedLocationFilter
                                 );
 
                                 // 🔍 DEBUG CRÍTICO: Comparar com visão diária
-                                console.log(`🔍 [WeekView vs DayView] Comparação para ${dateStr}:`, {
-                                    selectedAgentId,
-                                    selectedAgentIdType: typeof selectedAgentId,
-                                    totalAppointments: appointments.length,
-                                    appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
-                                    appointmentsForAgent: appointments.filter(a => a.agentId === selectedAgentId.toString()).length,
-                                    finalFiltered: agentAppointments.length,
-                                    sampleAppointment: appointments.find(a => a.date === dateStr) || 'Nenhum para esta data',
-                                    filters: {
-                                        serviceFilter: selectedServiceFilter,
-                                        locationFilter: selectedLocationFilter
-                                    }
-                                });
+                                if (dateStr === '2025-10-28') {
+                                    console.log(`🎯 [WeekView DEBUG] FOCO NO DIA 28/10 - ${dateStr}:`, {
+                                        selectedAgentId,
+                                        selectedAgentIdType: typeof selectedAgentId,
+                                        loggedInAgentId,
+                                        allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name })),
+                                        totalAppointments: appointments.length,
+                                        appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
+                                        appointmentsForAgent: appointments.filter(a => a.agentId === selectedAgentId.toString()).length,
+                                        finalFiltered: agentAppointments.length,
+                                        sampleAppointments: appointments.filter(a => a.date === dateStr).map(a => ({
+                                            id: a.id,
+                                            agentId: a.agentId,
+                                            date: a.date,
+                                            startTime: a.startTime,
+                                            locationId: a.locationId,
+                                            serviceId: a.serviceId
+                                        })),
+                                        filters: {
+                                            serviceFilter: selectedServiceFilter,
+                                            locationFilter: selectedLocationFilter
+                                        }
+                                    });
+                                }
 
 
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === selectedAgentId.toString() && (b.date === dateStr || !b.date));
@@ -992,7 +1113,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     
                                     {agentAppointments.map(app => {
                                         // ✅ Buscar serviço usando o ID real do banco de dados
-                                        const service = services.find(s => s.id.toString() === app.serviceId);
+                                        let service = services.find(s => s.id.toString() === app.serviceId);
+
+                                        // ✅ LÓGICA DE FALLBACK CRÍTICA (REPLICADA DO renderDayView)
+                                        if (!service && services.length > 0) {
+                                            service = services[0];
+                                        }
 
                                         if (!service) {
                                             console.error(`❌ [renderWeekView] SERVIÇO NÃO ENCONTRADO! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
@@ -1096,7 +1222,36 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         </>
     )};
 
-    const renderMonthView = () => (
+    const renderMonthView = () => {
+        // � DEBUG CRÍTICO: Log inicial da renderMonthView
+        console.log('🚀 [renderMonthView] INÍCIO DA RENDERIZAÇÃO:', {
+            isMultiPlan,
+            selectedLocationFilter,
+            appointments: appointments.length,
+            services: services.length,
+            allAgents: allAgents.length,
+            displayedAgents: displayedAgents.length,
+            currentDate: toISODateString(currentDate)
+        });
+
+        // �🛡️ GUARD CLAUSE: Impedir renderização se Multi-Plan sem local selecionado
+        // REGRA DE NEGÓCIO: Usuários em plano Multi NUNCA devem visualizar agendamentos de múltiplos locais misturados
+        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+            console.log('❌ [renderMonthView] BLOQUEADO: Multi-Plan sem local selecionado');
+            return (
+                <div className="flex-1 flex items-center justify-center p-10">
+                    <div className="text-center">
+                        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <h3 className="mt-2 text-sm font-semibold text-gray-900">Nenhum local selecionado</h3>
+                        <p className="mt-1 text-sm text-gray-500">Por favor, selecione um local no menu acima para visualizar a agenda.</p>
+                    </div>
+                </div>
+            );
+        }
+        
+        return (
         <div className="flex-1 overflow-auto">
             <div className="flex sticky top-0 bg-white z-20 border-b border-gray-200">
                 <div className="w-40 p-3 font-semibold text-gray-700">Data Selecionada</div>
@@ -1124,14 +1279,38 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
+                                // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
                                 const agentAppointments = appointments.filter(a =>
                                     a.agentId === agent.id.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
-                                    (selectedLocationFilter === 'all' || a.locationId === selectedLocationFilter)
+                                    a.locationId === selectedLocationFilter
                                 );
 
                                 // 🔍 DEBUG: Log dos agendamentos encontrados
+                                if (dateStr === '2025-10-28') {
+                                    console.log(`🎯 [MonthView DEBUG] FOCO NO DIA 28/10 - Agente ${agent.name}:`, {
+                                        agentId: agent.id,
+                                        agentIdType: typeof agent.id,
+                                        dateStr,
+                                        totalAppointments: appointments.length,
+                                        appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
+                                        appointmentsForAgent: appointments.filter(a => a.agentId === agent.id.toString()).length,
+                                        finalFiltered: agentAppointments.length,
+                                        sampleAppointments: appointments.filter(a => a.date === dateStr).map(a => ({
+                                            id: a.id,
+                                            agentId: a.agentId,
+                                            date: a.date,
+                                            startTime: a.startTime,
+                                            locationId: a.locationId,
+                                            serviceId: a.serviceId
+                                        })),
+                                        filters: {
+                                            serviceFilter: selectedServiceFilter,
+                                            locationFilter: selectedLocationFilter
+                                        }
+                                    });
+                                }
                                 if (agentAppointments.length > 0) {
                                     console.log(`📅 [GRID MENSAL] ${dateStr} - Agente ${agent.name}: ${agentAppointments.length} agendamentos`, agentAppointments.map(a => `${a.id}:${a.status}`));
                                 }
@@ -1171,7 +1350,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                         {agentAppointments.map((app, index) => {
                                             // ✅ Buscar serviço usando o ID real do banco de dados
-                                            const service = services.find(s => s.id.toString() === app.serviceId);
+                                            let service = services.find(s => s.id.toString() === app.serviceId);
+
+                                            // ✅ LÓGICA DE FALLBACK CRÍTICA (REPLICADA DO renderDayView)
+                                            if (!service && services.length > 0) {
+                                                service = services[0];
+                                            }
+
                                             if (!service) {
                                                 console.error(`❌ [GRID MENSAL] Serviço não encontrado! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
                                                 return null;
@@ -1244,8 +1429,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 })}
             </div>
         </div>
-    );
-
+        );
+    };
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
@@ -1299,7 +1484,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         <button onClick={handleNext} className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                             <ChevronRight className="h-5 w-5 text-gray-600" />
                         </button>
-                        {userRole === 'ADMIN' && isMultiPlan && (
+                        {/* 📍 DROPDOWN DE SELEÇÃO DE LOCAL - Sempre visível quando há múltiplos locais */}
+                        {locations.length > 1 && (
                             <HeaderDropdown
                                 options={locationOptionsForHeader}
                                 selected={selectedLocationName}

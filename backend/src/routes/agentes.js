@@ -24,29 +24,37 @@ router.get('/list',
   }
 );
 
-// Middleware para exigir role ADMIN nas demais rotas
-router.use(rbacMiddleware.requireRole('ADMIN'));
-
 /**
  * @route GET /agentes
  * @desc Listar agentes (Grid)
- * @access Private (ADMIN)
+ * @access Private (ADMIN ou AGENTE)
+ * ✅ CORREÇÃO: AGENTE precisa ver lista de agentes para o calendário filtrar corretamente
  * @returns { success: boolean, data: Array<Agent>, message: string }
  */
-router.get('/', async (req, res) => {
-  await agenteController.index(req, res);
-});
+router.get('/',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  async (req, res) => {
+    await agenteController.index(req, res);
+  }
+);
 
 /**
  * @route GET /agentes/:id
  * @desc Visualizar agente específico (para edição)
- * @access Private (ADMIN)
+ * @access Private (ADMIN ou AGENTE)
+ * ✅ CORREÇÃO: AGENTE precisa acessar seus próprios dados
  * @param {string} id - ID do agente
  * @returns { success: boolean, data: Agent, message: string }
  */
-router.get('/:id', async (req, res) => {
-  await agenteController.show(req, res);
-});
+router.get('/:id',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  async (req, res) => {
+    await agenteController.show(req, res);
+  }
+);
+
+// ✅ Middleware para exigir role ADMIN APENAS em operações de escrita (POST, PUT, DELETE)
+router.use(rbacMiddleware.requireRole('ADMIN'));
 
 /**
  * @route POST /agentes
