@@ -21,6 +21,7 @@ export interface BackendAgente {
   nome_exibicao?: string;
   data_admissao?: string;
   comissao_percentual?: string;
+  unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
 }
 
 export interface BackendServico {
@@ -67,6 +68,7 @@ export interface CalendarAgent {
   id: string;
   name: string;
   avatar: string;
+  unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
 }
 
 export interface CalendarService {
@@ -169,7 +171,8 @@ export const useCalendarData = () => {
     return {
       id: backendAgent.id.toString(),
       name: displayName,
-      avatar: avatarUrl
+      avatar: avatarUrl,
+      unidades: backendAgent.unidades // ✅ CRÍTICO: Passar array de unidades do backend
     };
   }, []);
 

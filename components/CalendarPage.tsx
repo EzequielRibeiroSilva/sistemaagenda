@@ -166,7 +166,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return backendAgents.map(agent => ({
             id: agent.id,
             name: agent.name,
-            avatar: agent.avatar
+            avatar: agent.avatar,
+            unidades: agent.unidades // ✅ CRÍTICO: Incluir array de unidades
         }));
     }, [backendAgents]);
 
@@ -270,11 +271,33 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [loggedInAgentId, agents]);
 
     const displayedAgents = useMemo(() => {
-        if (view !== 'Semana' && selectedAgentFilter !== 'all') {
-             return allAgents.filter(agent => agent.id === selectedAgentFilter);
+        let agentsToDisplay = allAgents;
+
+        // 1. ✅ FILTRO POR LOCAL (UNIDADE): Se um local estiver selecionado, filtrar agentes
+        // Apenas agentes que trabalham na unidade selecionada devem ser exibidos no grid
+        if (selectedLocationFilter !== 'all') {
+            agentsToDisplay = allAgents.filter(agent =>
+                // Garante que a propriedade 'unidades' existe e é um array
+                Array.isArray(agent.unidades) && 
+                // Verifica se o ID do local selecionado está no array de unidades do agente
+                agent.unidades.includes(selectedLocationFilter)
+            );
+            console.log(`🔍 [CalendarPage] Filtro de Local aplicado (${selectedLocationFilter}):`, {
+                totalAgents: allAgents.length,
+                filteredAgents: agentsToDisplay.length,
+                agentNames: agentsToDisplay.map(a => a.name)
+            });
         }
-        return allAgents;
-    }, [allAgents, selectedAgentFilter, view]);
+
+        // 2. FILTRO POR AGENTE (DROPDOWN): Se um agente específico for selecionado
+        // (Isso se aplica apenas se a view não for 'Semana')
+        if (view !== 'Semana' && selectedAgentFilter !== 'all') {
+            return agentsToDisplay.filter(agent => agent.id === selectedAgentFilter);
+        }
+
+        return agentsToDisplay;
+
+    }, [allAgents, selectedLocationFilter, selectedAgentFilter, view]); // ✅ CRÍTICO: Adicionar selectedLocationFilter às dependências
     
     const [selectedAgentId, setSelectedAgentId] = useState('');
     
@@ -303,6 +326,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         setSelectedAgentId(firstAgentId);
         }
     }, [allAgents, selectedAgentId, view]);
+
+    // ✅ NOVO: Auto-selecionar primeiro agente de displayedAgents quando a lista mudar
+    // Isso garante que ao trocar de unidade, um agente válido seja selecionado na view Semana
+    useEffect(() => {
+        if (view === 'Semana' && displayedAgents.length > 0) {
+            // Se o agente selecionado não está mais na lista filtrada, selecionar o primeiro
+            const isSelectedAgentInList = displayedAgents.some(a => a.id === selectedAgentId);
+            if (!isSelectedAgentInList) {
+                console.log(`🔄 [CalendarPage] Agente selecionado (${selectedAgentId}) não está em displayedAgents. Auto-selecionando primeiro agente: ${displayedAgents[0].id}`);
+                setSelectedAgentId(displayedAgents[0].id);
+            }
+        }
+    }, [displayedAgents, selectedAgentId, view]);
     
     // Log controlado para debug (apenas quando dados mudarem)
     useEffect(() => {
@@ -960,7 +996,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         <>
             <div className="flex items-center overflow-x-auto p-4 border-b border-gray-200">
                 <div className="flex items-center gap-2">
-                    {allAgents.map(agent => (
+                    {displayedAgents.map(agent => (
                         <button 
                             key={agent.id}
                             onClick={() => setSelectedAgentId(agent.id)}
