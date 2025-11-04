@@ -341,8 +341,8 @@ export const useAppointmentManagement = () => {
   // Função para buscar lista de agentes
   const fetchAgents = useCallback(async () => {
     try {
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agentes/list`);
-      const data = await response.json();
+      // ✅ CORREÇÃO CRÍTICA: makeAuthenticatedRequest já retorna JSON
+      const data = await makeAuthenticatedRequest(`${API_BASE_URL}/agentes/list`);
 
       if (data.success && data.data) {
         const agentNames = data.data.map((agent: any) => `${agent.nome} ${agent.sobrenome || ''}`.trim());

@@ -29,7 +29,13 @@ class HorarioFuncionamentoUnidade extends BaseModel {
         .where('unidade_id', unidadeId)
         .orderBy('dia_semana');
 
-      return horarios;
+      // ✅ CORREÇÃO CRÍTICA: Fazer parse do horarios_json (STRING → ARRAY)
+      return horarios.map(h => ({
+        ...h,
+        horarios_json: typeof h.horarios_json === 'string' 
+          ? JSON.parse(h.horarios_json) 
+          : h.horarios_json
+      }));
     } catch (error) {
       console.error('Erro ao buscar horários da unidade:', error);
       throw error;
@@ -49,7 +55,15 @@ class HorarioFuncionamentoUnidade extends BaseModel {
         .where('dia_semana', diaSemana)
         .first();
 
-      return horario || null;
+      if (!horario) return null;
+
+      // ✅ CORREÇÃO CRÍTICA: Fazer parse do horarios_json (STRING → ARRAY)
+      return {
+        ...horario,
+        horarios_json: typeof horario.horarios_json === 'string' 
+          ? JSON.parse(horario.horarios_json) 
+          : horario.horarios_json
+      };
     } catch (error) {
       console.error('Erro ao buscar horário específico:', error);
       throw error;
