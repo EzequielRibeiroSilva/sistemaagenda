@@ -180,16 +180,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             isActive={activeView === 'dashboard'}
             onClick={() => handleNavItemClick('dashboard')}
         />
-        <NavItem 
-            icon={<Calendar className="h-5 w-5" />} 
-            label="CALENDÁRIO" 
+        <NavItem
+            icon={<Calendar className="h-5 w-5" />}
+            label="CALENDÁRIO"
             isCollapsed={isCollapsed}
             isActive={activeView === 'calendar'}
             onClick={() => handleNavItemClick('calendar')}
         />
-        <NavItem 
-            icon={<Briefcase className="h-5 w-5" />} 
-            label="COMPROMISSOS" 
+        <NavItem
+            icon={<Briefcase className="h-5 w-5" />}
+            label="COMPROMISSOS"
             isCollapsed={isCollapsed}
             isActive={activeView === 'compromissos'}
             onClick={() => handleNavItemClick('compromissos')}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Agent, Service, Appointment, UnavailableBlock, ScheduleSlot, Location } from '../types';
 import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
@@ -27,7 +28,6 @@ const HeaderDropdown: React.FC<{
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
-
 
     return (
         <div className="relative" ref={dropdownRef}>
@@ -149,19 +149,17 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
+    
+    // Estado do popover
+    const [popover, setPopover] = useState<{
+        visible: boolean;
+        content: NonNullable<ScheduleSlot['details']>;
+        style: React.CSSProperties;
+    } | null>(null);
 
     // 🔍 DEBUG: Verificar se dados estão sendo carregados
     useEffect(() => {
-        console.log('🔍 [CalendarPage] Dados do useCalendarData:', {
-            backendAgents: backendAgents.length,
-            backendServices: backendServices.length,
-            backendLocations: backendLocations.length,
-            backendAppointments: backendAppointments.length,
-            isLoading,
-            error,
-            locations: backendLocations
-        });
-    }, [backendAgents.length, backendServices.length, backendLocations.length, backendAppointments.length, isLoading, error]);
+            }, [backendAgents.length, backendServices.length, backendLocations.length, backendAppointments.length, isLoading, error]);
 
     // Converter dados do backend para formato do componente
     const agents: Agent[] = useMemo(() => {
@@ -192,7 +190,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const isSinglePlan = user.plano === 'Single' || locations.length === 1;
     const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
 
-    const appointments: (Appointment & { date: string; status?: string })[] = useMemo(() => {
+    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string })[] = useMemo(() => {
         return backendAppointments.map(appointment => ({
             id: appointment.id,
             agentId: appointment.agentId,
@@ -201,7 +199,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             startTime: appointment.startTime,
             endTime: appointment.endTime,
             date: appointment.date,
-            status: appointment.status // ✅ INCLUIR STATUS PARA DESTAQUE VISUAL
+            status: appointment.status, // ✅ INCLUIR STATUS PARA DESTAQUE VISUAL
+            clientName: appointment.clientName, // ✅ CRÍTICO: Incluir nome do cliente
+            clientPhone: appointment.clientPhone // ✅ CRÍTICO: Incluir telefone do cliente
         }));
     }, [backendAppointments]);
 
@@ -241,14 +241,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             
             // Se encontrou horários válidos, usar eles
             if (minHour < 23 && maxHour > 0) {
-                console.log(`📅 [CalendarPage] Usando horários da unidade: ${minHour}:00 - ${maxHour}:00`);
-                return { startHour: minHour, endHour: maxHour };
+                                return { startHour: minHour, endHour: maxHour };
             }
         }
         
         // Fallback: usar horários padrão
-        console.log('📅 [CalendarPage] Usando horários padrão: 8:00 - 21:00');
-        return { startHour: 8, endHour: 21 };
+                return { startHour: 8, endHour: 21 };
     }, [selectedLocationFilter, unitSchedules]);
 
     const START_HOUR_DAY = startHour;
@@ -302,65 +300,28 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         // Se não há agente selecionado e há agentes disponíveis, selecionar o primeiro
         if (allAgents.length > 0 && !selectedAgentId) {
             const firstAgentId = allAgents[0].id;
-            console.log('🔧 [CalendarPage] Auto-selecionando primeiro agente:', {
-                firstAgentId,
-                firstAgentName: allAgents[0].name,
-                view,
-                allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name }))
-            });
-            setSelectedAgentId(firstAgentId);
+                        setSelectedAgentId(firstAgentId);
         }
     }, [allAgents, selectedAgentId, view]);
     
     // Log controlado para debug (apenas quando dados mudarem)
     useEffect(() => {
-        console.log('🔍 [CalendarPage] Estado atualizado:', {
-            userRole,
-            loggedInAgentId,
-            totalAgents: agents.length,
-            allAgents: allAgents.length,
-            displayedAgents: displayedAgents.length,
-            totalServices: services.length,
-            totalAppointments: appointments.length,
-            currentDate: toISODateString(currentDate),
-            agentsList: agents.map(a => ({ id: a.id, name: a.name })),
-            allAgentsList: allAgents.map(a => ({ id: a.id, name: a.name })),
-            servicesList: services.map(s => ({ id: s.id, name: s.name })),
-            appointmentsSample: appointments.slice(0, 10).map(a => ({
-                id: a.id,
-                agentId: a.agentId,
-                serviceId: a.serviceId,
-                date: a.date,
-                time: `${a.startTime}-${a.endTime}`
-            }))
-        });
-        
+                
         // 🔍 DEBUG CRÍTICO: Mostrar TODOS os agendamentos
-        console.log('📋 [CalendarPage] TODOS OS AGENDAMENTOS:', appointments);
-
-        // 🔍 DEBUG CRÍTICO: Comparar IDs dos agentes
-        console.log('🆔 [CalendarPage] COMPARAÇÃO DE IDs:', {
-            selectedAgentId,
-            selectedAgentIdType: typeof selectedAgentId,
-            allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name, type: typeof a.id })),
-            appointmentAgentIds: [...new Set(appointments.map(a => a.agentId))].map(id => ({ id, type: typeof id })),
-            lucasAndradeInAgents: allAgents.find(a => a.name.includes('Lucas')),
-            lucasAndradeAppointments: appointments.filter(a => a.agentId === '25').length
-        });
         
+        // 🔍 DEBUG CRÍTICO: Comparar IDs dos agentes
+                
         // 🔍 DEBUG: Agrupar por data
         const appointmentsByDate = appointments.reduce((acc, app) => {
             if (!acc[app.date]) acc[app.date] = [];
             acc[app.date].push(app);
             return acc;
         }, {} as Record<string, typeof appointments>);
-        console.log('📅 [CalendarPage] Agendamentos por data:', appointmentsByDate);
-        
+                
         // 🔍 DEBUG: Verificar data atual
         const currentDateStr = toISODateString(currentDate);
         const appointmentsForToday = appointments.filter(a => a.date === currentDateStr);
-        console.log(`📍 [CalendarPage] Agendamentos para ${currentDateStr}:`, appointmentsForToday);
-    }, [agents.length, allAgents.length, displayedAgents.length, services.length, appointments.length, currentDate]);
+            }, [agents.length, allAgents.length, displayedAgents.length, services.length, appointments.length, currentDate]);
 
     // ✅ REFATORADO: Auto-seleção de local baseada no PLANO, não no ROLE
     // Aplica-se a ADMIN e AGENTE em plano Multi
@@ -369,8 +330,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         // Caso 1: Plano Single (sempre seleciona o primeiro)
         if (isSinglePlan) {
-            console.log('🔧 [CalendarPage] Auto-selecting single location:', locations[0]);
-            setSelectedLocationFilter(locations[0].id);
+                        setSelectedLocationFilter(locations[0].id);
             return;
         }
 
@@ -381,8 +341,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 if (agentData && agentData.unidade_id) {
                     const agentLocation = locations.find(l => l.id === agentData.unidade_id.toString());
                     if (agentLocation) {
-                        console.log('🔧 [CalendarPage] Auto-selecting agent location:', agentLocation);
-                        setSelectedLocationFilter(agentLocation.id);
+                                                setSelectedLocationFilter(agentLocation.id);
                         return;
                     }
                 }
@@ -392,16 +351,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             if (user.unidade_id) {
                 const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
                 if (userLocation) {
-                    console.log('🔧 [CalendarPage] Auto-selecting user default location:', userLocation);
-                    setSelectedLocationFilter(userLocation.id);
+                                        setSelectedLocationFilter(userLocation.id);
                     return;
                 }
             }
 
             // Caso 4 (Generalizado): Plano Multi, sem unidade padrão (ADMIN ou Agente multi-local).
             // Seleciona o primeiro da lista para quebrar o deadlock.
-            console.log('🔧 [CalendarPage] Multi-Plan: Auto-selecting first available location:', locations[0]);
-            setSelectedLocationFilter(locations[0].id);
+                        setSelectedLocationFilter(locations[0].id);
         }
     }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id, userRole, loggedInAgentId, backendAgents]);
 
@@ -410,8 +367,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         const loadAppointmentsForDateRange = async () => {
             // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
             if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-                console.log('🚫 [CalendarPage] Busca de agendamentos bloqueada. Aguardando seleção de local.');
-                return;
+                                return;
             }
 
             let startDate: string;
@@ -446,32 +402,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 // 🔧 CORREÇÃO: Para AGENTE, usar user.agentId (ID na tabela agentes) ao invés de user.id (ID na tabela usuarios)
                 // loggedInAgentId já contém o ID correto do agente (ex: 23), não o ID do usuário (ex: 131)
                 params.agente_id = parseInt(loggedInAgentId);
-                console.log('🔧 [CalendarPage] AGENTE detectado. Usando agente_id:', params.agente_id);
-            } else if (selectedLocationFilter !== 'all') {
+                            } else if (selectedLocationFilter !== 'all') {
                 // Se é ADMIN, backend filtra por unidade_id
                 params.unidade_id = parseInt(selectedLocationFilter);
-                console.log('🔧 [CalendarPage] ADMIN detectado. Usando unidade_id:', params.unidade_id);
-            }
+                            }
 
-            console.log('🚀 [CalendarPage] Buscando agendamentos com filtros:', params);
-            await fetchAppointments(params);
+                        await fetchAppointments(params);
         };
 
         loadAppointmentsForDateRange();
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
     const handleAppointmentClick = (app: Appointment & { date: string }) => {
-        console.log('🔵🔵🔵 [CalendarPage] CLIQUE NO AGENDAMENTO DETECTADO!');
-        console.log('📋 [CalendarPage] Dados do agendamento:', {
-            id: app.id,
-            agentId: app.agentId,
-            serviceId: app.serviceId,
-            locationId: app.locationId,
-            date: app.date,
-            startTime: app.startTime,
-            endTime: app.endTime
-        });
-        
+                        
         // Passar apenas o ID do agendamento para o modal buscar os detalhes completos
         const modalPayload = { 
             appointment: { 
@@ -490,12 +433,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             } 
         };
         
-        console.log('📦 [CalendarPage] Payload para o modal:', modalPayload);
-        setModalData(modalPayload);
-        console.log('✅ [CalendarPage] setModalData executado');
-        setModalOpen(true);
-        console.log('✅ [CalendarPage] setModalOpen(true) executado');
-    };
+                setModalData(modalPayload);
+                setModalOpen(true);
+            };
     
     const handleSlotClick = (slotInfo: { agent: Agent, startTime: string, date: Date }) => {
         const startHour = parseInt(slotInfo.startTime.split(':')[0], 10);
@@ -581,10 +521,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     
     const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: string | null | undefined) => {
         // ✅ Log de Entrada + Validação
-        console.log(`📐 [timeToPositionStyleWeek] INPUT: startTime=${startTime}, endTime=${endTime}`);
-        if (!startTime || !endTime || typeof startTime !== 'string' || typeof endTime !== 'string' || !startTime.includes(':') || !endTime.includes(':')) {
-            console.error(`❌ [timeToPositionStyleWeek] Horários inválidos recebidos!`, { startTime, endTime });
-            return { top: '0%', height: '0%', display: 'none' }; // Ocultar se inválido
+                if (!startTime || !endTime || typeof startTime !== 'string' || typeof endTime !== 'string' || !startTime.includes(':') || !endTime.includes(':')) {
+                        return { top: '0%', height: '0%', display: 'none' }; // Ocultar se inválido
         }
 
         const [startH, startM] = startTime.split(':').map(Number);
@@ -592,8 +530,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         // ✅ Validar se a conversão para número funcionou
         if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
-             console.error(`❌ [timeToPositionStyleWeek] Falha ao converter horas/minutos para número!`, { startTime, endTime });
-             return { top: '0%', height: '0%', display: 'none' };
+                          return { top: '0%', height: '0%', display: 'none' };
         }
 
         const startTotalMinutes = (startH - START_HOUR_WEEK) * 60 + startM;
@@ -607,20 +544,17 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         // ✅ Evitar divisão por zero e durações negativas
         if (totalDurationMinutes <= 0) {
-             console.error(`❌ [timeToPositionStyleWeek] Duração total do dia inválida!`, { START_HOUR_WEEK, END_HOUR_WEEK });
-             return { top: '0%', height: '0%', display: 'none' };
+                          return { top: '0%', height: '0%', display: 'none' };
         }
         if (endTotalMinutes <= startTotalMinutes) {
-             console.warn(`⚠️ [timeToPositionStyleWeek] Horário final (${endTime}) é menor ou igual ao inicial (${startTime}). Ajustando altura mínima.`);
-        }
+                     }
 
         const top = (startTotalMinutes / totalDurationMinutes) * 100;
         const height = ((endTotalMinutes - startTotalMinutes) / totalDurationMinutes) * 100;
 
         // ✅ Log de Saída Detalhado
         const styleResult = { top: `${top}%`, height: `${height}%` };
-        console.log(`📐✅ [timeToPositionStyleWeek] OUTPUT para ${startTime}-${endTime}:`, styleResult);
-
+        
         return styleResult;
     };
 
@@ -638,9 +572,116 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         // 🔍 DEBUG: Log detalhado do posicionamento
         const result = { left: `${Math.max(0, left)}%`, width: `${Math.min(100, width)}%` };
-        console.log(`📐 [timeToPositionStyleMonth] ${startTime}-${endTime}: left=${left.toFixed(1)}%, width=${width.toFixed(1)}%`, result);
-
+        
         return result;
+    };
+
+    // ✅ Componente AppointmentPopover - Exibe detalhes do agendamento
+    const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['details']> }> = ({ appointment }) => {
+        const name = appointment.agentName || 'Agente';
+        const fallbackAvatar = `https://i.pravatar.cc/150?u=${appointment.agentEmail}`;
+        
+        return (
+            <div className="bg-white rounded-lg shadow-2xl p-4 w-64 border border-gray-200 text-sm z-50">
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
+                    <div>
+                        <p className="font-bold text-gray-800 uppercase">{appointment.service}</p>
+                        <p className="text-gray-500">{appointment.date}</p>
+                        <p className="font-semibold text-blue-600">{appointment.time}</p>
+                    </div>
+                    <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+                </div>
+                
+                {/* Cliente */}
+                <div className="mb-3 pb-3 border-b border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Cliente</p>
+                    <p className="font-semibold text-gray-800">{appointment.client}</p>
+                </div>
+                
+                {/* Agente */}
+                <div className="flex items-center">
+                    <img 
+                        src={appointment.agentAvatar || fallbackAvatar} 
+                        alt={name}
+                        className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md"
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.onerror = null;
+                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
+                        }}
+                    />
+                    <div className="ml-3">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Agente</p>
+                        <p className="font-bold text-gray-800">{name}</p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // ✅ Handler de Mouse Enter - Cria e posiciona o popover
+    const handleSlotMouseEnter = (e: React.MouseEvent, appointment: CalendarAppointment) => {
+        const agent = agents.find(a => a.id === appointment.agentId);
+        
+        // ✅ FALLBACK INTELIGENTE: Se serviceId não encontrado, usa primeiro serviço disponível
+        let service = services.find(s => s.id === appointment.serviceId);
+        if (!service && services.length > 0) {
+            service = services[0];
+        }
+        
+        if (!agent || !service) return;
+
+        const formattedDate = new Date(appointment.date + 'T00:00:00').toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        const formattedTime = `${appointment.startTime} - ${appointment.endTime}`;
+
+        const appointmentDetails: NonNullable<ScheduleSlot['details']> = {
+            id: appointment.id,
+            service: service.name,
+            client: appointment.clientName || 'Cliente não informado',
+            agentName: agent.name,
+            agentAvatar: agent.avatar,
+            agentEmail: backendAgents.find(a => a.id === appointment.agentId)?.email || '',
+            agentPhone: backendAgents.find(a => a.id === appointment.agentId)?.phone,
+            date: formattedDate,
+            time: formattedTime,
+            serviceId: appointment.serviceId,
+            locationId: appointment.locationId,
+            status: appointment.status as any || 'Aprovado'
+        };
+
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const POPOVER_ESTIMATED_HEIGHT = 156;
+        const POPOVER_MARGIN = 8;
+        
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const hasSpaceBelow = spaceBelow >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+        const hasSpaceAbove = rect.top >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+
+        const positionAbove = !hasSpaceBelow && hasSpaceAbove;
+
+        const style: React.CSSProperties = {
+            position: 'fixed',
+            left: `${rect.left}px`,
+            top: positionAbove ? `${rect.top - POPOVER_MARGIN}px` : `${rect.bottom + POPOVER_MARGIN}px`,
+            transform: positionAbove ? 'translateY(-100%)' : 'translateY(0)',
+            zIndex: 50,
+        };
+
+        setPopover({
+            visible: true,
+            content: appointmentDetails,
+            style: style,
+        });
+    };
+
+    // ✅ Handler de Mouse Leave - Remove o popover
+    const handleSlotMouseLeave = () => {
+        setPopover(null);
     };
 
     const formatHeaderDate = () => {
@@ -738,42 +779,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         );
                         
                         // 🔍 DEBUG DETALHADO: Log para TODOS os agentes
-                        console.log(`🔍 [CalendarPage.renderDayView] Agente: ${agent.name} (ID: ${agent.id})`, {
-                            dateStr,
-                            totalAppointmentsInState: appointments.length,
-                            appointmentsForThisAgent: agentAppointments.length,
-                            selectedServiceFilter,
-                            selectedLocationFilter,
-                            allAppointmentsForDate: appointments.filter(a => a.date === dateStr).map(a => ({
-                                id: a.id,
-                                agentId: a.agentId,
-                                agentIdType: typeof a.agentId,
-                                agentMatch: a.agentId === agent.id.toString(),
-                                serviceId: a.serviceId,
-                                locationId: a.locationId,
-                                time: `${a.startTime}-${a.endTime}`
-                            })),
-                            filteredAppointments: agentAppointments.map(a => ({
-                                id: a.id,
-                                time: `${a.startTime}-${a.endTime}`
-                            }))
-                        });
-                        
+                                                
                         if (agent.id === '23' || agent.id === '25' || agent.id === '27') {
-                            console.log(`🔍 [CalendarPage] Filtro para agente ${agent.name} (ID: ${agent.id}):`, {
-                                dateStr,
-                                totalAppointments: appointments.length,
-                                appointmentsForThisAgent: agentAppointments.length,
-                                appointmentsSample: appointments.slice(0, 2).map(a => ({
-                                    id: a.id,
-                                    agentId: a.agentId,
-                                    agentIdType: typeof a.agentId,
-                                    date: a.date,
-                                    match: a.agentId === agent.id.toString() && a.date === dateStr
-                                })),
-                                agentIdType: typeof agent.id
-                            });
-                        }
+                                                    }
                         
                         const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
                         
@@ -888,6 +896,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         <div
                                           key={app.id}
                                           onClick={() => handleAppointmentClick(app)}
+                                          onMouseEnter={(e) => handleSlotMouseEnter(e, app)}
+                                          onMouseLeave={handleSlotMouseLeave}
                                           className={`absolute w-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10 flex flex-col justify-center`}
                                           style={{
                                               top: `${top}%`,
@@ -921,21 +931,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     
     const renderWeekView = () => {
         // � DEBUG CRÍTICO: Log inicial da renderWeekView
-        console.log('🚀 [renderWeekView] INÍCIO DA RENDERIZAÇÃO:', {
-            isMultiPlan,
-            selectedLocationFilter,
-            appointments: appointments.length,
-            services: services.length,
-            allAgents: allAgents.length,
-            selectedAgentId,
-            currentDate: toISODateString(currentDate)
-        });
-
+        
         // �🛡️ GUARD CLAUSE: Impedir renderização se Multi-Plan sem local selecionado
         // REGRA DE NEGÓCIO: Usuários em plano Multi NUNCA devem visualizar agendamentos de múltiplos locais misturados
         if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-            console.log('❌ [renderWeekView] BLOQUEADO: Multi-Plan sem local selecionado');
-            return (
+                        return (
                 <div className="flex-1 flex items-center justify-center p-10">
                     <div className="text-center">
                         <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -950,33 +950,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         
         // ✅ PASSO 1: VERIFICAR SE DADOS ESSENCIAIS ESTÃO CARREGADOS
         if (services.length === 0 || allAgents.length === 0) {
-            console.log('⏳ [renderWeekView] Aguardando carregamento de services e allAgents...', {
-                servicesLength: services.length,
-                allAgentsLength: allAgents.length
-            });
-            return <div className="p-4 text-center text-gray-500">Carregando dados da semana...</div>;
+                        return <div className="p-4 text-center text-gray-500">Carregando dados da semana...</div>;
         }
 
         const selectedAgent = allAgents.find(a => a.id === selectedAgentId);
         
         // 🔍 DEBUG CRÍTICO: Verificar selectedAgentId e agendamentos
-        console.log('🔍 [renderWeekView] ESTADO INICIAL:', {
-            selectedAgentId,
-            selectedAgentIdType: typeof selectedAgentId,
-            selectedAgent: selectedAgent ? { id: selectedAgent.id, name: selectedAgent.name } : 'NÃO ENCONTRADO',
-            allAgentsIds: allAgents.map(a => ({ id: a.id, type: typeof a.id, name: a.name })),
-            totalAppointments: appointments.length,
-            weekDays: weekDays.map(d => toISODateString(d)),
-            appointmentsSample: appointments.slice(0, 5).map(a => ({
-                id: a.id,
-                agentId: a.agentId,
-                agentIdType: typeof a.agentId,
-                date: a.date,
-                serviceId: a.serviceId,
-                time: `${a.startTime}-${a.endTime}`
-            }))
-        });
-
+        
         return (
         <>
             <div className="flex items-center overflow-x-auto p-4 border-b border-gray-200">
@@ -1045,30 +1025,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                 // 🔍 DEBUG CRÍTICO: Comparar com visão diária
                                 if (dateStr === '2025-10-28') {
-                                    console.log(`🎯 [WeekView DEBUG] FOCO NO DIA 28/10 - ${dateStr}:`, {
-                                        selectedAgentId,
-                                        selectedAgentIdType: typeof selectedAgentId,
-                                        loggedInAgentId,
-                                        allAgentsIds: allAgents.map(a => ({ id: a.id, name: a.name })),
-                                        totalAppointments: appointments.length,
-                                        appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
-                                        appointmentsForAgent: appointments.filter(a => a.agentId === selectedAgentId.toString()).length,
-                                        finalFiltered: agentAppointments.length,
-                                        sampleAppointments: appointments.filter(a => a.date === dateStr).map(a => ({
-                                            id: a.id,
-                                            agentId: a.agentId,
-                                            date: a.date,
-                                            startTime: a.startTime,
-                                            locationId: a.locationId,
-                                            serviceId: a.serviceId
-                                        })),
-                                        filters: {
-                                            serviceFilter: selectedServiceFilter,
-                                            locationFilter: selectedLocationFilter
-                                        }
-                                    });
-                                }
-
+                                                                    }
 
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === selectedAgentId.toString() && (b.date === dateStr || !b.date));
                                 
@@ -1121,31 +1078,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         }
 
                                         if (!service) {
-                                            console.error(`❌ [renderWeekView] SERVIÇO NÃO ENCONTRADO! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
-                                            return null;
+                                                                                        return null;
                                         }
 
                                         const style = timeToPositionStyleWeek(app.startTime, app.endTime);
 
                                         // ✅ Log Final Antes de Renderizar o Card
-                                        console.log(`🎨 [renderWeekView] Renderizando Card Agendamento ID ${app.id}:`, {
-                                            startTime: app.startTime,
-                                            endTime: app.endTime,
-                                            status: app.status,
-                                            calculatedStyle: style,
-                                            serviceName: service.name,
-                                            dateStr // Adicionado para contexto
-                                        });
-                                        // 🔍 DEBUG CRÍTICO: Investigar status dos agendamentos
-                                        console.log(`🔍 [DEBUG STATUS] App ID ${app.id}:`, {
-                                            status: app.status,
-                                            statusType: typeof app.status,
-                                            statusLength: app.status?.length,
-                                            serviceColor: service.color,
-                                            serviceTextColor: service.textColor,
-                                            allAppData: app
-                                        });
-
+                                                                                // 🔍 DEBUG CRÍTICO: Investigar status dos agendamentos
+                                        
                                         // ✅ DEFINIR CLASSES CONDICIONAIS PARA TODOS OS ESTADOS ESPECIAIS
                                         const isApproved = app.status === 'Aprovado';
                                         const isCompleted = app.status === 'Concluído';
@@ -1193,6 +1133,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                             <div
                                               key={app.id}
                                               onClick={() => handleAppointmentClick(app)}
+                                              onMouseEnter={(e) => handleSlotMouseEnter(e, app)}
+                                              onMouseLeave={handleSlotMouseLeave}
                                               className={`absolute w-[calc(100%-4px)] ml-[2px] p-2 rounded-lg ${cardClasses} z-10 cursor-pointer hover:opacity-90 transition-opacity`}
                                               style={{
                                                   ...style,
@@ -1224,21 +1166,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const renderMonthView = () => {
         // � DEBUG CRÍTICO: Log inicial da renderMonthView
-        console.log('🚀 [renderMonthView] INÍCIO DA RENDERIZAÇÃO:', {
-            isMultiPlan,
-            selectedLocationFilter,
-            appointments: appointments.length,
-            services: services.length,
-            allAgents: allAgents.length,
-            displayedAgents: displayedAgents.length,
-            currentDate: toISODateString(currentDate)
-        });
-
+        
         // �🛡️ GUARD CLAUSE: Impedir renderização se Multi-Plan sem local selecionado
         // REGRA DE NEGÓCIO: Usuários em plano Multi NUNCA devem visualizar agendamentos de múltiplos locais misturados
         if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-            console.log('❌ [renderMonthView] BLOQUEADO: Multi-Plan sem local selecionado');
-            return (
+                        return (
                 <div className="flex-1 flex items-center justify-center p-10">
                     <div className="text-center">
                         <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -1289,31 +1221,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                 // 🔍 DEBUG: Log dos agendamentos encontrados
                                 if (dateStr === '2025-10-28') {
-                                    console.log(`🎯 [MonthView DEBUG] FOCO NO DIA 28/10 - Agente ${agent.name}:`, {
-                                        agentId: agent.id,
-                                        agentIdType: typeof agent.id,
-                                        dateStr,
-                                        totalAppointments: appointments.length,
-                                        appointmentsForDate: appointments.filter(a => a.date === dateStr).length,
-                                        appointmentsForAgent: appointments.filter(a => a.agentId === agent.id.toString()).length,
-                                        finalFiltered: agentAppointments.length,
-                                        sampleAppointments: appointments.filter(a => a.date === dateStr).map(a => ({
-                                            id: a.id,
-                                            agentId: a.agentId,
-                                            date: a.date,
-                                            startTime: a.startTime,
-                                            locationId: a.locationId,
-                                            serviceId: a.serviceId
-                                        })),
-                                        filters: {
-                                            serviceFilter: selectedServiceFilter,
-                                            locationFilter: selectedLocationFilter
-                                        }
-                                    });
-                                }
+                                                                    }
                                 if (agentAppointments.length > 0) {
-                                    console.log(`📅 [GRID MENSAL] ${dateStr} - Agente ${agent.name}: ${agentAppointments.length} agendamentos`, agentAppointments.map(a => `${a.id}:${a.status}`));
-                                }
+                                                                    }
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
                                 
                                 const busySlots = [
@@ -1358,8 +1268,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                             }
 
                                             if (!service) {
-                                                console.error(`❌ [GRID MENSAL] Serviço não encontrado! App ID=${app.id}, serviceId='${app.serviceId}'. Serviços disponíveis: ${services.map(s => `${s.id}:${s.name}`).join(', ')}`);
-                                                return null;
+                                                                                                return null;
                                             }
 
                                             // ✅ REFATORAR: Classes e Background Unificados
@@ -1406,6 +1315,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                                 <div
                                                   key={app.id}
                                                   onClick={() => handleAppointmentClick(app)}
+                                                  onMouseEnter={(e) => handleSlotMouseEnter(e, app)}
+                                                  onMouseLeave={handleSlotMouseLeave}
                                                   className={`absolute h-full rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-10`}
                                                   style={positionStyle}
                                                   title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}`}
@@ -1434,7 +1345,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
-
 
             {/* Mensagem de erro */}
             {error && (
@@ -1586,6 +1496,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 appointmentData={modalData?.appointment}
                 newSlotData={modalData?.newSlot}
             />
+            
+            {/* ✅ Portal do Popover - Renderizado fora da hierarquia do DOM */}
+            {popover?.visible && popover.content && createPortal(
+                <div style={popover.style}>
+                    <AppointmentPopover appointment={popover.content} />
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

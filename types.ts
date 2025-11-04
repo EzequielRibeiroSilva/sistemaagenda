@@ -60,6 +60,7 @@ export interface ScheduleSlot {
         service: string;
         client: string;
         agentName: string;
+        agentAvatar?: string; // ✅ Avatar real do agente
         agentEmail: string;
         agentPhone?: string;
         date: string;
