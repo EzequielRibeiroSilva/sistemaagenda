@@ -414,11 +414,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
     const handleAppointmentClick = (app: Appointment & { date: string }) => {
-        console.log('🔍 [CalendarPage] handleAppointmentClick chamado');
-        console.log('   app.id:', app.id);
-        console.log('   typeof app.id:', typeof app.id);
-        console.log('   app completo:', app);
-        
         // Passar apenas o ID do agendamento para o modal buscar os detalhes completos
         const modalPayload = { 
             appointment: { 
@@ -436,9 +431,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 status: 'PENDENTE'
             } 
         };
-        
-        console.log('   modalPayload.appointment.id:', modalPayload.appointment.id);
-        console.log('   typeof modalPayload.appointment.id:', typeof modalPayload.appointment.id);
         
         setModalData(modalPayload);
         setModalOpen(true);
