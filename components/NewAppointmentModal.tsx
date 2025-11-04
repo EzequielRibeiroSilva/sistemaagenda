@@ -388,19 +388,38 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     // Carregar detalhes do agendamento quando modal abrir em modo de edição
     useEffect(() => {
+        console.log('🔍 [NewAppointmentModal] useEffect de carregamento disparado');
+        console.log('   isOpen:', isOpen);
+        console.log('   isEditing:', isEditing);
+        console.log('   appointmentData:', appointmentData);
+        console.log('   appointmentData?.id:', appointmentData?.id);
+        console.log('   typeof appointmentData?.id:', typeof appointmentData?.id);
         
         const loadAppointmentDetails = async () => {
             if (!isOpen || !isEditing || !appointmentData?.id) {
+                console.log('❌ [NewAppointmentModal] Condições não atendidas para carregar detalhes');
+                console.log('   isOpen:', isOpen);
+                console.log('   isEditing:', isEditing);
+                console.log('   appointmentData?.id:', appointmentData?.id);
                 return;
             }
+            
+            console.log('✅ [NewAppointmentModal] Iniciando carregamento de detalhes');
+            console.log('   ID do agendamento:', appointmentData.id);
+            console.log('   parseInt(appointmentData.id):', parseInt(appointmentData.id));
             
             setIsLoadingAppointment(true);
             try {
                 
                 const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
                 
+                console.log('📦 [NewAppointmentModal] Detalhes recebidos:', details);
+                console.log('   details.servicos:', details?.servicos);
+                console.log('   details.extras:', details?.extras);
+                console.log('   details.cliente:', details?.cliente);
                 
                 if (details) {
+                    console.log('✅ [NewAppointmentModal] Detalhes válidos, preenchendo formulário');
                     
                     // Preencher formulário com dados do agendamento
                     setAppointmentId(details.id);
@@ -408,6 +427,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     // Extrair IDs dos serviços e extras
                     const servicoIds = details.servicos?.map(s => s.id) || [];
                     const extraIds = details.extras?.map(e => e.id) || [];
+                    
+                    console.log('   servicoIds:', servicoIds);
+                    console.log('   extraIds:', extraIds);
 
 
                     setSelectedServices(servicoIds);
@@ -453,8 +475,29 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         setClientPhone('');
                     }
                     
-
-                    // ❌ REMOVIDO: Cálculo direto (será feito pelo useEffect dedicado)
+                    // ✅ CRÍTICO: Calcular preço total após carregar serviços e extras
+                    // Aguardar um tick para garantir que os estados foram atualizados
+                    setTimeout(() => {
+                        let calculatedTotal = 0;
+                        
+                        // Calcular total dos serviços
+                        servicoIds.forEach(serviceId => {
+                            const service = allServices.find(s => s.id === serviceId);
+                            if (service) {
+                                calculatedTotal += parseFloat(service.preco.toString());
+                            }
+                        });
+                        
+                        // Calcular total dos extras
+                        extraIds.forEach(extraId => {
+                            const extra = allExtras.find(e => e.id === extraId);
+                            if (extra) {
+                                calculatedTotal += parseFloat(extra.preco.toString());
+                            }
+                        });
+                        
+                        setTotalPrice(calculatedTotal);
+                    }, 100);
                 }
             } catch (error) {
             } finally {
