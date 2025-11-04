@@ -4,6 +4,7 @@ export interface Agent {
     id: string;
     name: string;
     avatar: string;
+    unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha (M:N)
 }
 
 export interface Service {

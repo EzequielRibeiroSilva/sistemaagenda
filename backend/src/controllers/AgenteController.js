@@ -93,8 +93,22 @@ class AgenteController {
         console.log(`   Agentes IDs: ${agentes.map(a => a.id).join(', ')}`);
       }
       
+      // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
+      const agentesComUnidades = await Promise.all(
+        agentes.map(async (agente) => {
+          const unidades = await this.agenteModel.db('agente_unidades')
+            .where('agente_id', agente.id)
+            .select('unidade_id');
+          
+          return {
+            ...agente,
+            unidades_ids: unidades.map(u => u.unidade_id.toString())
+          };
+        })
+      );
+      
       // Formatar dados para o frontend
-      const agentesFormatados = agentes.map(agente => ({
+      const agentesFormatados = agentesComUnidades.map(agente => ({
         id: agente.id,
         name: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
         email: agente.email,
@@ -108,7 +122,8 @@ class AgenteController {
         biografia: agente.biografia,
         nome_exibicao: agente.nome_exibicao,
         data_admissao: agente.data_admissao,
-        comissao_percentual: agente.comissao_percentual
+        comissao_percentual: agente.comissao_percentual,
+        unidades: agente.unidades_ids // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
       }));
       
       res.status(200).json({
