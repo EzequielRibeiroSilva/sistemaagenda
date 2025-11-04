@@ -150,6 +150,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
     
+    // ✅ CORREÇÃO: Estado para rastrear qual slot específico está sendo hovereado
+    // Formato: "agentId-dateStr-startTime-endTime" (ex: "23-2025-11-04-13:00-14:00")
+    const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+    
     // Estado do popover
     const [popover, setPopover] = useState<{
         visible: boolean;
@@ -861,20 +865,24 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
                         ].sort((a, b) => a.start.localeCompare(b.start));
 
-                        const availableSlots: {start: string, end: string}[] = [];
-                        let lastEndTime = `${START_HOUR_DAY.toString().padStart(2, '0')}:00`;
+                        // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
+                        // Se o grid vai de 8h a 21h, os slots clicáveis são 8h, 9h, ..., 20h
+                        const iterableHours = Array.from({ length: END_HOUR_DAY - START_HOUR_DAY }, (_, i) => i + START_HOUR_DAY);
 
-                        busySlots.forEach(slot => {
-                            if (slot.start > lastEndTime) {
-                                availableSlots.push({ start: lastEndTime, end: slot.start });
+                        // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
+                        const isSlotAvailable = (hour: number) => {
+                            const slotStart = `${hour.toString().padStart(2, '0')}:00`;
+                            const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
+
+                            // Checa colisão com qualquer slot ocupado
+                            for (const busy of busySlots) {
+                                // (InícioOcupado < FimSlot) E (FimOcupado > InícioSlot)
+                                if (busy.start < slotEnd && busy.end > slotStart) {
+                                    return false; // Slot está ocupado
+                                }
                             }
-                            lastEndTime = slot.end > lastEndTime ? slot.end : lastEndTime;
-                        });
-
-                        const endOfDay = `${END_HOUR_DAY.toString().padStart(2, '0')}:00`;
-                        if (endOfDay > lastEndTime) {
-                            availableSlots.push({ start: lastEndTime, end: endOfDay });
-                        }
+                            return true; // Slot está livre
+                        };
 
                         return (
                             <div key={agent.id} className="relative border-l border-gray-200">
@@ -884,18 +892,42 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ))}
                                 </div>
 
-                                {availableSlots.map((slot, index) => {
-                                    const top = timeToPercentageDay(slot.start);
-                                    const height = timeToPercentageDay(slot.end) - top;
+                                {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais */}
+                                {iterableHours.map(hour => {
+                                    const isAvailable = isSlotAvailable(hour);
+                                    if (!isAvailable) {
+                                        return null; // Não renderiza slot clicável
+                                    }
+
+                                    const slotStartStr = `${hour.toString().padStart(2, '0')}:00`;
+                                    const slotEndStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
+                                    
+                                    // ID do slot por hora
+                                    const slotId = `${agent.id}-${dateStr}-${slotStartStr}-${slotEndStr}`;
+                                    const isHovered = hoveredSlot === slotId;
+                                    
+                                    // Calcular Posição
+                                    const top = timeToPercentageDay(slotStartStr);
+                                    // Altura de 1 hora
+                                    const height = timeToPercentageDay(slotEndStr) - top;
+
                                     return (
                                         <div
-                                            key={`avail-${index}`}
-                                            className="absolute w-full group cursor-pointer z-0"
+                                            key={slotId}
+                                            className="absolute w-full cursor-pointer z-0"
                                             style={{ top: `${top}%`, height: `${height}%` }}
-                                            onClick={() => handleSlotClick({ agent, startTime: slot.start, date: currentDate })}
+                                            onClick={() => handleSlotClick({ agent, startTime: slotStartStr, date: currentDate })}
+                                            onMouseEnter={() => setHoveredSlot(slotId)}
+                                            onMouseLeave={() => setHoveredSlot(null)}
                                         >
-                                            <div className="w-full h-full opacity-0 group-hover:opacity-100 bg-blue-50 transition-opacity flex items-center justify-center">
-                                                <Plus className="w-5 h-5 text-blue-500" />
+                                            <div 
+                                                className="w-full h-full transition-all flex items-center justify-center"
+                                                style={{
+                                                    backgroundColor: isHovered ? '#DBEAFE' : 'transparent',
+                                                    opacity: 1
+                                                }}
+                                            >
+                                                {isHovered && <Plus className="w-5 h-5 text-blue-500" />}
                                             </div>
                                         </div>
                                     );
@@ -1104,20 +1136,20 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
-                                const availableSlots: {start: string, end: string}[] = [];
-                                let lastEndTime = `${START_HOUR_WEEK.toString().padStart(2, '0')}:00`;
-        
-                                busySlots.forEach(slot => {
-                                    if (slot.start > lastEndTime) {
-                                        availableSlots.push({ start: lastEndTime, end: slot.start });
+                                // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
+                                const iterableHours = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK }, (_, i) => i + START_HOUR_WEEK);
+
+                                // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
+                                const isSlotAvailable = (hour: number) => {
+                                    const slotStart = `${hour.toString().padStart(2, '0')}:00`;
+                                    const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
+                                    for (const busy of busySlots) {
+                                        if (busy.start < slotEnd && busy.end > slotStart) {
+                                            return false;
+                                        }
                                     }
-                                    lastEndTime = slot.end > lastEndTime ? slot.end : lastEndTime;
-                                });
-        
-                                const endOfDay = `${END_HOUR_WEEK.toString().padStart(2, '0')}:00`;
-                                if (endOfDay > lastEndTime) {
-                                    availableSlots.push({ start: lastEndTime, end: endOfDay });
-                                }
+                                    return true;
+                                };
 
                                 return (
                                 <div key={dateStr} className={`relative border-l border-gray-200 ${isWeekend ? 'bg-yellow-50' : ''}`}>
@@ -1125,18 +1157,42 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         <div key={`line-${hour}`} className="h-16 border-t border-dashed border-gray-200"></div>
                                     ))}
 
-                                    {selectedAgent && availableSlots.map((slot, index) => (
-                                        <div
-                                            key={`avail-${index}`}
-                                            className="absolute w-full group cursor-pointer z-0"
-                                            style={timeToPositionStyleWeek(slot.start, slot.end)}
-                                            onClick={() => handleSlotClick({ agent: selectedAgent, startTime: slot.start, date: day })}
-                                        >
-                                            <div className="w-full h-full opacity-0 group-hover:opacity-100 bg-blue-50 transition-opacity flex items-center justify-center">
-                                                <Plus className="w-5 h-5 text-blue-500" />
+                                    {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais */}
+                                    {selectedAgent && iterableHours.map(hour => {
+                                        const isAvailable = isSlotAvailable(hour);
+                                        if (!isAvailable) {
+                                            return null;
+                                        }
+                                        
+                                        const slotStartStr = `${hour.toString().padStart(2, '0')}:00`;
+                                        const slotEndStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
+                                        
+                                        // ID do slot por hora
+                                        const slotId = `${selectedAgent.id}-${dateStr}-${slotStartStr}-${slotEndStr}`;
+                                        const isHovered = hoveredSlot === slotId;
+                                        
+                                        return (
+                                            <div
+                                                key={slotId}
+                                                className="absolute w-full cursor-pointer z-0"
+                                                // Usar a função de posicionamento da semana
+                                                style={timeToPositionStyleWeek(slotStartStr, slotEndStr)}
+                                                onClick={() => handleSlotClick({ agent: selectedAgent, startTime: slotStartStr, date: day })}
+                                                onMouseEnter={() => setHoveredSlot(slotId)}
+                                                onMouseLeave={() => setHoveredSlot(null)}
+                                            >
+                                                <div 
+                                                    className="w-full h-full transition-all flex items-center justify-center"
+                                                    style={{
+                                                        backgroundColor: isHovered ? '#DBEAFE' : 'transparent',
+                                                        opacity: 1
+                                                    }}
+                                                >
+                                                    {isHovered && <Plus className="w-5 h-5 text-blue-500" />}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                     
                                     {agentAppointments.map(app => {
                                         // ✅ Buscar serviço usando o ID real do banco de dados
@@ -1301,32 +1357,53 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
-                                const availableSlots: {start: string, end: string}[] = [];
-                                let lastEndTime = `${START_HOUR_MONTH.toString().padStart(2, '0')}:00`;
+                                // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
+                                const iterableHours = Array.from({ length: END_HOUR_MONTH - START_HOUR_MONTH }, (_, i) => i + START_HOUR_MONTH);
         
-                                busySlots.forEach(slot => {
-                                    if (slot.start > lastEndTime) {
-                                        availableSlots.push({ start: lastEndTime, end: slot.start });
+                                // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
+                                const isSlotAvailable = (hour: number) => {
+                                    const slotStart = `${hour.toString().padStart(2, '0')}:00`;
+                                    const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
+                                    for (const busy of busySlots) {
+                                        if (busy.start < slotEnd && busy.end > slotStart) {
+                                            return false;
+                                        }
                                     }
-                                    lastEndTime = slot.end > lastEndTime ? slot.end : lastEndTime;
-                                });
-        
-                                const endOfDay = `${END_HOUR_MONTH.toString().padStart(2, '0')}:00`;
-                                if (endOfDay > lastEndTime) {
-                                    availableSlots.push({ start: lastEndTime, end: endOfDay });
-                                }
+                                    return true;
+                                };
                                 
                                 return (
                                 <div key={agent.id} className="flex-1 px-1 border-l border-gray-200 flex items-center">
                                     <div className="relative w-full h-6 bg-gray-50 rounded">
-                                        {availableSlots.map((slot, index) => (
-                                            <div
-                                                key={`avail-${index}`}
-                                                className="absolute h-full rounded bg-blue-50 opacity-0 hover:opacity-100 cursor-pointer transition-opacity z-0"
-                                                style={timeToPositionStyleMonth(slot.start, slot.end)}
-                                                onClick={() => handleSlotClick({ agent, startTime: slot.start, date: day })}
-                                            ></div>
-                                        ))}
+                                        {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais */}
+                                        {iterableHours.map(hour => {
+                                            const isAvailable = isSlotAvailable(hour);
+                                            if (!isAvailable) {
+                                                return null;
+                                            }
+                                            
+                                            const slotStartStr = `${hour.toString().padStart(2, '0')}:00`;
+                                            const slotEndStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
+                                            
+                                            // ID do slot por hora
+                                            const slotId = `${agent.id}-${dateStr}-${slotStartStr}-${slotEndStr}`;
+                                            const isHovered = hoveredSlot === slotId;
+                                            
+                                            return (
+                                                <div
+                                                    key={slotId}
+                                                    className="absolute h-full rounded cursor-pointer transition-all z-0"
+                                                    style={{
+                                                        ...timeToPositionStyleMonth(slotStartStr, slotEndStr),
+                                                        backgroundColor: isHovered ? '#DBEAFE' : 'transparent',
+                                                        opacity: 1
+                                                    }}
+                                                    onClick={() => handleSlotClick({ agent, startTime: slotStartStr, date: day })}
+                                                    onMouseEnter={() => setHoveredSlot(slotId)}
+                                                    onMouseLeave={() => setHoveredSlot(null)}
+                                                ></div>
+                                            );
+                                        })}
 
                                         {agentAppointments.map((app, index) => {
                                             // ✅ Buscar serviço usando o ID real do banco de dados
