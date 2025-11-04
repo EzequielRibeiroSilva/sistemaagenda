@@ -220,48 +220,83 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     // Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
     const { startHour, endHour } = useMemo(() => {
+        console.log('🕐 [CalendarPage] Calculando horários dinâmicos:', {
+            selectedLocationFilter,
+            hasUnitSchedules: !!unitSchedules[selectedLocationFilter],
+            unitSchedulesKeys: Object.keys(unitSchedules),
+            unitSchedulesData: unitSchedules[selectedLocationFilter]
+        });
+        
         // Se há unidade selecionada, usar seus horários de funcionamento
         if (selectedLocationFilter && selectedLocationFilter !== 'all' && unitSchedules[selectedLocationFilter]) {
             const schedules = unitSchedules[selectedLocationFilter];
             
+            console.log('📅 [CalendarPage] Horários da unidade:', schedules);
+            
             // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
             let minHour = 23;
             let maxHour = 0;
+            let hasValidSchedule = false; // 🚩 NOVO: Flag para rastrear se um horário foi encontrado
             
             schedules.forEach(schedule => {
-                if (schedule.is_aberto && schedule.horarios_json && schedule.horarios_json.length > 0) {
+                console.log(`🔍 [CalendarPage] Analisando dia ${schedule.dia_semana}:`, {
+                    is_aberto: schedule.is_aberto,
+                    horarios_json_type: typeof schedule.horarios_json,
+                    is_array: Array.isArray(schedule.horarios_json),
+                    length: schedule.horarios_json?.length
+                });
+                
+                // ✅ CORREÇÃO CRÍTICA: Validar que é um Array antes de iterar
+                if (schedule.is_aberto && Array.isArray(schedule.horarios_json) && schedule.horarios_json.length > 0) {
                     schedule.horarios_json.forEach(periodo => {
                         const startH = parseInt(periodo.inicio.split(':')[0]);
                         const endH = parseInt(periodo.fim.split(':')[0]);
                         
+                        console.log(`⏰ [CalendarPage] Período encontrado: ${periodo.inicio} - ${periodo.fim} (${startH}h - ${endH}h)`);
+                        
                         if (startH < minHour) minHour = startH;
                         if (endH > maxHour) maxHour = endH;
+                        
+                        hasValidSchedule = true; // 🎯 ATUALIZAÇÃO CRÍTICA: Marcar que encontrou horário válido
                     });
                 }
             });
             
-            // Se encontrou horários válidos, usar eles
-            if (minHour < 23 && maxHour > 0) {
-                                return { startHour: minHour, endHour: maxHour };
+            // ✅ USANDO: A nova flag de rastreamento (não mais minHour < 23 && maxHour > 0)
+            if (hasValidSchedule) {
+                console.log(`✅ [CalendarPage] Horários dinâmicos aplicados: ${minHour}h - ${maxHour}h`);
+                return { startHour: minHour, endHour: maxHour };
+            } else {
+                console.log('⚠️ [CalendarPage] Nenhum horário válido encontrado nos schedules. Detalhes:', {
+                    totalDays: schedules.length,
+                    schedules: schedules.map(s => ({
+                        dia: s.dia_semana,
+                        aberto: s.is_aberto,
+                        tipo: typeof s.horarios_json,
+                        isArray: Array.isArray(s.horarios_json)
+                    }))
+                });
             }
         }
         
         // Fallback: usar horários padrão
-                return { startHour: 8, endHour: 21 };
+        console.log('⚠️ [CalendarPage] Usando horários padrão (fallback): 8h - 21h');
+        return { startHour: 8, endHour: 21 };
     }, [selectedLocationFilter, unitSchedules]);
 
+    // ✅ CORREÇÃO CRÍTICA: Todos os grids usam horários dinâmicos do local selecionado
     const START_HOUR_DAY = startHour;
     const END_HOUR_DAY = endHour;
     const hoursDay = Array.from({ length: END_HOUR_DAY - START_HOUR_DAY + 1 }, (_, i) => i + START_HOUR_DAY);
 
-    const START_HOUR_WEEK = 9;
-    const END_HOUR_WEEK = 21;
-    // ✅ CORREÇÃO: Grid visual tem slots de 9h até 21h (inclusive), total de 13 slots
-    // Array: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    // ✅ GRID SEMANA: Usar horários dinâmicos (não mais fixos)
+    const START_HOUR_WEEK = startHour;
+    const END_HOUR_WEEK = endHour;
     const hoursWeek = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK + 1 }, (_, i) => i + START_HOUR_WEEK);
 
-    const START_HOUR_MONTH = 9;
-    const END_HOUR_MONTH = 21;
+    // ✅ GRID MÊS: Usar horários dinâmicos (não mais fixos)
+    const START_HOUR_MONTH = startHour;
+    const END_HOUR_MONTH = endHour;
 
     const allAgents = useMemo(() => {
         if (loggedInAgentId) {

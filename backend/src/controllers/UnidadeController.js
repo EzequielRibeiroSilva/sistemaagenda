@@ -177,7 +177,17 @@ class UnidadeController extends BaseController {
         });
       }
 
+      // 🔍 LOG DE DEBUG: Verificar estrutura da resposta
+      console.log(`🔍 [UnidadeController] show - Unidade ${id}:`, {
+        id: unidadeCompleta.id,
+        nome: unidadeCompleta.nome,
+        hasHorarios: !!unidadeCompleta.horarios_funcionamento,
+        horariosLength: unidadeCompleta.horarios_funcionamento?.length,
+        horarios: unidadeCompleta.horarios_funcionamento
+      });
+
       return res.json({
+        success: true, // ✅ CORREÇÃO: Adicionar flag success
         data: unidadeCompleta
       });
     } catch (error) {
