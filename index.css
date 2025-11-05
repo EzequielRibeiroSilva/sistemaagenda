@@ -1,0 +1,16 @@
+/* 🎨 Estilos Customizados para o Painel de Agendamento */
+
+/* Esconder scrollbar mantendo funcionalidade de scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Smooth scroll para navegação de dias */
+.scrollbar-hide {
+  scroll-behavior: smooth;
+}

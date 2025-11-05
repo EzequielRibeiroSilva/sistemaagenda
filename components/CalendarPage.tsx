@@ -1676,31 +1676,92 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
             {view === 'Dia' && (
                 <>
-                    {/* Barra de números do mês */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
-                        <button onClick={handlePrev}><ChevronLeft className="h-5 w-5 text-gray-400" /></button>
-                        <div className="flex items-center gap-1 overflow-x-auto mx-2">
+                    {/* 🎨 BARRA DE NAVEGAÇÃO DE DIAS DO MÊS - MELHORADA */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                        <button 
+                            onClick={handlePrev} 
+                            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                            aria-label="Dia anterior"
+                        >
+                            <ChevronLeft className="h-5 w-5 text-gray-600" />
+                        </button>
+                        
+                        <div className="flex items-center gap-1 overflow-x-auto mx-2 scrollbar-hide">
                         {daysInCurrentMonth.map(day => {
+                            const dateStr = toISODateString(day);
                             const isSelected = day.getDate() === currentDate.getDate() && day.getMonth() === currentDate.getMonth();
                             const isToday = day.getDate() === today.getDate() && day.getMonth() === today.getMonth() && day.getFullYear() === today.getFullYear();
                             
-                            let buttonClass = 'h-8 w-8 flex-shrink-0 rounded-full text-sm font-medium ';
+                            // 🎯 NOVO: Verificar se o dia tem agendamentos
+                            const hasAppointments = appointments.some(a => 
+                                a.date === dateStr &&
+                                (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
+                                (selectedAgentFilter === 'all' || a.agentId === selectedAgentFilter) &&
+                                a.locationId === selectedLocationFilter
+                            );
+                            
+                            // 🎯 NOVO: Verificar se o dia está fechado (unidade não funciona)
+                            const dayIndex = getDayOfWeekIndex(day);
+                            const schedules = selectedLocationFilter && selectedLocationFilter !== 'all' 
+                                ? unitSchedules[selectedLocationFilter] 
+                                : null;
+                            const daySchedule = schedules?.find(s => s.dia_semana === dayIndex);
+                            const isClosed = !daySchedule || !daySchedule.is_aberto;
+                            
+                            // 🎨 CLASSES CONDICIONAIS APRIMORADAS
+                            let containerClass = 'relative flex flex-col items-center flex-shrink-0 transition-all ';
+                            let buttonClass = 'h-10 w-10 rounded-lg text-sm font-semibold transition-all ';
+                            let indicatorClass = '';
+                            
                             if (isSelected) {
-                                buttonClass += 'bg-blue-600 text-white';
+                                // Dia selecionado: fundo azul sólido
+                                buttonClass += 'bg-blue-600 text-white shadow-md';
                             } else if (isToday) {
-                                buttonClass += 'bg-blue-100 text-blue-700 font-bold';
+                                // Dia atual: fundo azul claro com borda
+                                buttonClass += 'bg-blue-100 text-blue-700 font-bold border-2 border-blue-400';
+                            } else if (isClosed) {
+                                // Dia fechado: texto cinza claro, sem hover
+                                buttonClass += 'text-gray-400 cursor-not-allowed';
                             } else {
-                                buttonClass += 'hover:bg-gray-100 text-gray-700';
+                                // Dia normal: hover suave
+                                buttonClass += 'text-gray-700 hover:bg-gray-200';
+                            }
+                            
+                            // 🎯 INDICADOR VERDE: Apenas para dias com agendamentos E abertos
+                            if (hasAppointments && !isClosed) {
+                                indicatorClass = 'absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 h-1 w-6 bg-green-500 rounded-full';
                             }
 
+                            // 🎯 NOVO: Tooltip com dia da semana
+                            const weekdayName = day.toLocaleString('pt-BR', { weekday: 'long' });
+                            const tooltipText = isClosed 
+                                ? 'Unidade fechada' 
+                                : `${weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1)}, ${day.getDate()} de ${day.toLocaleString('pt-BR', { month: 'long' })}`;
+                            
                             return (
-                                <button key={day.getDate()} onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.getDate()))} className={buttonClass}>
-                                    {day.getDate()}
-                                </button>
+                                <div key={day.getDate()} className={containerClass}>
+                                    <button 
+                                        onClick={() => !isClosed && setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.getDate()))} 
+                                        className={buttonClass}
+                                        disabled={isClosed}
+                                        title={tooltipText}
+                                    >
+                                        {day.getDate()}
+                                    </button>
+                                    {/* 🎯 INDICADOR DE AGENDAMENTOS */}
+                                    {indicatorClass && <div className={indicatorClass}></div>}
+                                </div>
                             )
                         })}
                         </div>
-                        <button onClick={handleNext}><ChevronRight className="h-5 w-5 text-gray-400" /></button>
+                        
+                        <button 
+                            onClick={handleNext} 
+                            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                            aria-label="Próximo dia"
+                        >
+                            <ChevronRight className="h-5 w-5 text-gray-600" />
+                        </button>
                     </div>
                     
                     {/* Header dos agentes - FIXO */}
