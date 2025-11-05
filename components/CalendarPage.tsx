@@ -399,54 +399,55 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         }
     }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id, userRole, loggedInAgentId, backendAgents]);
 
-    // Recarregar agendamentos quando a data, view, LOCAL ou AGENTE LOGADO mudar
-    useEffect(() => {
-        const loadAppointmentsForDateRange = async () => {
-            // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
-            if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-                                return;
-            }
+    // ✅ Função para recarregar agendamentos (extraída para ser reutilizada)
+    const loadAppointmentsForDateRange = async () => {
+        // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
+        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+                            return;
+        }
 
-            let startDate: string;
-            let endDate: string;
+        let startDate: string;
+        let endDate: string;
 
-            if (view === 'Dia') {
-                // Para view de dia, buscar apenas o dia atual
-                startDate = toISODateString(currentDate);
-                endDate = startDate;
-            } else if (view === 'Semana') {
-                // Para view de semana, buscar a semana completa
-                const { start, end } = getWeekRange(currentDate);
-                startDate = toISODateString(start);
-                endDate = toISODateString(end);
-            } else {
-                // Para view de mês, buscar o mês completo
-                const year = currentDate.getFullYear();
-                const month = currentDate.getMonth();
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                startDate = toISODateString(firstDay);
-                endDate = toISODateString(lastDay);
-            }
+        if (view === 'Dia') {
+            // Para view de dia, buscar apenas o dia atual
+            startDate = toISODateString(currentDate);
+            endDate = startDate;
+        } else if (view === 'Semana') {
+            // Para view de semana, buscar a semana completa
+            const { start, end } = getWeekRange(currentDate);
+            startDate = toISODateString(start);
+            endDate = toISODateString(end);
+        } else {
+            // Para view de mês, buscar o mês completo
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            startDate = toISODateString(firstDay);
+            endDate = toISODateString(lastDay);
+        }
 
-            // ✅ CORREÇÃO CRÍTICA: Usar user.agentId (ID do agente) ao invés de user.id (ID do usuário)
-            const params: { startDate: string, endDate: string, unidade_id?: number, agente_id?: number } = {
-                startDate,
-                endDate,
-            };
-
-            if (loggedInAgentId) {
-                // 🔧 CORREÇÃO: Para AGENTE, usar user.agentId (ID na tabela agentes) ao invés de user.id (ID na tabela usuarios)
-                // loggedInAgentId já contém o ID correto do agente (ex: 23), não o ID do usuário (ex: 131)
-                params.agente_id = parseInt(loggedInAgentId);
-                            } else if (selectedLocationFilter !== 'all') {
-                // Se é ADMIN, backend filtra por unidade_id
-                params.unidade_id = parseInt(selectedLocationFilter);
-                            }
-
-                        await fetchAppointments(params);
+        // ✅ CORREÇÃO CRÍTICA: Usar user.agentId (ID do agente) ao invés de user.id (ID do usuário)
+        const params: { startDate: string, endDate: string, unidade_id?: number, agente_id?: number } = {
+            startDate,
+            endDate,
         };
 
+        if (loggedInAgentId) {
+            // 🔧 CORREÇÃO: Para AGENTE, usar user.agentId (ID na tabela agentes) ao invés de user.id (ID na tabela usuarios)
+            // loggedInAgentId já contém o ID correto do agente (ex: 23), não o ID do usuário (ex: 131)
+            params.agente_id = parseInt(loggedInAgentId);
+                        } else if (selectedLocationFilter !== 'all') {
+            // Se é ADMIN, backend filtra por unidade_id
+            params.unidade_id = parseInt(selectedLocationFilter);
+                        }
+
+                    await fetchAppointments(params);
+    };
+
+    // Recarregar agendamentos quando a data, view, LOCAL ou AGENTE LOGADO mudar
+    useEffect(() => {
         loadAppointmentsForDateRange();
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
@@ -1734,9 +1735,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 onClose={() => {
                     setModalOpen(false);
                     setModalData(null);
+                    // ✅ CORREÇÃO: Recarregar agendamentos após fechar o modal
+                    // Isso garante que o calendário mostre o novo agendamento criado/editado
+                    loadAppointmentsForDateRange();
                 }}
                 appointmentData={modalData?.appointment}
                 newSlotData={modalData?.newSlot}
+                selectedLocationId={selectedLocationFilter} // ✅ PASSAR LOCAL SELECIONADO
             />
             
             {/* ✅ Portal do Popover - Renderizado fora da hierarquia do DOM */}

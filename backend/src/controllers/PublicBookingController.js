@@ -215,14 +215,15 @@ class PublicBookingController {
   }
 
   /**
-   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD&duration=90
+   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD&duration=90&unidade_id=1
    * Buscar disponibilidade de um agente em uma data específica
    * Hierarquia: Horário Agente ∩ Horário Unidade ∩ Agendamentos Existentes
+   * ✅ NOVO: Aceita unidade_id para filtrar horários quando agente trabalha em múltiplas unidades
    */
   async getAgenteDisponibilidade(req, res) {
     try {
       const { id: agenteId } = req.params;
-      const { data, duration } = req.query;
+      const { data, duration, unidade_id } = req.query;
 
       if (!data) {
         return res.status(400).json({
@@ -247,13 +248,18 @@ class PublicBookingController {
         });
       }
 
+      // ✅ CORREÇÃO: Usar unidade_id do parâmetro se fornecido, senão usar do agente
+      const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
+      console.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
+
       // Calcular dia da semana (0 = Domingo, 6 = Sábado)
       const dataObj = new Date(data + 'T00:00:00');
       const diaSemana = dataObj.getDay();
 
       // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
+      // ✅ CORREÇÃO: Usar unidadeIdParaUsar ao invés de agente.unidade_id
       const horarioUnidade = await db('horarios_funcionamento_unidade')
-        .where('unidade_id', agente.unidade_id)
+        .where('unidade_id', unidadeIdParaUsar)
         .where('dia_semana', diaSemana)
         .where('is_aberto', true)
         .first();
@@ -272,9 +278,16 @@ class PublicBookingController {
       }
 
       // 2. HIERARQUIA: Buscar horários específicos do AGENTE (ativo ou inativo)
+      // ✅ CORREÇÃO: Filtrar por unidade_id quando agente trabalha em múltiplas unidades
       const horarioAgente = await db('horarios_funcionamento')
         .where('agente_id', agenteId)
         .where('dia_semana', diaSemana)
+        .where(function() {
+          // Se unidade_id foi fornecido, filtrar por ele
+          if (unidade_id) {
+            this.where('unidade_id', unidadeIdParaUsar);
+          }
+        })
         .first();
 
       console.log(`[PublicBooking] Horário do agente para dia ${diaSemana}:`, horarioAgente);
