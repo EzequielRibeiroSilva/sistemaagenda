@@ -56,65 +56,6 @@ const HeaderDropdown: React.FC<{
     )
 }
 
-interface FilterDropdownProps {
-    label: string;
-    options: { value: string; label: string }[];
-    selectedValue: string;
-    onSelect: (value: string) => void;
-    disabled?: boolean;
-}
-
-const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selectedValue, onSelect, disabled }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, []);
-    
-    const selectedOptionLabel = options.find(opt => opt.value === selectedValue)?.label || `Todos`;
-
-    return (
-        <div className="relative" ref={dropdownRef}>
-            <button
-                onClick={() => !disabled && setIsOpen(!isOpen)}
-                disabled={disabled}
-                className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed w-48 justify-between"
-            >
-                <span className="truncate">{label}: {selectedOptionLabel}</span>
-                <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-30 py-1">
-                    {options.map(option => (
-                        <a
-                            key={option.value}
-                            href="#"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                onSelect(option.value);
-                                setIsOpen(false);
-                            }}
-                            className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        >
-                            {selectedValue === option.value && <Check className="h-4 w-4 mr-2 text-blue-600" />}
-                            <span className={`${selectedValue !== option.value ? 'ml-6' : ''} truncate`}>{option.label}</span>
-                        </a>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
 interface CalendarPageProps {
   loggedInAgentId: string | null;
   userRole: 'ADMIN' | 'AGENTE';
@@ -140,7 +81,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState('Dia');
-    const [showFilters, setShowFilters] = useState(false);
     const [isModalOpen, setModalOpen] = useState(false);
     const [modalData, setModalData] = useState<{
         appointment?: ScheduleSlot['details'];
@@ -833,21 +773,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         const pad = (num: number) => num.toString().padStart(2, '0');
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     };
-    
-    const serviceOptions = [
-        { value: 'all', label: 'Todos os Serviços' },
-        ...services.map(service => ({ value: service.id, label: service.name }))
-    ];
-
-    const agentOptions = [
-        { value: 'all', label: 'Todos os Agentes' },
-        ...agents.map(agent => ({ value: agent.id, label: agent.name }))
-    ];
-
-    const locationOptions = [
-        { value: 'all', label: 'Todos os Locais' },
-        ...locations.map(location => ({ value: location.id, label: location.name }))
-    ];
     
     const locationOptionsForHeader = ['Todos os Locais', ...locations.map(l => l.name)];
 
@@ -1650,28 +1575,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             selected={view}
                             onSelect={setView}
                         />
-                        <button onClick={() => setShowFilters(!showFilters)} className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                            <MoreHorizontal className="h-5 w-5 text-gray-600" />
-                        </button>
                     </div>
                 </div>
-                 {showFilters && (
-                     <div className="mt-4 flex items-center gap-2">
-                        <FilterDropdown
-                            label="Serviços"
-                            options={serviceOptions}
-                            selectedValue={selectedServiceFilter}
-                            onSelect={setSelectedServiceFilter}
-                        />
-                         <FilterDropdown
-                            label="Agentes"
-                            options={agentOptions}
-                            selectedValue={selectedAgentFilter}
-                            onSelect={setSelectedAgentFilter}
-                            disabled={!!loggedInAgentId || view === 'Semana'}
-                        />
-                    </div>
-                )}
             </div>
 
             {view === 'Dia' && (
