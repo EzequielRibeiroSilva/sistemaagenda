@@ -12,9 +12,10 @@ interface AvailabilityModalProps {
   onSelect: (dateTime: { date: Date, time: string }) => void;
   agentName: string | null;
   agentId: number | null; // ✅ ADICIONADO: ID do agente para buscar disponibilidade real
+  unidadeId?: number; // ✅ ADICIONADO: ID da unidade para filtrar horários
 }
 
-const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, onSelect, agentName, agentId }) => {
+const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, onSelect, agentName, agentId, unidadeId }) => {
   const portalRoot = document.getElementById('portal-root');
   const [daysToShow, setDaysToShow] = useState(30);
   const [availabilityData, setAvailabilityData] = useState<{ [date: string]: string[] }>({});
@@ -41,7 +42,12 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
         return [];
       }
 
-      const response = await fetch(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade?data=${date}&duration=60`, {
+      // ✅ CORREÇÃO: Passar unidade_id para a API filtrar corretamente
+      const url = unidadeId 
+        ? `${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade?data=${date}&duration=60&unidade_id=${unidadeId}`
+        : `${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade?data=${date}&duration=60`;
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

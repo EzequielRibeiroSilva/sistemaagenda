@@ -14,9 +14,18 @@ class AgenteController {
    */
   async list(req, res) {
     try {
-      const usuarioId = req.user.id;
+      let usuarioId = req.user.id;
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
+
+      // ✅ CORREÇÃO: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const agente = await this.agenteModel.findById(userAgenteId);
+        if (agente && agente.usuario_id) {
+          usuarioId = agente.usuario_id;
+          console.log(`✅ [AgenteController.list] AGENTE detectado. Usando usuario_id do ADMIN: ${usuarioId}`);
+        }
+      }
 
       let agentes;
 
@@ -29,12 +38,30 @@ class AgenteController {
         agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
       }
 
+      // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
+      const agentesComUnidades = await Promise.all(
+        agentes.map(async (agente) => {
+          const unidades = await this.agenteModel.db('agente_unidades')
+            .where('agente_id', agente.id)
+            .select('unidade_id');
+          
+          return {
+            ...agente,
+            unidades: unidades.map(u => u.unidade_id) // ✅ Array de números
+          };
+        })
+      );
+
       // Formatar dados mínimos para formulários
-      const agentesLeves = agentes.map(agente => ({
+      const agentesLeves = agentesComUnidades.map(agente => ({
         id: agente.id,
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
-        avatar_url: agente.avatar_url || null
+        avatar_url: agente.avatar_url || null,
+        unidades: agente.unidades || [], // ✅ CRÍTICO: Incluir array de unidades
+        unidade_id: agente.unidade_id // ✅ Incluir unidade_id principal (fallback)
       }));
+
+      console.log(`✅ [AgenteController.list] Retornando ${agentesLeves.length} agentes com unidades`);
 
       res.status(200).json({
         success: true,

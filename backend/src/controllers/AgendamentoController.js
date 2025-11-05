@@ -296,19 +296,24 @@ class AgendamentoController extends BaseController {
   // POST /api/agendamentos - Criar novo agendamento
   async store(req, res) {
     try {
-      console.log('');
-      console.log('🔥🔥🔥 [AGENDAMENTO] MÉTODO STORE INICIADO 🔥🔥🔥');
-      console.log('━'.repeat(80));
-      console.log('Payload recebido:', JSON.stringify(req.body, null, 2));
-      console.log('━'.repeat(80));
-      console.log('');
-      
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
       
       if (!usuarioId) {
         return res.status(401).json({ 
           error: 'Usuário não autenticado' 
         });
+      }
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.findById(userAgenteId);
+        if (agente && agente.usuario_id) {
+          usuarioId = agente.usuario_id;
+        }
       }
 
       const {
@@ -342,7 +347,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // Verificar se a unidade pertence ao usuário
+      // Verificar se a unidade pertence ao usuário (agora usando usuario_id do ADMIN para AGENTE)
       const unidade = await this.model.db('unidades').where('id', unidade_id).where('usuario_id', usuarioId).first();
       if (!unidade) {
         return res.status(400).json({

@@ -94,7 +94,7 @@ export const useInternalBooking = () => {
 
   // Função auxiliar para fazer requisições autenticadas
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('authToken'); // Corrigido: usar 'authToken' em vez de 'token'
+    const token = localStorage.getItem('authToken');
 
     if (!token) {
       throw new Error('Token de autenticação não encontrado. Faça login novamente.');
@@ -111,7 +111,6 @@ export const useInternalBooking = () => {
 
     if (!response.ok) {
       if (response.status === 401) {
-        // Token inválido ou expirado
         localStorage.removeItem('authToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('userEmail');
@@ -122,7 +121,9 @@ export const useInternalBooking = () => {
       throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return response.json();
+    const jsonData = await response.json();
+    
+    return jsonData;
   }, []);
 
   // Buscar serviços
@@ -265,16 +266,10 @@ export const useInternalBooking = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🔥🔥🔥 [useInternalBooking] createAgendamento chamado');
-      console.log('📦 Dados recebidos:', JSON.stringify(data, null, 2));
-      console.log('🌐 URL:', `${API_BASE_URL}/agendamentos`);
-
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos`, {
         method: 'POST',
         body: JSON.stringify(data),
       });
-
-      console.log('✅ [useInternalBooking] Resposta recebida:', response);
 
       return response;
     } catch (err) {
@@ -293,27 +288,16 @@ export const useInternalBooking = () => {
       setIsLoading(true);
       setError(null);
       
-      console.log('🔄 [useInternalBooking.updateAgendamento] Iniciando atualização');
-      console.log('   ID:', id);
-      console.log('   URL:', `${API_BASE_URL}/agendamentos/${id}`);
-      console.log('   Dados:', JSON.stringify(data, null, 2));
-      
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
 
-      console.log('✅ [useInternalBooking.updateAgendamento] Resposta recebida:', response);
-      console.log('   response.success:', response?.success);
-      console.log('   response.data:', response?.data);
-      console.log('   response.message:', response?.message);
-
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar agendamento';
       setError(errorMessage);
-      console.error('❌ [useInternalBooking.updateAgendamento] Erro:', errorMessage);
-      console.error('   Erro completo:', err);
+      console.error('[useInternalBooking] Erro ao atualizar agendamento:', errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
