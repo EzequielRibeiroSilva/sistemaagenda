@@ -799,20 +799,17 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     };
     
-    const locationOptionsForHeader = ['Todos os Locais', ...locations.map(l => l.name)];
+    // ✅ CORREÇÃO: Remover opção "Todos os Locais" do dropdown
+    // Usuários devem sempre ter um local específico selecionado
+    const locationOptionsForHeader = locations.map(l => l.name);
 
-    const selectedLocationName = selectedLocationFilter === 'all' 
-        ? 'Todos os Locais' 
-        : locations.find(l => l.id === selectedLocationFilter)?.name || 'Todos os Locais';
+    const selectedLocationName = locations.find(l => l.id === selectedLocationFilter)?.name || 
+        (locations.length > 0 ? locations[0].name : 'Nenhum Local');
     
     const handleLocationSelect = (locationName: string) => {
-        if (locationName === 'Todos os Locais') {
-            setSelectedLocationFilter('all');
-        } else {
-            const selectedLoc = locations.find(l => l.name === locationName);
-            if (selectedLoc) {
-                setSelectedLocationFilter(selectedLoc.id);
-            }
+        const selectedLoc = locations.find(l => l.name === locationName);
+        if (selectedLoc) {
+            setSelectedLocationFilter(selectedLoc.id);
         }
     };
 
