@@ -256,7 +256,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     // ✅ GRID SEMANA: Usar horários dinâmicos (não mais fixos)
     const START_HOUR_WEEK = startHour;
     const END_HOUR_WEEK = endHour;
-    const hoursWeek = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK + 1 }, (_, i) => i + START_HOUR_WEEK);
+    // ✅ CORREÇÃO DEFINITIVA: Array com apenas as horas que INICIAM slots (9h-16h = 8 elementos)
+    // O label 17:00 será renderizado separadamente como marcador final
+    const hoursWeek = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK }, (_, i) => i + START_HOUR_WEEK);
 
     // ✅ GRID MÊS: Usar horários dinâmicos (não mais fixos)
     const START_HOUR_MONTH = startHour;
@@ -557,12 +559,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
         
-        // 🎯 NOVO: Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
+        // 🎯 CORREÇÃO CRÍTICA: Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
         if (!daySchedule || !daySchedule.is_aberto) {
-            // Retornar bloqueio do dia inteiro (do início ao fim do grid)
+            // ✅ CORREÇÃO: Usar os limites do grid (START_HOUR_WEEK a END_HOUR_WEEK) ao invés de 00:00-23:59
+            // Isso garante que o bloqueio visual não extrapole o grid renderizado
+            const startTime = `${START_HOUR_WEEK.toString().padStart(2, '0')}:00`;
+            const endTime = `${END_HOUR_WEEK.toString().padStart(2, '0')}:00`;
+            
             return [{
-                start: '00:00',
-                end: '23:59',
+                start: startTime,
+                end: endTime,
                 id: `closed-${selectedLocationFilter}-${dayIndex}`
             }];
         }
@@ -626,11 +632,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         const startTotalMinutes = (startH - START_HOUR_WEEK) * 60 + startM;
         const endTotalMinutes = (endH - START_HOUR_WEEK) * 60 + endM;
         
-        // ✅ CORREÇÃO CRÍTICA: O grid visual tem (END_HOUR_WEEK - START_HOUR_WEEK + 1) slots
-        // Exemplo: Se START=9 e END=21, temos 13 slots [9h, 10h, ..., 21h]
-        // O vão total vai do início de START_HOUR_WEEK (9:00) até o FIM de END_HOUR_WEEK (22:00)
-        // Portanto: totalDuration = (END_HOUR_WEEK + 1) - START_HOUR_WEEK = 13 horas
-        const totalDurationMinutes = ((END_HOUR_WEEK + 1) - START_HOUR_WEEK) * 60;
+        // ✅ CORREÇÃO DEFINITIVA: A duração visual é simplesmente END - START (em horas)
+        // Exemplo: Se START=9 e END=17, a duração é 17 - 9 = 8 horas = 480 minutos
+        // O grid tem 32rem de altura (8 slots × 4rem), então 100% = 8 horas
+        const totalDurationMinutes = (END_HOUR_WEEK - START_HOUR_WEEK) * 60;
 
         // ✅ Evitar divisão por zero e durações negativas
         if (totalDurationMinutes <= 0) {
@@ -1117,13 +1122,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                     
                     <div className="flex flex-1">
                         <div className="w-20 flex-shrink-0 text-sm text-right pr-2 border-r border-gray-200">
+                             {/* Labels de horário inicial (9h-16h) */}
                              {hoursWeek.map(hour => (
                                 <div key={hour} className="h-16 flex items-start justify-end pt-1 relative">
                                     <span className="text-gray-600 font-medium text-xs bg-white px-1">{hour}:00</span>
                                 </div>
                             ))}
+                            {/* ✅ NOVO: Label final (17:00) posicionado na base do último slot */}
+                            <div key={END_HOUR_WEEK} className="h-0 flex items-start justify-end pt-1 relative -mt-4">
+                                <span className="text-gray-600 font-medium text-xs bg-white px-1">{END_HOUR_WEEK}:00</span>
+                            </div>
                         </div>
 
+                        {/* ✅ CORREÇÃO DEFINITIVA: Altura = duração real (8 horas × 4rem = 32rem) */}
                         <div className="flex-1 grid grid-cols-7" style={{ height: `${(END_HOUR_WEEK - START_HOUR_WEEK) * 4}rem`}}>
                             {weekDays.map(day => {
                                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
@@ -1156,7 +1167,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
-                                // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
+                                // ✅ CORREÇÃO DEFINITIVA: Slots clicáveis apenas para horas que iniciam (9h-16h = 8 slots)
+                                // Cada slot representa 1 hora (ex: 9h-10h, 10h-11h, ..., 16h-17h)
                                 const iterableHours = Array.from({ length: END_HOUR_WEEK - START_HOUR_WEEK }, (_, i) => i + START_HOUR_WEEK);
 
                                 // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
@@ -1173,9 +1185,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                 return (
                                 <div key={dateStr} className={`relative border-l border-gray-200 ${isWeekend ? 'bg-yellow-50' : ''}`}>
+                                    {/* Linhas pontilhadas do grid (9h-16h = 8 linhas) */}
                                     {hoursWeek.map(hour => (
                                         <div key={`line-${hour}`} className="h-16 border-t border-dashed border-gray-200"></div>
                                     ))}
+                                    {/* ✅ NOVO: Linha pontilhada final (17:00) para fechar o grid */}
+                                    <div key={`line-${END_HOUR_WEEK}`} className="h-0 border-t border-dashed border-gray-200"></div>
 
                                     {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais */}
                                     {selectedAgent && iterableHours.map(hour => {
@@ -1390,7 +1405,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
-                                // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
+                                // ✅ CORREÇÃO DEFINITIVA: Slots clicáveis apenas para horas que iniciam (9h-16h = 8 slots)
+                                // Cada slot representa 1 hora (ex: 9h-10h, 10h-11h, ..., 16h-17h)
                                 const iterableHours = Array.from({ length: END_HOUR_MONTH - START_HOUR_MONTH }, (_, i) => i + START_HOUR_MONTH);
         
                                 // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
