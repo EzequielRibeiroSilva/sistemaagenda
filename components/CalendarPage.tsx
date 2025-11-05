@@ -94,12 +94,32 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     // Formato: "agentId-dateStr-startTime-endTime" (ex: "23-2025-11-04-13:00-14:00")
     const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
     
+    // 🎯 NOVO: Ref para a barra de navegação de dias
+    const dayNavigationRef = useRef<HTMLDivElement>(null);
+    
     // Estado do popover
     const [popover, setPopover] = useState<{
         visible: boolean;
         content: NonNullable<ScheduleSlot['details']>;
         style: React.CSSProperties;
     } | null>(null);
+
+    // 🎯 NOVO: Scroll automático para centralizar o dia selecionado na barra de navegação
+    useEffect(() => {
+        if (view === 'Dia' && dayNavigationRef.current) {
+            // Aguardar o próximo frame para garantir que o DOM foi atualizado
+            setTimeout(() => {
+                const selectedButton = dayNavigationRef.current?.querySelector('.bg-blue-600');
+                if (selectedButton) {
+                    selectedButton.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'nearest',
+                        inline: 'center'
+                    });
+                }
+            }, 100);
+        }
+    }, [currentDate, view]);
 
     // 🔍 DEBUG: Verificar se dados estão sendo carregados
     useEffect(() => {
@@ -1591,7 +1611,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             <ChevronLeft className="h-5 w-5 text-gray-600" />
                         </button>
                         
-                        <div className="flex items-center gap-1 overflow-x-auto mx-2 scrollbar-hide">
+                        <div ref={dayNavigationRef} className="flex items-center gap-1 overflow-x-auto mx-2 scrollbar-hide">
                         {daysInCurrentMonth.map(day => {
                             const dateStr = toISODateString(day);
                             const isSelected = day.getDate() === currentDate.getDate() && day.getMonth() === currentDate.getMonth();
