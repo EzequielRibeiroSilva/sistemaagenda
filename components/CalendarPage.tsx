@@ -579,6 +579,62 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         setCurrentDate(new Date());
     };
 
+    // 🎯 NOVA FUNÇÃO: Helper para obter o dia da semana no formato 'dia_semana' (1=Segunda, 7=Domingo)
+    const getDayOfWeekIndex = (date: Date): number => {
+        // getDay() retorna 0=Domingo, 1=Segunda, ..., 6=Sábado
+        const day = date.getDay();
+        return day === 0 ? 7 : day; // Mapear 0 (Domingo) para 7
+    };
+
+    // 🎯 NOVA FUNÇÃO: Calcular Blocos de Intervalo do Local para uma determinada data
+    const calculateLocationIntervalBlocks = (date: Date): Array<{ start: string; end: string; id: string }> => {
+        if (!selectedLocationFilter || selectedLocationFilter === 'all') return [];
+
+        const dayIndex = getDayOfWeekIndex(date);
+        const schedules = unitSchedules[selectedLocationFilter];
+        
+        if (!schedules) return [];
+
+        const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
+        
+        // 🎯 NOVO: Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
+        if (!daySchedule || !daySchedule.is_aberto) {
+            // Retornar bloqueio do dia inteiro (do início ao fim do grid)
+            return [{
+                start: '00:00',
+                end: '23:59',
+                id: `closed-${selectedLocationFilter}-${dayIndex}`
+            }];
+        }
+        
+        // Se não tem horários ou tem apenas 1 período, não há intervalo (mas o dia está aberto)
+        if (!Array.isArray(daySchedule.horarios_json) || daySchedule.horarios_json.length <= 1) {
+            return [];
+        }
+
+        // Ordenar os horários de funcionamento
+        const sortedPeriods = daySchedule.horarios_json.sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+        const intervals: Array<{ start: string; end: string; id: string }> = [];
+
+        // O intervalo está sempre entre o 'fim' de um período e o 'início' do próximo
+        for (let i = 0; i < sortedPeriods.length - 1; i++) {
+            const currentEnd = sortedPeriods[i].fim;
+            const nextStart = sortedPeriods[i + 1].inicio;
+
+            // Se o fim do período atual for anterior ao início do próximo, há um intervalo.
+            if (currentEnd < nextStart) {
+                intervals.push({
+                    start: currentEnd,
+                    end: nextStart,
+                    id: `interval-${selectedLocationFilter}-${dayIndex}-${i}` // ID único para o bloco
+                });
+            }
+        }
+
+        return intervals;
+    };
+
     const timeToPercentageDay = (time: string) => {
         const [h, m] = time.split(':').map(Number);
         // Calcular minutos totais desde START_HOUR_DAY
@@ -859,10 +915,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         
                         const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
                         
+                        // 🎯 NOVO: Adicionar os intervalos do local
+                        const locationIntervals = calculateLocationIntervalBlocks(currentDate);
                         
                         const busySlots = [
-                            ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime })),
-                            ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
+                            ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
+                            ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                            // 🎯 NOVO: Adicionar intervalos do local como busySlots
+                            ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                         ].sort((a, b) => a.start.localeCompare(b.start));
 
                         // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
@@ -1013,12 +1073,22 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         </div>
                                     )
                                 })}
+                                {/* 🎯 NOVO: Renderizar Bloqueios de Intervalo do Local (Junto com os AgentUnavailable) */}
+                                {locationIntervals.map(block => {
+                                    const top = timeToPercentageDay(block.start);
+                                    const height = timeToPercentageDay(block.end) - top;
+                                    return (
+                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-5" style={{ top: `${top}%`, height: `${height}%` }}>
+                                            <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
+                                        </div>
+                                    );
+                                })}
                                 {agentUnavailable.map(block => {
                                     const top = timeToPercentageDay(block.startTime);
                                     const height = timeToPercentageDay(block.endTime) - top;
                                     return (
                                         <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-5" style={{ top: `${top}%`, height: `${height}%` }}>
-                                             <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)', backgroundSize: '10px 10px' }}></div>
+                                             <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
                                         </div>
                                     )
                                 })}
@@ -1131,9 +1201,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === selectedAgentId.toString() && (b.date === dateStr || !b.date));
                                 
+                                // 🎯 NOVO: Adicionar os intervalos do local para o dia atual
+                                const locationIntervals = calculateLocationIntervalBlocks(day);
+                                
                                 const busySlots = [
-                                    ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime })),
-                                    ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
+                                    ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
+                                    ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                                    // 🎯 NOVO: Adicionar intervalos do local como busySlots
+                                    ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
                                 // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
@@ -1274,10 +1349,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         )
                                     })}
 
+                                    {/* 🎯 NOVO: Renderizar Bloqueios de Intervalo do Local (Junto com os AgentUnavailable) */}
+                                    {locationIntervals.map(block => {
+                                        return (
+                                            <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-5" style={timeToPositionStyleWeek(block.start, block.end)}>
+                                                <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
+                                            </div>
+                                        )
+                                    })}
                                     {agentUnavailable.map(block => {
                                         return (
                                             <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-5" style={timeToPositionStyleWeek(block.startTime, block.endTime)}>
-                                                 <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 100, 100, 0.2) 4px, rgba(255, 100, 100, 0.2) 8px)'}}></div>
+                                                 <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
                                             </div>
                                         )
                                     })}
@@ -1352,9 +1435,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                                                     }
                                 const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
                                 
+                                // 🎯 NOVO: Adicionar os intervalos do local para o dia atual
+                                const locationIntervals = calculateLocationIntervalBlocks(day);
+                                
                                 const busySlots = [
-                                    ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime })),
-                                    ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime }))
+                                    ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
+                                    ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                                    // 🎯 NOVO: Adicionar intervalos do local como busySlots
+                                    ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
         
                                 // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
@@ -1472,10 +1560,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                                 </div>
                                             )
                                         })}
+                                         {/* 🎯 NOVO: Renderizar Bloqueios de Intervalo do Local (Junto com os AgentUnavailable) */}
+                                         {locationIntervals.map(block => {
+                                            return (
+                                                <div key={block.id} className="absolute h-full bg-red-50 z-5" style={timeToPositionStyleMonth(block.start, block.end)}>
+                                                     <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
+                                                </div>
+                                            )
+                                         })}
                                          {agentUnavailable.map(block => {
                                             return (
                                                 <div key={block.id} className="absolute h-full bg-red-50 z-5" style={timeToPositionStyleMonth(block.startTime, block.endTime)}>
-                                                     <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255, 100, 100, 0.3) 2px, rgba(255, 100, 100, 0.3) 4px)'}}></div>
+                                                     <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
                                                 </div>
                                             )
                                         })}
