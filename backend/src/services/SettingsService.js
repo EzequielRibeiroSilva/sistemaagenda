@@ -103,7 +103,7 @@ class SettingsService {
       // Busca usuário atual
       const usuario = await this.db('usuarios')
         .where('id', userId)
-        .select('id', 'senha')
+        .select('id', 'senha_hash')
         .first();
 
       if (!usuario) {
@@ -111,7 +111,7 @@ class SettingsService {
       }
 
       // Verifica senha atual
-      const senhaAtualValida = await bcrypt.compare(senhaAtual, usuario.senha);
+      const senhaAtualValida = await bcrypt.compare(senhaAtual, usuario.senha_hash);
       if (!senhaAtualValida) {
         throw new Error('Senha atual incorreta');
       }
@@ -124,7 +124,7 @@ class SettingsService {
       await this.db('usuarios')
         .where('id', userId)
         .update({
-          senha: novaSenhaHash,
+          senha_hash: novaSenhaHash,
           updated_at: new Date()
         });
 
