@@ -53,7 +53,24 @@ router.get('/:id',
   }
 );
 
-// ✅ Middleware para exigir role ADMIN APENAS em operações de escrita (POST, PUT, DELETE)
+/**
+ * @route PUT /agentes/:id
+ * @desc Atualizar agente (com upload de avatar)
+ * @access Private (ADMIN ou AGENTE editando seu próprio perfil)
+ * ✅ CORREÇÃO: AGENTE pode editar seus próprios dados, incluindo senha
+ * @param {string} id - ID do agente
+ * @body {object} agenteData - Dados do agente
+ * @returns { success: boolean, data: Agent, message: string }
+ */
+router.put('/:id', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  handleFormDataWithUpload, 
+  async (req, res) => {
+    await agenteController.update(req, res);
+  }
+);
+
+// ✅ Middleware para exigir role ADMIN APENAS em operações de criação e exclusão
 router.use(rbacMiddleware.requireRole('ADMIN'));
 
 /**
@@ -65,18 +82,6 @@ router.use(rbacMiddleware.requireRole('ADMIN'));
  */
 router.post('/', handleFormDataWithUpload, async (req, res) => {
   await agenteController.store(req, res);
-});
-
-/**
- * @route PUT /agentes/:id
- * @desc Atualizar agente (com upload de avatar)
- * @access Private (ADMIN)
- * @param {string} id - ID do agente
- * @body {object} agenteData - Dados do agente
- * @returns { success: boolean, data: Agent, message: string }
- */
-router.put('/:id', handleFormDataWithUpload, async (req, res) => {
-  await agenteController.update(req, res);
 });
 
 /**

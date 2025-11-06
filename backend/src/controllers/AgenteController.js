@@ -178,6 +178,8 @@ class AgenteController {
     try {
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
+      const userRole = req.user.role;
+      const userAgenteId = req.user.agente_id;
 
       const agente = await this.agenteModel.findByIdComplete(agenteId);
 
@@ -189,19 +191,37 @@ class AgenteController {
         });
       }
 
-      // Verificar se o agente pertence a uma unidade do usuário ADMIN logado
-      if (agente.unidade_usuario_id !== usuarioId) {
-        return res.status(403).json({
-          success: false,
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para acessar este agente'
-        });
+      // ✅ CORREÇÃO CRÍTICA: Permitir que AGENTE acesse seus próprios dados
+      // Verificar permissão baseada no role
+      if (userRole === 'AGENTE') {
+        // AGENTE só pode acessar seu próprio perfil
+        if (userAgenteId && parseInt(agenteId) !== parseInt(userAgenteId)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Você só pode acessar seu próprio perfil'
+          });
+        }
+      } else {
+        // ADMIN/MASTER: Verificar se o agente pertence a uma unidade do usuário logado
+        if (agente.unidade_usuario_id !== usuarioId) {
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para acessar este agente'
+          });
+        }
       }
 
-      // Buscar todos os serviços disponíveis do usuário
+      // ✅ CORREÇÃO: Buscar serviços do usuário correto
       const Servico = require('../models/Servico');
       const servicoModel = new Servico();
-      const servicosDisponiveis = await servicoModel.findActiveByUsuario(usuarioId);
+
+      // Para AGENTE: buscar serviços do ADMIN que criou a unidade
+      // Para ADMIN/MASTER: buscar serviços do próprio usuário
+      const usuarioIdParaServicos = userRole === 'AGENTE' ? agente.unidade_usuario_id : usuarioId;
+
+      const servicosDisponiveis = await servicoModel.findActiveByUsuario(usuarioIdParaServicos);
 
       // Formatar dados para o frontend
       const agenteFormatado = {
@@ -461,6 +481,11 @@ class AgenteController {
     try {
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
+      const userRole = req.user.role;
+      const userAgenteId = req.user.agente_id;
+      
+      console.log(`🔐 [AgenteController.update] Início - Role: ${userRole}, UsuarioId: ${usuarioId}, AgenteId param: ${agenteId}, User AgenteId: ${userAgenteId}`);
+      
       const {
         nome,
         sobrenome,
@@ -530,13 +555,30 @@ class AgenteController {
         });
       }
 
-      // Verificar se o agente pertence a uma unidade do usuário ADMIN logado
-      if (agenteExistente.unidade_usuario_id !== usuarioId) {
-        return res.status(403).json({
-          success: false,
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para editar este agente'
-        });
+      // ✅ CORREÇÃO CRÍTICA: Permitir que AGENTE edite seus próprios dados
+      // Verificar permissão baseada no role
+      if (userRole === 'AGENTE') {
+        // AGENTE só pode editar seu próprio perfil
+        if (userAgenteId && parseInt(agenteId) !== parseInt(userAgenteId)) {
+          console.log(`❌ [AgenteController.update] AGENTE tentando editar outro agente. AgenteId: ${agenteId}, UserAgenteId: ${userAgenteId}`);
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Você só pode editar seu próprio perfil'
+          });
+        }
+        console.log(`✅ [AgenteController.update] AGENTE editando seu próprio perfil`);
+      } else {
+        // ADMIN/MASTER: Verificar se o agente pertence a uma unidade do usuário logado
+        if (agenteExistente.unidade_usuario_id !== usuarioId) {
+          console.log(`❌ [AgenteController.update] ADMIN tentando editar agente de outro usuário`);
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para editar este agente'
+          });
+        }
+        console.log(`✅ [AgenteController.update] ADMIN editando agente de sua empresa`);
       }
 
       // Validações básicas
@@ -548,18 +590,31 @@ class AgenteController {
         });
       }
 
-      // Verificar se a unidade pertence ao usuário logado
-      const unidade = await this.agenteModel.db('unidades')
-        .where('id', unidade_id)
-        .where('usuario_id', usuarioId)
-        .first();
+      // ✅ CORREÇÃO: AGENTE não pode mudar de unidade, apenas ADMIN pode
+      if (userRole === 'AGENTE') {
+        // AGENTE: Manter unidade_id atual (não permitir mudança)
+        if (parseInt(unidade_id) !== parseInt(agenteExistente.unidade_id)) {
+          console.log(`❌ [AgenteController.update] AGENTE tentando mudar de unidade`);
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Você não pode alterar sua unidade'
+          });
+        }
+      } else {
+        // ADMIN/MASTER: Verificar se a unidade pertence ao usuário logado
+        const unidade = await this.agenteModel.db('unidades')
+          .where('id', unidade_id)
+          .where('usuario_id', usuarioId)
+          .first();
 
-      if (!unidade) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unidade inválida',
-          message: 'A unidade selecionada não pertence ao seu usuário'
-        });
+        if (!unidade) {
+          return res.status(403).json({
+            success: false,
+            error: 'Unidade inválida',
+            message: 'A unidade selecionada não pertence ao seu usuário'
+          });
+        }
       }
 
       // Gerenciar avatar (upload ou manter existente)

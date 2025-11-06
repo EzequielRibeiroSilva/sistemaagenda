@@ -173,7 +173,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    if (userRole === 'agent') {
+                    if (userRole === 'AGENTE') {
                       setActiveView('agents-edit');
                     } else {
                       setActiveView('settings');

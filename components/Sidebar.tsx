@@ -195,8 +195,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             onClick={() => handleNavItemClick('compromissos')}
         />
         
-        {(userRole === 'ADMIN' || userRole === 'AGENTE') && (
-            <div 
+        {userRole === 'ADMIN' && (
+            <div
                 ref={clientsNavItemRef}
                 className="relative"
             >
@@ -285,7 +285,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             }}
         />
       </nav>
-      {portalRoot && (userRole === 'ADMIN' || userRole === 'AGENTE') && createPortal(clientsSubmenu, portalRoot)}
+      {portalRoot && userRole === 'ADMIN' && createPortal(clientsSubmenu, portalRoot)}
       {portalRoot && userRole === 'ADMIN' && createPortal(servicesSubmenu, portalRoot)}
     </>
   );
