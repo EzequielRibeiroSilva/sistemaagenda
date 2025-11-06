@@ -72,6 +72,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     const [lastName, setLastName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
+    const [password, setPassword] = useState(''); // ✅ CORREÇÃO: Estado para capturar nova senha
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
 
     useEffect(() => {
@@ -209,7 +210,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 agenda_personalizada: isCustomSchedule,
                 servicos_oferecidos: servicosSelecionados,
                 horarios_funcionamento: isCustomSchedule ? scheduleData : [],
-                avatar: avatarFile 
+                avatar: avatarFile,
+                ...(password.trim() !== '' && { senha: password }) // ✅ CORREÇÃO CRÍTICA: Incluir senha apenas se preenchida
             };
 
             const result = await updateAgent(agentData.id, updateData);
@@ -314,7 +316,14 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     <TextInput label="Último Nome" value={lastName} onChange={e => setLastName(e.target.value)} />
                     <TextInput label="Nome De Exibição" className="md:col-span-2" value={`${firstName} ${lastName}`} readOnly />
                     <TextInput label="Endereço De E-Mail" className="md:col-span-2" value={email} onChange={e => setEmail(e.target.value)} />
-                    <TextInput label="Senha" type="password" placeholder="Deixe em branco para não alterar" className="md:col-span-2" />
+                    <TextInput 
+                        label="Senha" 
+                        type="password" 
+                        placeholder="Deixe em branco para não alterar" 
+                        className="md:col-span-2" 
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                    />
 
                     <div className="relative">
                         <label className="text-sm font-medium text-gray-600 mb-2 block">Telefone</label>
