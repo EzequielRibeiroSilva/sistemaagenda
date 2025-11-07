@@ -1,9 +1,58 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX } from './Icons';
-import type { AppointmentDetail, AppointmentStatus } from '../types';
+import type { AppointmentDetail, AppointmentStatus, Location } from '../types';
 import { useAppointmentManagement, AppointmentFilters } from '../hooks/useAppointmentManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api'; // ✅ CORREÇÃO: Importar getAssetUrl para avatars
+import { useCalendarData } from '../hooks/useCalendarData'; // ✅ NOVO: Hook para obter locations
+
+// ✅ NOVO: Componente HeaderDropdown reutilizado do CalendarPage.tsx
+const HeaderDropdown: React.FC<{
+  options: string[],
+  selected: string,
+  onSelect: (option: string) => void
+}> = ({ options, selected, onSelect }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <button onClick={() => setIsOpen(!isOpen)} className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-gray-50 min-w-[120px] justify-between">
+                <span className="truncate">{selected}</span>
+                <ChevronDown className="h-4 w-4 ml-2" />
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl z-30 border border-gray-200">
+                    {options.map(option => (
+                        <button
+                            key={option}
+                            onClick={() => {
+                                onSelect(option);
+                                setIsOpen(false);
+                            }}
+                            className="w-full text-left flex items-center px-4 py-2 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg text-sm"
+                        >
+                            {selected === option && <Check className="h-4 w-4 mr-2 text-blue-600" />}
+                            <span className={`${selected !== option ? 'ml-6' : ''} truncate`}>{option}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
 
 const ColumnToggle: React.FC<{ label: string; name: string; checked: boolean; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ label, name, checked, onChange }) => (
     <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
@@ -80,6 +129,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         deleteAppointment
     } = useAppointmentManagement();
 
+    // ✅ NOVO: Hook para obter locations (unidades)
+    const {
+        locations: backendLocations,
+    } = useCalendarData();
+
     const [isModalOpen, setModalOpen] = useState(false);
     const [visibleColumns, setVisibleColumns] = useState({
         id: true,
@@ -102,6 +156,9 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     });
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(10);
+    
+    // ✅ NOVO: Estado para seleção de Local
+    const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
 
     const initialFilters = {
         id: '',
@@ -118,8 +175,55 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     const [filters, setFilters] = useState(initialFilters);
 
-    // Buscar agendamentos quando filtros ou página mudarem
+    // ✅ NOVO: Converter locations do backend para formato do componente
+    const locations: Location[] = useMemo(() => {
+        return backendLocations.map(location => ({
+            id: location.id,
+            name: location.name
+        }));
+    }, [backendLocations]);
+    
+    // ✅ NOVO: Detectar se é plano Single ou Multi
+    const isSinglePlan = user.plano === 'Single' || locations.length === 1;
+    const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
+
+    // ✅ NOVO: Auto-seleção de local baseada no PLANO (mesma lógica do CalendarPage.tsx)
     useEffect(() => {
+        if (locations.length === 0 || selectedLocationFilter !== 'all') return;
+
+        // Caso 1: Plano Single (sempre seleciona o primeiro)
+        if (isSinglePlan) {
+            console.log('🔧 [AppointmentsPage] Plano Single: Auto-selecionando primeira unidade:', locations[0]);
+            setSelectedLocationFilter(locations[0].id);
+            return;
+        }
+
+        if (isMultiPlan) {
+            // Caso 2: Plano Multi e usuário tem unidade padrão
+            if (user.unidade_id) {
+                const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
+                if (userLocation) {
+                    console.log('🔧 [AppointmentsPage] Plano Multi: Auto-selecionando unidade do usuário:', userLocation);
+                    setSelectedLocationFilter(userLocation.id);
+                    return;
+                }
+            }
+
+            // Caso 3: Plano Multi, sem unidade padrão (ADMIN Master)
+            // Seleciona o primeiro da lista para quebrar o deadlock
+            console.log('🔧 [AppointmentsPage] Plano Multi: Auto-selecionando primeira unidade:', locations[0]);
+            setSelectedLocationFilter(locations[0].id);
+        }
+    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
+
+    // ✅ MODIFICADO: Buscar agendamentos quando filtros, página ou LOCAL mudarem
+    useEffect(() => {
+        // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
+        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+            console.log('🚫 [AppointmentsPage] Busca bloqueada. Aguardando seleção de local.');
+            return;
+        }
+
         const apiFilters: AppointmentFilters = {
             page: currentPage,
             limit: itemsPerPage,
@@ -130,12 +234,19 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         }
 
         // Se o usuário logado for um agente, filtrar apenas seus agendamentos
-        if (user?.role === 'AGENTE' && user?.agente_id) {
-            apiFilters.agente_id = user.agente_id;
+        if (user?.role === 'AGENTE' && user?.agentId) {
+            // ✅ CORREÇÃO: user.agentId (não agente_id)
+            apiFilters.agente_id = parseInt(user.agentId);
+        }
+
+        // ✅ NOVO: Adicionar filtro de unidade_id quando local estiver selecionado
+        if (selectedLocationFilter !== 'all') {
+            apiFilters.unidade_id = parseInt(selectedLocationFilter);
+            console.log('🏢 [AppointmentsPage] Filtrando por unidade_id:', selectedLocationFilter);
         }
 
         fetchAppointments(apiFilters);
-    }, [currentPage, itemsPerPage, filters.status, fetchAppointments, user]);
+    }, [currentPage, itemsPerPage, filters.status, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
     
     const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -154,16 +265,17 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     const getRemainingTimeClass = (status: AppointmentDetail['timeRemainingStatus']) => {
         switch (status) {
-            case 'soon': return 'bg-orange-100 text-orange-800';
-            case 'overdue': return 'bg-gray-100 text-gray-600';
-            case 'pending': return 'bg-blue-100 text-blue-800';
+            case 'happening_now': return 'bg-green-100 text-green-800'; // ✅ Verde para "Agora"
+            case 'soon': return 'bg-orange-100 text-orange-800'; // Laranja para "X horas"
+            case 'pending': return 'bg-blue-100 text-blue-800'; // Azul para "X dias"
+            case 'overdue': return 'bg-gray-100 text-gray-600'; // Cinza para "Passado"
             default: return 'bg-gray-100 text-gray-600';
         }
     };
     
     const filteredAppointments = useMemo(() => {
         // Aplicar filtros locais (os filtros do servidor já foram aplicados)
-        return appointments.filter(app => {
+        const filtered = appointments.filter(app => {
             const { id, service, dateTime, timeRemainingStatus, agent, client, paymentStatus, createdAt, paymentMethod } = filters;
 
             if (id && !String(app.id).toLowerCase().includes(id.toLowerCase())) return false;
@@ -187,9 +299,94 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
             return true;
         });
+
+        // ✅ ORDENAÇÃO TEMPORAL: [Agora, Horas, Dias, Passado]
+        // Formato do dateTime: "7 novembro, 2025 - 10:30"
+        return filtered.sort((a, b) => {
+            // 🎯 ORDEM DE PRIORIDADE:
+            // 1. happening_now (Agora) - verde
+            // 2. soon (X horas) - laranja
+            // 3. pending (X dias) - azul
+            // 4. overdue (Passado) - cinza
+            
+            const priorityOrder: Record<AppointmentDetail['timeRemainingStatus'], number> = {
+                'happening_now': 1,
+                'soon': 2,
+                'pending': 3,
+                'overdue': 4
+            };
+            
+            const priorityA = priorityOrder[a.timeRemainingStatus];
+            const priorityB = priorityOrder[b.timeRemainingStatus];
+            
+            // Se têm prioridades diferentes, ordenar por prioridade
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            
+            // Se têm a mesma prioridade, ordenar por timestamp (mais próximo primeiro)
+            // Função auxiliar para converter dateTime string em timestamp
+            const parseDateTime = (dateTimeStr: string): number => {
+                try {
+                    // Extrair partes: "7 novembro, 2025 - 10:30"
+                    const [datePart, timePart] = dateTimeStr.split(' - ');
+                    if (!datePart || !timePart) return 0;
+
+                    // Extrair dia, mês e ano
+                    const [dayStr, monthStr, yearStr] = datePart.split(' ');
+                    const day = parseInt(dayStr);
+                    const year = parseInt(yearStr.replace(',', ''));
+
+                    // Mapear nome do mês para número (0-11)
+                    const monthMap: { [key: string]: number } = {
+                        'janeiro': 0, 'fevereiro': 1, 'março': 2, 'abril': 3,
+                        'maio': 4, 'junho': 5, 'julho': 6, 'agosto': 7,
+                        'setembro': 8, 'outubro': 9, 'novembro': 10, 'dezembro': 11
+                    };
+                    const month = monthMap[monthStr.toLowerCase()] ?? 0;
+
+                    // Extrair hora e minuto
+                    const [hourStr, minuteStr] = timePart.split(':');
+                    const hour = parseInt(hourStr);
+                    const minute = parseInt(minuteStr);
+
+                    // Criar objeto Date e retornar timestamp
+                    const date = new Date(year, month, day, hour, minute);
+                    return date.getTime();
+                } catch (error) {
+                    console.error('Erro ao parsear dateTime:', dateTimeStr, error);
+                    return 0;
+                }
+            };
+
+            const timestampA = parseDateTime(a.dateTime);
+            const timestampB = parseDateTime(b.dateTime);
+
+            // Ordenar crescente (mais próximo primeiro)
+            return timestampA - timestampB;
+        });
     }, [appointments, filters]);
 
     
+    // ✅ NOVO: Preparar opções e handler para o dropdown de Locais
+    const locationOptionsForHeader = useMemo(() => {
+        return locations.map(location => location.name);
+    }, [locations]);
+
+    const selectedLocationName = useMemo(() => {
+        const location = locations.find(l => l.id === selectedLocationFilter);
+        return location ? location.name : 'Selecione um Local';
+    }, [locations, selectedLocationFilter]);
+
+    const handleLocationSelect = (locationName: string) => {
+        const location = locations.find(l => l.name === locationName);
+        if (location) {
+            console.log('📍 [AppointmentsPage] Local selecionado:', location);
+            setSelectedLocationFilter(location.id);
+            setCurrentPage(1); // Reset para primeira página ao mudar de local
+        }
+    };
+
     const handleClearFilters = () => {
         setFilters(initialFilters);
         setCurrentPage(1);
@@ -226,14 +423,24 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                         </p>
                     )}
                 </div>
-                <button
-                    onClick={() => fetchAppointments({ page: currentPage, limit: itemsPerPage })}
-                    disabled={isLoading}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                >
-                    <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    Atualizar
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* ✅ NOVO: Dropdown de seleção de Local - visível apenas quando há múltiplos locais */}
+                    {locations.length > 1 && (
+                        <HeaderDropdown
+                            options={locationOptionsForHeader}
+                            selected={selectedLocationName}
+                            onSelect={handleLocationSelect}
+                        />
+                    )}
+                    <button
+                        onClick={() => fetchAppointments({ page: currentPage, limit: itemsPerPage })}
+                        disabled={isLoading}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                        <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">

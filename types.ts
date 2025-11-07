@@ -84,7 +84,7 @@ export interface AppointmentDetail {
   service: string;
   dateTime: string;
   timeRemaining: string;
-  timeRemainingStatus: 'soon' | 'overdue' | 'pending';
+  timeRemainingStatus: 'happening_now' | 'soon' | 'overdue' | 'pending';
   agent: {
     name: string;
     avatar: string;

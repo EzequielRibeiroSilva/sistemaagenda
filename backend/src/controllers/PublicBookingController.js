@@ -54,11 +54,12 @@ class PublicBookingController {
         .where('status', 'Ativo')
         .select('id', 'nome', 'nome_exibicao', 'biografia', 'avatar_url');
 
-      // Buscar serviços ativos da unidade
+      // ✅ NOVA ARQUITETURA MANY-TO-MANY: Buscar serviços ativos da unidade
       const servicosRaw = await db('servicos')
-        .where('unidade_id', unidadeId)
-        .where('status', 'Ativo')
-        .select('id', 'nome', 'descricao', 'preco', 'duracao_minutos', 'categoria_id');
+        .join('unidade_servicos', 'servicos.id', 'unidade_servicos.servico_id')
+        .where('unidade_servicos.unidade_id', unidadeId)
+        .where('servicos.status', 'Ativo')
+        .select('servicos.id', 'servicos.nome', 'servicos.descricao', 'servicos.preco', 'servicos.duracao_minutos', 'servicos.categoria_id');
 
       // Converter preços para números
       const servicos = servicosRaw.map(servico => ({

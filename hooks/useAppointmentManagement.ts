@@ -32,6 +32,7 @@ export interface AppointmentFilters {
   data_agendamento?: string;
   agente_id?: number;
   cliente_id?: number;
+  unidade_id?: number; // ✅ NOVO: Filtro por local/unidade
   search?: string;
 }
 
@@ -147,12 +148,12 @@ export const useAppointmentManagement = () => {
     const diffEndMs = appointmentEndDate.getTime() - now.getTime();
 
     let timeRemaining: string;
-    let timeRemainingStatus: 'soon' | 'overdue' | 'pending';
+    let timeRemainingStatus: 'happening_now' | 'soon' | 'overdue' | 'pending';
 
     // Se está acontecendo AGORA (entre início e fim)
     if (diffMs <= 0 && diffEndMs > 0) {
-      timeRemaining = 'Acontecendo Agora';
-      timeRemainingStatus = 'soon';
+      timeRemaining = 'Agora';
+      timeRemainingStatus = 'happening_now';
     }
     // Se já passou (terminou)
     else if (diffEndMs <= 0) {
@@ -259,6 +260,12 @@ export const useAppointmentManagement = () => {
       if (filters.cliente_id) {
         url.searchParams.set('cliente_id', filters.cliente_id.toString());
       }
+      // ✅ NOVO: Adicionar filtro de unidade_id
+      if (filters.unidade_id) {
+        url.searchParams.set('unidade_id', filters.unidade_id.toString());
+      }
+
+      console.log('🔍 [useAppointmentManagement] Buscando agendamentos com URL:', url.toString());
 
       const response: AppointmentResponse = await makeAuthenticatedRequest(url.toString());
       
