@@ -13,6 +13,8 @@ export interface BackendAgendamento {
   hora_inicio: string;
   hora_fim: string;
   status: AppointmentStatus;
+  status_pagamento?: 'Pago' | 'Não Pago';
+  metodo_pagamento?: string;
   valor_total: number;
   observacoes?: string;
   created_at: string;
@@ -223,9 +225,9 @@ export const useAppointmentManagement = () => {
         avatar: `https://i.pravatar.cc/150?u=${backendData.cliente_id}` // Avatar placeholder
       },
       status: backendData.status,
-      paymentStatus: 'Não Pago', // TODO: Implementar status de pagamento
+      paymentStatus: backendData.status_pagamento || 'Não Pago', // ✅ CORREÇÃO: Mapear status_pagamento do backend
       createdAt,
-      paymentMethod: 'Não definido' // TODO: Implementar método de pagamento
+      paymentMethod: backendData.metodo_pagamento || 'Não definido' // ✅ CORREÇÃO: Mapear metodo_pagamento do backend
     };
   }, []);
 
