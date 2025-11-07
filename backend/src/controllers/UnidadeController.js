@@ -27,27 +27,32 @@ class UnidadeController extends BaseController {
       console.log(`   UsuarioId (req.user.id): ${usuarioId}`);
       console.log(`   AgenteId (req.user.agente_id): ${userAgenteId}`);
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar apenas a unidade onde ele trabalha
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar TODAS as unidades onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
         console.log(`🔍 [UnidadeController] Condição AGENTE detectada. Buscando agente_id=${userAgenteId}...`);
-        const Agente = require('../models/Agente');
-        const agenteModel = new Agente();
-        const agente = await agenteModel.findById(userAgenteId);
-        console.log(`🔍 [UnidadeController] Agente encontrado:`, agente ? { id: agente.id, usuario_id: agente.usuario_id, nome: agente.nome, unidade_id: agente.unidade_id } : null);
 
-        if (agente && agente.unidade_id) {
-          // ✅ NOVA LÓGICA: Para AGENTE, retornar apenas a unidade onde ele trabalha
-          console.log(`✅ [UnidadeController] AGENTE detectado. Buscando unidade_id=${agente.unidade_id} do agente`);
-          const data = await this.model.db('unidades')
-            .where('id', agente.unidade_id)
-            .select('*');
+        // Buscar TODAS as unidades onde o agente trabalha através da tabela agente_unidades
+        const unidadesDoAgente = await this.model.db('agente_unidades')
+          .join('unidades', 'agente_unidades.unidade_id', 'unidades.id')
+          .where('agente_unidades.agente_id', userAgenteId)
+          .where('unidades.status', '!=', 'Excluido') // Excluir unidades deletadas
+          .select('unidades.*');
 
-          console.log(`✅ [UnidadeController] Encontradas ${data.length} unidades para agente_id ${userAgenteId}`);
-          return res.json(data);
-        } else {
-          console.log(`❌ [UnidadeController] ERRO: Agente não encontrado ou sem unidade_id!`);
-          return res.json([]);
+        // Aplicar filtros adicionais se fornecidos
+        const { status } = req.query;
+        let filteredUnidades = unidadesDoAgente;
+        if (status) {
+          filteredUnidades = unidadesDoAgente.filter(u => u.status === status);
         }
+
+        console.log(`✅ [UnidadeController] Encontradas ${filteredUnidades.length} unidades para agente_id ${userAgenteId}`);
+        if (filteredUnidades.length > 0) {
+          console.log(`   Unidades IDs: ${filteredUnidades.map(u => u.id).join(', ')}`);
+          console.log(`   Unidades Nomes: ${filteredUnidades.map(u => u.nome).join(', ')}`);
+        }
+
+        // Retornar no formato esperado pelo frontend (array direto)
+        return res.json(filteredUnidades);
       } else {
         console.log(`🔍 [UnidadeController] Não é AGENTE ou agente_id ausente. Usando usuario_id=${usuarioId} diretamente.`);
       }

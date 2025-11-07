@@ -16,8 +16,6 @@ class AgendamentoController extends BaseController {
       const usuarioId = req.user?.id;
       const userRole = req.user?.role;
 
-      console.log(`🚀 [AgendamentoController.index] INÍCIO - usuarioId=${usuarioId}, role=${userRole}`);
-      console.log(`🚀 [AgendamentoController.index] Query params:`, req.query);
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -26,6 +24,7 @@ class AgendamentoController extends BaseController {
       }
 
       const { page, limit, data_agendamento, agente_id, cliente_id, status, unidade_id } = req.query;
+
 
       let data;
 
@@ -39,9 +38,7 @@ class AgendamentoController extends BaseController {
             .first();
 
           if (agenteRecord) {
-            console.log(`🔍 [AgendamentoController] AGENTE detectado. Buscando agendamentos para agente_id=${agenteRecord.id}, data=${data_agendamento}`);
             const allAgendamentos = await this.model.findByAgente(agenteRecord.id);
-            console.log(`🔍 [AgendamentoController] Total agendamentos encontrados: ${allAgendamentos.length}`);
 
             // Filtrar apenas pela data específica
             data = allAgendamentos.filter(agendamento => {
@@ -50,21 +47,20 @@ class AgendamentoController extends BaseController {
               const dateString = agendamentoDate instanceof Date
                 ? agendamentoDate.toISOString().split('T')[0]
                 : agendamentoDate;
-              console.log(`🔍 [AgendamentoController] Comparando: ${dateString} === ${data_agendamento}`);
               return dateString === data_agendamento;
             });
-            console.log(`🔍 [AgendamentoController] Agendamentos após filtro de data: ${data.length}`);
           } else {
-            console.log(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${usuarioId}`);
             data = [];
           }
         } else {
           // Para ADMIN/MASTER, usar o método original
           data = await this.model.findByData(data_agendamento, usuarioId);
         }
-      } else if (agente_id) {
+      } else if (agente_id && !unidade_id && !page && !limit) {
+        // ✅ CORREÇÃO: Só usar findByAgente se NÃO há unidade_id nem paginação
         data = await this.model.findByAgente(parseInt(agente_id));
-      } else if (cliente_id) {
+      } else if (cliente_id && !unidade_id && !page && !limit) {
+        // ✅ CORREÇÃO: Só usar findByCliente se NÃO há unidade_id nem paginação
         data = await this.model.findByCliente(parseInt(cliente_id));
       } else if (page && limit) {
         // Para paginação, precisamos filtrar por usuário através das unidades
@@ -116,7 +112,6 @@ class AgendamentoController extends BaseController {
           // ✅ NOVO: Filtrar por unidade_id se fornecido
           if (unidade_id) {
             queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
-            console.log(`🏢 [AgendamentoController] Filtrando por unidade_id: ${unidade_id}`);
           }
 
           // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
@@ -153,6 +148,7 @@ class AgendamentoController extends BaseController {
           .orderBy(this.model.db.raw("ABS(agendamentos.data_agendamento - CURRENT_DATE)"), 'asc')
           .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
+
 
         // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
         for (const agendamento of data) {

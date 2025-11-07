@@ -4,6 +4,16 @@ const AgendamentoController = require('../controllers/AgendamentoController');
 
 const agendamentoController = new AgendamentoController();
 
+// Middleware para desabilitar cache em todas as rotas de agendamentos
+router.use((req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  next();
+});
+
 // GET /api/agendamentos - Listar agendamentos
 router.get('/', (req, res) => agendamentoController.index(req, res));
 

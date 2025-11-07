@@ -276,20 +276,49 @@ class UnidadeService {
    */
   async canAccessUnidade(userId, unidadeId, userRole) {
     try {
+      console.log(`🔍 [UnidadeService.canAccessUnidade] userId=${userId}, unidadeId=${unidadeId}, userRole=${userRole}`);
+
       // MASTER pode acessar qualquer unidade
       if (userRole === 'MASTER') {
+        console.log(`✅ [UnidadeService.canAccessUnidade] MASTER pode acessar qualquer unidade`);
         return true;
       }
 
       // Buscar a unidade
       const unidade = await this.unidadeModel.findById(unidadeId);
-      
+
       if (!unidade) {
+        console.log(`❌ [UnidadeService.canAccessUnidade] Unidade ${unidadeId} não encontrada`);
         return false;
       }
 
+      // AGENTE: Verificar se trabalha nesta unidade através da tabela agente_unidades
+      if (userRole === 'AGENTE') {
+        console.log(`🔍 [UnidadeService.canAccessUnidade] AGENTE detectado. Verificando acesso...`);
+
+        // Buscar o agente_id do usuário
+        const agente = await db('agentes').where('usuario_id', userId).first();
+
+        if (!agente) {
+          console.log(`❌ [UnidadeService.canAccessUnidade] Agente não encontrado para usuario_id=${userId}`);
+          return false;
+        }
+
+        // Verificar se o agente trabalha nesta unidade
+        const agenteUnidade = await db('agente_unidades')
+          .where('agente_id', agente.id)
+          .where('unidade_id', unidadeId)
+          .first();
+
+        const canAccess = !!agenteUnidade;
+        console.log(`${canAccess ? '✅' : '❌'} [UnidadeService.canAccessUnidade] AGENTE ${agente.id} ${canAccess ? 'PODE' : 'NÃO PODE'} acessar unidade ${unidadeId}`);
+        return canAccess;
+      }
+
       // ADMIN só pode acessar suas próprias unidades
-      return unidade.usuario_id === userId;
+      const canAccess = unidade.usuario_id === userId;
+      console.log(`${canAccess ? '✅' : '❌'} [UnidadeService.canAccessUnidade] ADMIN ${canAccess ? 'PODE' : 'NÃO PODE'} acessar unidade ${unidadeId} (usuario_id=${unidade.usuario_id})`);
+      return canAccess;
     } catch (error) {
       console.error('Erro ao verificar acesso à unidade:', error);
       return false;
