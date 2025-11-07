@@ -147,12 +147,11 @@ class AgendamentoController extends BaseController {
           )
           .limit(parseInt(limit))
           .offset(offset)
-          // ✅ ORDENAÇÃO TEMPORAL: [Hoje/Futuro, Passado]
-          // Prioridade 1: Agendamentos de hoje e futuros (data >= hoje)
-          // Prioridade 2: Agendamentos passados (data < hoje)
-          // Dentro de cada grupo: ordenar por data crescente (mais próximo primeiro)
-          .orderBy(this.model.db.raw("CASE WHEN agendamentos.data_agendamento >= CURRENT_DATE THEN 0 ELSE 1 END"), 'asc')
-          .orderBy('agendamentos.data_agendamento', 'asc')
+          // ✅ ORDENAÇÃO INTELIGENTE: Agendamentos mais próximos da data atual primeiro
+          // Ordena por proximidade: futuros próximos > hoje > passados recentes
+          // Correção: usar diferença de dias (INTEGER) ao invés de EPOCH
+          .orderBy(this.model.db.raw("ABS(agendamentos.data_agendamento - CURRENT_DATE)"), 'asc')
+          .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
         // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
