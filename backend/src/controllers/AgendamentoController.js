@@ -25,7 +25,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      const { page, limit, data_agendamento, agente_id, cliente_id, status } = req.query;
+      const { page, limit, data_agendamento, agente_id, cliente_id, status, unidade_id } = req.query;
 
       let data;
 
@@ -113,6 +113,12 @@ class AgendamentoController extends BaseController {
             queryBuilder.where('agendamentos.status', status);
           }
 
+          // ✅ NOVO: Filtrar por unidade_id se fornecido
+          if (unidade_id) {
+            queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
+            console.log(`🏢 [AgendamentoController] Filtrando por unidade_id: ${unidade_id}`);
+          }
+
           // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
           // Todos os agendamentos do dia devem ser exibidos para permitir edição
           // O usuário pode editar agendamentos no final do expediente
@@ -141,7 +147,11 @@ class AgendamentoController extends BaseController {
           )
           .limit(parseInt(limit))
           .offset(offset)
-          // ORDENAÇÃO INTELIGENTE: Agendamentos mais próximos primeiro
+          // ✅ ORDENAÇÃO TEMPORAL: [Hoje/Futuro, Passado]
+          // Prioridade 1: Agendamentos de hoje e futuros (data >= hoje)
+          // Prioridade 2: Agendamentos passados (data < hoje)
+          // Dentro de cada grupo: ordenar por data crescente (mais próximo primeiro)
+          .orderBy(this.model.db.raw("CASE WHEN agendamentos.data_agendamento >= CURRENT_DATE THEN 0 ELSE 1 END"), 'asc')
           .orderBy('agendamentos.data_agendamento', 'asc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
@@ -194,6 +204,11 @@ class AgendamentoController extends BaseController {
           .modify(function(queryBuilder) {
             if (status) {
               queryBuilder.where('agendamentos.status', status);
+            }
+
+            // ✅ NOVO: Filtrar por unidade_id se fornecido (mesma lógica da query principal)
+            if (unidade_id) {
+              queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
             }
 
             // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados no total também
@@ -394,16 +409,18 @@ class AgendamentoController extends BaseController {
       // Buscar dados dos serviços principais
       let servicosData = [];
       if (servico_ids.length > 0) {
+        // ✅ NOVA ARQUITETURA MANY-TO-MANY: Verificar se os serviços estão associados à unidade
         servicosData = await this.model.db('servicos')
-          .whereIn('id', servico_ids)
-          .where('status', 'Ativo')
-          .where('unidade_id', unidade_id)
-          .select('id', 'nome', 'preco', 'duracao_minutos');
+          .join('unidade_servicos', 'servicos.id', 'unidade_servicos.servico_id')
+          .whereIn('servicos.id', servico_ids)
+          .where('servicos.status', 'Ativo')
+          .where('unidade_servicos.unidade_id', unidade_id)
+          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos');
 
         if (servicosData.length !== servico_ids.length) {
           return res.status(400).json({
             error: 'Serviços inválidos',
-            message: 'Um ou mais serviços não estão disponíveis'
+            message: 'Um ou mais serviços não estão disponíveis nesta unidade'
           });
         }
       }

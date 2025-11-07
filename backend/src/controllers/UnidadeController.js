@@ -212,6 +212,16 @@ class UnidadeController extends BaseController {
         });
       }
 
+      // 🔍 LOG DE DEBUG: Verificar payload recebido
+      console.log(`📥 [UnidadeController] update - Unidade ${id}:`, {
+        usuarioId,
+        userRole,
+        body_keys: Object.keys(req.body),
+        agentes_ids: req.body.agentes_ids,
+        servicos_ids: req.body.servicos_ids,
+        horarios_funcionamento: req.body.horarios_funcionamento ? 'presente' : 'ausente'
+      });
+
       // Validar dados se fornecidos
       const updateData = {};
 
@@ -260,7 +270,22 @@ class UnidadeController extends BaseController {
 
       if (req.body.servicos_ids !== undefined) {
         updateData.servicos_ids = req.body.servicos_ids;
+        console.log(`🔗 [UnidadeController] servicos_ids recebidos:`, {
+          isArray: Array.isArray(req.body.servicos_ids),
+          length: req.body.servicos_ids?.length,
+          ids: req.body.servicos_ids
+        });
       }
+
+      // 🔍 LOG DE DEBUG: Verificar updateData antes de enviar ao service
+      console.log(`📤 [UnidadeController] updateData preparado:`, {
+        hasNome: !!updateData.nome,
+        hasAgentes: updateData.agentes_ids !== undefined,
+        hasServicos: updateData.servicos_ids !== undefined,
+        hasHorarios: updateData.horarios_funcionamento !== undefined,
+        agentes_count: updateData.agentes_ids?.length,
+        servicos_count: updateData.servicos_ids?.length
+      });
 
       // Usar service para atualizar com verificação de permissões
       const unidadeAtualizada = await this.unidadeService.updateUnidade(
@@ -270,12 +295,16 @@ class UnidadeController extends BaseController {
         userRole
       );
 
+      console.log(`✅ [UnidadeController] Unidade ${id} atualizada com sucesso`);
+
       return res.json({
+        success: true,
         data: unidadeAtualizada,
         message: 'Unidade atualizada com sucesso'
       });
     } catch (error) {
-      console.error('Erro ao atualizar unidade:', error);
+      console.error('❌ [UnidadeController] Erro ao atualizar unidade:', error.message);
+      console.error('   Stack:', error.stack);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -285,6 +314,7 @@ class UnidadeController extends BaseController {
       }
 
       return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
         message: error.message
       });

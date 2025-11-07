@@ -164,15 +164,14 @@ class UnidadeService {
             throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
           }
 
-          // Criar associações na tabela servico_unidades (se existir) ou atualizar campo unidade_id
-          // Como não temos tabela pivô para serviços-unidades, vamos atualizar o campo unidade_id nos serviços
-          await trx('servicos')
-            .whereIn('id', unidadeData.servicos_ids)
-            .update({
-              unidade_id: novaUnidade.id,
-              updated_at: new Date()
-            });
+          // ✅ ARQUITETURA MANY-TO-MANY: Criar associações na tabela unidade_servicos
+          const associacoesServicos = unidadeData.servicos_ids.map(servicoId => ({
+            unidade_id: novaUnidade.id,
+            servico_id: servicoId,
+            created_at: new Date()
+          }));
 
+          await trx('unidade_servicos').insert(associacoesServicos);
           console.log(`✅ ${servicosValidos.length} serviços associados à unidade`);
         }
 
@@ -307,6 +306,15 @@ class UnidadeService {
    */
   async updateUnidade(userId, unidadeId, updateData, userRole) {
     try {
+      console.log(`🔍 [UnidadeService] updateUnidade - Início:`, {
+        userId,
+        unidadeId,
+        userRole,
+        hasAgentes: updateData.agentes_ids !== undefined,
+        hasServicos: updateData.servicos_ids !== undefined,
+        hasHorarios: updateData.horarios_funcionamento !== undefined
+      });
+
       // Verificar se pode acessar a unidade
       const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
 
@@ -392,50 +400,69 @@ class UnidadeService {
 
         // Atualizar associações de serviços (se fornecidos)
         if (updateData.servicos_ids !== undefined) {
-          console.log(`🔗 Atualizando associações de serviços para unidade ${unidadeId}`);
-
-          // Remover associações existentes (limpar unidade_id dos serviços)
-          await trx('servicos').where('unidade_id', unidadeId).update({
-            unidade_id: null,
-            updated_at: new Date()
+          console.log(`🔗 [UnidadeService] Atualizando associações de serviços para unidade ${unidadeId}`);
+          console.log(`   servicos_ids recebidos:`, {
+            isArray: Array.isArray(updateData.servicos_ids),
+            length: updateData.servicos_ids?.length,
+            ids: updateData.servicos_ids
           });
 
+          // ✅ ARQUITETURA MANY-TO-MANY: Remover associações existentes da tabela unidade_servicos
+          const removidos = await trx('unidade_servicos').where('unidade_id', unidadeId).del();
+          console.log(`   🗑️ ${removidos} associações removidas da unidade ${unidadeId}`);
+
           if (Array.isArray(updateData.servicos_ids) && updateData.servicos_ids.length > 0) {
+            console.log(`   🔍 Validando ${updateData.servicos_ids.length} serviços...`);
+            
             // Verificar se os serviços pertencem ao usuário
             const servicosValidos = await trx('servicos')
               .whereIn('id', updateData.servicos_ids)
               .where('usuario_id', userId)
               .select('id');
 
+            console.log(`   🔍 Serviços válidos encontrados: ${servicosValidos.length}/${updateData.servicos_ids.length}`);
+            console.log(`   IDs válidos:`, servicosValidos.map(s => s.id));
+
             if (servicosValidos.length !== updateData.servicos_ids.length) {
+              const idsValidos = servicosValidos.map(s => s.id);
+              const idsInvalidos = updateData.servicos_ids.filter(id => !idsValidos.includes(id));
+              console.error(`   ❌ Serviços inválidos ou não pertencentes ao usuário:`, idsInvalidos);
               throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
             }
 
-            // Associar serviços à unidade
-            await trx('servicos')
-              .whereIn('id', updateData.servicos_ids)
-              .update({
-                unidade_id: unidadeId,
-                updated_at: new Date()
-              });
+            // ✅ ARQUITETURA MANY-TO-MANY: Criar novas associações na tabela unidade_servicos
+            const associacoesServicos = updateData.servicos_ids.map(servicoId => ({
+              unidade_id: unidadeId,
+              servico_id: servicoId,
+              created_at: new Date()
+            }));
 
-            console.log(`✅ ${servicosValidos.length} serviços associados à unidade`);
+            await trx('unidade_servicos').insert(associacoesServicos);
+            console.log(`   ✅ ${servicosValidos.length} serviços associados à unidade`);
           } else {
-            console.log(`✅ Todas as associações de serviços removidas da unidade`);
+            console.log(`   ✅ Todas as associações de serviços removidas da unidade`);
           }
         }
 
         await trx.commit();
+        console.log(`✅ [UnidadeService] Transação commitada com sucesso`);
 
         // Buscar unidade completa com horários
         const unidadeCompleta = await this.getUnidadeWithHorarios(unidadeId);
+        console.log(`📦 [UnidadeService] Unidade completa retornada:`, {
+          id: unidadeCompleta.id,
+          agentes_count: unidadeCompleta.agentes_ids?.length,
+          servicos_count: unidadeCompleta.servicos_ids?.length
+        });
         return unidadeCompleta;
       } catch (transactionError) {
         await trx.rollback();
+        console.error(`❌ [UnidadeService] Rollback executado. Erro:`, transactionError.message);
         throw transactionError;
       }
     } catch (error) {
-      console.error('Erro ao atualizar unidade:', error);
+      console.error('❌ [UnidadeService] Erro ao atualizar unidade:', error.message);
+      console.error('   Stack:', error.stack);
       throw error;
     }
   }
@@ -490,11 +517,11 @@ class UnidadeService {
         .select('agente_id');
       const agentesIds = agentesAssociados.map(a => a.agente_id);
 
-      // Buscar serviços associados
-      const servicosAssociados = await db('servicos')
+      // ✅ ARQUITETURA MANY-TO-MANY: Buscar serviços associados da tabela unidade_servicos
+      const servicosAssociados = await db('unidade_servicos')
         .where('unidade_id', unidadeId)
-        .select('id');
-      const servicosIds = servicosAssociados.map(s => s.id);
+        .select('servico_id');
+      const servicosIds = servicosAssociados.map(s => s.servico_id);
 
       return {
         ...unidade,
