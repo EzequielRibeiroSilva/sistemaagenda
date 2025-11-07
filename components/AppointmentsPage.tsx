@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX } from './Icons';
+import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX, FaUser } from './Icons';
 import type { AppointmentDetail, AppointmentStatus, Location } from '../types';
 import { useAppointmentManagement, AppointmentFilters } from '../hooks/useAppointmentManagement';
 import { useAuth } from '../contexts/AuthContext';
@@ -184,8 +184,9 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     }, [backendLocations]);
     
     // ✅ NOVO: Detectar se é plano Single ou Multi
-    const isSinglePlan = user.plano === 'Single' || locations.length === 1;
-    const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
+    // Para AGENTE sem plano definido, usar lógica baseada no número de locais
+    const isSinglePlan = user.plano === 'Single' || locations.length === 1 || (user.role === 'AGENTE' && locations.length === 1);
+    const isMultiPlan = (user.plano === 'Multi' && locations.length > 1) || (user.role === 'AGENTE' && locations.length > 1);
 
     // ✅ NOVO: Auto-seleção de local baseada no PLANO (mesma lógica do CalendarPage.tsx)
     useEffect(() => {
@@ -193,7 +194,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
         // Caso 1: Plano Single (sempre seleciona o primeiro)
         if (isSinglePlan) {
-            console.log('🔧 [AppointmentsPage] Plano Single: Auto-selecionando primeira unidade:', locations[0]);
             setSelectedLocationFilter(locations[0].id);
             return;
         }
@@ -203,7 +203,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             if (user.unidade_id) {
                 const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
                 if (userLocation) {
-                    console.log('🔧 [AppointmentsPage] Plano Multi: Auto-selecionando unidade do usuário:', userLocation);
                     setSelectedLocationFilter(userLocation.id);
                     return;
                 }
@@ -211,7 +210,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
             // Caso 3: Plano Multi, sem unidade padrão (ADMIN Master)
             // Seleciona o primeiro da lista para quebrar o deadlock
-            console.log('🔧 [AppointmentsPage] Plano Multi: Auto-selecionando primeira unidade:', locations[0]);
             setSelectedLocationFilter(locations[0].id);
         }
     }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
@@ -220,7 +218,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     useEffect(() => {
         // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
         if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-            console.log('🚫 [AppointmentsPage] Busca bloqueada. Aguardando seleção de local.');
             return;
         }
 
@@ -235,14 +232,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
         // Se o usuário logado for um agente, filtrar apenas seus agendamentos
         if (user?.role === 'AGENTE' && user?.agentId) {
-            // ✅ CORREÇÃO: user.agentId (não agente_id)
             apiFilters.agente_id = parseInt(user.agentId);
         }
 
         // ✅ NOVO: Adicionar filtro de unidade_id quando local estiver selecionado
         if (selectedLocationFilter !== 'all') {
             apiFilters.unidade_id = parseInt(selectedLocationFilter);
-            console.log('🏢 [AppointmentsPage] Filtrando por unidade_id:', selectedLocationFilter);
         }
 
         fetchAppointments(apiFilters);
@@ -354,7 +349,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                     const date = new Date(year, month, day, hour, minute);
                     return date.getTime();
                 } catch (error) {
-                    console.error('Erro ao parsear dateTime:', dateTimeStr, error);
                     return 0;
                 }
             };
@@ -381,7 +375,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     const handleLocationSelect = (locationName: string) => {
         const location = locations.find(l => l.name === locationName);
         if (location) {
-            console.log('📍 [AppointmentsPage] Local selecionado:', location);
             setSelectedLocationFilter(location.id);
             setCurrentPage(1); // Reset para primeira página ao mudar de local
         }
@@ -404,7 +397,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         try {
             await updateAppointmentStatus(appointmentId, newStatus);
         } catch (error) {
-            console.error('Erro ao atualizar status:', error);
+            // Erro já tratado no hook
         }
     };
 
@@ -465,7 +458,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 {visibleColumns.servico && <td className="p-3 w-64 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
                                 {visibleColumns.dataHora && <td className="p-3 w-64 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
                                 {visibleColumns.tempoRestante && <td className="p-3 w-32 border-t border-gray-200"><FilterSelect name="timeRemainingStatus" value={filters.timeRemainingStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos</option><option value="soon">Próximo/Agora</option><option value="overdue">Passado</option><option value="pending">Futuro</option></FilterSelect></td>}
-                                {visibleColumns.agente && <td className="p-4 w-64 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={!!loggedInAgentId}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
+                                {visibleColumns.agente && <td className="p-4 w-64 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={user?.role === 'AGENTE'}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
                                 {visibleColumns.cliente && <td className="p-4 w-64 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
                                 {visibleColumns.estado && (
                                     <td className="p-3 w-32 border-t border-gray-200">
@@ -522,7 +515,33 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
                                         {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
                                         {visibleColumns.tempoRestante && <td className="p-3 w-32"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
-                                        {visibleColumns.agente && <td className="p-4 w-64"><div className="flex items-center gap-3"><img src={getAssetUrl(app.agent.avatar)} alt={app.agent.name} className="w-8 h-8 rounded-full object-cover border-2 border-gray-200" onError={(e) => { const target = e.target as HTMLImageElement; target.src = `https://i.pravatar.cc/150?u=${app.id}`; }} /><span className="font-medium text-gray-800 truncate">{app.agent.name}</span></div></td>}
+                                        {visibleColumns.agente && (
+                                            <td className="p-4 w-64">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="relative w-8 h-8">
+                                                        {app.agent.avatar && !app.agent.avatar.includes('pravatar') ? (
+                                                            <img
+                                                                src={getAssetUrl(app.agent.avatar)}
+                                                                alt={app.agent.name}
+                                                                className="w-8 h-8 rounded-full object-cover border-2 border-gray-200"
+                                                                onError={(e) => {
+                                                                    const target = e.target as HTMLImageElement;
+                                                                    target.style.display = 'none';
+                                                                    const fallbackDiv = target.nextElementSibling as HTMLElement;
+                                                                    if (fallbackDiv) {
+                                                                        fallbackDiv.classList.remove('hidden');
+                                                                    }
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <div className={`w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-200 ${app.agent.avatar && !app.agent.avatar.includes('pravatar') ? 'hidden' : ''}`}>
+                                                            <FaUser className="w-4 h-4 text-gray-600" />
+                                                        </div>
+                                                    </div>
+                                                    <span className="font-medium text-gray-800 truncate">{app.agent.name}</span>
+                                                </div>
+                                            </td>
+                                        )}
                                         {visibleColumns.cliente && (
                                             <td className="p-4 w-64">
                                                 <div className="flex items-center justify-between gap-3">

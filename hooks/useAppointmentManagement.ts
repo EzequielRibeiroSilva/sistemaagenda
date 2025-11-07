@@ -99,7 +99,6 @@ export const useAppointmentManagement = () => {
     
     if (!dataAgendamento) {
       // Se data é null ou undefined
-      console.error('Data de agendamento ausente:', backendData);
       return {
         id: backendData.id,
         service: 'ERRO',
@@ -125,12 +124,6 @@ export const useAppointmentManagement = () => {
 
     // Verificar se as datas são válidas
     if (isNaN(appointmentDate.getTime()) || isNaN(appointmentEndDate.getTime())) {
-      console.error('Data inválida após parsing:', {
-        dateString,
-        hora_inicio: backendData.hora_inicio,
-        hora_fim: backendData.hora_fim,
-        appointmentDateTimeString
-      });
       return {
         id: backendData.id,
         service: 'ERRO',
@@ -210,6 +203,7 @@ export const useAppointmentManagement = () => {
       service = 'CORTE + BARBA';
     }
 
+
     return {
       id: backendData.id,
       service,
@@ -267,8 +261,6 @@ export const useAppointmentManagement = () => {
         url.searchParams.set('unidade_id', filters.unidade_id.toString());
       }
 
-      console.log('🔍 [useAppointmentManagement] Buscando agendamentos com URL:', url.toString());
-
       const response: AppointmentResponse = await makeAuthenticatedRequest(url.toString());
       
       // Transformar dados do backend para o formato do frontend
@@ -282,7 +274,6 @@ export const useAppointmentManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar agendamentos';
       setError(errorMessage);
-      console.error('❌ Erro ao buscar agendamentos:', errorMessage);
       setAppointments([]);
     } finally {
       setIsLoading(false);
@@ -305,11 +296,9 @@ export const useAppointmentManagement = () => {
         app.id === id ? { ...app, status } : app
       ));
 
-      console.log(`✅ Status do agendamento ${id} atualizado para: ${status}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar status';
       setError(errorMessage);
-      console.error('❌ Erro ao atualizar status:', errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
@@ -328,12 +317,9 @@ export const useAppointmentManagement = () => {
 
       // Remover o agendamento da lista local
       setAppointments(prev => prev.filter(app => app.id !== id));
-
-      console.log(`✅ Agendamento ${id} deletado com sucesso`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar agendamento';
       setError(errorMessage);
-      console.error('❌ Erro ao deletar agendamento:', errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
@@ -358,7 +344,6 @@ export const useAppointmentManagement = () => {
         setAgentOptions(agentNames);
       }
     } catch (error) {
-      console.error('Erro ao buscar agentes:', error);
       // Não definir erro aqui pois é uma funcionalidade secundária
     }
   }, [makeAuthenticatedRequest]);
