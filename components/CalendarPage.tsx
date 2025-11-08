@@ -152,6 +152,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [backendAgents]);
 
     const services: Service[] = useMemo(() => {
+        console.log('🔍 [CalendarPage] Serviços carregados (ID/Nome):', backendServices.map(s => ({ id: s.id, name: s.name, type: typeof s.id })));
         return backendServices.map(service => ({
             id: service.id,
             name: service.name,
@@ -282,7 +283,22 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const allAgents = useMemo(() => {
         if (loggedInAgentId) {
-            return agents.filter(agent => agent.id === loggedInAgentId);
+            console.log('🔍 [allAgents] Filtrando agentes para AGENTE logado:', {
+                loggedInAgentId,
+                loggedInAgentIdType: typeof loggedInAgentId,
+                totalAgents: agents.length,
+                agentIds: agents.map(a => ({ id: a.id, type: typeof a.id, name: a.name }))
+            });
+            
+            // ✅ CORREÇÃO CRÍTICA: Converter ambos para string para garantir comparação correta
+            const filtered = agents.filter(agent => agent.id.toString() === loggedInAgentId.toString());
+            
+            console.log('✅ [allAgents] Agentes filtrados:', {
+                filtered: filtered.length,
+                agentNames: filtered.map(a => a.name)
+            });
+            
+            return filtered;
         }
         return agents;
     }, [loggedInAgentId, agents]);
@@ -320,15 +336,29 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     
     useEffect(() => {
         if (loggedInAgentId) {
+            console.log('🔍 [useEffect selectedAgentFilter] Configurando filtro para AGENTE:', {
+                loggedInAgentId,
+                allAgentsLength: allAgents.length
+            });
+            
             setSelectedAgentFilter(loggedInAgentId);
             // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar o ID do agente do array allAgents, não o loggedInAgentId
             // O loggedInAgentId pode ser diferente do agent.id no array
             if (allAgents.length > 0) {
-                const agentInList = allAgents.find(a => a.id === loggedInAgentId);
+                // ✅ CORREÇÃO: Converter para string na comparação
+                const agentInList = allAgents.find(a => a.id.toString() === loggedInAgentId.toString());
+                
+                console.log('🔍 [useEffect selectedAgentFilter] Busca de agente:', {
+                    found: !!agentInList,
+                    agentName: agentInList?.name,
+                    agentId: agentInList?.id
+                });
+                
                 if (agentInList) {
                     setSelectedAgentId(agentInList.id);
                 } else {
                     // Se não encontrar, usar o primeiro agente disponível
+                    console.warn('⚠️ [useEffect selectedAgentFilter] Agente não encontrado, usando primeiro disponível');
                     setSelectedAgentId(allAgents[0].id);
                 }
             }
@@ -597,26 +627,66 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         loadAppointmentsForDateRange();
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
-    const handleAppointmentClick = (app: Appointment & { date: string }) => {
-        // Passar apenas o ID do agendamento para o modal buscar os detalhes completos
-        const modalPayload = { 
-            appointment: { 
-                id: app.id,
-                // Dados mínimos para o modal saber que é edição
-                service: '',
-                client: '',
-                agentName: '',
-                agentEmail: '',
-                agentPhone: '',
-                date: '',
-                time: '',
-                serviceId: app.serviceId,
-                locationId: app.locationId,
-                status: 'PENDENTE'
-            } 
+    const handleAppointmentClick = (app: Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string }) => {
+        console.log('🔍 [handleAppointmentClick] Agendamento clicado:', app);
+        
+        // ✅ CORREÇÃO CRÍTICA: Buscar dados completos de agente e serviço
+        const agent = agents.find(a => a.id.toString() === app.agentId.toString());
+        let service = services.find(s => s.id.toString() === app.serviceId.toString());
+
+        console.log('🔍 [handleAppointmentClick] Busca de serviço:', {
+            searchingServiceId: app.serviceId,
+            searchingServiceIdType: typeof app.serviceId,
+            availableServices: services.map(s => ({ id: s.id, name: s.name, type: typeof s.id })),
+            foundService: service ? { id: service.id, name: service.name } : null
+        });
+
+        // Fallback de serviço (replicado de handleSlotMouseEnter)
+        if (!service && services.length > 0) {
+            service = services[0];
+            console.warn('⚠️ [handleAppointmentClick] Serviço não encontrado, usando fallback:', service?.name);
+        }
+        
+        if (!agent) {
+            console.error('❌ [handleAppointmentClick] Agente não encontrado:', app.agentId);
+        }
+        if (!service) {
+            console.error('❌ [handleAppointmentClick] Serviço não encontrado:', app.serviceId);
+        }
+        
+        // Formatar data e horário (similar ao popover)
+        const formattedDate = new Date(app.date + 'T00:00:00').toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        const formattedTime = `${app.startTime} - ${app.endTime}`;
+        
+        // ✅ DADOS COMPLETOS que o modal de edição/finalização precisa
+        const appointmentDetails = {
+            id: app.id,
+            service: service?.name || 'Serviço não encontrado',
+            client: app.clientName || 'Cliente não informado',
+            agentName: agent?.name || 'Agente não encontrado',
+            agentAvatar: agent?.avatar,
+            agentEmail: backendAgents.find(a => a.id.toString() === app.agentId.toString())?.email || '',
+            agentPhone: backendAgents.find(a => a.id.toString() === app.agentId.toString())?.phone,
+            date: formattedDate,
+            time: formattedTime,
+            // ✅ CRÍTICO: IDs e horários brutos para submissão
+            serviceId: app.serviceId,
+            locationId: app.locationId,
+            agentId: app.agentId,
+            startTime: app.startTime,
+            endTime: app.endTime,
+            dateISO: app.date, // Data no formato ISO (YYYY-MM-DD)
+            status: app.status || 'Aprovado',
+            clientPhone: app.clientPhone || ''
         };
         
-        setModalData(modalPayload);
+        console.log('✅ [handleAppointmentClick] Payload completo para o modal:', appointmentDetails);
+        
+        setModalData({ appointment: appointmentDetails as any });
         setModalOpen(true);
     };
     

@@ -71,6 +71,12 @@ const ServiceMultiSelectDropdown: React.FC<{
     placeholder: string;
 }> = ({ label, options, selectedOptions, onChange, placeholder }) => {
     // ✅ LOG PARA DEBUG: Verificar prop selectedOptions
+    console.log('🔍 [ServiceMultiSelectDropdown] Props recebidas:', {
+        label,
+        selectedOptions,
+        optionsCount: options.length,
+        placeholder
+    });
 
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -95,8 +101,26 @@ const ServiceMultiSelectDropdown: React.FC<{
     };
 
     const displayValue = selectedOptions.length > 0
-        ? selectedOptions.map(id => options.find(opt => opt.id === id)?.nome).filter(Boolean).join(', ')
+        ? selectedOptions.map(id => {
+            // ✅ CORREÇÃO CRÍTICA: Comparação robusta de IDs (string vs number)
+            const foundService = options.find(opt => String(opt.id) === String(id));
+            console.log('🔍 [ServiceMultiSelectDropdown] Busca de serviço:', {
+                searchingId: id,
+                searchingIdType: typeof id,
+                foundService: foundService ? { id: foundService.id, nome: foundService.nome } : null,
+                allOptionsIds: options.map(opt => ({ id: opt.id, type: typeof opt.id }))
+            });
+            return foundService?.nome;
+        }).filter(Boolean).join(', ')
         : placeholder;
+
+    console.log('🔍 [ServiceMultiSelectDropdown] Display value calculado:', {
+        selectedOptionsLength: selectedOptions.length,
+        displayValue,
+        selectedOptions,
+        matchedServices: selectedOptions.map(id => options.find(opt => opt.id === id)),
+        allOptionsIds: options.map(opt => ({ id: opt.id, nome: opt.nome }))
+    });
 
     return (
         <FormField label={label}>
@@ -115,7 +139,7 @@ const ServiceMultiSelectDropdown: React.FC<{
                             <label key={option.id} className="flex items-center p-3 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={selectedOptions.includes(option.id)}
+                                    checked={selectedOptions.some(selectedId => String(selectedId) === String(option.id))}
                                     onChange={() => handleToggleOption(option.id)}
                                     className="sr-only peer"
                                 />
@@ -251,6 +275,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [isAvailabilityModalOpen, setAvailabilityModalOpen] = useState(false);
     const [selectedServices, setSelectedServices] = useState<number[]>([]);
     const [selectedExtras, setSelectedExtras] = useState<number[]>([]);
+
+    // ✅ LOG PARA DEBUG: Monitorar mudanças no selectedServices
+    useEffect(() => {
+        console.log('🔍 [NewAppointmentModal] selectedServices atualizado:', selectedServices);
+    }, [selectedServices]);
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
     const [date, setDate] = useState('');
     const [startTime, setStartTime] = useState('');
@@ -279,6 +308,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     fetchAgentes()
                 ]);
 
+                console.log('🔍 [NewAppointmentModal] Serviços carregados:', servicos.map(s => ({ id: s.id, nome: s.nome, type: typeof s.id })));
                 setAllServices(servicos);
                 setAllExtras(extras);
                 setAllAgents(agentes);
@@ -315,7 +345,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
         setFilteredAgents(agentesNaUnidade);
 
-        // ✅ CORREÇÃO: Auto-seleção inteligente
+        // ✅ CORREÇÃO CRÍTICA: NÃO sobrescrever agente se estamos em modo de edição
+        // O agente já foi definido pelo useEffect de carregamento de dados
+        if (isEditing && selectedAgentId) {
+            console.log('⚠️ [NewAppointmentModal] Modo edição: mantendo agente selecionado:', selectedAgentId);
+            return;
+        }
+
+        // ✅ CORREÇÃO: Auto-seleção inteligente (APENAS para novos agendamentos)
         // 1. Se usuário é AGENTE, selecionar ele mesmo
         if (user?.role === 'AGENTE' && user?.agentId) {
             const agenteLogado = agentesNaUnidade.find(a => a.id.toString() === user.agentId);
@@ -329,7 +366,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         if (agentesNaUnidade.length === 1) {
             setSelectedAgentId(agentesNaUnidade[0].id);
         }
-    }, [selectedLocationId, allAgents, user]);
+    }, [selectedLocationId, allAgents, user, isEditing, selectedAgentId]);
 
     // ✅ BUSCAR HORÁRIOS DE FUNCIONAMENTO DA UNIDADE SELECIONADA
     useEffect(() => {
@@ -489,112 +526,17 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         setTotalPrice(currentTotal);
     };
 
-    // Carregar detalhes do agendamento quando modal abrir em modo de edição
-    useEffect(() => {
-        const loadAppointmentDetails = async () => {
-            if (!isOpen || !isEditing || !appointmentData?.id) {
-                return;
-            }
-            
-            setIsLoadingAppointment(true);
-            try {
-                const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
-                
-                if (details) {
-                    // Preencher formulário com dados do agendamento
-                    setAppointmentId(details.id);
-                    
-                    // Extrair IDs dos serviços e extras
-                    const servicoIds = details.servicos?.map(s => s.id) || [];
-                    const extraIds = details.extras?.map(e => e.id) || [];
-
-
-                    setSelectedServices(servicoIds);
-                    setSelectedExtras(extraIds);
-                    setSelectedAgentId(details.agente_id);
-                    setStatus(details.status as AppointmentStatus);
-                    setStartTime(details.hora_inicio.substring(0, 5));
-                    setEndTime(details.hora_fim.substring(0, 5));
-
-                    
-                    // ✅ CORREÇÃO: Formatar data sem conversão de timezone
-                    if (details.data_agendamento) {
-                        // A data vem como "2025-10-28T00:00:00.000Z". Pegamos apenas a parte da data.
-                        const [ano, mes, dia] = details.data_agendamento.substring(0, 10).split('-');
-                        const formattedDate = `${dia}/${mes}/${ano}`;
-                        setDate(formattedDate);
-                    } else {
-                        setDate('');
-                    }
-
-                    // ✅ CORREÇÃO: Centralizar e validar dados do cliente
-                    if (details.cliente) {
-                        const nameParts = (details.cliente.nome_completo || '').split(' ');
-                        const clientData = {
-                            id: details.cliente_id,
-                            primeiro_nome: nameParts[0] || '',
-                            ultimo_nome: nameParts.slice(1).join(' ') || '',
-                            nome_completo: details.cliente.nome_completo,
-                            telefone: details.cliente.telefone || '',
-                            email: details.cliente.email || '',
-                            is_assinante: details.cliente.is_assinante || false
-                        };
-                        setSelectedClient(clientData);
-                        setClientFirstName(clientData.primeiro_nome);
-                        setClientLastName(clientData.ultimo_nome);
-                        setClientPhone((clientData.telefone || '').replace('+55', '').trim());
-                    } else {
-                        // Se a API não retornar o objeto cliente, os campos ficarão vazios.
-                        // Isso indica um problema no backend (a API deveria retornar os dados do cliente).
-                        setSelectedClient(null);
-                        setClientFirstName('');
-                        setClientLastName('');
-                        setClientPhone('');
-                    }
-                    
-                    // ✅ CORREÇÃO CRÍTICA: Calcular preço total usando os dados retornados pela API
-                    // Os dados de serviços e extras já vêm com os preços corretos
-                    let calculatedTotal = 0;
-                    
-                    // Calcular total dos serviços usando os dados retornados pela API
-                    if (details.servicos && details.servicos.length > 0) {
-                        details.servicos.forEach(servico => {
-                            // Usar preco_aplicado se disponível, senão usar preco
-                            const preco = servico.preco_aplicado || servico.preco;
-                            calculatedTotal += parseFloat(preco.toString());
-                        });
-                    }
-                    
-                    // Calcular total dos extras usando os dados retornados pela API
-                    if (details.extras && details.extras.length > 0) {
-                        details.extras.forEach(extra => {
-                            // Usar preco_aplicado se disponível, senão usar preco
-                            const preco = extra.preco_aplicado || extra.preco;
-                            calculatedTotal += parseFloat(preco.toString());
-                        });
-                    }
-                    
-                    setTotalPrice(calculatedTotal);
-                }
-            } catch (error) {
-            } finally {
-                setIsLoadingAppointment(false);
-            }
-        };
-
-        loadAppointmentDetails();
-    }, [isOpen, isEditing, appointmentData?.id, fetchAgendamentoDetalhes]);
-
-    // Resetar formulário quando modal abrir (APENAS para novos agendamentos)
+    // ✅ CORREÇÃO CRÍTICA: Resetar formulário ANTES de carregar dados (APENAS para novos agendamentos)
     useEffect(() => {
         if (!isOpen) return;
 
         // ⚠️ IMPORTANTE: Só resetar se NÃO for edição
         if (isEditing) {
+            console.log('ℹ️ [NewAppointmentModal] Modo edição: pulando reset do formulário');
             return;
         }
 
-
+        console.log('🔄 [NewAppointmentModal] Resetando formulário para novo agendamento');
         setIsSearchingClient(false);
         setClientSearchQuery('');
         setTotalPrice(0);
@@ -603,16 +545,16 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         if (newSlotData) {
             setSelectedServices([]);
             setSelectedExtras([]);
-            
+
             // ✅ CORREÇÃO: Preencher horário E data
             setStartTime(`${String(newSlotData.start).padStart(2,'0')}:00`);
             setEndTime('');
-            
+
             // ✅ CORREÇÃO CRÍTICA: Garantir que a data seja preenchida corretamente
             const dateObj = newSlotData.date;
             const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
             setDate(formattedDate);
-            
+
             setClientFirstName('');
             setClientLastName('');
             setClientPhone('');
@@ -635,6 +577,152 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setAppointmentId(null);
         }
     }, [isOpen, isEditing, newSlotData, allAgents]);
+
+    // ✅ CORREÇÃO CRÍTICA: Preencher formulário com dados passados pelo CalendarPage
+    // Elimina necessidade de buscar no backend, resolvendo problema de 403 para AGENTE
+    useEffect(() => {
+        const loadAppointmentDetails = async () => {
+            if (!isOpen || !isEditing || !appointmentData) {
+                return;
+            }
+
+            // ✅ AGUARDAR SERVIÇOS SEREM CARREGADOS ANTES DE DEFINIR selectedServices
+            if (allServices.length === 0) {
+                console.log('⏳ [NewAppointmentModal] Aguardando serviços serem carregados...');
+                return;
+            }
+
+            console.log('🔍 [NewAppointmentModal] Detalhes dos serviços carregados:', allServices.map(s => ({
+                id: s.id,
+                nome: s.nome,
+                type: typeof s.id
+            })));
+            console.log('🔍 [NewAppointmentModal] ServiceId do agendamento:', {
+                serviceId: appointmentData.serviceId,
+                type: typeof appointmentData.serviceId
+            });
+            
+            console.log('📋 [NewAppointmentModal] Preenchendo formulário com dados recebidos:', appointmentData);
+            
+            setIsLoadingAppointment(true);
+            try {
+                // ✅ SOLUÇÃO: Usar dados passados pelo CalendarPage ao invés de buscar no backend
+                // Isso evita erro 403 quando AGENTE tenta editar agendamento
+                
+                setAppointmentId(parseInt(appointmentData.id));
+                
+                // ✅ Preencher agente
+                if (appointmentData.agentId) {
+                    const agentIdNumber = typeof appointmentData.agentId === 'string' 
+                        ? parseInt(appointmentData.agentId) 
+                        : appointmentData.agentId;
+                    setSelectedAgentId(agentIdNumber);
+                    console.log('🔧 [NewAppointmentModal] Agente ID definido:', agentIdNumber);
+                }
+                
+                // ✅ Preencher status
+                if (appointmentData.status) {
+                    setStatus(appointmentData.status as AppointmentStatus);
+                    console.log('📊 [NewAppointmentModal] Status definido:', appointmentData.status);
+                }
+                
+                // ✅ Preencher horários
+                if (appointmentData.startTime) {
+                    setStartTime(appointmentData.startTime);
+                }
+                if (appointmentData.endTime) {
+                    setEndTime(appointmentData.endTime);
+                }
+                
+                // ✅ Preencher data (converter de ISO para DD/MM/YYYY)
+                if (appointmentData.dateISO) {
+                    const [ano, mes, dia] = appointmentData.dateISO.split('-');
+                    const formattedDate = `${dia}/${mes}/${ano}`;
+                    setDate(formattedDate);
+                    console.log('📅 [NewAppointmentModal] Data formatada:', formattedDate);
+                }
+                
+                // ✅ Preencher cliente
+                if (appointmentData.client) {
+                    const nameParts = appointmentData.client.split(' ');
+                    const firstName = nameParts[0] || '';
+                    const lastName = nameParts.slice(1).join(' ') || '';
+                    
+                    setClientFirstName(firstName);
+                    setClientLastName(lastName);
+                    setClientPhone((appointmentData.clientPhone || '').replace('+55', '').trim());
+                    
+                    console.log('👤 [NewAppointmentModal] Cliente preenchido:', { firstName, lastName, phone: appointmentData.clientPhone });
+                }
+                
+                // ✅ SOLUÇÃO ALTERNATIVA: Usar serviceId passado para preencher dropdown
+                // Se temos serviceId nos dados, usar diretamente
+                if (appointmentData.serviceId) {
+                    const serviceIdNumber = typeof appointmentData.serviceId === 'string' 
+                        ? parseInt(appointmentData.serviceId) 
+                        : appointmentData.serviceId;
+                    setSelectedServices([serviceIdNumber]);
+                    console.log('🔧 [NewAppointmentModal] Serviço ID definido:', serviceIdNumber);
+                }
+                
+                // ✅ CORREÇÃO CRÍTICA: AGENTE agora pode buscar detalhes do backend
+                // O backend já valida que AGENTE só pode acessar seus próprios agendamentos
+                if (appointmentData.id) {
+                    try {
+                        console.log('🔍 [NewAppointmentModal] Buscando detalhes do backend para usuário:', user?.role);
+                        const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
+
+                        if (details) {
+                            // Extrair IDs dos serviços e extras
+                            const servicoIds = details.servicos?.map(s => s.id) || [];
+                            const extraIds = details.extras?.map(e => e.id) || [];
+
+                            // ✅ Atualizar serviços apenas se a busca retornou dados
+                            if (servicoIds.length > 0) {
+                                setSelectedServices(servicoIds);
+                                console.log('🔧 [NewAppointmentModal] Serviços atualizados do backend:', servicoIds);
+                            }
+                            setSelectedExtras(extraIds);
+
+                            // Calcular preço total
+                            let calculatedTotal = 0;
+                            
+                            if (details.servicos && details.servicos.length > 0) {
+                                details.servicos.forEach(servico => {
+                                    const preco = servico.preco_aplicado || servico.preco;
+                                    calculatedTotal += parseFloat(preco.toString());
+                                });
+                            }
+
+                            if (details.extras && details.extras.length > 0) {
+                                details.extras.forEach(extra => {
+                                    const preco = extra.preco_aplicado || extra.preco;
+                                    calculatedTotal += parseFloat(preco.toString());
+                                });
+                            }
+
+                            setTotalPrice(calculatedTotal);
+                            console.log('💰 [NewAppointmentModal] Preço total calculado:', calculatedTotal);
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ [NewAppointmentModal] Erro ao buscar serviços/extras (não crítico):', error);
+                        // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
+                        // Os serviços já foram preenchidos com serviceId passado
+                    }
+                }
+                
+                console.log('✅ [NewAppointmentModal] Formulário preenchido com sucesso');
+            } catch (error) {
+                console.error('❌ [NewAppointmentModal] Erro ao preencher formulário:', error);
+            } finally {
+                setIsLoadingAppointment(false);
+            }
+        };
+
+        loadAppointmentDetails();
+    }, [isOpen, isEditing, appointmentData, fetchAgendamentoDetalhes, allServices]);
+
+
 
     useEffect(() => {
         if (startTime && (selectedServices.length > 0 || selectedExtras.length > 0)) {
