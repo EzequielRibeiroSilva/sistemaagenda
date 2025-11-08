@@ -23,7 +23,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      const { page, limit, data_agendamento, agente_id, cliente_id, status, unidade_id } = req.query;
+      const { page, limit, data_agendamento, agente_id, cliente_id, status, unidade_id, time_filter } = req.query;
 
 
       let data;
@@ -112,6 +112,48 @@ class AgendamentoController extends BaseController {
           // ✅ NOVO: Filtrar por unidade_id se fornecido
           if (unidade_id) {
             queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
+          }
+
+          // ✅ NOVO: Filtro temporal (futuro/passado/hoje)
+          if (time_filter) {
+            console.log(`⏰ [AgendamentoController] Aplicando filtro temporal: ${time_filter}`);
+
+            const now = new Date();
+            const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+            const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+
+            console.log(`⏰ [AgendamentoController] Data atual: ${today}, Hora atual: ${currentTime}`);
+
+            switch (time_filter) {
+              case 'soon': // Próximo/Agora (hoje que ainda não passou + futuro)
+                console.log(`⏰ [AgendamentoController] Filtro SOON: agendamentos futuros + hoje (após ${currentTime})`);
+                queryBuilder.where(function() {
+                  this.where('agendamentos.data_agendamento', '>', today)
+                      .orWhere(function() {
+                        this.where('agendamentos.data_agendamento', '=', today)
+                            .where('agendamentos.hora_inicio', '>=', currentTime);
+                      });
+                });
+                break;
+              case 'overdue': // Passado (dias passados + hoje que já passou)
+                console.log(`⏰ [AgendamentoController] Filtro OVERDUE: agendamentos passados + hoje (antes de ${currentTime})`);
+                queryBuilder.where(function() {
+                  this.where('agendamentos.data_agendamento', '<', today)
+                      .orWhere(function() {
+                        this.where('agendamentos.data_agendamento', '=', today)
+                            .where('agendamentos.hora_fim', '<', currentTime);
+                      });
+                });
+                break;
+              case 'pending': // Futuro (apenas dias futuros, não inclui hoje)
+                console.log(`⏰ [AgendamentoController] Filtro PENDING: apenas agendamentos futuros (após ${today})`);
+                queryBuilder.where('agendamentos.data_agendamento', '>', today);
+                break;
+              case 'today': // Apenas hoje
+                console.log(`⏰ [AgendamentoController] Filtro TODAY: apenas agendamentos de hoje (${today})`);
+                queryBuilder.where('agendamentos.data_agendamento', '=', today);
+                break;
+            }
           }
 
           // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
@@ -204,6 +246,40 @@ class AgendamentoController extends BaseController {
             // ✅ NOVO: Filtrar por unidade_id se fornecido (mesma lógica da query principal)
             if (unidade_id) {
               queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
+            }
+
+            // ✅ NOVO: Filtro temporal (mesma lógica da query principal)
+            if (time_filter) {
+              const now = new Date();
+              const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+              const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+
+              switch (time_filter) {
+                case 'soon': // Próximo/Agora (hoje que ainda não passou + futuro)
+                  queryBuilder.where(function() {
+                    this.where('agendamentos.data_agendamento', '>', today)
+                        .orWhere(function() {
+                          this.where('agendamentos.data_agendamento', '=', today)
+                              .where('agendamentos.hora_inicio', '>=', currentTime);
+                        });
+                  });
+                  break;
+                case 'overdue': // Passado (dias passados + hoje que já passou)
+                  queryBuilder.where(function() {
+                    this.where('agendamentos.data_agendamento', '<', today)
+                        .orWhere(function() {
+                          this.where('agendamentos.data_agendamento', '=', today)
+                              .where('agendamentos.hora_fim', '<', currentTime);
+                        });
+                  });
+                  break;
+                case 'pending': // Futuro (apenas dias futuros, não inclui hoje)
+                  queryBuilder.where('agendamentos.data_agendamento', '>', today);
+                  break;
+                case 'today': // Apenas hoje
+                  queryBuilder.where('agendamentos.data_agendamento', '=', today);
+                  break;
+              }
             }
 
             // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados no total também

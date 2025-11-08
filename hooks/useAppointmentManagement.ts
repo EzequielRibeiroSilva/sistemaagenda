@@ -35,6 +35,7 @@ export interface AppointmentFilters {
   agente_id?: number;
   cliente_id?: number;
   unidade_id?: number; // ✅ NOVO: Filtro por local/unidade
+  time_filter?: 'soon' | 'overdue' | 'pending' | 'today' | 'all'; // ✅ NOVO: Filtro temporal
   search?: string;
 }
 
@@ -145,15 +146,21 @@ export const useAppointmentManagement = () => {
     let timeRemaining: string;
     let timeRemainingStatus: 'happening_now' | 'soon' | 'overdue' | 'pending';
 
+    console.log(`⏰ [Frontend] Agendamento ${backendData.id}: ${dateString} ${backendData.hora_inicio}-${backendData.hora_fim}`);
+    console.log(`⏰ [Frontend] Agora: ${now.toISOString()}`);
+    console.log(`⏰ [Frontend] diffMs (início): ${diffMs}ms, diffEndMs (fim): ${diffEndMs}ms`);
+
     // Se está acontecendo AGORA (entre início e fim)
     if (diffMs <= 0 && diffEndMs > 0) {
       timeRemaining = 'Agora';
       timeRemainingStatus = 'happening_now';
+      console.log(`⏰ [Frontend] Status: AGORA`);
     }
-    // Se já passou (terminou)
+    // Se já passou (terminou) - MESMA LÓGICA DO BACKEND
     else if (diffEndMs <= 0) {
       timeRemaining = 'Passado';
       timeRemainingStatus = 'overdue';
+      console.log(`⏰ [Frontend] Status: PASSADO (terminou há ${Math.abs(diffEndMs / (1000 * 60))} minutos)`);
     }
     // Se ainda não começou
     else {
@@ -170,6 +177,7 @@ export const useAppointmentManagement = () => {
         timeRemaining = `${totalDays} dia${totalDays !== 1 ? 's' : ''}`;
         timeRemainingStatus = 'pending';
       }
+      console.log(`⏰ [Frontend] Status: FUTURO (${timeRemaining})`);
     }
 
     // Formatar data e hora - Formato: "21 Outubro, 2025 - 10:00"
@@ -259,6 +267,10 @@ export const useAppointmentManagement = () => {
       // ✅ NOVO: Adicionar filtro de unidade_id
       if (filters.unidade_id) {
         url.searchParams.set('unidade_id', filters.unidade_id.toString());
+      }
+      // ✅ NOVO: Adicionar filtro temporal
+      if (filters.time_filter && filters.time_filter !== 'all') {
+        url.searchParams.set('time_filter', filters.time_filter);
       }
 
       const response: AppointmentResponse = await makeAuthenticatedRequest(url.toString());

@@ -230,6 +230,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             apiFilters.status = filters.status;
         }
 
+        // ✅ NOVO: Adicionar filtro temporal para o backend
+        if (filters.timeRemainingStatus !== 'all') {
+            apiFilters.time_filter = filters.timeRemainingStatus;
+            console.log('⏰ [AppointmentsPage] Filtro temporal aplicado:', filters.timeRemainingStatus);
+        }
+
         // Se o usuário logado for um agente, filtrar apenas seus agendamentos
         if (user?.role === 'AGENTE' && user?.agentId) {
             apiFilters.agente_id = parseInt(user.agentId);
@@ -240,8 +246,9 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             apiFilters.unidade_id = parseInt(selectedLocationFilter);
         }
 
+        console.log('🔧 [AppointmentsPage] Filtros enviados para API:', apiFilters);
         fetchAppointments(apiFilters);
-    }, [currentPage, itemsPerPage, filters.status, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
+    }, [currentPage, itemsPerPage, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
     
     const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -276,7 +283,8 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             if (id && !String(app.id).toLowerCase().includes(id.toLowerCase())) return false;
             if (service !== 'all' && app.service !== service) return false;
             if (dateTime && !app.dateTime.toLowerCase().includes(dateTime.toLowerCase())) return false;
-            if (timeRemainingStatus !== 'all' && app.timeRemainingStatus !== timeRemainingStatus) return false;
+            // ✅ REMOVIDO: Filtro temporal agora é feito no backend
+            // if (timeRemainingStatus !== 'all' && app.timeRemainingStatus !== timeRemainingStatus) return false;
             if (agent !== 'all' && app.agent.name !== agent) return false;
             if (paymentStatus !== 'all' && app.paymentStatus !== paymentStatus) return false;
             if (paymentMethod !== 'all' && app.paymentMethod !== paymentMethod) return false;
