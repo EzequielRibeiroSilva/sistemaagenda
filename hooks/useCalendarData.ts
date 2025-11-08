@@ -22,6 +22,7 @@ export interface BackendAgente {
   data_admissao?: string;
   comissao_percentual?: string;
   unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
+  unidade_id?: number; // ✅ CORREÇÃO CRÍTICA: ID da unidade principal do agente
 }
 
 export interface BackendServico {
@@ -69,6 +70,7 @@ export interface CalendarAgent {
   name: string;
   avatar: string;
   unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
+  unidade_id?: number; // ✅ CORREÇÃO CRÍTICA: ID da unidade principal do agente
 }
 
 export interface CalendarService {
@@ -172,7 +174,8 @@ export const useCalendarData = () => {
       id: backendAgent.id.toString(),
       name: displayName,
       avatar: avatarUrl,
-      unidades: backendAgent.unidades // ✅ CRÍTICO: Passar array de unidades do backend
+      unidades: backendAgent.unidades, // ✅ CRÍTICO: Passar array de unidades do backend
+      unidade_id: backendAgent.unidade_id // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal
     };
   }, []);
 

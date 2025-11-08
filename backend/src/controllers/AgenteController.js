@@ -150,7 +150,8 @@ class AgenteController {
         nome_exibicao: agente.nome_exibicao,
         data_admissao: agente.data_admissao,
         comissao_percentual: agente.comissao_percentual,
-        unidades: agente.unidades_ids // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
+        unidades: agente.unidades_ids, // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
+        unidade_id: agente.unidade_id // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para auto-seleção
       }));
       
       res.status(200).json({
