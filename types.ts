@@ -69,6 +69,12 @@ export interface ScheduleSlot {
         serviceId: string;
         locationId: string;
         status: AppointmentStatus;
+        // ✅ CRÍTICO: Campos adicionais para edição/finalização
+        agentId?: string | number; // ID bruto do agente
+        startTime?: string; // Hora de início bruta (ex: "14:00")
+        endTime?: string; // Hora de fim bruta (ex: "15:00")
+        dateISO?: string; // Data ISO (YYYY-MM-DD)
+        clientPhone?: string; // Telefone do cliente
     }
 }
 

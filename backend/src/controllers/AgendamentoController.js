@@ -326,9 +326,16 @@ class AgendamentoController extends BaseController {
   async show(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
+
+      console.log(`🔍 [show] Iniciando busca do agendamento ${id}:`, {
+        usuarioId,
+        userRole,
+        userAgenteId,
+        originalUserId: req.user?.id
+      });
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -336,36 +343,85 @@ class AgendamentoController extends BaseController {
         });
       }
 
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.findById(userAgenteId);
+        console.log(`🔍 [show] Dados do agente ${userAgenteId}:`, {
+          found: !!agente,
+          usuario_id: agente?.usuario_id,
+          unidade_id: agente?.unidade_id
+        });
+
+        if (agente && agente.usuario_id) {
+          usuarioId = agente.usuario_id;
+          console.log(`✅ [show] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
+        }
+      }
+
       const data = await this.model.findWithServicos(id);
 
       if (!data) {
+        console.log(`❌ [show] Agendamento ${id} não encontrado`);
         return res.status(404).json({
           error: 'Agendamento não encontrado'
         });
       }
 
-      // Verificar se o agendamento pertence ao usuário (através da unidade)
-      const agendamento = await this.model.db(this.model.tableName)
-        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-        .where('agendamentos.id', id)
-        .where('unidades.usuario_id', usuarioId)
-        .first();
+      console.log(`🔍 [show] Dados do agendamento ${id}:`, {
+        agente_id: data.agente_id,
+        unidade_id: data.unidade_id,
+        cliente_nome: data.cliente_nome
+      });
 
-      if (!agendamento) {
-        return res.status(403).json({
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para ver este agendamento'
+      // ✅ CORREÇÃO CRÍTICA: Verificação de permissões específica por role
+      if (userRole === 'AGENTE') {
+        // Para AGENTE: verificar se o agendamento é dele
+        if (userAgenteId && data.agente_id !== userAgenteId) {
+          console.warn(`⚠️ [show] AGENTE ${userAgenteId} tentou acessar agendamento do AGENTE ${data.agente_id}`);
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Agentes só podem ver seus próprios agendamentos'
+          });
+        }
+        console.log(`✅ [show] AGENTE ${userAgenteId} acessando seu próprio agendamento ${id}`);
+      } else {
+        // Para ADMIN/MASTER: verificar se o agendamento pertence ao usuário (através da unidade)
+        const agendamento = await this.model.db(this.model.tableName)
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('agendamentos.id', id)
+          .where('unidades.usuario_id', usuarioId)
+          .first();
+
+        console.log(`🔍 [show] Verificação de propriedade da unidade para ${userRole}:`, {
+          agendamentoId: id,
+          usuarioId,
+          found: !!agendamento,
+          query: `agendamentos.id = ${id} AND unidades.usuario_id = ${usuarioId}`
         });
+
+        if (!agendamento) {
+          console.warn(`⚠️ [show] Agendamento ${id} não pertence ao usuário ${usuarioId} (${userRole})`);
+
+          // 🔍 DEBUG: Buscar informações adicionais para debug
+          const debugInfo = await this.model.db(this.model.tableName)
+            .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+            .where('agendamentos.id', id)
+            .select('agendamentos.id', 'agendamentos.unidade_id', 'unidades.usuario_id', 'unidades.nome as unidade_nome')
+            .first();
+
+          console.log(`🔍 [show] Debug - Informações do agendamento:`, debugInfo);
+
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para ver este agendamento'
+          });
+        }
+        console.log(`✅ [show] ${userRole} ${usuarioId} acessando agendamento ${id} da sua unidade`);
       }
 
-      // RBAC: AGENTE só pode ver seus próprios agendamentos
-      if (userRole === 'AGENTE' && userAgenteId && data.agente_id !== userAgenteId) {
-        return res.status(403).json({
-          error: 'Acesso negado',
-          message: 'Agentes só podem ver seus próprios agendamentos'
-        });
-      }
-
+      console.log(`✅ [show] Agendamento ${id} retornado com sucesso para ${userRole}`);
       return res.json({
         success: true,
         data: data
@@ -373,7 +429,7 @@ class AgendamentoController extends BaseController {
     } catch (error) {
       console.error('Erro no show:', error);
       return res.status(500).json({
-        error: 'Erro interno do servidor',
+        error: 'Interno do servidor',
         message: error.message
       });
     }
@@ -672,11 +728,14 @@ class AgendamentoController extends BaseController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
       
       console.log('🔄 [AgendamentoController.update] Iniciando atualização');
       console.log('   ID do agendamento:', id);
       console.log('   Usuário ID:', usuarioId);
+      console.log('   User Role:', userRole);
       console.log('   Body recebido:', JSON.stringify(req.body, null, 2));
       
       if (!usuarioId) {
@@ -685,6 +744,17 @@ class AgendamentoController extends BaseController {
           success: false,
           error: 'Usuário não autenticado' 
         });
+      }
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.findById(userAgenteId);
+        if (agente && agente.usuario_id) {
+          usuarioId = agente.usuario_id;
+          console.log(`✅ [update] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
+        }
       }
 
       // Verificar se o agendamento pertence ao usuário
@@ -702,6 +772,16 @@ class AgendamentoController extends BaseController {
         return res.status(404).json({ 
           success: false,
           error: 'Agendamento não encontrado ou acesso negado' 
+        });
+      }
+
+      // ✅ RBAC: AGENTE só pode atualizar seus próprios agendamentos
+      if (userRole === 'AGENTE' && userAgenteId && agendamento.agente_id !== userAgenteId) {
+        console.warn(`⚠️ [update] AGENTE ${userAgenteId} tentou atualizar agendamento do AGENTE ${agendamento.agente_id}`);
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Agentes só podem atualizar seus próprios agendamentos'
         });
       }
 
@@ -888,7 +968,7 @@ class AgendamentoController extends BaseController {
     try {
       const { id } = req.params;
       const { paymentMethod } = req.body;
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
 
@@ -897,6 +977,17 @@ class AgendamentoController extends BaseController {
           success: false,
           error: 'Usuário não autenticado'
         });
+      }
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const Agente = require('../models/Agente');
+        const agenteModel = new Agente();
+        const agente = await agenteModel.findById(userAgenteId);
+        if (agente && agente.usuario_id) {
+          usuarioId = agente.usuario_id;
+          console.log(`✅ [finalize] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
+        }
       }
 
       // Buscar agendamento
@@ -914,8 +1005,9 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // RBAC: AGENTE só pode finalizar seus próprios agendamentos
+      // ✅ RBAC: AGENTE só pode finalizar seus próprios agendamentos
       if (userRole === 'AGENTE' && userAgenteId && agendamento.agente_id !== userAgenteId) {
+        console.warn(`⚠️ [finalize] AGENTE ${userAgenteId} tentou finalizar agendamento do AGENTE ${agendamento.agente_id}`);
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
