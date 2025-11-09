@@ -203,7 +203,7 @@ const App: React.FC = () => {
 
     switch (activeView) {
       case 'admin-dashboard': return <AdminDashboardPage searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''} />;
-      case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} />;
+      case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'calendar': return <CalendarPage loggedInAgentId={user.role === 'AGENTE' ? user.agentId : null} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
       case 'clients-list': return <ClientsPage setActiveView={setActiveView} onEditClient={handleEditClient} />;
@@ -229,7 +229,7 @@ const App: React.FC = () => {
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
       case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;
       case 'settings': return <SettingsPage onShowPreview={() => setIsPreviewingBookingPage(true)} />;
-      default: return <DashboardPage loggedInAgentId={user.agentId} />;
+      default: return <DashboardPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
     }
   }
 
