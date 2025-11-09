@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import type { PerformanceMetric, Agent, Service } from '../types';
+import type { PerformanceMetric, Agent, Service, Location } from '../types';
 import { ChevronDown, Info, Check, MoreHorizontal } from './Icons';
 import DatePicker from './DatePicker';
 
@@ -87,29 +87,59 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
 
 interface PerformanceSectionProps {
   metrics: PerformanceMetric[];
+  locations: Location[];
   agents: Agent[];
   services: Service[];
+  selectedLocation: string;
+  setSelectedLocation: (id: string) => void;
   selectedAgent: string;
   setSelectedAgent: (id: string) => void;
   selectedService: string;
   setSelectedService: (id: string) => void;
   loggedInAgentId: string | null;
+  userRole: 'ADMIN' | 'AGENTE';
+  isMultiPlan: boolean;
+  onDateRangeChange?: (range: { startDate: Date | null; endDate: Date | null }) => void;
 }
 
 const PerformanceSection: React.FC<PerformanceSectionProps> = ({ 
     metrics, 
+    locations,
     agents,
     services,
+    selectedLocation,
+    setSelectedLocation,
     selectedAgent,
     setSelectedAgent,
     selectedService,
     setSelectedService,
-    loggedInAgentId
+    loggedInAgentId,
+    userRole,
+    isMultiPlan,
+    onDateRangeChange
 }) => {
+  // Estado do período (mês atual por padrão)
+  const now = new Date();
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
   const [dateRange, setDateRange] = useState<{ startDate: Date | null; endDate: Date | null }>({
-    startDate: new Date(2025, 7, 30),
-    endDate: new Date(2025, 8, 30)
+    startDate: firstDayOfMonth,
+    endDate: lastDayOfMonth
   });
+
+  // Notificar mudanças no período
+  useEffect(() => {
+    if (onDateRangeChange) {
+      onDateRangeChange(dateRange);
+    }
+  }, [dateRange, onDateRangeChange]);
+
+  // Opções de filtro
+  const locationOptions = [
+      { value: 'all', label: 'Todos os Locais' },
+      ...locations.map(location => ({ value: location.id, label: location.name }))
+  ];
 
   const agentOptions = [
       { value: 'all', label: 'Todos os Agentes' },
@@ -121,13 +151,44 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
       ...services.map(service => ({ value: service.id, label: service.name }))
   ];
   
+  // Determinar se o dropdown de Local deve ser exibido e se deve ser desabilitado
+  const shouldShowLocationFilter = isMultiPlan || locations.length > 1;
+  const shouldDisableLocationFilter = locations.length === 1;
+  
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <h2 className="text-2xl font-bold">Desempenho</h2>
         <div className="hidden lg:flex items-center gap-2 flex-wrap">
-          <FilterDropdown label="Agentes" options={agentOptions} selectedValue={selectedAgent} onSelect={setSelectedAgent} disabled={!!loggedInAgentId} />
-          <FilterDropdown label="Serviços" options={serviceOptions} selectedValue={selectedService} onSelect={setSelectedService} />
+          {/* ✅ DROPDOWN DE LOCAL - Aparece ANTES do dropdown de Agentes */}
+          {shouldShowLocationFilter && (
+            <FilterDropdown 
+              label="Locais" 
+              options={locationOptions} 
+              selectedValue={selectedLocation} 
+              onSelect={setSelectedLocation} 
+              disabled={shouldDisableLocationFilter}
+            />
+          )}
+          
+          {/* Dropdown de Agentes */}
+          <FilterDropdown 
+            label="Agentes" 
+            options={agentOptions} 
+            selectedValue={selectedAgent} 
+            onSelect={setSelectedAgent} 
+            disabled={!!loggedInAgentId} 
+          />
+          
+          {/* Dropdown de Serviços */}
+          <FilterDropdown 
+            label="Serviços" 
+            options={serviceOptions} 
+            selectedValue={selectedService} 
+            onSelect={setSelectedService} 
+          />
+          
+          {/* Seletor de Período */}
           <DatePicker 
             mode="range" 
             selectedRange={dateRange} 
