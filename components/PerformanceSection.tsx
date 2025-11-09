@@ -59,7 +59,14 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
                 disabled={disabled}
                 className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 min-w-[160px] justify-between disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-                <span>{selectedValue === 'all' ? `Todos Os ${label}` : `${label.slice(0, -1)}: ${selectedOptionLabel}`}</span>
+                <span>
+                    {selectedValue === 'all' 
+                        ? `Todos Os ${label}` 
+                        : label 
+                            ? `${label.slice(0, -1)}: ${selectedOptionLabel}` 
+                            : selectedOptionLabel
+                    }
+                </span>
                 <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
@@ -136,10 +143,12 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
   }, [dateRange, onDateRangeChange]);
 
   // Opções de filtro
-  const locationOptions = [
-      { value: 'all', label: 'Todos os Locais' },
-      ...locations.map(location => ({ value: location.id, label: location.name }))
-  ];
+  // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
+  // Sempre deve haver um local selecionado
+  const locationOptions = locations.map(location => ({ 
+      value: location.id, 
+      label: location.name 
+  }));
 
   const agentOptions = [
       { value: 'all', label: 'Todos os Agentes' },
@@ -163,7 +172,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
           {/* ✅ DROPDOWN DE LOCAL - Aparece ANTES do dropdown de Agentes */}
           {shouldShowLocationFilter && (
             <FilterDropdown 
-              label="Locais" 
+              label=""
               options={locationOptions} 
               selectedValue={selectedLocation} 
               onSelect={setSelectedLocation} 

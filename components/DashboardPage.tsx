@@ -72,33 +72,85 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         selectedService
     });
 
-    // ✅ AUTO-SELEÇÃO DE LOCAL (Similar ao CalendarPage)
+    // ✅ AUTO-SELEÇÃO DE LOCAL (Idêntico ao CalendarPage)
     useEffect(() => {
-        if (backendUnidades.length === 0) return;
+        console.log('🔄 [DashboardPage] useEffect de auto-seleção executado:', {
+            unidadesLength: backendUnidades.length,
+            agentesLength: backendAgentes.length,
+            userRole,
+            loggedInAgentId,
+            selectedLocation,
+            timestamp: new Date().toISOString()
+        });
 
-        // Caso 1: Plano Single - Auto-selecionar primeira unidade
-        if (isSinglePlan && selectedLocation === 'all') {
-            console.log('🔧 [DashboardPage] Plano Single: Auto-selecionando primeira unidade:', backendUnidades[0].id);
-            setSelectedLocation(backendUnidades[0].id.toString());
+        // 1. Garante que temos dados básicos para filtrar
+        if (backendUnidades.length === 0 || backendAgentes.length === 0) {
+            console.log('⏭️ [DashboardPage] Dados ainda não carregados, pulando auto-seleção');
             return;
         }
 
-        // Caso 2: Plano Multi + usuário tem unidade_id - Auto-selecionar sua unidade
-        if (isMultiPlan && user?.unidade_id && selectedLocation === 'all') {
-            const userLocation = backendUnidades.find(u => u.id === user.unidade_id);
-            if (userLocation) {
-                console.log('🔧 [DashboardPage] Plano Multi: Auto-selecionando unidade do usuário:', userLocation.id);
-                setSelectedLocation(userLocation.id.toString());
-                return;
+        let newLocationId: string | null = null;
+
+        // 2. ✅ PRIORIDADE 1: Usuário AGENTE (CRÍTICO)
+        if (userRole === 'AGENTE' && loggedInAgentId) {
+            const agentData = backendAgentes.find(a => a.id.toString() === loggedInAgentId);
+            
+            console.log('🔍 [DashboardPage] Detectado usuário AGENTE:', {
+                loggedInAgentId,
+                agentFound: !!agentData,
+                agentData: agentData ? {
+                    id: agentData.id,
+                    nome: agentData.nome,
+                    unidade_id: agentData.unidade_id,
+                    unidades: agentData.unidades
+                } : null
+            });
+            
+            // ✅ CORREÇÃO CRÍTICA: Priorizar unidade principal do agente
+            if (agentData && agentData.unidade_id !== undefined && agentData.unidade_id !== null) {
+                // Caso 1: AGENTE tem unidade principal definida - SEMPRE usar esta
+                newLocationId = agentData.unidade_id.toString();
+                console.log('✅ [DashboardPage] AGENTE com unidade_id principal (PRIORIDADE):', newLocationId);
+            }
+            // Se for AGENTE Multi-Local (que não tem unidade_id no agente, mas tem unidades no array 'unidades'):
+            else if (agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
+                // Caso 2: AGENTE sem unidade principal - usar primeira unidade do array
+                newLocationId = agentData.unidades[0];
+                console.log('✅ [DashboardPage] AGENTE multi-local, selecionando primeira unidade:', newLocationId);
             }
         }
-
-        // Caso 3: Plano Multi + ADMIN Master (sem unidade_id) - Auto-selecionar primeira unidade
-        if (userRole === 'ADMIN' && isMultiPlan && selectedLocation === 'all' && backendUnidades.length > 0) {
-            console.log('🔧 [DashboardPage] ADMIN/Multi: Auto-selecionando primeira unidade:', backendUnidades[0].id);
-            setSelectedLocation(backendUnidades[0].id.toString());
+        // 3. ✅ PRIORIDADE 2: Plano Single
+        else if (isSinglePlan) {
+            newLocationId = backendUnidades[0]?.id.toString() || null;
+            console.log('✅ [DashboardPage] Plano Single, selecionando único local:', newLocationId);
         }
-    }, [backendUnidades.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, selectedLocation]);
+        // 4. ✅ PRIORIDADE 3: ADMIN com unidade padrão
+        else if (user?.unidade_id) {
+            newLocationId = user.unidade_id.toString();
+            console.log('✅ [DashboardPage] ADMIN com unidade padrão:', newLocationId);
+        }
+        // 5. ✅ PRIORIDADE 4: ADMIN Multi-Local sem padrão
+        else if (userRole === 'ADMIN' && isMultiPlan && backendUnidades.length > 0) {
+            newLocationId = backendUnidades[0].id.toString();
+            console.log('✅ [DashboardPage] ADMIN multi-local, selecionando primeiro local:', newLocationId);
+        }
+
+        // 6. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
+        if (newLocationId && newLocationId !== selectedLocation) {
+            console.log(`⚙️ [DashboardPage] Forçando seleção inicial de Local para: ${newLocationId} (Regra: ${userRole})`);
+            setSelectedLocation(newLocationId);
+            console.log('✅ [DashboardPage] DEPOIS setSelectedLocation chamado');
+        } else {
+            console.log('⏭️ [DashboardPage] Seleção NÃO aplicada:', {
+                newLocationId,
+                selectedLocation,
+                isEqual: newLocationId === selectedLocation,
+                hasNewId: !!newLocationId,
+                userRole
+            });
+        }
+
+    }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId, selectedLocation]);
 
     // ✅ AUTO-SELEÇÃO DE AGENTE (para usuário AGENTE)
     useEffect(() => {

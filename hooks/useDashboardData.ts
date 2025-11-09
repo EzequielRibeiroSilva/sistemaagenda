@@ -27,9 +27,14 @@ interface BackendAgendamento {
 interface BackendAgente {
   id: number;
   nome: string;
-  sobrenome: string;
+  sobrenome?: string;
+  email: string;
+  telefone?: string;
+  avatar_url?: string;
+  status: string;
+  unidade_id?: number;        // ✅ CRÍTICO: ID da unidade principal do agente
+  unidades?: string[];        // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
   comissao_percentual?: number;
-  unidades?: number[];
 }
 
 interface BackendServico {
@@ -93,9 +98,23 @@ export const useDashboardData = () => {
       console.log('🏢 [useDashboardData] Buscando unidades...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
       
+      console.log('🏢 [useDashboardData] Resposta bruta do backend:', response);
+      
+      // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
+        // Formato 1: { success: true, data: [...] }
+        console.log('✅ [useDashboardData] Unidades carregadas (formato success/data):', response.data.length, response.data);
         setUnidades(response.data);
-        console.log('✅ [useDashboardData] Unidades carregadas:', response.data.length);
+      } else if (response.data && Array.isArray(response.data)) {
+        // Formato 2: { data: [...], limitInfo: {...} } ← ESTE É O FORMATO REAL!
+        console.log('✅ [useDashboardData] Unidades carregadas (formato data/limitInfo):', response.data.length, response.data);
+        setUnidades(response.data);
+      } else if (Array.isArray(response)) {
+        // Formato 3: [...] (array direto)
+        console.log('✅ [useDashboardData] Unidades carregadas (array direto):', response.length, response);
+        setUnidades(response);
+      } else {
+        console.error('❌ [useDashboardData] Formato de resposta não reconhecido:', response);
       }
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar unidades:', err);
@@ -109,9 +128,17 @@ export const useDashboardData = () => {
       console.log('👥 [useDashboardData] Buscando agentes...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agentes`);
       
+      console.log('👥 [useDashboardData] Resposta bruta do backend:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ [useDashboardData] Agentes carregados:', response.data.length, response.data);
         setAgentes(response.data);
-        console.log('✅ [useDashboardData] Agentes carregados:', response.data.length);
+      } else if (Array.isArray(response)) {
+        // ✅ CORREÇÃO: API pode retornar array direto
+        console.log('✅ [useDashboardData] Agentes carregados (array direto):', response.length, response);
+        setAgentes(response);
+      } else {
+        console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
       }
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar agentes:', err);
@@ -125,9 +152,17 @@ export const useDashboardData = () => {
       console.log('🛠️ [useDashboardData] Buscando serviços...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/servicos`);
       
+      console.log('🛠️ [useDashboardData] Resposta bruta do backend:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ [useDashboardData] Serviços carregados:', response.data.length, response.data);
         setServicos(response.data);
-        console.log('✅ [useDashboardData] Serviços carregados:', response.data.length);
+      } else if (Array.isArray(response)) {
+        // ✅ CORREÇÃO: API pode retornar array direto
+        console.log('✅ [useDashboardData] Serviços carregados (array direto):', response.length, response);
+        setServicos(response);
+      } else {
+        console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
       }
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar serviços:', err);
