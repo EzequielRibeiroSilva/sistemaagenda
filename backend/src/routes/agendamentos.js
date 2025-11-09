@@ -35,7 +35,19 @@ router.post('/', (req, res) => {
 });
 
 // PUT /api/agendamentos/:id - Atualizar agendamento
-router.put('/:id', (req, res) => agendamentoController.update(req, res));
+router.put('/:id', (req, res) => {
+  console.log('');
+  console.log('🚨🚨🚨 [ROTA] PUT /api/agendamentos/:id RECEBIDA! 🚨🚨🚨');
+  console.log('━'.repeat(80));
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('ID do agendamento:', req.params.id);
+  console.log('Usuário:', req.user ? { id: req.user.id, role: req.user.role, agente_id: req.user.agente_id } : 'NÃO AUTENTICADO');
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('━'.repeat(80));
+  console.log('');
+  
+  agendamentoController.update(req, res);
+});
 
 // DELETE /api/agendamentos/:id - Deletar agendamento
 router.delete('/:id', (req, res) => agendamentoController.destroy(req, res));

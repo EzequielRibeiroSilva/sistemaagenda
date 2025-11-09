@@ -9,7 +9,9 @@ class ServicoExtraController extends BaseController {
   // GET /api/servicos/extras/list - Listagem leve de serviços extras para formulários
   async list(req, res) {
     try {
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -18,7 +20,47 @@ class ServicoExtraController extends BaseController {
         });
       }
 
-      console.log('[ServicoExtraController] Buscando lista leve de serviços extras para usuário:', usuarioId);
+      console.log('🔍 [ServicoExtraController.list] Iniciando busca de serviços extras');
+      console.log('   Role:', userRole);
+      console.log('   UsuarioId (req.user.id):', usuarioId);
+      console.log('   AgenteId (req.user.agente_id):', userAgenteId);
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar serviços extras da unidade onde ele trabalha
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const agente = await this.model.db('agentes')
+          .where('id', userAgenteId)
+          .select('unidade_id')
+          .first();
+
+        if (agente && agente.unidade_id) {
+          console.log(`✅ [ServicoExtraController.list] AGENTE detectado. Buscando serviços extras da unidade_id=${agente.unidade_id}`);
+
+          // Buscar o usuario_id da unidade para filtrar os serviços extras
+          const unidade = await this.model.db('unidades')
+            .where('id', agente.unidade_id)
+            .select('usuario_id')
+            .first();
+
+          if (unidade && unidade.usuario_id) {
+            usuarioId = unidade.usuario_id;
+            console.log(`✅ [ServicoExtraController.list] Usando usuario_id=${usuarioId} da unidade para buscar serviços extras`);
+          } else {
+            console.log(`❌ [ServicoExtraController.list] ERRO: Unidade não encontrada ou sem usuario_id!`);
+            return res.status(200).json({
+              success: true,
+              data: [],
+              message: 'Nenhum serviço extra encontrado'
+            });
+          }
+        } else {
+          console.log(`❌ [ServicoExtraController.list] ERRO: Agente não encontrado ou sem unidade_id!`);
+          return res.status(200).json({
+            success: true,
+            data: [],
+            message: 'Nenhum serviço extra encontrado'
+          });
+        }
+      }
 
       // Busca otimizada apenas com id e nome
       const servicosExtras = await this.model.findActiveByUsuario(usuarioId);
@@ -28,10 +70,10 @@ class ServicoExtraController extends BaseController {
         id: servicoExtra.id,
         nome: servicoExtra.nome,
         preco: servicoExtra.preco,
-        duracao_minutos: servicoExtra.duracao_minutos || 0 // Adicionar duracao_minutos
+        duracao_minutos: servicoExtra.duracao_minutos || 0
       }));
 
-      console.log(`[ServicoExtraController] Lista leve: ${servicosExtrasLeves.length} serviços extras ativos`);
+      console.log(`✅ [ServicoExtraController.list] ${servicosExtrasLeves.length} serviços extras encontrados para usuario_id ${usuarioId}`);
 
       return res.status(200).json({
         success: true,
@@ -39,7 +81,7 @@ class ServicoExtraController extends BaseController {
         message: 'Lista de serviços extras carregada com sucesso'
       });
     } catch (error) {
-      console.error('[ServicoExtraController] Erro ao carregar lista de serviços extras:', error);
+      console.error('[ServicoExtraController.list] Erro ao carregar lista de serviços extras:', error);
 
       return res.status(500).json({
         success: false,

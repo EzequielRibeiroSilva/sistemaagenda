@@ -10,14 +10,11 @@ const clienteController = new ClienteController();
 // Middleware de autenticação para todas as rotas
 router.use(authenticate());
 
-// Middleware para exigir role ADMIN (clientes são gerenciados por ADMIN)
-router.use(rbacMiddleware.requireRole('ADMIN'));
-
 /**
  * GET /api/clientes/search
  * Busca clientes por nome ou telefone para modal de agendamento
  * Query params: ?q=termo_busca
- * Acessível por ADMIN e AGENTE
+ * ✅ CORREÇÃO CRÍTICA: AGENTE precisa buscar clientes para criar agendamentos
  */
 router.get('/search',
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
@@ -25,6 +22,10 @@ router.get('/search',
     await clienteController.search(req, res);
   }
 );
+
+// ✅ Middleware para exigir role ADMIN APENAS nas rotas que não são de busca
+// Movido para depois da rota /search para não bloquear AGENTEs
+router.use(rbacMiddleware.requireRole('ADMIN'));
 
 /**
  * GET /api/clientes

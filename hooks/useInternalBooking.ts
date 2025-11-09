@@ -96,34 +96,77 @@ export const useInternalBooking = () => {
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('authToken');
 
+    console.log('🔍 [makeAuthenticatedRequest] Iniciando requisição:', {
+      url,
+      method: options.method || 'GET',
+      hasToken: !!token,
+      tokenLength: token ? token.length : 0,
+      headers: options.headers
+    });
+
     if (!token) {
+      console.error('❌ [makeAuthenticatedRequest] Token não encontrado');
       throw new Error('Token de autenticação não encontrado. Faça login novamente.');
     }
 
-    const response = await fetch(url, {
+    const requestOptions = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
         ...options.headers,
       },
+    };
+
+    console.log('🔍 [makeAuthenticatedRequest] Opções da requisição:', {
+      method: requestOptions.method,
+      headers: requestOptions.headers,
+      bodyLength: requestOptions.body ? requestOptions.body.toString().length : 0
     });
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userEmail');
-        throw new Error('Token inválido ou expirado. Faça login novamente.');
+    try {
+      console.log('🚀 [makeAuthenticatedRequest] Enviando fetch...');
+      const response = await fetch(url, requestOptions);
+
+      console.log('📥 [makeAuthenticatedRequest] Resposta recebida:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.warn('⚠️ [makeAuthenticatedRequest] Token inválido, removendo do localStorage');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('userEmail');
+          throw new Error('Token inválido ou expirado. Faça login novamente.');
+        }
+
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.error('❌ [makeAuthenticatedRequest] Erro do servidor:', errorData);
+        } catch (parseError) {
+          console.error('❌ [makeAuthenticatedRequest] Erro ao parsear resposta de erro:', parseError);
+          errorData = {};
+        }
+
+        const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('❌ [makeAuthenticatedRequest] Erro final:', errorMessage);
+        throw new Error(errorMessage);
       }
 
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-    }
+      console.log('✅ [makeAuthenticatedRequest] Parseando JSON...');
+      const jsonData = await response.json();
+      console.log('✅ [makeAuthenticatedRequest] JSON parseado com sucesso:', jsonData);
 
-    const jsonData = await response.json();
-    
-    return jsonData;
+      return jsonData;
+    } catch (fetchError) {
+      console.error('💥 [makeAuthenticatedRequest] Erro no fetch:', fetchError);
+      throw fetchError;
+    }
   }, []);
 
   // Buscar serviços
@@ -287,17 +330,38 @@ export const useInternalBooking = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agendamentos/${id}`, {
+
+      const url = `${API_BASE_URL}/agendamentos/${id}`;
+      console.log('🔍 [useInternalBooking.updateAgendamento] Iniciando atualização:', {
+        url,
+        method: 'PUT',
+        id,
+        idType: typeof id,
+        API_BASE_URL,
+        data,
+        dataKeys: Object.keys(data),
+        timestamp: new Date().toISOString()
+      });
+
+      console.log('🔍 [useInternalBooking.updateAgendamento] Dados detalhados:', JSON.stringify(data, null, 2));
+
+      const response = await makeAuthenticatedRequest(url, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
 
+      console.log('✅ [useInternalBooking.updateAgendamento] Resposta recebida:', response);
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar agendamento';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao atualizar agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking.updateAgendamento] Erro capturado:', {
+        error: err,
+        errorMessage,
+        errorType: typeof err,
+        errorConstructor: err?.constructor?.name,
+        stack: err instanceof Error ? err.stack : undefined
+      });
       throw err;
     } finally {
       setIsLoading(false);
