@@ -150,7 +150,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             });
         }
 
-    }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId, selectedLocation]);
+    }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId]);
+    // ✅ CORREÇÃO CRÍTICA: Remover selectedLocation das dependências para permitir mudança manual
 
     // ✅ AUTO-SELEÇÃO DE AGENTE (para usuário AGENTE)
     useEffect(() => {
@@ -263,11 +264,38 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {
-        return backendAgentes.map(agente => ({
-            id: agente.id.toString(),
-            name: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
-            avatar: `https://i.pravatar.cc/150?u=${agente.id}`
-        }));
+        console.log('🔍 [DashboardPage] Transformando agentes do backend:', {
+            count: backendAgentes.length,
+            sample: backendAgentes.slice(0, 2).map(a => ({
+                id: a.id,
+                nome: a.nome,
+                sobrenome: a.sobrenome,
+                name: (a as any).name,
+                unidades: a.unidades
+            }))
+        });
+
+        return backendAgentes.map(agente => {
+            // ✅ CORREÇÃO CRÍTICA: Backend pode retornar 'name' já formatado (igual CalendarPage)
+            // Priorizar 'name' se existir, senão concatenar 'nome' + 'sobrenome'
+            const backendName = (agente as any).name;
+            const displayName = backendName || `${agente.nome} ${agente.sobrenome || ''}`.trim();
+            
+            console.log(`🔍 [DashboardPage] Agente ${agente.id}:`, {
+                backendName,
+                nome: agente.nome,
+                sobrenome: agente.sobrenome,
+                displayName,
+                unidades: agente.unidades
+            });
+
+            return {
+                id: agente.id.toString(),
+                name: displayName,
+                avatar: `https://i.pravatar.cc/150?u=${agente.id}`,
+                unidades: agente.unidades // ✅ CRÍTICO: Incluir array de unidades
+            };
+        });
     }, [backendAgentes]);
 
     const services: Service[] = useMemo(() => {
@@ -288,14 +316,45 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ FILTRAR AGENTES BASEADO NO LOCAL SELECIONADO
     const filteredAgents = useMemo(() => {
-        if (selectedLocation === 'all') return agents;
+        console.log('🔍 [DashboardPage] Filtrando agentes por local:', {
+            selectedLocation,
+            totalAgents: agents.length,
+            backendAgentesCount: backendAgentes.length
+        });
+
+        if (selectedLocation === 'all') {
+            console.log('✅ [DashboardPage] Mostrando todos os agentes (selectedLocation = all)');
+            return agents;
+        }
         
         // Filtrar agentes que trabalham no local selecionado
-        const locationId = parseInt(selectedLocation);
-        return agents.filter(agent => {
+        // ✅ CRÍTICO: Converter para string para comparação (igual CalendarPage)
+        const locationIdStr = selectedLocation.toString();
+        const filtered = agents.filter(agent => {
             const backendAgent = backendAgentes.find(a => a.id.toString() === agent.id);
-            return backendAgent?.unidades?.includes(locationId);
+            
+            // Verificar se o agente tem o array 'unidades' e se inclui o local selecionado
+            const hasLocation = Array.isArray(backendAgent?.unidades) && 
+                               backendAgent.unidades.includes(locationIdStr);
+            
+            console.log(`🔍 [DashboardPage] Agente ${agent.name}:`, {
+                agentId: agent.id,
+                unidades: backendAgent?.unidades,
+                locationIdStr,
+                hasLocation
+            });
+            
+            return hasLocation;
         });
+
+        console.log('✅ [DashboardPage] Agentes filtrados:', {
+            selectedLocation: locationIdStr,
+            totalAgents: agents.length,
+            filteredCount: filtered.length,
+            filteredNames: filtered.map(a => a.name)
+        });
+
+        return filtered;
     }, [agents, backendAgentes, selectedLocation]);
 
     // ✅ FILTRAR SERVIÇOS BASEADO NO AGENTE SELECIONADO

@@ -28,6 +28,7 @@ interface BackendAgente {
   id: number;
   nome: string;
   sobrenome?: string;
+  name?: string;              // ✅ CRÍTICO: Backend retorna 'name' já formatado (nome completo)
   email: string;
   telefone?: string;
   avatar_url?: string;
