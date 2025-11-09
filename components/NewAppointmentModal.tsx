@@ -555,6 +555,21 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
             setDate(formattedDate);
 
+            // ✅ NOVA CORREÇÃO: Pré-selecionar o agente baseado no slot clicado
+            if (newSlotData.agent && newSlotData.agent.id) {
+                console.log('🎯 [NewAppointmentModal] Pré-selecionando agente do slot:', {
+                    agent: newSlotData.agent,
+                    agentId: newSlotData.agent.id,
+                    agentIdType: typeof newSlotData.agent.id
+                });
+                // Converter string para number se necessário
+                const agentId = typeof newSlotData.agent.id === 'string'
+                    ? parseInt(newSlotData.agent.id)
+                    : newSlotData.agent.id;
+                console.log('🎯 [NewAppointmentModal] Agente ID convertido:', agentId);
+                setSelectedAgentId(agentId);
+            }
+
             setClientFirstName('');
             setClientLastName('');
             setClientPhone('');
