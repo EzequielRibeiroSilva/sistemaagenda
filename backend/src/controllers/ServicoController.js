@@ -9,7 +9,9 @@ class ServicoController extends BaseController {
   // GET /api/servicos/list - Listagem leve de serviços para formulários
   async list(req, res) {
     try {
-      const usuarioId = req.user?.id;
+      let usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -18,7 +20,47 @@ class ServicoController extends BaseController {
         });
       }
 
-      console.log('[ServicoController] Buscando lista leve de serviços para usuário:', usuarioId);
+      console.log('🔍 [ServicoController.list] Iniciando busca de serviços');
+      console.log('   Role:', userRole);
+      console.log('   UsuarioId (req.user.id):', usuarioId);
+      console.log('   AgenteId (req.user.agente_id):', userAgenteId);
+
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar serviços da unidade onde ele trabalha
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const agente = await this.model.db('agentes')
+          .where('id', userAgenteId)
+          .select('unidade_id')
+          .first();
+
+        if (agente && agente.unidade_id) {
+          console.log(`✅ [ServicoController.list] AGENTE detectado. Buscando serviços da unidade_id=${agente.unidade_id}`);
+
+          // Buscar o usuario_id da unidade para filtrar os serviços
+          const unidade = await this.model.db('unidades')
+            .where('id', agente.unidade_id)
+            .select('usuario_id')
+            .first();
+
+          if (unidade && unidade.usuario_id) {
+            usuarioId = unidade.usuario_id;
+            console.log(`✅ [ServicoController.list] Usando usuario_id=${usuarioId} da unidade para buscar serviços`);
+          } else {
+            console.log(`❌ [ServicoController.list] ERRO: Unidade não encontrada ou sem usuario_id!`);
+            return res.status(200).json({
+              success: true,
+              data: [],
+              message: 'Nenhum serviço encontrado'
+            });
+          }
+        } else {
+          console.log(`❌ [ServicoController.list] ERRO: Agente não encontrado ou sem unidade_id!`);
+          return res.status(200).json({
+            success: true,
+            data: [],
+            message: 'Nenhum serviço encontrado'
+          });
+        }
+      }
 
       // Busca otimizada apenas com id e nome
       const servicos = await this.model.findActiveByUsuario(usuarioId);
@@ -26,10 +68,12 @@ class ServicoController extends BaseController {
       // Formatar dados mínimos para formulários
       const servicosLeves = servicos.map(servico => ({
         id: servico.id,
-        nome: servico.nome
+        nome: servico.nome,
+        preco: servico.preco,
+        duracao_minutos: servico.duracao_minutos || 0
       }));
 
-      console.log(`[ServicoController] Lista leve: ${servicosLeves.length} serviços ativos`);
+      console.log(`✅ [ServicoController.list] ${servicosLeves.length} serviços encontrados para usuario_id ${usuarioId}`);
 
       return res.status(200).json({
         success: true,
@@ -37,7 +81,7 @@ class ServicoController extends BaseController {
         message: 'Lista de serviços carregada com sucesso'
       });
     } catch (error) {
-      console.error('[ServicoController] Erro ao carregar lista de serviços:', error);
+      console.error('[ServicoController.list] Erro ao carregar lista de serviços:', error);
 
       return res.status(500).json({
         success: false,

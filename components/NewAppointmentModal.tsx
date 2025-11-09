@@ -609,7 +609,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 // ✅ SOLUÇÃO: Usar dados passados pelo CalendarPage ao invés de buscar no backend
                 // Isso evita erro 403 quando AGENTE tenta editar agendamento
                 
-                setAppointmentId(parseInt(appointmentData.id));
+                const parsedId = parseInt(appointmentData.id);
+                console.log('🔍 [NewAppointmentModal] Definindo appointmentId:', {
+                    originalId: appointmentData.id,
+                    originalIdType: typeof appointmentData.id,
+                    parsedId,
+                    parsedIdType: typeof parsedId,
+                    isNaN: isNaN(parsedId)
+                });
+                setAppointmentId(parsedId);
                 
                 // ✅ Preencher agente
                 if (appointmentData.agentId) {
@@ -883,6 +891,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         }
                     )
                 };
+                
+                console.log('🔍 [NewAppointmentModal] Dados para atualização:', {
+                    appointmentId,
+                    appointmentIdType: typeof appointmentId,
+                    updateData,
+                    userRole: user?.role
+                });
                 
                 try {
                     const resultado = await updateAgendamento(appointmentId, updateData);

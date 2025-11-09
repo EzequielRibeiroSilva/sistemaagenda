@@ -123,18 +123,24 @@ class AuthService {
       let avatarUrl = null;
       let agenteId = null;
       if (usuario.role === 'AGENTE') {
-        // Para agentes: buscar avatar_url e id na tabela agentes
+        // Para agentes: buscar avatar_url, id e unidade_id na tabela agentes
         const Agente = require('../models/Agente');
         const agenteModel = new Agente();
         const agente = await agenteModel.db('agentes')
           .where('usuario_id', usuario.id)
-          .select('id', 'avatar_url')
+          .select('id', 'avatar_url', 'unidade_id')
           .first();
 
         if (agente) {
           avatarUrl = agente.avatar_url;
           agenteId = agente.id; // ✅ CRÍTICO: Guardar o ID do agente
-          console.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}`);
+          
+          // ✅ SOLUÇÃO CRÍTICA: Sobrescrever 'usuario.unidade_id' (que pode ser null)
+          // com o 'agente.unidade_id' (que é o correto da tabela agentes).
+          // Removemos o 'if (agente.unidade_id)' que causava a falha quando era null.
+          usuario.unidade_id = agente.unidade_id;
+          
+          console.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}, unidade_id=${agente.unidade_id}`);
         }
       } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
         // Para admins e masters: buscar logo_url das configurações da unidade

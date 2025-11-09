@@ -448,16 +448,6 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
-      if (userRole === 'AGENTE' && userAgenteId) {
-        const Agente = require('../models/Agente');
-        const agenteModel = new Agente();
-        const agente = await agenteModel.findById(userAgenteId);
-        if (agente && agente.usuario_id) {
-          usuarioId = agente.usuario_id;
-        }
-      }
-
       const {
         cliente_id,
         cliente_nome,
@@ -489,8 +479,19 @@ class AgendamentoController extends BaseController {
         });
       }
 
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN dono da unidade
+      if (userRole === 'AGENTE' && userAgenteId) {
+        // Buscar o usuario_id do ADMIN dono da unidade onde o AGENTE trabalha
+        const unidadeInfo = await this.model.db('unidades').where('id', unidade_id).first();
+
+        if (unidadeInfo && unidadeInfo.usuario_id) {
+          usuarioId = unidadeInfo.usuario_id;
+        }
+      }
+
       // Verificar se a unidade pertence ao usuário (agora usando usuario_id do ADMIN para AGENTE)
       const unidade = await this.model.db('unidades').where('id', unidade_id).where('usuario_id', usuarioId).first();
+
       if (!unidade) {
         return res.status(400).json({
           error: 'Unidade inválida',
@@ -728,14 +729,15 @@ class AgendamentoController extends BaseController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
+      let usuarioId = req.user?.id; // ID do usuário logado (ADMIN ou AGENTE)
       
       console.log('🔄 [AgendamentoController.update] Iniciando atualização');
       console.log('   ID do agendamento:', id);
-      console.log('   Usuário ID:', usuarioId);
+      console.log('   Usuário ID (logado):', usuarioId);
       console.log('   User Role:', userRole);
+      console.log('   Agente ID (logado):', userAgenteId);
       console.log('   Body recebido:', JSON.stringify(req.body, null, 2));
       
       if (!usuarioId) {
@@ -746,44 +748,47 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
-      if (userRole === 'AGENTE' && userAgenteId) {
-        const Agente = require('../models/Agente');
-        const agenteModel = new Agente();
-        const agente = await agenteModel.findById(userAgenteId);
-        if (agente && agente.usuario_id) {
-          usuarioId = agente.usuario_id;
-          console.log(`✅ [update] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
-        }
-      }
+      // --- RBAC: FILTRO DE BUSCA POR AGENDAMENTO ---
+      
+      // 1. Iniciar busca
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.id', id);
 
-      // Verificar se o agendamento pertence ao usuário
-      const agendamento = await this.model.db(this.model.tableName)
-        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-        .where('agendamentos.id', id)
-        .where('unidades.usuario_id', usuarioId)
-        .select('agendamentos.*')
-        .first();
+      // 2. Aplicar filtro de escopo para encontrar o agendamento
+      if (userRole === 'AGENTE' && userAgenteId) {
+        // ✅ SOLUÇÃO CRÍTICA: AGENTE só pode encontrar agendamentos em seu nome.
+        // Foca o filtro diretamente na coluna do agente.
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+        console.log(`🔍 [update] Aplicando filtro de AGENTE: agendamentos.agente_id = ${userAgenteId}`);
+      } else if (userRole === 'ADMIN' || userRole === 'MASTER') {
+        // ADMIN/MASTER: Filtro pela unidade (propriedade do ADMIN)
+        // Requer o join para verificar a propriedade da unidade
+        agendamentoQuery = agendamentoQuery
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('unidades.usuario_id', usuarioId); // usuarioId aqui é o ID do ADMIN
+        console.log(`🔍 [update] Aplicando filtro de ADMIN: unidades.usuario_id = ${usuarioId}`);
+      } else {
+         console.warn(`⚠️ [update] Tentativa de acesso com role desconhecido: ${userRole}`);
+         return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
+      
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
 
       console.log('🔍 [AgendamentoController.update] Agendamento encontrado:', agendamento ? 'SIM' : 'NÃO');
 
       if (!agendamento) {
-        console.error('❌ [AgendamentoController.update] Agendamento não encontrado');
+        // ✅ CORREÇÃO: O 404 agora significa que o agendamento não existe DENTRO DO ESCOPO DO USUÁRIO
+        console.error('❌ [AgendamentoController.update] Agendamento não encontrado DENTRO do escopo do usuário.');
         return res.status(404).json({ 
           success: false,
           error: 'Agendamento não encontrado ou acesso negado' 
         });
       }
-
-      // ✅ RBAC: AGENTE só pode atualizar seus próprios agendamentos
-      if (userRole === 'AGENTE' && userAgenteId && agendamento.agente_id !== userAgenteId) {
-        console.warn(`⚠️ [update] AGENTE ${userAgenteId} tentou atualizar agendamento do AGENTE ${agendamento.agente_id}`);
-        return res.status(403).json({
-          success: false,
-          error: 'Acesso negado',
-          message: 'Agentes só podem atualizar seus próprios agendamentos'
-        });
-      }
+      
+      // A verificação de RBAC (userAgenteId && agendamento.agente_id !== userAgenteId) não é mais
+      // estritamente necessária aqui, pois o filtro na query já garante o escopo,
+      // mas se o usuário for ADMIN, ele já passou pelo filtro de unidade.
+      // Manter apenas o filtro no SQL simplifica.
 
       // ✅ CORREÇÃO: Extrair apenas campos válidos da tabela agendamentos
       const {
@@ -803,7 +808,15 @@ class AgendamentoController extends BaseController {
 
       if (hora_inicio !== undefined) dadosParaAtualizar.hora_inicio = hora_inicio;
       if (hora_fim !== undefined) dadosParaAtualizar.hora_fim = hora_fim;
-      if (agente_id !== undefined) dadosParaAtualizar.agente_id = agente_id;
+      
+      // ✅ REGRA DE NEGÓCIO: AGENTE só pode atualizar seu próprio agente_id. ADMIN pode trocar.
+      if (userRole === 'AGENTE' && agente_id !== undefined && agente_id !== userAgenteId) {
+         console.warn(`⚠️ [update] AGENTE tentando trocar o agente_id. Bloqueado.`);
+         return res.status(403).json({ success: false, error: 'Acesso negado: AGENTE não pode alterar agente_id' });
+      } else if (agente_id !== undefined) {
+         dadosParaAtualizar.agente_id = agente_id; // ADMIN pode alterar
+      }
+      
       if (data_agendamento !== undefined) dadosParaAtualizar.data_agendamento = data_agendamento;
       if (status !== undefined) dadosParaAtualizar.status = status;
       if (forma_pagamento !== undefined) dadosParaAtualizar.metodo_pagamento = forma_pagamento; // ✅ CORREÇÃO
@@ -979,24 +992,23 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      // ✅ REMOÇÃO DA LÓGICA DE SOBRESCRITA DE usuarioId
+
+      // Buscar agendamento com filtro de escopo
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.id', id);
+
       if (userRole === 'AGENTE' && userAgenteId) {
-        const Agente = require('../models/Agente');
-        const agenteModel = new Agente();
-        const agente = await agenteModel.findById(userAgenteId);
-        if (agente && agente.usuario_id) {
-          usuarioId = agente.usuario_id;
-          console.log(`✅ [finalize] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
-        }
+        // AGENTE: Filtro estrito pelo seu próprio ID de agente
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+      } else {
+        // ADMIN/MASTER: Filtro pela unidade
+        agendamentoQuery = agendamentoQuery
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('unidades.usuario_id', usuarioId);
       }
 
-      // Buscar agendamento
-      const agendamento = await this.model.db(this.model.tableName)
-        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-        .where('agendamentos.id', id)
-        .where('unidades.usuario_id', usuarioId)
-        .select('agendamentos.*')
-        .first();
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
 
       if (!agendamento) {
         return res.status(404).json({
@@ -1005,15 +1017,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ RBAC: AGENTE só pode finalizar seus próprios agendamentos
-      if (userRole === 'AGENTE' && userAgenteId && agendamento.agente_id !== userAgenteId) {
-        console.warn(`⚠️ [finalize] AGENTE ${userAgenteId} tentou finalizar agendamento do AGENTE ${agendamento.agente_id}`);
-        return res.status(403).json({
-          success: false,
-          error: 'Acesso negado',
-          message: 'Agentes só podem finalizar seus próprios agendamentos'
-        });
-      }
+      // ✅ RBAC: A permissão de AGENTE já está garantida pela query.
 
       // Verificar se já está finalizado
       if (agendamento.status === 'Concluído') {
@@ -1030,7 +1034,7 @@ class AgendamentoController extends BaseController {
       };
 
       if (paymentMethod) {
-        updateData.payment_method = paymentMethod;
+        updateData.metodo_pagamento = paymentMethod; // ✅ CORREÇÃO: Usar metodo_pagamento
       }
 
       await this.model.db(this.model.tableName)
@@ -1043,7 +1047,7 @@ class AgendamentoController extends BaseController {
         data: {
           id: parseInt(id),
           status: 'Concluído',
-          payment_method: paymentMethod || null
+          metodo_pagamento: updateData.metodo_pagamento || null // ✅ CORREÇÃO: Retornar o nome correto
         }
       });
 

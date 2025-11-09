@@ -25,10 +25,20 @@ class ClienteController {
     try {
       const usuarioId = req.user.id;
       const unidadeId = req.user.unidade_id;
+      const userRole = req.user.role;
+      const userAgenteId = req.user.agente_id;
       const { q } = req.query; // Query de busca
+
+      console.log('🔍 [ClienteController.search] Iniciando busca de clientes');
+      console.log('   Usuário ID:', usuarioId);
+      console.log('   User Role:', userRole);
+      console.log('   Agente ID:', userAgenteId);
+      console.log('   Unidade ID:', unidadeId);
+      console.log('   Query:', q);
 
       // Validar se usuário tem unidade_id (Multi-Tenant)
       if (!unidadeId) {
+        console.error('❌ [ClienteController.search] Usuário sem unidade_id');
         return res.status(400).json({
           success: false,
           message: 'Usuário deve estar associado a uma unidade para acessar clientes'
@@ -45,6 +55,8 @@ class ClienteController {
 
       // Buscar clientes por nome ou telefone
       const clientes = await this.clienteModel.searchByNameOrPhone(unidadeId, q.trim());
+
+      console.log(`✅ [ClienteController.search] ${clientes.length} clientes encontrados para unidade ${unidadeId}`);
 
       res.json({
         success: true,
