@@ -159,6 +159,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ BUSCAR AGENDAMENTOS quando filtros ou período mudarem
     useEffect(() => {
+        console.log('🔄 [DashboardPage] useEffect de busca disparado:', {
+            hasStartDate: !!dateRange.startDate,
+            hasEndDate: !!dateRange.endDate,
+            startDate: dateRange.startDate?.toISOString().split('T')[0],
+            endDate: dateRange.endDate?.toISOString().split('T')[0],
+            selectedLocation,
+            selectedAgent,
+            selectedService,
+            isMultiPlan
+        });
+
         // Validar que temos período válido
         if (!dateRange.startDate || !dateRange.endDate) {
             console.log('⏳ [DashboardPage] Aguardando seleção de período...');

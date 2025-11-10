@@ -192,16 +192,39 @@ export const useDashboardData = () => {
         params.append('servico_id', filters.servico_id.toString());
       }
 
-      const response = await makeAuthenticatedRequest(
-        `${API_BASE_URL}/agendamentos?${params.toString()}`
-      );
+      const url = `${API_BASE_URL}/agendamentos?${params.toString()}`;
+      console.log('🌐 [useDashboardData] URL da requisição:', url);
+
+      const response = await makeAuthenticatedRequest(url);
       
+      console.log('📦 [useDashboardData] Resposta do backend:', {
+        success: response.success,
+        dataLength: response.data?.length,
+        hasData: !!response.data,
+        isArray: Array.isArray(response.data),
+        data: response.data
+      });
+      
+      // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
+        // Formato 1: { success: true, data: [...] }
         setAgendamentos(response.data);
-        console.log('✅ [useDashboardData] Agendamentos carregados:', response.data.length);
+        console.log('✅ [useDashboardData] Agendamentos carregados (formato success/data):', response.data.length);
+      } else if (response.data && Array.isArray(response.data)) {
+        // Formato 2: { data: [...], limitInfo: {...} } ← FORMATO REAL DO BACKEND!
+        setAgendamentos(response.data);
+        console.log('✅ [useDashboardData] Agendamentos carregados (formato data/limitInfo):', response.data.length);
+      } else if (Array.isArray(response)) {
+        // Formato 3: [...] (array direto)
+        setAgendamentos(response);
+        console.log('✅ [useDashboardData] Agendamentos carregados (array direto):', response.length);
+      } else {
+        console.warn('⚠️ [useDashboardData] Resposta sem dados válidos:', response);
+        setAgendamentos([]);
       }
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar agendamentos:', err);
+      setAgendamentos([]);
       throw err;
     }
   }, [makeAuthenticatedRequest]);

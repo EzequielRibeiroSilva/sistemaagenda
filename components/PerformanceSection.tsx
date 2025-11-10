@@ -135,12 +135,16 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
     endDate: lastDayOfMonth
   });
 
-  // Notificar mudanças no período
+  // ✅ CORREÇÃO CRÍTICA: Notificar período inicial na montagem
   useEffect(() => {
-    if (onDateRangeChange) {
+    if (onDateRangeChange && dateRange.startDate && dateRange.endDate) {
+      console.log('📅 [PerformanceSection] Notificando mudança de período:', {
+        startDate: dateRange.startDate.toISOString().split('T')[0],
+        endDate: dateRange.endDate.toISOString().split('T')[0]
+      });
       onDateRangeChange(dateRange);
     }
-  }, [dateRange, onDateRangeChange]);
+  }, [dateRange.startDate, dateRange.endDate, onDateRangeChange]);
 
   // Opções de filtro
   // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
