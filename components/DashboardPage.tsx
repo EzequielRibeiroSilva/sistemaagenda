@@ -3,13 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import PerformanceSection from './PerformanceSection';
 import PreviewSection from './PreviewSection';
-import UpcomingAppointments from './UpcomingAppointments';
 import NewAppointmentModal from './NewAppointmentModal';
-import type { PerformanceMetric, AgentSchedule, UpcomingAppointment, Agent, Service, Location, ScheduleSlot } from '../types';
+import type { PerformanceMetric, AgentSchedule, Agent, Service, Location, ScheduleSlot } from '../types';
 
-// --- Mock Data (PreviewSection e UpcomingAppointments - serão migrados posteriormente) ---
+// --- Mock Data (PreviewSection - será migrado posteriormente) ---
 const agentSchedules: AgentSchedule[] = [];
-const upcomingAppointments: UpcomingAppointment[] = [];
 
 interface DashboardPageProps {
   loggedInAgentId: string | null;
@@ -41,11 +39,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         endDate: null 
     });
     
-    // Estados de filtro das outras seções (PreviewSection e UpcomingAppointments)
+    // Estados de filtro das outras seções (PreviewSection)
     const [selectedPreviewService, setSelectedPreviewService] = useState('all');
-    const [upcomingLocation, setUpcomingLocation] = useState('all');
-    const [upcomingAgent, setUpcomingAgent] = useState('all');
-    const [upcomingService, setUpcomingService] = useState('all');
     
     const [viewMode, setViewMode] = useState<'compromissos' | 'disponibilidade'>('compromissos');
     const [isAppointmentModalOpen, setAppointmentModalOpen] = useState(false);
@@ -157,10 +152,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     useEffect(() => {
         if (loggedInAgentId) {
             setSelectedAgent(loggedInAgentId);
-            setUpcomingAgent(loggedInAgentId);
         } else {
             setSelectedAgent('all');
-            setUpcomingAgent('all');
         }
     }, [loggedInAgentId]);
 
@@ -217,30 +210,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         setAppointmentModalOpen(true);
     };
 
-    const handleUpcomingAppointmentClick = (appointment: UpcomingAppointment) => {
-        // Assume a 1-hour duration for upcoming appointments to create a time range
-        const startTime = appointment.time;
-        const [hour, minute] = startTime.split(':').map(Number);
-        const endDate = new Date();
-        endDate.setHours(hour + 1, minute);
-        const endTime = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
-
-        const details: ScheduleSlot['details'] = {
-            id: `upcoming-${Date.now()}`, // Create a temporary unique ID
-            service: appointment.service,
-            client: 'Cliente Exemplo', // Placeholder as this is not in UpcomingAppointment
-            agentName: appointment.agent.name,
-            agentEmail: 'email@exemplo.com.br', // Placeholder
-            date: appointment.date,
-            time: `${startTime}-${endTime}`,
-            serviceId: appointment.serviceId,
-            locationId: appointment.locationId,
-            status: 'Aprovado',
-        };
-
-        setModalData({ appointment: details });
-        setAppointmentModalOpen(true);
-    };
 
     const handleCloseModal = () => {
         setAppointmentModalOpen(false);
@@ -364,10 +333,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     }, [services]);
     
     // Mock data para outras seções (serão migrados posteriormente)
-    const filteredUpcomingAppointments = useMemo(() => {
-        return upcomingAppointments;
-    }, []);
-
     const filteredAgentSchedules = useMemo(() => {
         return agentSchedules;
     }, []);
@@ -395,42 +360,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                    <PerformanceSection 
-                        metrics={metrics}
-                        locations={locations}
-                        agents={filteredAgents}
-                        services={filteredServices}
-                        selectedLocation={selectedLocation}
-                        setSelectedLocation={setSelectedLocation}
-                        selectedAgent={selectedAgent}
-                        setSelectedAgent={setSelectedAgent}
-                        selectedService={selectedService}
-                        setSelectedService={setSelectedService}
-                        loggedInAgentId={loggedInAgentId}
-                        userRole={userRole}
-                        isMultiPlan={isMultiPlan}
-                        onDateRangeChange={setDateRange}
-                    />
-                </div>
-                <div>
-                    <UpcomingAppointments 
-                        appointments={filteredUpcomingAppointments}
-                        locations={locations}
-                        agents={agents}
-                        services={services}
-                        selectedLocation={upcomingLocation}
-                        setSelectedLocation={setUpcomingLocation}
-                        selectedAgent={upcomingAgent}
-                        setSelectedAgent={setUpcomingAgent}
-                        selectedService={upcomingService}
-                        setSelectedService={setUpcomingService}
-                        onAppointmentClick={handleUpcomingAppointmentClick}
-                        loggedInAgentId={loggedInAgentId}
-                    />
-                </div>
-            </div>
+            {/* ✅ Seção Desempenho - Agora ocupa toda a largura */}
+            <PerformanceSection 
+                metrics={metrics}
+                locations={locations}
+                agents={filteredAgents}
+                services={filteredServices}
+                selectedLocation={selectedLocation}
+                setSelectedLocation={setSelectedLocation}
+                selectedAgent={selectedAgent}
+                setSelectedAgent={setSelectedAgent}
+                selectedService={selectedService}
+                setSelectedService={setSelectedService}
+                loggedInAgentId={loggedInAgentId}
+                userRole={userRole}
+                isMultiPlan={isMultiPlan}
+                onDateRangeChange={setDateRange}
+            />
             
             <PreviewSection 
                 schedules={filteredAgentSchedules}
