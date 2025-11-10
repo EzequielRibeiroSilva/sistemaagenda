@@ -48,12 +48,27 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
     useEffect(() => {
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
+            const calendarWidth = mode === 'range' ? 600 : 288; // w-[600px] ou w-72 (288px)
+            
+            // Calcular posição ideal (alinhado à direita do botão)
+            let leftPosition = rect.right - calendarWidth;
+            
+            // Verificar se ultrapassa o limite esquerdo da tela
+            if (leftPosition < 8) {
+                leftPosition = 8; // Margem mínima de 8px da borda esquerda
+            }
+            
+            // Verificar se ultrapassa o limite direito da tela
+            if (leftPosition + calendarWidth > window.innerWidth - 8) {
+                leftPosition = window.innerWidth - calendarWidth - 8; // Margem mínima de 8px da borda direita
+            }
+            
             setDropdownPosition({
                 top: rect.bottom + 8,
-                left: rect.left
+                left: leftPosition
             });
         }
-    }, [isOpen]);
+    }, [isOpen, mode]);
 
     useEffect(() => {
         if (isOpen) {
@@ -121,13 +136,8 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         }
 
         if (mode === 'range') {
-            if (!selectedRange || !selectedRange.startDate || !selectedRange.endDate) {
-                return 'Selecione a data';
-            }
-
-            const start = selectedRange.startDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-            const end = selectedRange.endDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-            return `${start} - ${end}`;
+            // Sempre exibir "Período" independente de ter datas selecionadas
+            return 'Período';
         }
 
         return 'Selecione a data';
@@ -224,9 +234,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
             <button
                 ref={buttonRef}
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 capitalize w-full justify-between"
+                className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 min-w-[160px] justify-between"
             >
-                <span className="truncate">{formatDisplay()}</span>
+                <span>{formatDisplay()}</span>
                 <ChevronDown className="h-4 w-4 ml-2 text-gray-500 flex-shrink-0" />
             </button>
             {portalRoot && createPortal(calendarDropdown, portalRoot)}
