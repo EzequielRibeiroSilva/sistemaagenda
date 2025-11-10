@@ -23,7 +23,20 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      const { page, limit, data_agendamento, agente_id, cliente_id, status, unidade_id, time_filter } = req.query;
+      const {
+        page,
+        limit,
+        data_agendamento,
+        agente_id,
+        cliente_id,
+        status,
+        unidade_id,
+        time_filter,
+        // ✅ CORREÇÃO CRÍTICA: Adicionar filtros de período e serviço
+        data_inicio,
+        data_fim,
+        servico_id
+      } = req.query;
 
 
       let data;
@@ -200,8 +213,19 @@ class AgendamentoController extends BaseController {
             .select(
               'servicos.id',
               'servicos.nome',
-              'agendamento_servicos.preco_aplicado as preco'
+              'agendamento_servicos.preco_aplicado as preco',
+              'servicos.comissao_percentual'
             );
+          
+          // 🔍 DEBUG: Log para verificar comissão
+          if (servicos.length > 0 && agendamento.status === 'Concluído') {
+            console.log(`💰 [Backend] Agendamento ${agendamento.id} - Serviços:`, servicos.map(s => ({
+              nome: s.nome,
+              preco: s.preco,
+              comissao: s.comissao_percentual
+            })));
+          }
+          
           agendamento.servicos = servicos;
         }
 
@@ -309,7 +333,106 @@ class AgendamentoController extends BaseController {
           }
         });
       } else {
-        data = await this.model.findByUsuario(usuarioId);
+        // ✅ CORREÇÃO CRÍTICA: Implementar filtros de período, agente e serviço
+        console.log('🔍 [AgendamentoController] Aplicando filtros avançados:', {
+          data_inicio,
+          data_fim,
+          agente_id,
+          servico_id,
+          unidade_id,
+          userRole
+        });
+
+        // Construir query base com RBAC
+        let baseQuery = this.model.db('agendamentos')
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+
+        // Aplicar RBAC
+        if (userRole === 'AGENTE') {
+          // AGENTE: Buscar o agente_id através da tabela agentes
+          const agenteRecord = await this.model.db('agentes')
+            .where('usuario_id', usuarioId)
+            .select('id')
+            .first();
+
+          if (agenteRecord) {
+            baseQuery = baseQuery.where('agendamentos.agente_id', agenteRecord.id);
+          } else {
+            return res.json({ data: [] });
+          }
+        } else {
+          // ADMIN/MASTER: Ver todos da unidade
+          baseQuery = baseQuery.where('unidades.usuario_id', usuarioId);
+        }
+
+        // ✅ APLICAR FILTROS DE PERÍODO
+        if (data_inicio && data_fim) {
+          console.log(`📅 [AgendamentoController] Aplicando filtro de período: ${data_inicio} a ${data_fim}`);
+          baseQuery = baseQuery
+            .where('agendamentos.data_agendamento', '>=', data_inicio)
+            .where('agendamentos.data_agendamento', '<=', data_fim);
+        }
+
+        // ✅ APLICAR FILTRO DE UNIDADE
+        if (unidade_id) {
+          console.log(`🏢 [AgendamentoController] Aplicando filtro de unidade: ${unidade_id}`);
+          baseQuery = baseQuery.where('agendamentos.unidade_id', parseInt(unidade_id));
+        }
+
+        // ✅ APLICAR FILTRO DE AGENTE
+        if (agente_id) {
+          console.log(`👤 [AgendamentoController] Aplicando filtro de agente: ${agente_id}`);
+          baseQuery = baseQuery.where('agendamentos.agente_id', parseInt(agente_id));
+        }
+
+        // ✅ APLICAR FILTRO DE SERVIÇO
+        if (servico_id) {
+          console.log(`🛠️ [AgendamentoController] Aplicando filtro de serviço: ${servico_id}`);
+          baseQuery = baseQuery
+            .join('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
+            .where('agendamento_servicos.servico_id', parseInt(servico_id));
+        }
+
+        // Executar query
+        data = await baseQuery
+          .select(
+            'agendamentos.*',
+            this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
+            'clientes.telefone as cliente_telefone',
+            this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
+            'agentes.avatar_url as agente_avatar_url',
+            'unidades.nome as unidade_nome'
+          )
+          .orderBy('agendamentos.data_agendamento', 'desc')
+          .orderBy('agendamentos.hora_inicio', 'asc');
+
+        // ✅ INCLUIR SERVIÇOS PARA CADA AGENDAMENTO
+        for (const agendamento of data) {
+          const servicos = await this.model.db('agendamento_servicos')
+            .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+            .where('agendamento_servicos.agendamento_id', agendamento.id)
+            .select(
+              'servicos.id',
+              'servicos.nome',
+              'agendamento_servicos.preco_aplicado as preco',
+              'servicos.comissao_percentual'
+            );
+
+          // 🔍 DEBUG: Log para verificar comissão
+          if (servicos.length > 0) {
+            console.log(`💰 [Backend] Agendamento ${agendamento.id} (${agendamento.status}) - Serviços:`, servicos.map(s => ({
+              nome: s.nome,
+              preco: s.preco,
+              comissao: s.comissao_percentual
+            })));
+          }
+
+          agendamento.servicos = servicos;
+        }
+
+        console.log(`✅ [AgendamentoController] Encontrados ${data.length} agendamentos com filtros aplicados`);
       }
 
       return res.json({ data });

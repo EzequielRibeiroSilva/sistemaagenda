@@ -264,23 +264,67 @@ export const useDashboardData = () => {
       formula: `${agendamentos.length} total - ${canceledAppointments.length} cancelados = ${totalReservas} válidos`
     });
 
-    // 2. RECEITA LÍQUIDA
+    // 2. RECEITA LÍQUIDA E COMISSÕES
     let receitaBruta = 0;
     let comissoesTotal = 0;
 
-    completedAppointments.forEach(agendamento => {
+    console.log('💰 [CARD: Comissões de Agentes] Iniciando cálculo de comissões...');
+    console.log('💰 [CARD: Comissões de Agentes] Total de agendamentos concluídos:', completedAppointments.length);
+
+    completedAppointments.forEach((agendamento, index) => {
       const valorTotal = Number(agendamento.valor_total) || 0;
       receitaBruta += valorTotal;
 
+      console.log(`\n💰 [Agendamento ${index + 1}/${completedAppointments.length}] ID: ${agendamento.id}`, {
+        valorTotal,
+        temServicos: !!agendamento.servicos,
+        qtdServicos: agendamento.servicos?.length || 0,
+        servicos: agendamento.servicos
+      });
+
       if (agendamento.servicos && agendamento.servicos.length > 0) {
-        agendamento.servicos.forEach(servico => {
+        agendamento.servicos.forEach((servico, sIndex) => {
           const precoServico = parseFloat(servico.preco) || 0;
-          const comissaoPercentual = Number(servico.comissao_percentual) || 0;
-          comissoesTotal += precoServico * (comissaoPercentual / 100);
+
+          // ✅ CORREÇÃO CRÍTICA: Converter string para número corretamente
+          let comissaoPercentual = 0;
+          if (servico.comissao_percentual !== null && servico.comissao_percentual !== undefined) {
+            // Se for string, converter para número
+            if (typeof servico.comissao_percentual === 'string') {
+              comissaoPercentual = parseFloat(servico.comissao_percentual) || 0;
+            } else {
+              comissaoPercentual = Number(servico.comissao_percentual) || 0;
+            }
+          }
+
+          const comissaoCalculada = precoServico * (comissaoPercentual / 100);
+
+          console.log(`  📋 [Serviço ${sIndex + 1}] ${servico.nome}:`, {
+            preco: precoServico,
+            comissaoPercentualRaw: servico.comissao_percentual,
+            comissaoPercentualTipo: typeof servico.comissao_percentual,
+            comissaoPercentualConvertido: comissaoPercentual,
+            comissaoPercentual: `${comissaoPercentual}%`,
+            temComissao: comissaoPercentual > 0,
+            valorComissao: comissaoCalculada.toFixed(2)
+          });
+
+          comissoesTotal += comissaoCalculada;
         });
       } else {
-        comissoesTotal += valorTotal * 0.5;
+        const comissaoFallback = valorTotal * 0.5;
+        console.log(`  ⚠️ [SEM SERVIÇOS] Usando fallback 50%:`, {
+          valorTotal,
+          comissaoFallback: comissaoFallback.toFixed(2)
+        });
+        comissoesTotal += comissaoFallback;
       }
+    });
+
+    console.log('\n💰 [CARD: Comissões de Agentes] RESUMO FINAL:', {
+      receitaBruta: receitaBruta.toFixed(2),
+      comissoesTotal: comissoesTotal.toFixed(2),
+      agendamentosConcluidos: completedAppointments.length
     });
 
     const receitaLiquida = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal) 
