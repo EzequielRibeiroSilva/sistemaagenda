@@ -327,9 +327,27 @@ export const useDashboardData = () => {
       agendamentosConcluidos: completedAppointments.length
     });
 
-    const receitaLiquida = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal) 
-      ? receitaBruta - comissoesTotal 
+    // ✅ CORREÇÃO CRÍTICA: Receita Líquida = o que sobra para o proprietário após pagar comissões
+    const receitaLiquida = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal)
+      ? receitaBruta - comissoesTotal
       : 0;
+
+    // 🔍 VALIDAÇÃO CRÍTICA: Comissão nunca pode ser maior que receita bruta
+    if (comissoesTotal > receitaBruta && receitaBruta > 0) {
+      console.error('🚨 ERRO CRÍTICO: Comissão maior que receita bruta!', {
+        receitaBruta: receitaBruta.toFixed(2),
+        comissoesTotal: comissoesTotal.toFixed(2),
+        diferenca: (comissoesTotal - receitaBruta).toFixed(2)
+      });
+    }
+
+    console.log('💰 [VALIDAÇÃO] Cálculo financeiro:', {
+      receitaBruta: `R$${receitaBruta.toFixed(2)}`,
+      comissoesTotal: `R$${comissoesTotal.toFixed(2)}`,
+      receitaLiquida: `R$${receitaLiquida.toFixed(2)}`,
+      percentualComissao: receitaBruta > 0 ? `${((comissoesTotal / receitaBruta) * 100).toFixed(1)}%` : '0%',
+      matematicaCorreta: comissoesTotal <= receitaBruta
+    });
 
     // 3. TAXA DE OCUPAÇÃO
     const diasUnicos = new Set(validAppointments.map(a => a.data_agendamento)).size;
@@ -348,11 +366,26 @@ export const useDashboardData = () => {
       ? (completedAppointments.length / validAppointments.length) * 100
       : 0;
 
-    // 6. AGENDAMENTOS PENDENTES
-    const totalPendentes = pendingAppointments.length;
+    // 6. NOVOS CLIENTES (substituindo Agendamentos Pendentes)
+    const clientesUnicos = new Set(validAppointments.map(a => a.cliente_id));
+    const totalNovosClientes = clientesUnicos.size;
 
-    // 7. MÉDIA DIÁRIA
-    const mediaDiaria = diasUnicos > 0 ? validAppointments.length / diasUnicos : 0;
+    console.log('👥 [CARD: Novos Clientes] Calculando novos clientes únicos:', {
+      agendamentosValidos: validAppointments.length,
+      clientesUnicos: Array.from(clientesUnicos),
+      totalNovosClientes
+    });
+
+    // 7. RECEITA DO LOCAL (substituindo Média Diária)
+    // Receita do Local = Receita Líquida (o que fica para o proprietário após pagar comissões)
+    const receitaDoLocal = receitaLiquida;
+
+    console.log('🏢 [CARD: Receita do Local] Calculando receita do proprietário:', {
+      receitaBruta: receitaBruta.toFixed(2),
+      comissoesTotal: comissoesTotal.toFixed(2),
+      receitaDoLocal: receitaDoLocal.toFixed(2),
+      percentualLocal: receitaBruta > 0 ? `${((receitaDoLocal / receitaBruta) * 100).toFixed(1)}%` : '0%'
+    });
 
     // 8. TAXA DE CANCELAMENTO
     const totalGeral = agendamentos.length;
@@ -365,21 +398,31 @@ export const useDashboardData = () => {
     let variacaoOcupacao = '+0%';
     let variacaoTicket = '+0%';
     let variacaoConclusao = '+0%';
-    let variacaoPendentes = '+0%';
-    let variacaoMedia = '+0%';
+    let variacaoNovosClientes = '+0%';
+    let variacaoReceitaLocal = '+0%';
 
     if (previousPeriodAgendamentos && previousPeriodAgendamentos.length > 0) {
       const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'Cancelado');
       const prevCompleted = previousPeriodAgendamentos.filter(a => a.status === 'Concluído');
-      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'Pendente');
-      
+
       const prevReservas = prevValid.length;
       const prevReceitaBruta = prevCompleted.reduce((sum, a) => sum + (a.valor_total || 0), 0);
       const prevTicket = prevCompleted.length > 0 ? prevReceitaBruta / prevCompleted.length : 0;
       const prevConclusao = prevValid.length > 0 ? (prevCompleted.length / prevValid.length) * 100 : 0;
-      const prevPendentes = prevPending.length;
-      const prevDias = new Set(prevValid.map(a => a.data_agendamento)).size;
-      const prevMedia = prevDias > 0 ? prevValid.length / prevDias : 0;
+
+      // ✅ NOVOS CLIENTES do período anterior
+      const prevClientesUnicos = new Set(prevValid.map(a => a.cliente_id));
+      const prevNovosClientes = prevClientesUnicos.size;
+
+      // ✅ RECEITA DO LOCAL do período anterior
+      // Calcular comissões do período anterior (assumindo mesma lógica atual)
+      let prevComissoesTotal = 0;
+      // Para simplificar, usar a mesma proporção atual: comissões/receita
+      if (receitaBruta > 0 && comissoesTotal > 0) {
+        const proporcaoComissao = comissoesTotal / receitaBruta;
+        prevComissoesTotal = prevReceitaBruta * proporcaoComissao;
+      }
+      const prevReceitaDoLocal = prevReceitaBruta - prevComissoesTotal;
       
       if (prevReservas > 0) {
         const diff = ((totalReservas - prevReservas) / prevReservas) * 100;
@@ -401,14 +444,16 @@ export const useDashboardData = () => {
         variacaoConclusao = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
-      if (prevPendentes > 0) {
-        const diff = ((totalPendentes - prevPendentes) / prevPendentes) * 100;
-        variacaoPendentes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      // ✅ NOVOS CLIENTES: Calcular variação
+      if (prevNovosClientes > 0) {
+        const diff = ((totalNovosClientes - prevNovosClientes) / prevNovosClientes) * 100;
+        variacaoNovosClientes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
-      if (prevMedia > 0) {
-        const diff = ((mediaDiaria - prevMedia) / prevMedia) * 100;
-        variacaoMedia = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      // ✅ RECEITA DO LOCAL: Calcular variação
+      if (prevReceitaDoLocal > 0) {
+        const diff = ((receitaDoLocal - prevReceitaDoLocal) / prevReceitaDoLocal) * 100;
+        variacaoReceitaLocal = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
     }
 
@@ -416,11 +461,11 @@ export const useDashboardData = () => {
       totalReservas,
       receitaLiquida: receitaLiquida.toFixed(2),
       comissoesTotal: comissoesTotal.toFixed(2),
+      receitaDoLocal: receitaDoLocal.toFixed(2),
       taxaOcupacao: taxaOcupacao.toFixed(1),
       ticketMedio: ticketMedio.toFixed(2),
       taxaConclusao: taxaConclusao.toFixed(1),
-      totalPendentes,
-      mediaDiaria: mediaDiaria.toFixed(1)
+      totalNovosClientes
     });
 
     return [
@@ -437,6 +482,13 @@ export const useDashboardData = () => {
         isPositive: receitaLiquida >= 0,
         change: variacaoReceita,
         subtitle: `Receita Bruta: R$${(Number.isFinite(receitaBruta) ? receitaBruta : 0).toFixed(2)}`
+      },
+      {
+        title: 'Receita do Local',
+        value: `R$${(Number.isFinite(receitaDoLocal) ? receitaDoLocal : 0).toFixed(2)}`,
+        isPositive: true,
+        change: variacaoReceitaLocal,
+        subtitle: `Faturamento do proprietário`
       },
       {
         title: 'Comissões de Agentes',
@@ -467,17 +519,17 @@ export const useDashboardData = () => {
         subtitle: `${completedAppointments.length} de ${validAppointments.length} concluídos`
       },
       {
-        title: 'Agendamentos Pendentes',
-        value: totalPendentes.toString(),
-        isPositive: false,
-        change: variacaoPendentes,
-        subtitle: 'Aguardando confirmação'
+        title: 'Novos Clientes',
+        value: totalNovosClientes.toString(),
+        isPositive: true,
+        change: variacaoNovosClientes,
+        subtitle: `Clientes únicos no período`
       },
       {
         title: 'Média Diária',
-        value: mediaDiaria.toFixed(1),
+        value: diasUnicos > 0 ? (validAppointments.length / diasUnicos).toFixed(1) : '0.0',
         isPositive: true,
-        change: variacaoMedia,
+        change: '+0%',
         subtitle: `Em ${diasUnicos} dias`
       }
     ];

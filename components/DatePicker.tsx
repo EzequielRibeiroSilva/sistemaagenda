@@ -136,7 +136,20 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         }
 
         if (mode === 'range') {
-            // Sempre exibir "Período" independente de ter datas selecionadas
+            // ✅ MELHORIA: Mostrar período selecionado ao invés de "Período"
+            if (selectedRange?.startDate && selectedRange?.endDate) {
+                const startFormatted = selectedRange.startDate.toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+                const endFormatted = selectedRange.endDate.toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+                return `${startFormatted} à ${endFormatted}`;
+            }
             return 'Período';
         }
 
