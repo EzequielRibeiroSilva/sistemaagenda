@@ -8,20 +8,20 @@ interface PerformanceCardProps {
 }
 
 const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric }) => (
-  <div className="bg-white p-3 sm:p-6 rounded-lg flex-1 relative border sm:border-0 border-gray-100">
-    <div className="flex justify-between items-start">
-      <div>
-        <p className="text-gray-500 text-xs sm:text-sm">{metric.title}</p>
-        <div className="flex items-baseline mt-1 sm:mt-2">
-          <p className="text-xl sm:text-3xl font-bold">{metric.value}</p>
+  <div className="bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-100 hover:shadow-md transition-shadow">
+    <div className="flex justify-between items-start mb-2">
+      <div className="flex-1">
+        <p className="text-gray-500 text-xs sm:text-sm font-medium">{metric.title}</p>
+        <div className="flex items-baseline mt-2">
+          <p className="text-2xl sm:text-3xl font-bold text-gray-900">{metric.value}</p>
           <span className={`ml-2 text-xs sm:text-sm font-semibold ${metric.isPositive ? 'text-green-500' : 'text-red-500'}`}>
             {metric.change}
           </span>
         </div>
+        {metric.subtitle && (
+          <p className="text-xs text-gray-400 mt-2">{metric.subtitle}</p>
+        )}
       </div>
-       <button className="hidden sm:block text-gray-400 hover:text-gray-600 absolute top-4 right-4">
-        <Info className="h-4 w-4" />
-      </button>
     </div>
   </div>
 );
@@ -209,7 +209,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((metric, index) => (
           <PerformanceCard key={index} metric={metric} />
         ))}
