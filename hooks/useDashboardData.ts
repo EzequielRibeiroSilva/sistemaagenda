@@ -213,20 +213,18 @@ export const useDashboardData = () => {
   ): PerformanceMetric[] => {
     console.log('📊 [useDashboardData] Calculando métricas para', agendamentos.length, 'agendamentos');
 
-    // Filtrar apenas agendamentos válidos (não cancelados)
-    const validAppointments = agendamentos.filter(
-      a => a.status !== 'CANCELADO'
-    );
+    // Filtrar por status
+    const validAppointments = agendamentos.filter(a => a.status !== 'CANCELADO');
+    const completedAppointments = agendamentos.filter(a => a.status === 'CONCLUIDO');
+    const confirmedAppointments = agendamentos.filter(a => a.status === 'CONFIRMADO');
+    const pendingAppointments = agendamentos.filter(a => a.status === 'PENDENTE');
+    const canceledAppointments = agendamentos.filter(a => a.status === 'CANCELADO');
 
-    // Filtrar apenas agendamentos concluídos para cálculos financeiros
-    const completedAppointments = agendamentos.filter(
-      a => a.status === 'CONCLUIDO'
-    );
-
-    // 1. RESERVAS TOTAIS (todos os status exceto CANCELADO)
+    // 1. RESERVAS TOTAIS
     const totalReservas = validAppointments.length;
+    const breakdown = `Confirmadas: ${confirmedAppointments.length} | Concluídas: ${completedAppointments.length}`;
 
-    // 2. RECEITA LÍQUIDA (apenas CONCLUIDO)
+    // 2. RECEITA LÍQUIDA
     let receitaBruta = 0;
     let comissoesTotal = 0;
 
@@ -234,16 +232,13 @@ export const useDashboardData = () => {
       const valorTotal = agendamento.valor_total || 0;
       receitaBruta += valorTotal;
 
-      // Calcular comissão
       if (agendamento.servicos && agendamento.servicos.length > 0) {
-        // Se tem serviços detalhados, usar comissão específica
         agendamento.servicos.forEach(servico => {
           const precoServico = parseFloat(servico.preco) || 0;
           const comissaoPercentual = servico.comissao_percentual || 0;
           comissoesTotal += precoServico * (comissaoPercentual / 100);
         });
       } else {
-        // Fallback: usar comissão padrão de 50%
         comissoesTotal += valorTotal * 0.5;
       }
     });
@@ -251,55 +246,95 @@ export const useDashboardData = () => {
     const receitaLiquida = receitaBruta - comissoesTotal;
 
     // 3. TAXA DE OCUPAÇÃO
-    // Calcular slots totais disponíveis vs slots ocupados
-    // Assumindo 12 horas de trabalho por dia (8h-20h) = 12 slots de 1h
-    const diasUnicos = new Set(
-      validAppointments.map(a => a.data_agendamento)
-    ).size;
-    
-    const agentesUnicos = new Set(
-      validAppointments.map(a => a.agente_id)
-    ).size;
-
-    const slotsDisponiveis = diasUnicos * agentesUnicos * 12; // 12 horas por dia
+    const diasUnicos = new Set(validAppointments.map(a => a.data_agendamento)).size;
+    const agentesUnicos = new Set(validAppointments.map(a => a.agente_id)).size;
+    const slotsDisponiveis = diasUnicos * agentesUnicos * 12;
     const slotsOcupados = validAppointments.length;
-    const taxaOcupacao = slotsDisponiveis > 0 
-      ? (slotsOcupados / slotsDisponiveis) * 100 
+    const taxaOcupacao = slotsDisponiveis > 0 ? (slotsOcupados / slotsDisponiveis) * 100 : 0;
+
+    // 4. TICKET MÉDIO
+    const ticketMedio = completedAppointments.length > 0 
+      ? receitaBruta / completedAppointments.length 
       : 0;
 
-    // Calcular variações (comparar com período anterior se fornecido)
+    // 5. TAXA DE CONCLUSÃO
+    const taxaConclusao = validAppointments.length > 0
+      ? (completedAppointments.length / validAppointments.length) * 100
+      : 0;
+
+    // 6. AGENDAMENTOS PENDENTES
+    const totalPendentes = pendingAppointments.length;
+
+    // 7. MÉDIA DIÁRIA
+    const mediaDiaria = diasUnicos > 0 ? validAppointments.length / diasUnicos : 0;
+
+    // 8. TAXA DE CANCELAMENTO
+    const totalGeral = agendamentos.length;
+    const taxaCancelamento = totalGeral > 0 ? (canceledAppointments.length / totalGeral) * 100 : 0;
+
+    // Calcular variações
     let variacaoReservas = '+0%';
     let variacaoReceita = '+0%';
     let variacaoComissoes = '+0%';
     let variacaoOcupacao = '+0%';
+    let variacaoTicket = '+0%';
+    let variacaoConclusao = '+0%';
+    let variacaoPendentes = '+0%';
+    let variacaoMedia = '+0%';
 
     if (previousPeriodAgendamentos && previousPeriodAgendamentos.length > 0) {
       const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'CANCELADO');
       const prevCompleted = previousPeriodAgendamentos.filter(a => a.status === 'CONCLUIDO');
+      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'PENDENTE');
       
       const prevReservas = prevValid.length;
       const prevReceitaBruta = prevCompleted.reduce((sum, a) => sum + (a.valor_total || 0), 0);
+      const prevTicket = prevCompleted.length > 0 ? prevReceitaBruta / prevCompleted.length : 0;
+      const prevConclusao = prevValid.length > 0 ? (prevCompleted.length / prevValid.length) * 100 : 0;
+      const prevPendentes = prevPending.length;
+      const prevDias = new Set(prevValid.map(a => a.data_agendamento)).size;
+      const prevMedia = prevDias > 0 ? prevValid.length / prevDias : 0;
       
-      // Calcular variações percentuais
       if (prevReservas > 0) {
-        const diffReservas = ((totalReservas - prevReservas) / prevReservas) * 100;
-        variacaoReservas = `${diffReservas >= 0 ? '+' : ''}${diffReservas.toFixed(1)}%`;
+        const diff = ((totalReservas - prevReservas) / prevReservas) * 100;
+        variacaoReservas = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
       
       if (prevReceitaBruta > 0) {
-        const diffReceita = ((receitaLiquida - prevReceitaBruta) / prevReceitaBruta) * 100;
-        variacaoReceita = `${diffReceita >= 0 ? '+' : ''}${diffReceita.toFixed(1)}%`;
+        const diff = ((receitaLiquida - prevReceitaBruta) / prevReceitaBruta) * 100;
+        variacaoReceita = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+
+      if (prevTicket > 0) {
+        const diff = ((ticketMedio - prevTicket) / prevTicket) * 100;
+        variacaoTicket = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+
+      if (prevConclusao > 0) {
+        const diff = ((taxaConclusao - prevConclusao) / prevConclusao) * 100;
+        variacaoConclusao = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+
+      if (prevPendentes > 0) {
+        const diff = ((totalPendentes - prevPendentes) / prevPendentes) * 100;
+        variacaoPendentes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+
+      if (prevMedia > 0) {
+        const diff = ((mediaDiaria - prevMedia) / prevMedia) * 100;
+        variacaoMedia = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
     }
 
     console.log('📊 [useDashboardData] Métricas calculadas:', {
       totalReservas,
-      receitaBruta: receitaBruta.toFixed(2),
-      comissoesTotal: comissoesTotal.toFixed(2),
       receitaLiquida: receitaLiquida.toFixed(2),
+      comissoesTotal: comissoesTotal.toFixed(2),
       taxaOcupacao: taxaOcupacao.toFixed(1),
-      slotsDisponiveis,
-      slotsOcupados
+      ticketMedio: ticketMedio.toFixed(2),
+      taxaConclusao: taxaConclusao.toFixed(1),
+      totalPendentes,
+      mediaDiaria: mediaDiaria.toFixed(1)
     });
 
     return [
@@ -307,25 +342,57 @@ export const useDashboardData = () => {
         title: 'Reservas Totais',
         value: totalReservas.toString(),
         isPositive: true,
-        change: variacaoReservas
+        change: variacaoReservas,
+        subtitle: breakdown
       },
       {
         title: 'Receita Líquida',
         value: `R$${receitaLiquida.toFixed(2)}`,
         isPositive: receitaLiquida >= 0,
-        change: variacaoReceita
+        change: variacaoReceita,
+        subtitle: `Receita Bruta: R$${receitaBruta.toFixed(2)}`
       },
       {
         title: 'Comissões de Agentes',
         value: `R$${comissoesTotal.toFixed(2)}`,
-        isPositive: false, // Comissões são custo
-        change: variacaoComissoes
+        isPositive: false,
+        change: variacaoComissoes,
+        subtitle: `${completedAppointments.length} agendamentos concluídos`
       },
       {
         title: 'Taxa de Ocupação',
         value: `${taxaOcupacao.toFixed(0)}%`,
         isPositive: true,
-        change: variacaoOcupacao
+        change: variacaoOcupacao,
+        subtitle: `${slotsOcupados} de ${slotsDisponiveis} slots`
+      },
+      {
+        title: 'Ticket Médio',
+        value: `R$${ticketMedio.toFixed(2)}`,
+        isPositive: true,
+        change: variacaoTicket,
+        subtitle: `Por agendamento concluído`
+      },
+      {
+        title: 'Taxa de Conclusão',
+        value: `${taxaConclusao.toFixed(0)}%`,
+        isPositive: true,
+        change: variacaoConclusao,
+        subtitle: `${completedAppointments.length} de ${validAppointments.length} concluídos`
+      },
+      {
+        title: 'Agendamentos Pendentes',
+        value: totalPendentes.toString(),
+        isPositive: false,
+        change: variacaoPendentes,
+        subtitle: 'Aguardando confirmação'
+      },
+      {
+        title: 'Média Diária',
+        value: mediaDiaria.toFixed(1),
+        isPositive: true,
+        change: variacaoMedia,
+        subtitle: `Em ${diasUnicos} dias`
       }
     ];
   }, []);

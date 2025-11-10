@@ -50,6 +50,8 @@ export interface PerformanceMetric {
     value: string;
     isPositive: boolean;
     change: string;
+    subtitle?: string; // ✅ Informação adicional (ex: "Confirmadas: 30")
+    icon?: string; // ✅ Ícone para o card (opcional)
 }
 
 export interface ScheduleSlot {

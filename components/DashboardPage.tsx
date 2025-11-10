@@ -221,10 +221,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         if (agendamentos.length === 0) {
             // Retornar métricas zeradas se não houver agendamentos
             return [
-                { title: 'Reservas Totais', value: '0', isPositive: true, change: '+0%' },
-                { title: 'Receita Líquida', value: 'R$0.00', isPositive: true, change: '+0%' },
-                { title: 'Comissões de Agentes', value: 'R$0.00', isPositive: false, change: '+0%' },
-                { title: 'Taxa de Ocupação', value: '0%', isPositive: true, change: '+0%' }
+                { title: 'Reservas Totais', value: '0', isPositive: true, change: '+0%', subtitle: 'Nenhum agendamento no período' },
+                { title: 'Receita Líquida', value: 'R$0.00', isPositive: true, change: '+0%', subtitle: 'Receita Bruta: R$0.00' },
+                { title: 'Comissões de Agentes', value: 'R$0.00', isPositive: false, change: '+0%', subtitle: '0 agendamentos concluídos' },
+                { title: 'Taxa de Ocupação', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 slots' },
+                { title: 'Ticket Médio', value: 'R$0.00', isPositive: true, change: '+0%', subtitle: 'Por agendamento concluído' },
+                { title: 'Taxa de Conclusão', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 concluídos' },
+                { title: 'Agendamentos Pendentes', value: '0', isPositive: false, change: '+0%', subtitle: 'Aguardando confirmação' },
+                { title: 'Média Diária', value: '0.0', isPositive: true, change: '+0%', subtitle: 'Em 0 dias' }
             ];
         }
 
