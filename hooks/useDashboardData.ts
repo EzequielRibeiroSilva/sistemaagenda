@@ -12,7 +12,7 @@ interface BackendAgendamento {
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;
-  status: 'PENDENTE' | 'CONFIRMADO' | 'CANCELADO' | 'CONCLUIDO';
+  status: 'Pendente' | 'Aprovado' | 'Cancelado' | 'Concluído' | 'Não Compareceu';
   valor_total: number;
   metodo_pagamento?: string;
   status_pagamento?: 'Pago' | 'Não Pago';
@@ -236,29 +236,46 @@ export const useDashboardData = () => {
   ): PerformanceMetric[] => {
     console.log('📊 [useDashboardData] Calculando métricas para', agendamentos.length, 'agendamentos');
 
-    // Filtrar por status
-    const validAppointments = agendamentos.filter(a => a.status !== 'CANCELADO');
-    const completedAppointments = agendamentos.filter(a => a.status === 'CONCLUIDO');
-    const confirmedAppointments = agendamentos.filter(a => a.status === 'CONFIRMADO');
-    const pendingAppointments = agendamentos.filter(a => a.status === 'PENDENTE');
-    const canceledAppointments = agendamentos.filter(a => a.status === 'CANCELADO');
+    // Filtrar por status (BACKEND RETORNA EM PORTUGUÊS COM PRIMEIRA LETRA MAIÚSCULA)
+    const validAppointments = agendamentos.filter(a => a.status !== 'Cancelado');
+    const completedAppointments = agendamentos.filter(a => a.status === 'Concluído');
+    const confirmedAppointments = agendamentos.filter(a => a.status === 'Aprovado');
+    const pendingAppointments = agendamentos.filter(a => a.status === 'Pendente');
+    const canceledAppointments = agendamentos.filter(a => a.status === 'Cancelado');
+
+    // ✅ LOG DETALHADO: Breakdown por status
+    console.log('🔍 [CARD: Reservas Totais] Breakdown por status:', {
+      total: agendamentos.length,
+      cancelados: canceledAppointments.length,
+      validos: validAppointments.length,
+      confirmados: confirmedAppointments.length,
+      concluidos: completedAppointments.length,
+      pendentes: pendingAppointments.length,
+      statusList: agendamentos.map(a => a.status)
+    });
 
     // 1. RESERVAS TOTAIS
     const totalReservas = validAppointments.length;
     const breakdown = `Confirmadas: ${confirmedAppointments.length} | Concluídas: ${completedAppointments.length}`;
+    
+    console.log('✅ [CARD: Reservas Totais] Valor calculado:', {
+      totalReservas,
+      breakdown,
+      formula: `${agendamentos.length} total - ${canceledAppointments.length} cancelados = ${totalReservas} válidos`
+    });
 
     // 2. RECEITA LÍQUIDA
     let receitaBruta = 0;
     let comissoesTotal = 0;
 
     completedAppointments.forEach(agendamento => {
-      const valorTotal = agendamento.valor_total || 0;
+      const valorTotal = Number(agendamento.valor_total) || 0;
       receitaBruta += valorTotal;
 
       if (agendamento.servicos && agendamento.servicos.length > 0) {
         agendamento.servicos.forEach(servico => {
           const precoServico = parseFloat(servico.preco) || 0;
-          const comissaoPercentual = servico.comissao_percentual || 0;
+          const comissaoPercentual = Number(servico.comissao_percentual) || 0;
           comissoesTotal += precoServico * (comissaoPercentual / 100);
         });
       } else {
@@ -266,7 +283,9 @@ export const useDashboardData = () => {
       }
     });
 
-    const receitaLiquida = receitaBruta - comissoesTotal;
+    const receitaLiquida = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal) 
+      ? receitaBruta - comissoesTotal 
+      : 0;
 
     // 3. TAXA DE OCUPAÇÃO
     const diasUnicos = new Set(validAppointments.map(a => a.data_agendamento)).size;
@@ -306,9 +325,9 @@ export const useDashboardData = () => {
     let variacaoMedia = '+0%';
 
     if (previousPeriodAgendamentos && previousPeriodAgendamentos.length > 0) {
-      const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'CANCELADO');
-      const prevCompleted = previousPeriodAgendamentos.filter(a => a.status === 'CONCLUIDO');
-      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'PENDENTE');
+      const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'Cancelado');
+      const prevCompleted = previousPeriodAgendamentos.filter(a => a.status === 'Concluído');
+      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'Pendente');
       
       const prevReservas = prevValid.length;
       const prevReceitaBruta = prevCompleted.reduce((sum, a) => sum + (a.valor_total || 0), 0);
@@ -370,14 +389,14 @@ export const useDashboardData = () => {
       },
       {
         title: 'Receita Líquida',
-        value: `R$${receitaLiquida.toFixed(2)}`,
+        value: `R$${(Number.isFinite(receitaLiquida) ? receitaLiquida : 0).toFixed(2)}`,
         isPositive: receitaLiquida >= 0,
         change: variacaoReceita,
-        subtitle: `Receita Bruta: R$${receitaBruta.toFixed(2)}`
+        subtitle: `Receita Bruta: R$${(Number.isFinite(receitaBruta) ? receitaBruta : 0).toFixed(2)}`
       },
       {
         title: 'Comissões de Agentes',
-        value: `R$${comissoesTotal.toFixed(2)}`,
+        value: `R$${(Number.isFinite(comissoesTotal) ? comissoesTotal : 0).toFixed(2)}`,
         isPositive: false,
         change: variacaoComissoes,
         subtitle: `${completedAppointments.length} agendamentos concluídos`
