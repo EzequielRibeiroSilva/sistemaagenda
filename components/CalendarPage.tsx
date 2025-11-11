@@ -33,12 +33,6 @@ const HeaderDropdown: React.FC<{
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={() => {
-                    console.log('🖱️ [HeaderDropdown] Botão principal clicado:', {
-                        isOpen,
-                        willBeOpen: !isOpen,
-                        selected,
-                        timestamp: new Date().toISOString()
-                    });
                     setIsOpen(!isOpen);
                 }}
                 className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-gray-50 min-w-[120px] justify-between"
@@ -52,11 +46,6 @@ const HeaderDropdown: React.FC<{
                         <button
                             key={option}
                             onClick={() => {
-                                console.log('🖱️ [HeaderDropdown] Opção clicada:', {
-                                    option,
-                                    selected,
-                                    timestamp: new Date().toISOString()
-                                });
                                 onSelect(option);
                                 setIsOpen(false);
                             }}
@@ -152,7 +141,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [backendAgents]);
 
     const services: Service[] = useMemo(() => {
-        console.log('🔍 [CalendarPage] Serviços carregados (ID/Nome):', backendServices.map(s => ({ id: s.id, name: s.name, type: typeof s.id })));
         return backendServices.map(service => ({
             id: service.id,
             name: service.name,
@@ -201,18 +189,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     // Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
     const { startHour, endHour } = useMemo(() => {
-        console.log('🕐 [CalendarPage] Calculando horários dinâmicos:', {
-            selectedLocationFilter,
-            hasUnitSchedules: !!unitSchedules[selectedLocationFilter],
-            unitSchedulesKeys: Object.keys(unitSchedules),
-            unitSchedulesData: unitSchedules[selectedLocationFilter]
-        });
+
         
         // Se há unidade selecionada, usar seus horários de funcionamento
         if (selectedLocationFilter && selectedLocationFilter !== 'all' && unitSchedules[selectedLocationFilter]) {
             const schedules = unitSchedules[selectedLocationFilter];
             
-            console.log('📅 [CalendarPage] Horários da unidade:', schedules);
+
             
             // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
             let minHour = 23;
@@ -220,12 +203,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             let hasValidSchedule = false; // 🚩 NOVO: Flag para rastrear se um horário foi encontrado
             
             schedules.forEach(schedule => {
-                console.log(`🔍 [CalendarPage] Analisando dia ${schedule.dia_semana}:`, {
-                    is_aberto: schedule.is_aberto,
-                    horarios_json_type: typeof schedule.horarios_json,
-                    is_array: Array.isArray(schedule.horarios_json),
-                    length: schedule.horarios_json?.length
-                });
+
                 
                 // ✅ CORREÇÃO CRÍTICA: Validar que é um Array antes de iterar
                 if (schedule.is_aberto && Array.isArray(schedule.horarios_json) && schedule.horarios_json.length > 0) {
@@ -233,7 +211,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         const startH = parseInt(periodo.inicio.split(':')[0]);
                         const endH = parseInt(periodo.fim.split(':')[0]);
                         
-                        console.log(`⏰ [CalendarPage] Período encontrado: ${periodo.inicio} - ${periodo.fim} (${startH}h - ${endH}h)`);
+
                         
                         if (startH < minHour) minHour = startH;
                         if (endH > maxHour) maxHour = endH;
@@ -245,23 +223,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             
             // ✅ USANDO: A nova flag de rastreamento (não mais minHour < 23 && maxHour > 0)
             if (hasValidSchedule) {
-                console.log(`✅ [CalendarPage] Horários dinâmicos aplicados: ${minHour}h - ${maxHour}h`);
                 return { startHour: minHour, endHour: maxHour };
-            } else {
-                console.log('⚠️ [CalendarPage] Nenhum horário válido encontrado nos schedules. Detalhes:', {
-                    totalDays: schedules.length,
-                    schedules: schedules.map(s => ({
-                        dia: s.dia_semana,
-                        aberto: s.is_aberto,
-                        tipo: typeof s.horarios_json,
-                        isArray: Array.isArray(s.horarios_json)
-                    }))
-                });
             }
         }
         
         // Fallback: usar horários padrão
-        console.log('⚠️ [CalendarPage] Usando horários padrão (fallback): 8h - 21h');
         return { startHour: 8, endHour: 21 };
     }, [selectedLocationFilter, unitSchedules]);
 
@@ -283,20 +249,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const allAgents = useMemo(() => {
         if (loggedInAgentId) {
-            console.log('🔍 [allAgents] Filtrando agentes para AGENTE logado:', {
-                loggedInAgentId,
-                loggedInAgentIdType: typeof loggedInAgentId,
-                totalAgents: agents.length,
-                agentIds: agents.map(a => ({ id: a.id, type: typeof a.id, name: a.name }))
-            });
+
             
             // ✅ CORREÇÃO CRÍTICA: Converter ambos para string para garantir comparação correta
             const filtered = agents.filter(agent => agent.id.toString() === loggedInAgentId.toString());
             
-            console.log('✅ [allAgents] Agentes filtrados:', {
-                filtered: filtered.length,
-                agentNames: filtered.map(a => a.name)
-            });
+
             
             return filtered;
         }
@@ -315,11 +273,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 // Verifica se o ID do local selecionado está no array de unidades do agente
                 agent.unidades.includes(selectedLocationFilter)
             );
-            console.log(`🔍 [CalendarPage] Filtro de Local aplicado (${selectedLocationFilter}):`, {
-                totalAgents: allAgents.length,
-                filteredAgents: agentsToDisplay.length,
-                agentNames: agentsToDisplay.map(a => a.name)
-            });
+
         }
 
         // 2. FILTRO POR AGENTE (DROPDOWN): Se um agente específico for selecionado
@@ -336,10 +290,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     
     useEffect(() => {
         if (loggedInAgentId) {
-            console.log('🔍 [useEffect selectedAgentFilter] Configurando filtro para AGENTE:', {
-                loggedInAgentId,
-                allAgentsLength: allAgents.length
-            });
             
             setSelectedAgentFilter(loggedInAgentId);
             // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar o ID do agente do array allAgents, não o loggedInAgentId
@@ -348,17 +298,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 // ✅ CORREÇÃO: Converter para string na comparação
                 const agentInList = allAgents.find(a => a.id.toString() === loggedInAgentId.toString());
                 
-                console.log('🔍 [useEffect selectedAgentFilter] Busca de agente:', {
-                    found: !!agentInList,
-                    agentName: agentInList?.name,
-                    agentId: agentInList?.id
-                });
                 
                 if (agentInList) {
                     setSelectedAgentId(agentInList.id);
                 } else {
                     // Se não encontrar, usar o primeiro agente disponível
-                    console.warn('⚠️ [useEffect selectedAgentFilter] Agente não encontrado, usando primeiro disponível');
                     setSelectedAgentId(allAgents[0].id);
                 }
             }
@@ -381,7 +325,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             // Se o agente selecionado não está mais na lista filtrada, selecionar o primeiro
             const isSelectedAgentInList = displayedAgents.some(a => a.id === selectedAgentId);
             if (!isSelectedAgentInList) {
-                console.log(`🔄 [CalendarPage] Agente selecionado (${selectedAgentId}) não está em displayedAgents. Auto-selecionando primeiro agente: ${displayedAgents[0].id}`);
                 setSelectedAgentId(displayedAgents[0].id);
             }
         }
@@ -390,30 +333,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     // Log controlado para debug (apenas quando dados mudarem)
     useEffect(() => {
         // 🚨 DEBUG CRÍTICO: Inspecionar dados brutos de agendamentos
-        console.log('🚨 [CalendarPage] RAW APPOINTMENTS:', {
-            total: appointments.length,
-            appointments: appointments.slice(0, 5).map(a => ({
-                id: a.id,
-                agentId: a.agentId,
-                locationId: a.locationId,
-                date: a.date,
-                startTime: a.startTime,
-                clientName: a.clientName
-            }))
-        });
         
         // 🔍 DEBUG CRÍTICO: Comparar IDs e tipos
-        console.log('🔍 [CalendarPage] Comparação de Filtros:', {
-            selectedLocationFilter: selectedLocationFilter,
-            selectedLocationFilterType: typeof selectedLocationFilter,
-            loggedInAgentId: loggedInAgentId,
-            loggedInAgentIdType: typeof loggedInAgentId,
-            displayedAgents: displayedAgents.map(a => ({
-                id: a.id,
-                idType: typeof a.id,
-                name: a.name
-            }))
-        });
                 
         // 🔍 DEBUG: Agrupar por data
         const appointmentsByDate = appointments.reduce((acc, app) => {
@@ -422,38 +343,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             return acc;
         }, {} as Record<string, typeof appointments>);
         
-        console.log('📅 [CalendarPage] Agendamentos por Data:', appointmentsByDate);
                 
         // 🔍 DEBUG: Verificar data atual
         const currentDateStr = toISODateString(currentDate);
         const appointmentsForToday = appointments.filter(a => a.date === currentDateStr);
         
-        console.log('📆 [CalendarPage] Agendamentos para Hoje:', {
-            currentDate: currentDateStr,
-            total: appointmentsForToday.length,
-            appointments: appointmentsForToday.map(a => ({
-                agentId: a.agentId,
-                locationId: a.locationId,
-                startTime: a.startTime
-            }))
-        });
     }, [agents.length, allAgents.length, displayedAgents.length, services.length, appointments.length, currentDate, selectedLocationFilter, loggedInAgentId]);
 
     // ✅ CORREÇÃO DEFINITIVA: Auto-seleção de local priorizando AGENTE/SinglePlan na montagem.
     // Esta lógica garante que o local seja selecionado ANTES da busca de dados e cálculo de horários.
     useEffect(() => {
-        console.log('🔄 [CalendarPage] useEffect de auto-seleção executado:', {
-            locationsLength: locations.length,
-            backendAgentsLength: backendAgents.length,
-            userRole,
-            loggedInAgentId,
-            selectedLocationFilter,
-            timestamp: new Date().toISOString()
-        });
 
         // 1. Garante que temos dados básicos para filtrar (locations e backendAgents)
         if (locations.length === 0 || backendAgents.length === 0) {
-            console.log('⏭️ [CalendarPage] Dados ainda não carregados, pulando auto-seleção');
             return;
         }
 
@@ -463,37 +365,17 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         if (userRole === 'AGENTE' && loggedInAgentId) {
             const agentData = backendAgents.find(a => a.id.toString() === loggedInAgentId);
             
-            console.log('🔍 [CalendarPage] Detectado usuário AGENTE:', {
-                loggedInAgentId,
-                agentFound: !!agentData,
-                agentData: agentData ? {
-                    id: agentData.id,
-                    name: agentData.name,
-                    unidade_id: agentData.unidade_id,
-                    unidades: agentData.unidades
-                } : null
-            });
             
             // ✅ CORREÇÃO CRÍTICA: Priorizar unidade principal do agente
-            console.log('🔍 [CalendarPage] DEBUG - Verificando unidade_id:', {
-                hasAgentData: !!agentData,
-                unidade_id: agentData?.unidade_id,
-                unidade_id_type: typeof agentData?.unidade_id,
-                unidade_id_is_truthy: !!agentData?.unidade_id,
-                unidades: agentData?.unidades,
-                unidades_length: agentData?.unidades?.length
-            });
 
             if (agentData && agentData.unidade_id !== undefined && agentData.unidade_id !== null) {
                 // Caso 1: AGENTE tem unidade principal definida - SEMPRE usar esta
                 newLocationFilterId = agentData.unidade_id.toString();
-                console.log('✅ [CalendarPage] AGENTE com unidade_id principal (PRIORIDADE):', newLocationFilterId);
             }
             // Se for AGENTE Multi-Local (que não tem unidade_id no agente, mas tem unidades no array 'unidades'):
             else if (agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
                 // Caso 2: AGENTE sem unidade principal - usar primeira unidade do array
                 newLocationFilterId = agentData.unidades[0];
-                console.log('✅ [CalendarPage] AGENTE multi-local, selecionando primeira unidade:', newLocationFilterId);
             }
         } 
         // 3. Lógica para Usuário ADMIN (ou plano Single)
@@ -501,58 +383,29 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             if (isSinglePlan) {
                 // Plano Single: Seleciona o único local disponível
                 newLocationFilterId = locations[0]?.id || null;
-                console.log('✅ [CalendarPage] Plano Single, selecionando único local:', newLocationFilterId);
             } else if (user.unidade_id) {
                 // Admin com unidade padrão: Seleciona a unidade padrão do usuário
                 newLocationFilterId = user.unidade_id.toString();
-                console.log('✅ [CalendarPage] ADMIN com unidade padrão:', newLocationFilterId);
             } else {
                 // Admin Multi-Local sem padrão: Seleciona o primeiro da lista para não ficar em 'all'
                 newLocationFilterId = locations[0]?.id || null;
-                console.log('✅ [CalendarPage] ADMIN multi-local, selecionando primeiro local:', newLocationFilterId);
             }
         }
 
         // 4. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
         if (newLocationFilterId && newLocationFilterId !== selectedLocationFilter) {
-            console.log(`⚙️ [CalendarPage] Forçando seleção inicial de Local para: ${newLocationFilterId} (Regra: ${userRole})`);
 
             // ✅ DEBUG ADICIONAL: Verificar dados do agente para AGENTE
             if (userRole === 'AGENTE' && loggedInAgentId) {
                 const agentData = backendAgents.find(a => a.id.toString() === loggedInAgentId);
-                console.log('🔍 [CalendarPage] DEBUG - Dados do agente na seleção inicial:', {
-                    loggedInAgentId,
-                    agentFound: !!agentData,
-                    agentUnidadePrincipal: agentData?.unidade_id,
-                    agentUnidades: agentData?.unidades,
-                    newLocationFilterId,
-                    selectedLocationFilter,
-                    newLocationFilterIdType: typeof newLocationFilterId,
-                    selectedLocationFilterType: typeof selectedLocationFilter
-                });
             }
 
-            console.log('🔄 [CalendarPage] ANTES setSelectedLocationFilter:', {
-                from: selectedLocationFilter,
-                to: newLocationFilterId,
-                userRole,
-                timestamp: new Date().toISOString()
-            });
             setSelectedLocationFilter(newLocationFilterId);
-            console.log('✅ [CalendarPage] DEPOIS setSelectedLocationFilter chamado');
         } else {
-            console.log('⏭️ [CalendarPage] Seleção NÃO aplicada:', {
-                newLocationFilterId,
-                selectedLocationFilter,
-                isEqual: newLocationFilterId === selectedLocationFilter,
-                hasNewId: !!newLocationFilterId,
-                userRole
-            });
         }
         
         // 5. Garante que um agente seja selecionado na view Semana (crítico se a lista de displayedAgents mudar)
         if (allAgents.length > 0 && !selectedAgentId) {
-            console.log('⚙️ [CalendarPage] Auto-selecionando primeiro agente para view Semana:', allAgents[0].id);
             setSelectedAgentId(allAgents[0].id);
         }
 
@@ -560,20 +413,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     // 🔍 DEBUG: Monitorar mudanças no selectedLocationFilter
     useEffect(() => {
-        console.log('🔄 [CalendarPage] selectedLocationFilter MUDOU:', {
-            newValue: selectedLocationFilter,
-            type: typeof selectedLocationFilter,
-            userRole,
-            loggedInAgentId,
-            timestamp: new Date().toISOString()
-        });
     }, [selectedLocationFilter, userRole, loggedInAgentId]);
 
     // ✅ Função para recarregar agendamentos (extraída para ser reutilizada)
     const loadAppointmentsForDateRange = async () => {
         // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
         if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
-            console.log('🚫 [CalendarPage] Busca de agendamentos bloqueada. Multi-Plan sem local selecionado.');
             return;
         }
 
@@ -611,15 +456,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             // ✅ CRÍTICO: AGENTE multi-local precisa buscar agendamentos de TODAS as suas unidades
             // O filtro por locationId será aplicado no frontend durante a renderização
             params.agente_id = parseInt(loggedInAgentId);
-            console.log('📊 [CalendarPage] Buscando agendamentos para AGENTE (todas as unidades):', params);
         } else if (selectedLocationFilter !== 'all') {
             // Se é ADMIN, backend filtra por unidade_id
             params.unidade_id = parseInt(selectedLocationFilter);
-            console.log('📊 [CalendarPage] Buscando agendamentos para ADMIN/Local:', params);
         }
 
         await fetchAppointments(params);
-        console.log('✅ [CalendarPage] Busca de agendamentos concluída. Total recebido:', backendAppointments.length);
     };
 
     // Recarregar agendamentos quando a data, view, LOCAL ou AGENTE LOGADO mudar
@@ -628,23 +470,32 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
     const handleAppointmentClick = (app: Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string }) => {
-        console.log('🔍 [handleAppointmentClick] Agendamento clicado:', app);
+        
+        // ✅ DEBUG: Verificar backendAppointments
+        const backendApp = backendAppointments.find(ba => ba.id === app.id);
         
         // ✅ CORREÇÃO CRÍTICA: Buscar dados completos de agente e serviço
         const agent = agents.find(a => a.id.toString() === app.agentId.toString());
         let service = services.find(s => s.id.toString() === app.serviceId.toString());
 
-        console.log('🔍 [handleAppointmentClick] Busca de serviço:', {
-            searchingServiceId: app.serviceId,
-            searchingServiceIdType: typeof app.serviceId,
-            availableServices: services.map(s => ({ id: s.id, name: s.name, type: typeof s.id })),
-            foundService: service ? { id: service.id, name: service.name } : null
-        });
 
+        // ✅ CORREÇÃO CRÍTICA: Se serviço não encontrado, buscar no backend via agendamento
+        if (!service && app.id) {
+            // Buscar o agendamento completo do backend para pegar o serviceId correto
+            const backendAppointment = backendAppointments.find(ba => ba.id === app.id);
+            if (backendAppointment) {
+                // Tentar encontrar o serviço com o ID do backend
+                service = services.find(s => s.id.toString() === backendAppointment.serviceId.toString());
+                if (service) {
+                    // Atualizar o serviceId no objeto app para usar o correto
+                    app.serviceId = backendAppointment.serviceId;
+                }
+            }
+        }
+        
         // Fallback de serviço (replicado de handleSlotMouseEnter)
         if (!service && services.length > 0) {
             service = services[0];
-            console.warn('⚠️ [handleAppointmentClick] Serviço não encontrado, usando fallback:', service?.name);
         }
         
         if (!agent) {
@@ -684,7 +535,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             clientPhone: app.clientPhone || ''
         };
         
-        console.log('✅ [handleAppointmentClick] Payload completo para o modal:', appointmentDetails);
         
         setModalData({ appointment: appointmentDetails as any });
         setModalOpen(true);
@@ -1027,13 +877,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 const agentLocations = locations.filter(location =>
                     agentData.unidades.includes(location.id.toString())
                 );
-                console.log('🔍 [CalendarPage] Locais filtrados para AGENTE:', {
-                    agentId: loggedInAgentId,
-                    allLocations: locations.length,
-                    agentUnidades: agentData.unidades,
-                    filteredLocations: agentLocations.length,
-                    locationNames: agentLocations.map(l => l.name)
-                });
                 return agentLocations.map(l => l.name);
             }
         }
@@ -1070,13 +913,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [selectedLocationFilter, locations, userRole, loggedInAgentId, backendAgents, locationOptionsForHeader]);
     
     const handleLocationSelect = (locationName: string) => {
-        console.log('🎯 [CalendarPage] handleLocationSelect INICIADO:', {
-            locationName,
-            userRole,
-            loggedInAgentId,
-            currentSelectedLocationFilter: selectedLocationFilter,
-            timestamp: new Date().toISOString()
-        });
 
         const selectedLoc = locations.find(l => l.name === locationName);
         if (!selectedLoc) {
@@ -1084,11 +920,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             return;
         }
 
-        console.log('🔍 [CalendarPage] Local encontrado:', {
-            id: selectedLoc.id,
-            name: selectedLoc.name,
-            idType: typeof selectedLoc.id
-        });
 
         // ✅ VALIDAÇÃO CRÍTICA: AGENTE só pode selecionar locais onde trabalha
         if (userRole === 'AGENTE' && loggedInAgentId) {
@@ -1097,47 +928,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 // 🔧 CORREÇÃO CRÍTICA: Converter selectedLoc.id para string para comparação
                 const selectedLocationIdStr = selectedLoc.id.toString();
                 if (!agentData.unidades.includes(selectedLocationIdStr)) {
-                    console.warn('🚫 [CalendarPage] AGENTE tentou selecionar local não autorizado:', {
-                        agentId: loggedInAgentId,
-                        selectedLocationId: selectedLoc.id,
-                        selectedLocationIdStr,
-                        selectedLocationName: locationName,
-                        agentUnidades: agentData.unidades,
-                        comparison: `${selectedLocationIdStr} in [${agentData.unidades.join(', ')}]`
-                    });
                     return; // Bloquear seleção
                 }
-                console.log('✅ [CalendarPage] Validação de local autorizada:', {
-                    agentId: loggedInAgentId,
-                    selectedLocationId: selectedLoc.id,
-                    selectedLocationIdStr,
-                    agentUnidades: agentData.unidades,
-                    isAuthorized: true
-                });
             }
         }
 
-        console.log('✅ [CalendarPage] Local selecionado:', {
-            locationName,
-            locationId: selectedLoc.id,
-            locationIdType: typeof selectedLoc.id,
-            userRole,
-            agentId: loggedInAgentId,
-            beforeChange: selectedLocationFilter,
-            afterChange: selectedLoc.id
-        });
 
         const locationIdStr = selectedLoc.id.toString();
-        console.log('🔄 [CalendarPage] APLICANDO setSelectedLocationFilter:', {
-            from: selectedLocationFilter,
-            to: locationIdStr,
-            originalId: selectedLoc.id,
-            originalIdType: typeof selectedLoc.id,
-            convertedIdType: typeof locationIdStr,
-            timestamp: new Date().toISOString()
-        });
         setSelectedLocationFilter(locationIdStr);
-        console.log('✅ [CalendarPage] setSelectedLocationFilter APLICADO');
     };
 
     const renderDayView = () => {
@@ -1184,16 +982,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             
                             // 🔍 DEBUG: Log de filtro para cada agendamento
                             if (!locationMatch && agentIdMatch && dateMatch) {
-                                console.log('❌ [CalendarPage] Agendamento REJEITADO por locationId:', {
-                                    appointmentId: a.id,
-                                    appointmentLocationId: a.locationId,
-                                    appointmentLocationIdType: typeof a.locationId,
-                                    selectedLocationFilter: selectedLocationFilter,
-                                    selectedLocationFilterType: typeof selectedLocationFilter,
-                                    agentId: a.agentId,
-                                    date: a.date,
-                                    startTime: a.startTime
-                                });
                             }
                             
                             return agentIdMatch && dateMatch && serviceMatch && locationMatch;
@@ -1796,6 +1584,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         })}
 
                                         {agentAppointments.map((app, index) => {
+                                            // ✅ DEBUG CRÍTICO: Log do objeto app ANTES de renderizar
+                                            
                                             // ✅ Buscar serviço usando o ID real do banco de dados
                                             let service = services.find(s => s.id.toString() === app.serviceId);
 
@@ -1805,7 +1595,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                             }
 
                                             if (!service) {
-                                                                                                return null;
+                                                console.error('❌ [renderMonthView] Serviço não encontrado para agendamento:', app.id);
+                                                return null;
                                             }
 
                                             // ✅ REFATORAR: Classes e Background Unificados

@@ -75,7 +75,9 @@ const ServiceMultiSelectDropdown: React.FC<{
         label,
         selectedOptions,
         optionsCount: options.length,
-        placeholder
+        placeholder,
+        hasOptions: options.length > 0,
+        firstOptionSample: options.length > 0 ? { id: options[0].id, nome: options[0].nome, type: typeof options[0].id } : null
     });
 
     const [isOpen, setIsOpen] = useState(false);
@@ -107,8 +109,15 @@ const ServiceMultiSelectDropdown: React.FC<{
             console.log('🔍 [ServiceMultiSelectDropdown] Busca de serviço:', {
                 searchingId: id,
                 searchingIdType: typeof id,
+                searchingIdAsString: String(id),
                 foundService: foundService ? { id: foundService.id, nome: foundService.nome } : null,
-                allOptionsIds: options.map(opt => ({ id: opt.id, type: typeof opt.id }))
+                allOptionsIds: options.map(opt => ({ id: opt.id, idAsString: String(opt.id), type: typeof opt.id, nome: opt.nome })),
+                comparisonResults: options.map(opt => ({
+                    optId: opt.id,
+                    searchId: id,
+                    stringMatch: String(opt.id) === String(id),
+                    directMatch: opt.id === id
+                }))
             });
             return foundService?.nome;
         }).filter(Boolean).join(', ')
@@ -618,6 +627,17 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             });
             
             console.log('📋 [NewAppointmentModal] Preenchendo formulário com dados recebidos:', appointmentData);
+            console.log('🔍 [NewAppointmentModal] VERIFICAÇÃO CRÍTICA - Campos obrigatórios:', {
+                hasId: !!appointmentData.id,
+                hasServiceId: !!appointmentData.serviceId,
+                hasAgentId: !!appointmentData.agentId,
+                hasStartTime: !!appointmentData.startTime,
+                hasEndTime: !!appointmentData.endTime,
+                hasDate: !!appointmentData.dateISO,
+                hasStatus: !!appointmentData.status,
+                startTimeValue: appointmentData.startTime,
+                endTimeValue: appointmentData.endTime
+            });
             
             setIsLoadingAppointment(true);
             try {
@@ -652,9 +672,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 // ✅ Preencher horários
                 if (appointmentData.startTime) {
                     setStartTime(appointmentData.startTime);
+                    console.log('🕐 [NewAppointmentModal] StartTime definido:', appointmentData.startTime);
                 }
                 if (appointmentData.endTime) {
                     setEndTime(appointmentData.endTime);
+                    console.log('🕐 [NewAppointmentModal] EndTime definido:', appointmentData.endTime);
+                } else {
+                    console.warn('⚠️ [NewAppointmentModal] EndTime NÃO ENCONTRADO em appointmentData:', appointmentData);
                 }
                 
                 // ✅ Preencher data (converter de ISO para DD/MM/YYYY)
@@ -678,14 +702,22 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     console.log('👤 [NewAppointmentModal] Cliente preenchido:', { firstName, lastName, phone: appointmentData.clientPhone });
                 }
                 
-                // ✅ SOLUÇÃO ALTERNATIVA: Usar serviceId passado para preencher dropdown
-                // Se temos serviceId nos dados, usar diretamente
+                // ⚠️ TEMPORÁRIO: NÃO usar serviceId passado se não existir nos serviços disponíveis
+                // Deixar vazio e aguardar busca do backend
                 if (appointmentData.serviceId) {
                     const serviceIdNumber = typeof appointmentData.serviceId === 'string' 
                         ? parseInt(appointmentData.serviceId) 
                         : appointmentData.serviceId;
-                    setSelectedServices([serviceIdNumber]);
-                    console.log('🔧 [NewAppointmentModal] Serviço ID definido:', serviceIdNumber);
+                    
+                    // ✅ VERIFICAR se o serviço existe antes de definir
+                    const serviceExists = allServices.some(s => s.id === serviceIdNumber);
+                    if (serviceExists) {
+                        setSelectedServices([serviceIdNumber]);
+                        console.log('✅ [NewAppointmentModal] Serviço ID definido (existe):', serviceIdNumber);
+                    } else {
+                        console.warn('⚠️ [NewAppointmentModal] Serviço ID não existe, aguardando busca do backend:', serviceIdNumber);
+                        setSelectedServices([]); // Deixar vazio para ser preenchido pelo backend
+                    }
                 }
                 
                 // ✅ CORREÇÃO CRÍTICA: AGENTE agora pode buscar detalhes do backend
@@ -695,15 +727,21 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         console.log('🔍 [NewAppointmentModal] Buscando detalhes do backend para usuário:', user?.role);
                         const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
 
+                        console.log('🔍 [NewAppointmentModal] Detalhes recebidos do backend:', details);
+
                         if (details) {
                             // Extrair IDs dos serviços e extras
                             const servicoIds = details.servicos?.map(s => s.id) || [];
                             const extraIds = details.extras?.map(e => e.id) || [];
 
+                            console.log('🔍 [NewAppointmentModal] IDs extraídos:', { servicoIds, extraIds });
+
                             // ✅ Atualizar serviços apenas se a busca retornou dados
                             if (servicoIds.length > 0) {
                                 setSelectedServices(servicoIds);
                                 console.log('🔧 [NewAppointmentModal] Serviços atualizados do backend:', servicoIds);
+                            } else {
+                                console.warn('⚠️ [NewAppointmentModal] Nenhum serviço retornado do backend!');
                             }
                             setSelectedExtras(extraIds);
 
