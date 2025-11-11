@@ -53,7 +53,6 @@ class ServicoExtraController extends BaseController {
             });
           }
         } else {
-          console.log(`❌ [ServicoExtraController.list] ERRO: Agente não encontrado ou sem unidade_id!`);
           return res.status(200).json({
             success: true,
             data: [],
@@ -117,10 +116,10 @@ class ServicoExtraController extends BaseController {
         data 
       });
     } catch (error) {
-      console.error('Erro ao buscar serviços extras:', error);
-      return res.status(500).json({ 
+      console.error('❌ [ServicoExtraController.index] Erro ao buscar serviços extras:', error);
+      return res.status(500).json({
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }
@@ -217,8 +216,6 @@ class ServicoExtraController extends BaseController {
         created_at: new Date(),
         updated_at: new Date()
       };
-
-      console.log(`🔗 [ServicoExtraController] Criando serviço extra com ${servicos_conectados?.length || 0} serviços conectados`);
 
       const servicoExtraId = await this.model.createWithTransaction(
         servicoExtraData,
@@ -359,8 +356,8 @@ class ServicoExtraController extends BaseController {
         });
       }
     } catch (error) {
-      console.error('Erro ao deletar serviço extra:', error);
-      
+      console.error('❌ [ServicoExtraController.destroy] Erro ao deletar serviço extra:', error);
+
       if (error.code === '23503') {
         return res.status(400).json({ 
           error: 'Não é possível deletar',

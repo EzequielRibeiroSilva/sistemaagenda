@@ -141,11 +141,10 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                         setCheckedServices(initialCheckedState);
                     }
 
-                    console.log('✅ Serviço extra carregado:', extraService.nome);
                 }
             } catch (error) {
                 if (isMounted) {
-                    console.error('❌ Erro ao carregar serviço extra:', error);
+                    console.error('❌ [EditExtraServicePage] Erro ao carregar serviço extra:', error);
                     setSubmitError('Erro ao carregar dados do serviço extra');
                 }
             } finally {
@@ -226,18 +225,15 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                 servicos_conectados: servicosConectados
             };
 
-            console.log('🔄 Atualizando serviço extra:', extraServiceId, extraServiceData);
-
             const result = await updateExtraService(Number(extraServiceId), extraServiceData);
 
             if (result.success) {
-                console.log('✅ Serviço extra atualizado com sucesso!');
                 setActiveView('services-extra'); // Voltar para a lista
             } else {
                 setSubmitError(result.error || 'Erro ao atualizar serviço extra');
             }
         } catch (error) {
-            console.error('❌ Erro ao atualizar serviço extra:', error);
+            console.error('❌ [EditExtraServicePage] Erro ao atualizar serviço extra:', error);
             setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
         } finally {
             setSubmitting(false);

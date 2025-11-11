@@ -104,7 +104,7 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar serviços:', error);
+      console.error('❌ [useServiceManagement] Erro ao buscar serviços:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
       setServices([]);
     } finally {
@@ -233,7 +233,7 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao criar serviço');
       }
     } catch (error) {
-      console.error('❌ Erro ao criar serviço:', error);
+      console.error('❌ [useServiceManagement] Erro ao criar serviço:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -252,8 +252,6 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🔄 Atualizando serviço:', id, serviceData);
-
       const response = await fetch(`http://localhost:3000/api/servicos/${id}`, {
         method: 'PUT',
         headers: {
@@ -271,7 +269,7 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao atualizar serviço');
       }
     } catch (error) {
-      console.error('❌ Erro ao atualizar serviço:', error);
+      console.error('❌ [useServiceManagement] Erro ao atualizar serviço:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -292,7 +290,7 @@ export const useServiceManagement = () => {
           if (isMounted) await fetchServices();
         } catch (error) {
           if (isMounted) {
-            console.error('Erro ao carregar dados iniciais:', error);
+            console.error('❌ [useServiceManagement] Erro ao carregar dados iniciais:', error);
           }
         }
       };

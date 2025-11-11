@@ -107,7 +107,7 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: 
                     alt={name}
                     className="w-8 h-8 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
+                        console.error('❌ [EditServicePage] Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -207,11 +207,10 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                         setCheckedExtras(initialExtraState);
                     }
 
-                    console.log('✅ Serviço carregado:', service.nome);
                 }
             } catch (error) {
                 if (isMounted) {
-                    console.error('❌ Erro ao carregar serviço:', error);
+                    console.error('❌ [EditServicePage] Erro ao carregar serviço:', error);
                     setSubmitError('Erro ao carregar dados do serviço');
                 }
             } finally {
@@ -331,18 +330,15 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                 extras_ids: extrasIds
             };
 
-            console.log('🔄 Atualizando serviço:', serviceId, serviceData);
-
             const result = await updateService(Number(serviceId), serviceData);
 
             if (result.success) {
-                console.log('✅ Serviço atualizado com sucesso!');
                 setActiveView('services-list'); // Voltar para a lista de serviços
             } else {
                 setSubmitError(result.error || 'Erro ao atualizar serviço');
             }
         } catch (error) {
-            console.error('❌ Erro ao atualizar serviço:', error);
+            console.error('❌ [EditServicePage] Erro ao atualizar serviço:', error);
             setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
         } finally {
             setSubmitting(false);

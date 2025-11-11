@@ -13,13 +13,7 @@ class WhatsAppService {
     this.enabled = process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true' || process.env.WHATSAPP_ENABLED === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
 
-    console.log('[WhatsApp] Configuração:', {
-      enabled: this.enabled,
-      testMode: this.testMode,
-      url: this.evolutionApiUrl,
-      instance: this.instanceName,
-      instanceId: this.instanceId
-    });
+
   }
 
   /**
@@ -62,13 +56,10 @@ class WhatsAppService {
     // Modo de teste - simula envio bem-sucedido
     if (this.testMode) {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
-      console.log(`🧪 [WhatsApp TEST MODE] Simulando envio para ${formattedPhone}`);
-      console.log(`📱 [WhatsApp TEST MODE] Mensagem: ${message.substring(0, 100)}...`);
 
       // Simular delay de rede
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      console.log(`✅ [WhatsApp TEST MODE] Mensagem "enviada" com sucesso para ${phoneNumber}`);
       return {
         success: true,
         data: {
@@ -287,15 +278,14 @@ _Esta é uma mensagem automática do sistema de agendamentos._`;
       const data = await response.json();
 
       if (response.ok) {
-        console.log('[WhatsApp] Conexão com Evolution API OK');
         return { success: true, data };
       } else {
-        console.error('[WhatsApp] Erro na conexão:', data);
+        console.error('❌ [WhatsApp] Erro na conexão:', data);
         return { success: false, error: data };
       }
 
     } catch (error) {
-      console.error('[WhatsApp] Erro ao testar conexão:', error);
+      console.error('❌ [WhatsApp] Erro ao testar conexão:', error);
       return { success: false, error: error.message };
     }
   }
