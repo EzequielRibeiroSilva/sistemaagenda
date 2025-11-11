@@ -23,7 +23,7 @@ class AgenteController {
         const agente = await this.agenteModel.findById(userAgenteId);
         if (agente && agente.usuario_id) {
           usuarioId = agente.usuario_id;
-          console.log(`✅ [AgenteController.list] AGENTE detectado. Usando usuario_id do ADMIN: ${usuarioId}`);
+
         }
       }
 
@@ -61,7 +61,7 @@ class AgenteController {
         unidade_id: agente.unidade_id // ✅ Incluir unidade_id principal (fallback)
       }));
 
-      console.log(`✅ [AgenteController.list] Retornando ${agentesLeves.length} agentes com unidades`);
+
 
       res.status(200).json({
         success: true,
@@ -90,35 +90,18 @@ class AgenteController {
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
       
-      console.log(`🔍 [AgenteController] index - INÍCIO`);
-      console.log(`   Role: ${userRole}`);
-      console.log(`   UsuarioId (req.user.id): ${usuarioId}`);
-      console.log(`   AgenteId (req.user.agente_id): ${userAgenteId}`);
+
       
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
       if (userRole === 'AGENTE' && userAgenteId) {
-        console.log(`🔍 [AgenteController] Condição AGENTE detectada. Buscando agente_id=${userAgenteId}...`);
         const agente = await this.agenteModel.findById(userAgenteId);
-        console.log(`🔍 [AgenteController] Agente encontrado:`, agente ? { id: agente.id, usuario_id: agente.usuario_id, nome: agente.nome } : null);
-        
+
         if (agente && agente.usuario_id) {
-          const usuarioIdAntes = usuarioId;
           usuarioId = agente.usuario_id;
-          console.log(`✅ [AgenteController] AGENTE detectado. Mudando usuario_id de ${usuarioIdAntes} para ${usuarioId}`);
-        } else {
-          console.log(`❌ [AgenteController] ERRO: Agente não encontrado ou sem usuario_id!`);
         }
-      } else {
-        console.log(`🔍 [AgenteController] Não é AGENTE ou agente_id ausente. Usando usuario_id=${usuarioId} diretamente.`);
       }
       
-      console.log(`🔍 [AgenteController] Chamando findWithCalculatedData(${usuarioId})...`);
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
-      
-      console.log(`✅ [AgenteController] Encontrados ${agentes.length} agentes para usuario_id ${usuarioId}`);
-      if (agentes.length > 0) {
-        console.log(`   Agentes IDs: ${agentes.map(a => a.id).join(', ')}`);
-      }
       
       // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
       const agentesComUnidades = await Promise.all(
@@ -485,7 +468,7 @@ class AgenteController {
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
       
-      console.log(`🔐 [AgenteController.update] Início - Role: ${userRole}, UsuarioId: ${usuarioId}, AgenteId param: ${agenteId}, User AgenteId: ${userAgenteId}`);
+
       
       const {
         nome,
@@ -561,14 +544,14 @@ class AgenteController {
       if (userRole === 'AGENTE') {
         // AGENTE só pode editar seu próprio perfil
         if (userAgenteId && parseInt(agenteId) !== parseInt(userAgenteId)) {
-          console.log(`❌ [AgenteController.update] AGENTE tentando editar outro agente. AgenteId: ${agenteId}, UserAgenteId: ${userAgenteId}`);
+
           return res.status(403).json({
             success: false,
             error: 'Acesso negado',
             message: 'Você só pode editar seu próprio perfil'
           });
         }
-        console.log(`✅ [AgenteController.update] AGENTE editando seu próprio perfil`);
+
       } else {
         // ADMIN/MASTER: Verificar se o agente pertence a uma unidade do usuário logado
         if (agenteExistente.unidade_usuario_id !== usuarioId) {
@@ -579,7 +562,7 @@ class AgenteController {
             message: 'Você não tem permissão para editar este agente'
           });
         }
-        console.log(`✅ [AgenteController.update] ADMIN editando agente de sua empresa`);
+
       }
 
       // Validações básicas
@@ -595,7 +578,7 @@ class AgenteController {
       if (userRole === 'AGENTE') {
         // AGENTE: Manter unidade_id atual (não permitir mudança)
         if (parseInt(unidade_id) !== parseInt(agenteExistente.unidade_id)) {
-          console.log(`❌ [AgenteController.update] AGENTE tentando mudar de unidade`);
+
           return res.status(403).json({
             success: false,
             error: 'Acesso negado',
@@ -766,9 +749,9 @@ class AgenteController {
           // Só excluir se for usuário do tipo AGENTE (não ADMIN ou MASTER)
           if (usuarioAgente && usuarioAgente.role === 'AGENTE') {
             await trx('usuarios').where('id', agente.usuario_id).del();
-            console.log(`✅ Usuário AGENTE (ID: ${agente.usuario_id}, Email: ${usuarioAgente.email}) excluído com sucesso`);
+
           } else if (usuarioAgente) {
-            console.log(`⚠️ Usuário (ID: ${agente.usuario_id}) não foi excluído - Role: ${usuarioAgente.role}`);
+
           }
         }
       });

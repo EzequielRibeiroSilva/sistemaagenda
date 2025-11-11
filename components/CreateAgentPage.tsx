@@ -244,7 +244,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         alert('Erro ao criar agente. Tente novamente.');
       }
     } catch (error) {
-      console.error('Erro ao criar agente:', error);
+      console.error('❌ [CreateAgentPage] Erro ao criar agente:', error);
       alert('Erro ao criar agente. Tente novamente.');
     } finally {
       setIsSubmitting(false);
