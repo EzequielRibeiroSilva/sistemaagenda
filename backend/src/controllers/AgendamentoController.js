@@ -129,17 +129,14 @@ class AgendamentoController extends BaseController {
 
           // ✅ NOVO: Filtro temporal (futuro/passado/hoje)
           if (time_filter) {
-            console.log(`⏰ [AgendamentoController] Aplicando filtro temporal: ${time_filter}`);
 
             const now = new Date();
             const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
             const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
 
-            console.log(`⏰ [AgendamentoController] Data atual: ${today}, Hora atual: ${currentTime}`);
 
             switch (time_filter) {
               case 'soon': // Próximo/Agora (hoje que ainda não passou + futuro)
-                console.log(`⏰ [AgendamentoController] Filtro SOON: agendamentos futuros + hoje (após ${currentTime})`);
                 queryBuilder.where(function() {
                   this.where('agendamentos.data_agendamento', '>', today)
                       .orWhere(function() {
@@ -149,7 +146,6 @@ class AgendamentoController extends BaseController {
                 });
                 break;
               case 'overdue': // Passado (dias passados + hoje que já passou)
-                console.log(`⏰ [AgendamentoController] Filtro OVERDUE: agendamentos passados + hoje (antes de ${currentTime})`);
                 queryBuilder.where(function() {
                   this.where('agendamentos.data_agendamento', '<', today)
                       .orWhere(function() {
@@ -159,11 +155,9 @@ class AgendamentoController extends BaseController {
                 });
                 break;
               case 'pending': // Futuro (apenas dias futuros, não inclui hoje)
-                console.log(`⏰ [AgendamentoController] Filtro PENDING: apenas agendamentos futuros (após ${today})`);
                 queryBuilder.where('agendamentos.data_agendamento', '>', today);
                 break;
               case 'today': // Apenas hoje
-                console.log(`⏰ [AgendamentoController] Filtro TODAY: apenas agendamentos de hoje (${today})`);
                 queryBuilder.where('agendamentos.data_agendamento', '=', today);
                 break;
             }
@@ -219,11 +213,6 @@ class AgendamentoController extends BaseController {
           
           // 🔍 DEBUG: Log para verificar comissão
           if (servicos.length > 0 && agendamento.status === 'Concluído') {
-            console.log(`💰 [Backend] Agendamento ${agendamento.id} - Serviços:`, servicos.map(s => ({
-              nome: s.nome,
-              preco: s.preco,
-              comissao: s.comissao_percentual
-            })));
           }
           
           agendamento.servicos = servicos;
@@ -334,14 +323,6 @@ class AgendamentoController extends BaseController {
         });
       } else {
         // ✅ CORREÇÃO CRÍTICA: Implementar filtros de período, agente e serviço
-        console.log('🔍 [AgendamentoController] Aplicando filtros avançados:', {
-          data_inicio,
-          data_fim,
-          agente_id,
-          servico_id,
-          unidade_id,
-          userRole
-        });
 
         // Construir query base com RBAC
         let baseQuery = this.model.db('agendamentos')
@@ -369,7 +350,6 @@ class AgendamentoController extends BaseController {
 
         // ✅ APLICAR FILTROS DE PERÍODO
         if (data_inicio && data_fim) {
-          console.log(`📅 [AgendamentoController] Aplicando filtro de período: ${data_inicio} a ${data_fim}`);
           baseQuery = baseQuery
             .where('agendamentos.data_agendamento', '>=', data_inicio)
             .where('agendamentos.data_agendamento', '<=', data_fim);
@@ -377,19 +357,16 @@ class AgendamentoController extends BaseController {
 
         // ✅ APLICAR FILTRO DE UNIDADE
         if (unidade_id) {
-          console.log(`🏢 [AgendamentoController] Aplicando filtro de unidade: ${unidade_id}`);
           baseQuery = baseQuery.where('agendamentos.unidade_id', parseInt(unidade_id));
         }
 
         // ✅ APLICAR FILTRO DE AGENTE
         if (agente_id) {
-          console.log(`👤 [AgendamentoController] Aplicando filtro de agente: ${agente_id}`);
           baseQuery = baseQuery.where('agendamentos.agente_id', parseInt(agente_id));
         }
 
         // ✅ APLICAR FILTRO DE SERVIÇO
         if (servico_id) {
-          console.log(`🛠️ [AgendamentoController] Aplicando filtro de serviço: ${servico_id}`);
           baseQuery = baseQuery
             .join('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
             .where('agendamento_servicos.servico_id', parseInt(servico_id));
@@ -422,17 +399,11 @@ class AgendamentoController extends BaseController {
 
           // 🔍 DEBUG: Log para verificar comissão
           if (servicos.length > 0) {
-            console.log(`💰 [Backend] Agendamento ${agendamento.id} (${agendamento.status}) - Serviços:`, servicos.map(s => ({
-              nome: s.nome,
-              preco: s.preco,
-              comissao: s.comissao_percentual
-            })));
           }
 
           agendamento.servicos = servicos;
         }
 
-        console.log(`✅ [AgendamentoController] Encontrados ${data.length} agendamentos com filtros aplicados`);
       }
 
       return res.json({ data });
@@ -453,12 +424,6 @@ class AgendamentoController extends BaseController {
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
 
-      console.log(`🔍 [show] Iniciando busca do agendamento ${id}:`, {
-        usuarioId,
-        userRole,
-        userAgenteId,
-        originalUserId: req.user?.id
-      });
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -471,44 +436,30 @@ class AgendamentoController extends BaseController {
         const Agente = require('../models/Agente');
         const agenteModel = new Agente();
         const agente = await agenteModel.findById(userAgenteId);
-        console.log(`🔍 [show] Dados do agente ${userAgenteId}:`, {
-          found: !!agente,
-          usuario_id: agente?.usuario_id,
-          unidade_id: agente?.unidade_id
-        });
 
         if (agente && agente.usuario_id) {
           usuarioId = agente.usuario_id;
-          console.log(`✅ [show] AGENTE ${userAgenteId}: usando usuario_id do ADMIN: ${usuarioId}`);
         }
       }
 
       const data = await this.model.findWithServicos(id);
 
       if (!data) {
-        console.log(`❌ [show] Agendamento ${id} não encontrado`);
         return res.status(404).json({
           error: 'Agendamento não encontrado'
         });
       }
 
-      console.log(`🔍 [show] Dados do agendamento ${id}:`, {
-        agente_id: data.agente_id,
-        unidade_id: data.unidade_id,
-        cliente_nome: data.cliente_nome
-      });
 
       // ✅ CORREÇÃO CRÍTICA: Verificação de permissões específica por role
       if (userRole === 'AGENTE') {
         // Para AGENTE: verificar se o agendamento é dele
         if (userAgenteId && data.agente_id !== userAgenteId) {
-          console.warn(`⚠️ [show] AGENTE ${userAgenteId} tentou acessar agendamento do AGENTE ${data.agente_id}`);
           return res.status(403).json({
             error: 'Acesso negado',
             message: 'Agentes só podem ver seus próprios agendamentos'
           });
         }
-        console.log(`✅ [show] AGENTE ${userAgenteId} acessando seu próprio agendamento ${id}`);
       } else {
         // Para ADMIN/MASTER: verificar se o agendamento pertence ao usuário (através da unidade)
         const agendamento = await this.model.db(this.model.tableName)
@@ -517,15 +468,8 @@ class AgendamentoController extends BaseController {
           .where('unidades.usuario_id', usuarioId)
           .first();
 
-        console.log(`🔍 [show] Verificação de propriedade da unidade para ${userRole}:`, {
-          agendamentoId: id,
-          usuarioId,
-          found: !!agendamento,
-          query: `agendamentos.id = ${id} AND unidades.usuario_id = ${usuarioId}`
-        });
 
         if (!agendamento) {
-          console.warn(`⚠️ [show] Agendamento ${id} não pertence ao usuário ${usuarioId} (${userRole})`);
 
           // 🔍 DEBUG: Buscar informações adicionais para debug
           const debugInfo = await this.model.db(this.model.tableName)
@@ -534,17 +478,14 @@ class AgendamentoController extends BaseController {
             .select('agendamentos.id', 'agendamentos.unidade_id', 'unidades.usuario_id', 'unidades.nome as unidade_nome')
             .first();
 
-          console.log(`🔍 [show] Debug - Informações do agendamento:`, debugInfo);
 
           return res.status(403).json({
             error: 'Acesso negado',
             message: 'Você não tem permissão para ver este agendamento'
           });
         }
-        console.log(`✅ [show] ${userRole} ${usuarioId} acessando agendamento ${id} da sua unidade`);
       }
 
-      console.log(`✅ [show] Agendamento ${id} retornado com sucesso para ${userRole}`);
       return res.json({
         success: true,
         data: data
@@ -637,10 +578,8 @@ class AgendamentoController extends BaseController {
           );
 
           clienteIdFinal = clienteCriado.id;
-          console.log(`✅ Cliente criado/encontrado automaticamente: ID ${clienteIdFinal}, Nome: ${cliente_nome}`);
 
         } catch (clienteError) {
-          console.error('❌ Erro ao criar cliente automaticamente:', clienteError);
           return res.status(400).json({
             error: 'Erro ao criar cliente',
             message: 'Não foi possível criar o cliente automaticamente'
@@ -748,30 +687,15 @@ class AgendamentoController extends BaseController {
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
 
-      console.log('🔥 [AGENDAMENTO] Agendamento criado com sucesso, ID:', agendamento.id);
-      console.log('🔥 [AGENDAMENTO] Iniciando bloco de envio WhatsApp...');
-      console.log('🔥 [AGENDAMENTO] WhatsAppService existe?', !!this.whatsAppService);
 
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
       try {
-        console.log('');
-        console.log('━'.repeat(80));
-        console.log('🔔 [WhatsApp] INICIANDO ENVIO DE NOTIFICAÇÃO');
-        console.log('━'.repeat(80));
-        console.log(`   Agendamento ID: ${agendamento.id}`);
-        console.log(`   Cliente ID: ${agendamento.cliente_id}`);
-        console.log('');
 
         // Buscar dados completos para a mensagem
-        console.log('🔍 [WhatsApp] Buscando dados completos do agendamento...');
         const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
         
         if (!dadosCompletos) {
-          console.error('❌ [WhatsApp] ERRO: buscarDadosCompletos retornou null');
-          console.error('   Verifique se o agendamento foi criado corretamente no banco');
-          console.log('━'.repeat(80));
-          console.log('');
           return res.status(201).json({
             success: true,
             data: agendamentoCompleto,
@@ -779,59 +703,23 @@ class AgendamentoController extends BaseController {
           });
         }
         
-        console.log('✅ [WhatsApp] Dados completos obtidos:');
-        console.log(`   Cliente: ${dadosCompletos?.cliente?.nome}`);
-        console.log(`   Telefone: ${dadosCompletos?.cliente?.telefone}`);
-        console.log(`   Agente: ${dadosCompletos?.agente?.nome}`);
-        console.log(`   Unidade: ${dadosCompletos?.unidade?.nome}`);
-        console.log(`   Serviços: ${dadosCompletos?.servicos?.length || 0}`);
-        console.log('');
 
         if (dadosCompletos && dadosCompletos.cliente && dadosCompletos.cliente.telefone) {
-          console.log('📤 [WhatsApp] Enviando mensagem de confirmação...');
-          console.log('');
           
           // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
           const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
-          console.log('');
-          console.log('📊 [WhatsApp] Resultado do envio:');
-          console.log(JSON.stringify(resultadoWhatsApp, null, 2));
-          console.log('');
 
           if (resultadoWhatsApp.success) {
-            console.log(`✅ [WhatsApp] SUCESSO! Confirmação enviada para: ${dadosCompletos.cliente.nome}`);
-            console.log(`   Telefone: ${dadosCompletos.cliente.telefone}`);
-            console.log(`   Message ID: ${resultadoWhatsApp.data?.key?.id || 'N/A'}`);
           } else {
-            console.error(`❌ [WhatsApp] FALHA ao enviar confirmação!`);
-            console.error(`   Cliente: ${dadosCompletos.cliente.nome}`);
-            console.error(`   Erro: ${JSON.stringify(resultadoWhatsApp.error)}`);
           }
         } else {
-          console.error('⚠️ [WhatsApp] DADOS INCOMPLETOS - não foi possível enviar notificação');
-          console.error('   Dados disponíveis:', {
-            temDadosCompletos: !!dadosCompletos,
-            temCliente: !!dadosCompletos?.cliente,
-            temTelefone: !!dadosCompletos?.cliente?.telefone,
-            telefone: dadosCompletos?.cliente?.telefone
-          });
+          // Dados incompletos - não foi possível enviar notificação
         }
         
-        console.log('━'.repeat(80));
-        console.log('');
         
       } catch (whatsappError) {
         // Não falhar a criação do agendamento por erro no WhatsApp
-        console.error('');
-        console.error('━'.repeat(80));
-        console.error('❌ [WhatsApp] ERRO CRÍTICO ao enviar notificação!');
-        console.error('━'.repeat(80));
-        console.error(`   Tipo: ${whatsappError.name}`);
-        console.error(`   Mensagem: ${whatsappError.message}`);
-        console.error(`   Stack: ${whatsappError.stack}`);
-        console.error('━'.repeat(80));
-        console.error('');
       }
 
       return res.status(201).json({
@@ -856,15 +744,8 @@ class AgendamentoController extends BaseController {
       const userAgenteId = req.user?.agente_id;
       let usuarioId = req.user?.id; // ID do usuário logado (ADMIN ou AGENTE)
       
-      console.log('🔄 [AgendamentoController.update] Iniciando atualização');
-      console.log('   ID do agendamento:', id);
-      console.log('   Usuário ID (logado):', usuarioId);
-      console.log('   User Role:', userRole);
-      console.log('   Agente ID (logado):', userAgenteId);
-      console.log('   Body recebido:', JSON.stringify(req.body, null, 2));
       
       if (!usuarioId) {
-        console.error('❌ [AgendamentoController.update] Usuário não autenticado');
         return res.status(401).json({ 
           success: false,
           error: 'Usuário não autenticado' 
@@ -882,26 +763,21 @@ class AgendamentoController extends BaseController {
         // ✅ SOLUÇÃO CRÍTICA: AGENTE só pode encontrar agendamentos em seu nome.
         // Foca o filtro diretamente na coluna do agente.
         agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
-        console.log(`🔍 [update] Aplicando filtro de AGENTE: agendamentos.agente_id = ${userAgenteId}`);
       } else if (userRole === 'ADMIN' || userRole === 'MASTER') {
         // ADMIN/MASTER: Filtro pela unidade (propriedade do ADMIN)
         // Requer o join para verificar a propriedade da unidade
         agendamentoQuery = agendamentoQuery
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .where('unidades.usuario_id', usuarioId); // usuarioId aqui é o ID do ADMIN
-        console.log(`🔍 [update] Aplicando filtro de ADMIN: unidades.usuario_id = ${usuarioId}`);
       } else {
-         console.warn(`⚠️ [update] Tentativa de acesso com role desconhecido: ${userRole}`);
          return res.status(403).json({ success: false, error: 'Acesso negado' });
       }
       
       const agendamento = await agendamentoQuery.select('agendamentos.*').first();
 
-      console.log('🔍 [AgendamentoController.update] Agendamento encontrado:', agendamento ? 'SIM' : 'NÃO');
 
       if (!agendamento) {
         // ✅ CORREÇÃO: O 404 agora significa que o agendamento não existe DENTRO DO ESCOPO DO USUÁRIO
-        console.error('❌ [AgendamentoController.update] Agendamento não encontrado DENTRO do escopo do usuário.');
         return res.status(404).json({ 
           success: false,
           error: 'Agendamento não encontrado ou acesso negado' 
@@ -934,7 +810,6 @@ class AgendamentoController extends BaseController {
       
       // ✅ REGRA DE NEGÓCIO: AGENTE só pode atualizar seu próprio agente_id. ADMIN pode trocar.
       if (userRole === 'AGENTE' && agente_id !== undefined && agente_id !== userAgenteId) {
-         console.warn(`⚠️ [update] AGENTE tentando trocar o agente_id. Bloqueado.`);
          return res.status(403).json({ success: false, error: 'Acesso negado: AGENTE não pode alterar agente_id' });
       } else if (agente_id !== undefined) {
          dadosParaAtualizar.agente_id = agente_id; // ADMIN pode alterar
@@ -947,19 +822,7 @@ class AgendamentoController extends BaseController {
       if (cliente_id !== undefined) dadosParaAtualizar.cliente_id = cliente_id;
       if (unidade_id !== undefined) dadosParaAtualizar.unidade_id = unidade_id;
 
-      console.log('📋 [AgendamentoController.update] Campos extraídos:', {
-        hora_inicio,
-        hora_fim,
-        agente_id,
-        data_agendamento,
-        status,
-        forma_pagamento: `${forma_pagamento} → metodo_pagamento`,
-        observacoes,
-        cliente_id,
-        unidade_id
-      });
 
-      console.log('📋 [AgendamentoController.update] Dados para atualizar (filtrados):', dadosParaAtualizar);
 
       // Verificar conflito de horário se horário foi alterado
       if ((hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
@@ -988,9 +851,7 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      console.log('💾 [AgendamentoController.update] Chamando model.update...');
       const data = await this.model.update(id, dadosParaAtualizar); // ✅ CORREÇÃO: usar dados filtrados
-      console.log('✅ [AgendamentoController.update] Atualização concluída:', data);
       
       return res.json({ 
         success: true,
@@ -999,7 +860,6 @@ class AgendamentoController extends BaseController {
       });
     } catch (error) {
       console.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
-      console.error('   Stack:', error.stack);
       return res.status(500).json({ 
         success: false,
         error: 'Erro interno do servidor',
@@ -1011,7 +871,6 @@ class AgendamentoController extends BaseController {
   // Método auxiliar para buscar dados completos do agendamento
   async buscarDadosCompletos(agendamentoId) {
     try {
-      console.log('🔍 [buscarDadosCompletos] Iniciando busca para agendamento ID:', agendamentoId);
 
       // ✅ CORREÇÃO CRÍTICA: Buscar dados separadamente para evitar problemas de JOIN
       const agendamento = await this.model.db('agendamentos')
@@ -1019,7 +878,6 @@ class AgendamentoController extends BaseController {
         .first();
 
       if (!agendamento) {
-        console.log('❌ [buscarDadosCompletos] Agendamento não encontrado');
         return null;
       }
 
@@ -1038,15 +896,8 @@ class AgendamentoController extends BaseController {
         .where('id', agendamento.unidade_id)
         .first();
 
-      console.log('🔍 [buscarDadosCompletos] Dados encontrados:', {
-        agendamento: !!agendamento,
-        cliente: !!cliente,
-        agente: !!agente,
-        unidade: !!unidade
-      });
 
       if (!cliente || !agente || !unidade) {
-        console.log('❌ [buscarDadosCompletos] Dados relacionados não encontrados');
         return null;
       }
 
@@ -1059,13 +910,6 @@ class AgendamentoController extends BaseController {
       // ✅ CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
       const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
-      console.log('🔍 [buscarDadosCompletos] Agendamento encontrado:', {
-        id: agendamento.id,
-        cliente: nomeCliente,
-        telefone: cliente?.telefone,
-        agente: agente?.nome,
-        servicos: servicos.length
-      });
 
       // ✅ CORREÇÃO: Formatar dados para o template usando objetos separados
       return {

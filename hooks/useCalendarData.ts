@@ -271,40 +271,28 @@ export const useCalendarData = () => {
   // Buscar unidades (locais)
   const fetchLocations = useCallback(async () => {
     try {
-      console.log('🏢 [useCalendarData] Iniciando busca de unidades...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
-      
-      console.log('🏢 [useCalendarData] Resposta de unidades:', response);
       
       // ✅ CORREÇÃO: API pode retornar { success, data } OU array direto
       const locationsData = response.data || response;
       
       if (Array.isArray(locationsData)) {
-        console.log(`🏢 [useCalendarData] ${locationsData.length} unidades encontradas`);
         const transformedLocations = locationsData.map(transformLocation);
         setLocations(transformedLocations);
         
         // Buscar horários de funcionamento para cada unidade
-        console.log('⏰ [useCalendarData] Iniciando busca de horários para cada unidade...');
         const schedulesMap: Record<string, UnitSchedule[]> = {};
         for (const location of locationsData) {
           try {
-            console.log(`⏰ [useCalendarData] Buscando horários da unidade ${location.id} (${location.nome})...`);
             const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}`);
-            console.log(`⏰ [useCalendarData] Resposta da unidade ${location.id}:`, scheduleResponse);
-            
+
             if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
               schedulesMap[location.id.toString()] = scheduleResponse.data.horarios_funcionamento;
-              console.log(`✅ [useCalendarData] Horários da unidade ${location.id} carregados:`, scheduleResponse.data.horarios_funcionamento);
-            } else {
-              console.log(`⚠️ [useCalendarData] Unidade ${location.id} sem horários de funcionamento`);
             }
           } catch (err) {
             console.error(`❌ [useCalendarData] Erro ao buscar horários da unidade ${location.id}:`, err);
           }
         }
-        
-        console.log('📊 [useCalendarData] schedulesMap final:', schedulesMap);
         setUnitSchedules(schedulesMap);
         
         return transformedLocations;
@@ -345,6 +333,12 @@ export const useCalendarData = () => {
       if (safeFilters.startDate && safeFilters.endDate && safeFilters.startDate === safeFilters.endDate) {
         // Se startDate === endDate, usar filtro específico de data do backend
         url.searchParams.set('data_agendamento', safeFilters.startDate);
+      } else if (safeFilters.startDate && safeFilters.endDate) {
+        // ✅ CORREÇÃO CRÍTICA: Para períodos (startDate !== endDate), usar data_inicio e data_fim
+        // Isso garante que o backend use a query avançada que INCLUI os serviços
+        url.searchParams.set('data_inicio', safeFilters.startDate);
+        url.searchParams.set('data_fim', safeFilters.endDate);
+
       }
 
       if (safeFilters.agente_id) {

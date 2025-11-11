@@ -70,7 +70,7 @@ class Agendamento extends BaseModel {
 
   // Buscar agendamentos por agente
   async findByAgente(agenteId) {
-    return await this.db(this.tableName)
+    const agendamentos = await this.db(this.tableName)
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
       .where('agendamentos.agente_id', agenteId)
@@ -80,6 +80,21 @@ class Agendamento extends BaseModel {
         'clientes.telefone as cliente_telefone',
         'unidades.nome as unidade_nome'
       );
+
+    // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento (igual aos outros métodos)
+    for (const agendamento of agendamentos) {
+      const servicos = await this.db('agendamento_servicos')
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamento_servicos.agendamento_id', agendamento.id)
+        .select(
+          'servicos.id',
+          'servicos.nome',
+          'agendamento_servicos.preco_aplicado as preco'
+        );
+      agendamento.servicos = servicos;
+    }
+
+    return agendamentos;
   }
 
   // Buscar agendamentos por cliente
@@ -151,8 +166,6 @@ class Agendamento extends BaseModel {
     const servico_ids = servicos.map(s => s.id);
     const servico_extra_ids = extras.map(e => e.id);
 
-    console.log('🔍 [Agendamento.findWithServicos] agendamento.data_agendamento:', agendamento.data_agendamento);
-    console.log('🔍 [Agendamento.findWithServicos] typeof agendamento.data_agendamento:', typeof agendamento.data_agendamento);
 
     return {
       ...agendamento,
