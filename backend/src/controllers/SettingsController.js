@@ -64,12 +64,7 @@ class SettingsController {
     try {
       const { unidade_id } = req.user;
       
-      console.log(`[SettingsController] Buscando configurações para unidade ${unidade_id}`);
-      
       const configuracoes = await this.settingsService.getConfiguracoes(unidade_id);
-      
-      // Log de auditoria
-      console.log(`🔍 AUDIT: ${req.user.role} (ID: ${req.user.id}) realizou VISUALIZAR_CONFIGURACOES em GET /api/settings`);
       
       res.json({
         success: true,
@@ -95,20 +90,18 @@ class SettingsController {
       const { unidade_id, id: userId } = req.user;
       let dadosConfiguracao = { ...req.body };
 
-      console.log(`[SettingsController] Atualizando configurações para unidade ${unidade_id}`);
-      console.log(`[SettingsController] Dados recebidos:`, dadosConfiguracao);
-      console.log(`[SettingsController] Arquivo recebido:`, !!req.file);
+
 
       // 1. Processar upload de logo (se houver)
       if (req.file) {
         const logoUrl = `/uploads/logos/${req.file.filename}`;
         dadosConfiguracao.logo_url = logoUrl;
-        console.log(`[SettingsController] Logo processado: ${logoUrl}`);
+
       }
 
       // 2. Processar alteração de senha (se houver)
       if (dadosConfiguracao.senha_atual && dadosConfiguracao.nova_senha) {
-        console.log(`[SettingsController] Processando alteração de senha`);
+
         await this.settingsService.updateSenhaAdmin(
           userId,
           dadosConfiguracao.senha_atual,
@@ -128,8 +121,7 @@ class SettingsController {
         dadosConfiguracao
       );
 
-      // Log de auditoria
-      console.log(`🔍 AUDIT: ${req.user.role} (ID: ${req.user.id}) realizou ATUALIZAR_CONFIGURACOES em PUT /api/settings`);
+
 
       res.json({
         success: true,
@@ -143,7 +135,7 @@ class SettingsController {
       if (req.file) {
         try {
           await fs.unlink(req.file.path);
-          console.log(`[SettingsController] Arquivo removido após erro: ${req.file.path}`);
+
         } catch (unlinkError) {
           console.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
         }
@@ -179,10 +171,7 @@ class SettingsController {
       // Atualiza configuração com nova URL do logo (sem validação de outros campos)
       await this.settingsService.updateLogoOnly(unidade_id, logoUrl);
       
-      console.log(`[SettingsController] Logo atualizado para unidade ${unidade_id}: ${logoUrl}`);
-      
-      // Log de auditoria
-      console.log(`🔍 AUDIT: ${req.user.role} (ID: ${req.user.id}) realizou UPLOAD_LOGO em POST /api/settings/logo`);
+
       
       res.json({
         success: true,
