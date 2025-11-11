@@ -19,20 +19,16 @@ class SettingsService {
    */
   async getConfiguracoes(unidadeId) {
     try {
-      console.log(`[SettingsService] Buscando configurações para unidade ${unidadeId}`);
       let configuracao = await this.configuracaoModel.findByUnidade(unidadeId);
-      console.log(`[SettingsService] Configuração encontrada:`, configuracao);
 
       // Se não existe configuração, cria uma com valores padrão
       if (!configuracao) {
-        console.log(`[SettingsService] Criando configuração padrão para unidade ${unidadeId}`);
+
         configuracao = await this.configuracaoModel.createDefault(unidadeId);
       }
 
-      console.log(`[SettingsService] Formatando configuração para frontend`);
       // Converte dados para o formato do frontend (minutos → horas onde necessário)
       const resultado = this.formatarParaFrontend(configuracao);
-      console.log(`[SettingsService] Resultado formatado:`, resultado);
       return resultado;
     } catch (error) {
       console.error('[SettingsService] Erro ao buscar configurações:', error);
@@ -67,7 +63,7 @@ class SettingsService {
    */
   async updateLogoOnly(unidadeId, logoUrl) {
     try {
-      console.log(`[SettingsService] Atualizando apenas logo para unidade ${unidadeId}: ${logoUrl}`);
+
 
       // Atualiza no banco apenas o campo logo_url
       const configuracaoAtualizada = await this.configuracaoModel.upsert(unidadeId, {
@@ -128,7 +124,7 @@ class SettingsService {
           updated_at: new Date()
         });
 
-      console.log(`[SettingsService] Senha atualizada para usuário ${userId}`);
+
       return { success: true, message: 'Senha atualizada com sucesso' };
     } catch (error) {
       console.error('[SettingsService] Erro ao atualizar senha:', error);
