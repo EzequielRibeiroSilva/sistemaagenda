@@ -233,26 +233,9 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
       setLoading(true);
       setError(null);
 
-      console.log(`📤 [useUnitManagement] updateUnit - Enviando para backend:`, {
-        id,
-        hasNome: !!unitData.nome,
-        hasAgentes: unitData.agentes_ids !== undefined,
-        hasServicos: unitData.servicos_ids !== undefined,
-        hasHorarios: unitData.horarios_funcionamento !== undefined,
-        agentes_count: unitData.agentes_ids?.length,
-        servicos_count: unitData.servicos_ids?.length,
-        horarios_count: unitData.horarios_funcionamento?.length
-      });
-
       const response = await authenticatedFetch(`/unidades/${id}`, {
         method: 'PUT',
         body: JSON.stringify(unitData),
-      });
-
-      console.log(`✅ [useUnitManagement] Resposta do backend:`, {
-        success: response.success,
-        hasData: !!response.data,
-        message: response.message
       });
 
       // ✅ REMOVIDO fetchUnits() para evitar loops - a lista será atualizada quando necessário
@@ -262,12 +245,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar unidade';
       setError(errorMessage);
       console.error('❌ [useUnitManagement] Erro ao atualizar unidade:', err);
-      console.error('   Detalhes:', {
-        id,
-        errorMessage,
-        agentes_count: unitData.agentes_ids?.length,
-        servicos_count: unitData.servicos_ids?.length
-      });
       return false;
     } finally {
       setLoading(false);
