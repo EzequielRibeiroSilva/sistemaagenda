@@ -75,6 +75,16 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     const [password, setPassword] = useState(''); // ✅ CORREÇÃO: Estado para capturar nova senha
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
 
+    // Estados que são usados no useEffect devem ser declarados ANTES
+    const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
+    const [isCustomSchedule, setIsCustomSchedule] = useState(true);
+    const [scheduleData, setScheduleData] = useState<any[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string>('');
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
         let isMounted = true; // Flag para evitar updates em componente desmontado
 
@@ -135,15 +145,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             isMounted = false; // Cleanup para evitar memory leaks
         };
     }, [agentId]); // Removido fetchAgentById das dependências
-    
-    const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
-    const [isCustomSchedule, setIsCustomSchedule] = useState(true);
-    const [scheduleData, setScheduleData] = useState<any[]>([]);
-    const [isSaving, setIsSaving] = useState(false);
-    const [avatarFile, setAvatarFile] = useState<File | null>(null);
-    const [avatarPreview, setAvatarPreview] = useState<string>('');
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;

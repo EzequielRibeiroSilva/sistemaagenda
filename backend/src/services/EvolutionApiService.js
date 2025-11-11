@@ -173,8 +173,6 @@ class EvolutionApiService {
   // Teste de conectividade
   async testeConectividade() {
     try {
-      console.log('🧪 Executando teste de conectividade Evolution API...');
-      
       // Verificar status da instância
       const statusResult = await this.verificarStatus();
       
@@ -195,7 +193,7 @@ class EvolutionApiService {
       };
 
     } catch (error) {
-      console.error('❌ Erro no teste de conectividade:', error.message);
+      console.error('❌ [EvolutionApiService] Erro no teste de conectividade:', error.message);
       return {
         success: false,
         message: 'Erro no teste de conectividade',

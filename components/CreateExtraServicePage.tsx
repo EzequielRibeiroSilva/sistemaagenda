@@ -176,18 +176,15 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
                 servicos_conectados: servicosConectados
             };
 
-            console.log('🚀 Enviando dados do serviço extra:', extraServiceData);
-
             const result = await createExtraService(extraServiceData);
 
             if (result.success) {
-                console.log('✅ Serviço extra criado com sucesso!');
                 setActiveView('services-extra'); // Voltar para a lista
             } else {
                 setSubmitError(result.error || 'Erro ao criar serviço extra');
             }
         } catch (error) {
-            console.error('❌ Erro ao criar serviço extra:', error);
+            console.error('❌ [CreateExtraServicePage] Erro ao criar serviço extra:', error);
             setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
         } finally {
             setSubmitting(false);

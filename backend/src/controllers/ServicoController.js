@@ -20,10 +20,7 @@ class ServicoController extends BaseController {
         });
       }
 
-      console.log('🔍 [ServicoController.list] Iniciando busca de serviços');
-      console.log('   Role:', userRole);
-      console.log('   UsuarioId (req.user.id):', usuarioId);
-      console.log('   AgenteId (req.user.agente_id):', userAgenteId);
+
 
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar serviços da unidade onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
@@ -53,7 +50,6 @@ class ServicoController extends BaseController {
             });
           }
         } else {
-          console.log(`❌ [ServicoController.list] ERRO: Agente não encontrado ou sem unidade_id!`);
           return res.status(200).json({
             success: true,
             data: [],
@@ -73,15 +69,13 @@ class ServicoController extends BaseController {
         duracao_minutos: servico.duracao_minutos || 0
       }));
 
-      console.log(`✅ [ServicoController.list] ${servicosLeves.length} serviços encontrados para usuario_id ${usuarioId}`);
-
       return res.status(200).json({
         success: true,
         data: servicosLeves,
         message: 'Lista de serviços carregada com sucesso'
       });
     } catch (error) {
-      console.error('[ServicoController.list] Erro ao carregar lista de serviços:', error);
+      console.error('❌ [ServicoController.list] Erro ao carregar lista de serviços:', error);
 
       return res.status(500).json({
         success: false,
@@ -308,8 +302,6 @@ class ServicoController extends BaseController {
         created_at: new Date(),
         updated_at: new Date()
       };
-
-      console.log(`🔗 [ServicoController] Criando serviço com ${agentes_ids?.length || 0} agentes e ${extras_ids?.length || 0} extras`);
 
       const servicoId = await this.model.createWithTransaction(
         servicoData,
