@@ -123,7 +123,7 @@ class UnidadeService {
 
         // Associar agentes à unidade (se fornecidos)
         if (unidadeData.agentes_ids && Array.isArray(unidadeData.agentes_ids) && unidadeData.agentes_ids.length > 0) {
-          console.log(`🔗 Associando ${unidadeData.agentes_ids.length} agentes à unidade ${novaUnidade.id}`);
+
 
           // Verificar se os agentes pertencem ao usuário (diretamente OU através de unidades)
           const agentesValidos = await trx('agentes')
@@ -147,12 +147,12 @@ class UnidadeService {
           }));
 
           await trx('agente_unidades').insert(associacoesAgentes);
-          console.log(`✅ ${associacoesAgentes.length} agentes associados à unidade`);
+
         }
 
         // Associar serviços à unidade (se fornecidos)
         if (unidadeData.servicos_ids && Array.isArray(unidadeData.servicos_ids) && unidadeData.servicos_ids.length > 0) {
-          console.log(`🔗 Associando ${unidadeData.servicos_ids.length} serviços à unidade ${novaUnidade.id}`);
+
 
           // Verificar se os serviços pertencem ao usuário
           const servicosValidos = await trx('servicos')
@@ -172,7 +172,7 @@ class UnidadeService {
           }));
 
           await trx('unidade_servicos').insert(associacoesServicos);
-          console.log(`✅ ${servicosValidos.length} serviços associados à unidade`);
+
         }
 
         await trx.commit();
@@ -276,11 +276,11 @@ class UnidadeService {
    */
   async canAccessUnidade(userId, unidadeId, userRole) {
     try {
-      console.log(`🔍 [UnidadeService.canAccessUnidade] userId=${userId}, unidadeId=${unidadeId}, userRole=${userRole}`);
+
 
       // MASTER pode acessar qualquer unidade
       if (userRole === 'MASTER') {
-        console.log(`✅ [UnidadeService.canAccessUnidade] MASTER pode acessar qualquer unidade`);
+
         return true;
       }
 
@@ -288,19 +288,19 @@ class UnidadeService {
       const unidade = await this.unidadeModel.findById(unidadeId);
 
       if (!unidade) {
-        console.log(`❌ [UnidadeService.canAccessUnidade] Unidade ${unidadeId} não encontrada`);
+
         return false;
       }
 
       // AGENTE: Verificar se trabalha nesta unidade através da tabela agente_unidades
       if (userRole === 'AGENTE') {
-        console.log(`🔍 [UnidadeService.canAccessUnidade] AGENTE detectado. Verificando acesso...`);
+
 
         // Buscar o agente_id do usuário
         const agente = await db('agentes').where('usuario_id', userId).first();
 
         if (!agente) {
-          console.log(`❌ [UnidadeService.canAccessUnidade] Agente não encontrado para usuario_id=${userId}`);
+
           return false;
         }
 
@@ -311,13 +311,13 @@ class UnidadeService {
           .first();
 
         const canAccess = !!agenteUnidade;
-        console.log(`${canAccess ? '✅' : '❌'} [UnidadeService.canAccessUnidade] AGENTE ${agente.id} ${canAccess ? 'PODE' : 'NÃO PODE'} acessar unidade ${unidadeId}`);
+
         return canAccess;
       }
 
       // ADMIN só pode acessar suas próprias unidades
       const canAccess = unidade.usuario_id === userId;
-      console.log(`${canAccess ? '✅' : '❌'} [UnidadeService.canAccessUnidade] ADMIN ${canAccess ? 'PODE' : 'NÃO PODE'} acessar unidade ${unidadeId} (usuario_id=${unidade.usuario_id})`);
+
       return canAccess;
     } catch (error) {
       console.error('Erro ao verificar acesso à unidade:', error);
@@ -335,14 +335,7 @@ class UnidadeService {
    */
   async updateUnidade(userId, unidadeId, updateData, userRole) {
     try {
-      console.log(`🔍 [UnidadeService] updateUnidade - Início:`, {
-        userId,
-        unidadeId,
-        userRole,
-        hasAgentes: updateData.agentes_ids !== undefined,
-        hasServicos: updateData.servicos_ids !== undefined,
-        hasHorarios: updateData.horarios_funcionamento !== undefined
-      });
+
 
       // Verificar se pode acessar a unidade
       const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
@@ -393,7 +386,7 @@ class UnidadeService {
 
         // Atualizar associações de agentes (se fornecidos)
         if (updateData.agentes_ids !== undefined) {
-          console.log(`🔗 Atualizando associações de agentes para unidade ${unidadeId}`);
+
 
           // Remover associações existentes
           await trx('agente_unidades').where('unidade_id', unidadeId).del();
@@ -421,27 +414,19 @@ class UnidadeService {
             }));
 
             await trx('agente_unidades').insert(associacoesAgentes);
-            console.log(`✅ ${associacoesAgentes.length} agentes associados à unidade`);
-          } else {
-            console.log(`✅ Todas as associações de agentes removidas da unidade`);
           }
         }
 
         // Atualizar associações de serviços (se fornecidos)
         if (updateData.servicos_ids !== undefined) {
-          console.log(`🔗 [UnidadeService] Atualizando associações de serviços para unidade ${unidadeId}`);
-          console.log(`   servicos_ids recebidos:`, {
-            isArray: Array.isArray(updateData.servicos_ids),
-            length: updateData.servicos_ids?.length,
-            ids: updateData.servicos_ids
-          });
+
 
           // ✅ ARQUITETURA MANY-TO-MANY: Remover associações existentes da tabela unidade_servicos
           const removidos = await trx('unidade_servicos').where('unidade_id', unidadeId).del();
-          console.log(`   🗑️ ${removidos} associações removidas da unidade ${unidadeId}`);
+
 
           if (Array.isArray(updateData.servicos_ids) && updateData.servicos_ids.length > 0) {
-            console.log(`   🔍 Validando ${updateData.servicos_ids.length} serviços...`);
+
             
             // Verificar se os serviços pertencem ao usuário
             const servicosValidos = await trx('servicos')
@@ -449,13 +434,12 @@ class UnidadeService {
               .where('usuario_id', userId)
               .select('id');
 
-            console.log(`   🔍 Serviços válidos encontrados: ${servicosValidos.length}/${updateData.servicos_ids.length}`);
-            console.log(`   IDs válidos:`, servicosValidos.map(s => s.id));
+
 
             if (servicosValidos.length !== updateData.servicos_ids.length) {
               const idsValidos = servicosValidos.map(s => s.id);
               const idsInvalidos = updateData.servicos_ids.filter(id => !idsValidos.includes(id));
-              console.error(`   ❌ Serviços inválidos ou não pertencentes ao usuário:`, idsInvalidos);
+              console.error('❌ [UnidadeService] Serviços inválidos ou não pertencentes ao usuário:', idsInvalidos);
               throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
             }
 
@@ -467,31 +451,21 @@ class UnidadeService {
             }));
 
             await trx('unidade_servicos').insert(associacoesServicos);
-            console.log(`   ✅ ${servicosValidos.length} serviços associados à unidade`);
-          } else {
-            console.log(`   ✅ Todas as associações de serviços removidas da unidade`);
           }
         }
 
         await trx.commit();
-        console.log(`✅ [UnidadeService] Transação commitada com sucesso`);
 
         // Buscar unidade completa com horários
         const unidadeCompleta = await this.getUnidadeWithHorarios(unidadeId);
-        console.log(`📦 [UnidadeService] Unidade completa retornada:`, {
-          id: unidadeCompleta.id,
-          agentes_count: unidadeCompleta.agentes_ids?.length,
-          servicos_count: unidadeCompleta.servicos_ids?.length
-        });
         return unidadeCompleta;
       } catch (transactionError) {
         await trx.rollback();
-        console.error(`❌ [UnidadeService] Rollback executado. Erro:`, transactionError.message);
+        console.error('❌ [UnidadeService] Rollback executado. Erro:', transactionError.message);
         throw transactionError;
       }
     } catch (error) {
       console.error('❌ [UnidadeService] Erro ao atualizar unidade:', error.message);
-      console.error('   Stack:', error.stack);
       throw error;
     }
   }

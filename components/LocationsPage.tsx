@@ -148,7 +148,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
 
     if (!success) {
       // O erro já é tratado pelo hook
-      console.error('Erro ao alterar status da unidade');
+      console.error('❌ [LocationsPage] Erro ao alterar status da unidade');
     }
   };
 
@@ -162,7 +162,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
     setDeleteLoading(null);
 
     if (!success) {
-      console.error('Erro ao excluir unidade');
+      console.error('❌ [LocationsPage] Erro ao excluir unidade');
     }
   };
 

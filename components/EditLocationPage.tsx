@@ -60,7 +60,7 @@ const AgentSelectItem: React.FC<{
                     alt={name}
                     className="w-10 h-10 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ Erro ao carregar avatar do agente:', name, avatar);
+                        console.error('❌ [EditLocationPage] Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -164,21 +164,9 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         const loadUnit = async () => {
             if (locationId) {
                 setIsLoading(true);
-                console.log(`🔍 [EditLocationPage] Carregando unidade ${locationId}...`);
-                
                 const unit = await fetchUnitById(locationId);
-                
+
                 if (unit) {
-                    // 🔍 LOG DE DEBUG: Verificar dados recebidos do backend
-                    console.log('📥 [EditLocationPage] Dados da unidade carregados:', {
-                        id: unit.id,
-                        nome: unit.nome,
-                        agentes_ids: unit.agentes_ids,
-                        servicos_ids: unit.servicos_ids,
-                        agentes_count: unit.agentes_ids?.length || 0,
-                        servicos_count: unit.servicos_ids?.length || 0,
-                        horarios_count: unit.horarios_funcionamento?.length || 0
-                    });
 
                     // Preencher dados básicos
                     setFormData({
@@ -191,17 +179,11 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                     // Pré-selecionar agentes associados
                     if (unit.agentes_ids && Array.isArray(unit.agentes_ids)) {
                         setSelectedAgents(new Set(unit.agentes_ids));
-                        console.log(`✅ [EditLocationPage] ${unit.agentes_ids.length} agentes pré-selecionados:`, unit.agentes_ids);
-                    } else {
-                        console.log('⚠️ [EditLocationPage] Nenhum agente associado à unidade');
                     }
 
                     // Pré-selecionar serviços associados
                     if (unit.servicos_ids && Array.isArray(unit.servicos_ids)) {
                         setSelectedServices(new Set(unit.servicos_ids));
-                        console.log(`✅ [EditLocationPage] ${unit.servicos_ids.length} serviços pré-selecionados:`, unit.servicos_ids);
-                    } else {
-                        console.log('⚠️ [EditLocationPage] Nenhum serviço associado à unidade');
                     }
 
                     // Preencher horários de funcionamento
@@ -219,7 +201,6 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                         // Usar função utilitária para mesclar com 7 dias padrão
                         const horariosCompletos = mergeWithDefaultSchedule(horariosDoBackend);
                         setScheduleData(horariosCompletos); // Garante sempre 7 dias
-                        console.log(`✅ [EditLocationPage] Horários carregados (${horariosCompletos.length} dias)`);
                     }
                 } else {
                     console.error('❌ [EditLocationPage] Unidade não encontrada ou erro ao carregar');
@@ -333,24 +314,13 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
             horarios_funcionamento: scheduleData // ✅ CORREÇÃO: Nome padronizado (array com 7 dias garantido)
         };
 
-        // 🔍 LOG DE DEBUG: Verificar payload antes de enviar
-        console.log('📤 [EditLocationPage] Payload de atualização:', {
-            locationId,
-            nome: updateData.nome,
-            agentes_count: updateData.agentes_ids.length,
-            servicos_count: updateData.servicos_ids.length,
-            agentes_ids: updateData.agentes_ids,
-            servicos_ids: updateData.servicos_ids,
-            horarios_count: updateData.horarios_funcionamento.length,
-            horarios_sample: updateData.horarios_funcionamento.slice(0, 2)
-        });
+
 
         const success = await updateUnit(locationId, updateData);
 
         setIsSubmitting(false);
 
         if (success) {
-            console.log('✅ [EditLocationPage] Unidade atualizada com sucesso!');
             // Redirect back to locations list
             setActiveView('locations-list');
         } else {

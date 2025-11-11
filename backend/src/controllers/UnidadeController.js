@@ -22,14 +22,11 @@ class UnidadeController extends BaseController {
         });
       }
 
-      console.log(`🔍 [UnidadeController] index - INÍCIO`);
-      console.log(`   Role: ${userRole}`);
-      console.log(`   UsuarioId (req.user.id): ${usuarioId}`);
-      console.log(`   AgenteId (req.user.agente_id): ${userAgenteId}`);
+
 
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar TODAS as unidades onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
-        console.log(`🔍 [UnidadeController] Condição AGENTE detectada. Buscando agente_id=${userAgenteId}...`);
+
 
         // Buscar TODAS as unidades onde o agente trabalha através da tabela agente_unidades
         const unidadesDoAgente = await this.model.db('agente_unidades')
@@ -45,16 +42,12 @@ class UnidadeController extends BaseController {
           filteredUnidades = unidadesDoAgente.filter(u => u.status === status);
         }
 
-        console.log(`✅ [UnidadeController] Encontradas ${filteredUnidades.length} unidades para agente_id ${userAgenteId}`);
-        if (filteredUnidades.length > 0) {
-          console.log(`   Unidades IDs: ${filteredUnidades.map(u => u.id).join(', ')}`);
-          console.log(`   Unidades Nomes: ${filteredUnidades.map(u => u.nome).join(', ')}`);
-        }
+
 
         // Retornar no formato esperado pelo frontend (array direto)
         return res.json(filteredUnidades);
       } else {
-        console.log(`🔍 [UnidadeController] Não é AGENTE ou agente_id ausente. Usando usuario_id=${usuarioId} diretamente.`);
+
       }
 
       const { status } = req.query;
@@ -81,14 +74,11 @@ class UnidadeController extends BaseController {
       } else {
         // ✅ CORREÇÃO: ADMIN e AGENTE veem unidades da empresa (filtradas por usuario_id)
         // Para AGENTE, req.user.id é o ID do usuário ADMIN que criou o agente
-        console.log(`🔍 [UnidadeController] Chamando listUnidadesWithLimit(${usuarioId}, ${JSON.stringify(filters)})...`);
+
         result = await this.unidadeService.listUnidadesWithLimit(usuarioId, filters);
       }
 
-      console.log(`✅ [UnidadeController] Encontradas ${result.data?.length || 0} unidades para usuario_id ${usuarioId}`);
-      if (result.data && result.data.length > 0) {
-        console.log(`   Unidades IDs: ${result.data.map(u => u.id).join(', ')}`);
-      }
+
 
       return res.json(result);
     } catch (error) {
@@ -182,14 +172,7 @@ class UnidadeController extends BaseController {
         });
       }
 
-      // 🔍 LOG DE DEBUG: Verificar estrutura da resposta
-      console.log(`🔍 [UnidadeController] show - Unidade ${id}:`, {
-        id: unidadeCompleta.id,
-        nome: unidadeCompleta.nome,
-        hasHorarios: !!unidadeCompleta.horarios_funcionamento,
-        horariosLength: unidadeCompleta.horarios_funcionamento?.length,
-        horarios: unidadeCompleta.horarios_funcionamento
-      });
+
 
       return res.json({
         success: true, // ✅ CORREÇÃO: Adicionar flag success
@@ -217,15 +200,7 @@ class UnidadeController extends BaseController {
         });
       }
 
-      // 🔍 LOG DE DEBUG: Verificar payload recebido
-      console.log(`📥 [UnidadeController] update - Unidade ${id}:`, {
-        usuarioId,
-        userRole,
-        body_keys: Object.keys(req.body),
-        agentes_ids: req.body.agentes_ids,
-        servicos_ids: req.body.servicos_ids,
-        horarios_funcionamento: req.body.horarios_funcionamento ? 'presente' : 'ausente'
-      });
+
 
       // Validar dados se fornecidos
       const updateData = {};
@@ -282,15 +257,7 @@ class UnidadeController extends BaseController {
         });
       }
 
-      // 🔍 LOG DE DEBUG: Verificar updateData antes de enviar ao service
-      console.log(`📤 [UnidadeController] updateData preparado:`, {
-        hasNome: !!updateData.nome,
-        hasAgentes: updateData.agentes_ids !== undefined,
-        hasServicos: updateData.servicos_ids !== undefined,
-        hasHorarios: updateData.horarios_funcionamento !== undefined,
-        agentes_count: updateData.agentes_ids?.length,
-        servicos_count: updateData.servicos_ids?.length
-      });
+
 
       // Usar service para atualizar com verificação de permissões
       const unidadeAtualizada = await this.unidadeService.updateUnidade(
@@ -300,7 +267,7 @@ class UnidadeController extends BaseController {
         userRole
       );
 
-      console.log(`✅ [UnidadeController] Unidade ${id} atualizada com sucesso`);
+
 
       return res.json({
         success: true,
@@ -309,7 +276,6 @@ class UnidadeController extends BaseController {
       });
     } catch (error) {
       console.error('❌ [UnidadeController] Erro ao atualizar unidade:', error.message);
-      console.error('   Stack:', error.stack);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
