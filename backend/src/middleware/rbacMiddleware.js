@@ -186,7 +186,7 @@ class RBACMiddleware {
       
       res.send = function(data) {
         // Log da ação realizada
-        console.log(`🔍 AUDIT: ${req.user?.role || 'UNKNOWN'} (ID: ${req.user?.id || 'N/A'}) realizou ${action} em ${req.method} ${req.originalUrl}`);
+
         
         originalSend.call(this, data);
       };

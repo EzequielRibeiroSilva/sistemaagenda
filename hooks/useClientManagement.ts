@@ -216,7 +216,7 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente';
       setError(errorMessage);
-      console.error('Erro ao criar cliente:', err);
+      console.error('❌ [useClientManagement] Erro ao criar cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
@@ -246,7 +246,7 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar cliente';
       setError(errorMessage);
-      console.error('Erro ao atualizar cliente:', err);
+      console.error('❌ [useClientManagement] Erro ao atualizar cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
@@ -272,7 +272,7 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir cliente';
       setError(errorMessage);
-      console.error('Erro ao excluir cliente:', err);
+      console.error('❌ [useClientManagement] Erro ao excluir cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
