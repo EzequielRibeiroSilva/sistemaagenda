@@ -29,12 +29,7 @@ class ClienteController {
       const userAgenteId = req.user.agente_id;
       const { q } = req.query; // Query de busca
 
-      console.log('🔍 [ClienteController.search] Iniciando busca de clientes');
-      console.log('   Usuário ID:', usuarioId);
-      console.log('   User Role:', userRole);
-      console.log('   Agente ID:', userAgenteId);
-      console.log('   Unidade ID:', unidadeId);
-      console.log('   Query:', q);
+
 
       // Validar se usuário tem unidade_id (Multi-Tenant)
       if (!unidadeId) {
@@ -56,7 +51,7 @@ class ClienteController {
       // Buscar clientes por nome ou telefone
       const clientes = await this.clienteModel.searchByNameOrPhone(unidadeId, q.trim());
 
-      console.log(`✅ [ClienteController.search] ${clientes.length} clientes encontrados para unidade ${unidadeId}`);
+
 
       res.json({
         success: true,
@@ -65,7 +60,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro na busca de clientes:', error);
+      console.error('❌ [ClienteController.search] Erro na busca de clientes:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -140,7 +135,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao listar clientes:', error);
+      console.error('❌ [ClienteController.list] Erro ao listar clientes:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao listar clientes',
@@ -199,7 +194,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao criar cliente:', error);
+      console.error('❌ [ClienteController.create] Erro ao criar cliente:', error);
 
       // Tratar erros específicos
       if (error.message.includes('telefone nesta unidade')) {
@@ -267,7 +262,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao buscar cliente:', error);
+      console.error('❌ [ClienteController.show] Erro ao buscar cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao buscar cliente',
@@ -317,7 +312,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao atualizar cliente:', error);
+      console.error('❌ [ClienteController.update] Erro ao atualizar cliente:', error);
 
       // Tratar erros específicos
       if (error.message.includes('não encontrado') || error.message.includes('telefone nesta unidade')) {
@@ -372,7 +367,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao excluir cliente:', error);
+      console.error('❌ [ClienteController.delete] Erro ao excluir cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao excluir cliente',
@@ -417,7 +412,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('[ClienteController] Erro ao criar cliente para agendamento:', error);
+      console.error('❌ [ClienteController.createForAgendamento] Erro ao criar cliente para agendamento:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',

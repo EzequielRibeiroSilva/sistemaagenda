@@ -117,7 +117,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
       const deletedCount = await query.delete().where('unidade_id', unidadeId);
       return deletedCount;
     } catch (error) {
-      console.error('Erro ao deletar horários da unidade:', error);
+      console.error('❌ [HorarioFuncionamentoUnidade] Erro ao deletar horários da unidade:', error);
       throw error;
     }
   }
