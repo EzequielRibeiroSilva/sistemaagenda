@@ -272,10 +272,10 @@ export const useAppointmentManagement = () => {
       }
 
       const response: AppointmentResponse = await makeAuthenticatedRequest(url.toString());
-      
+
       // Transformar dados do backend para o formato do frontend
       const transformedAppointments = response.data.map(transformBackendToFrontend);
-      
+
       setAppointments(transformedAppointments);
       
       if (response.pagination) {
@@ -336,12 +336,14 @@ export const useAppointmentManagement = () => {
     }
   }, [makeAuthenticatedRequest]);
 
-  // Carregar agendamentos na inicialização
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchAppointments();
-    }
-  }, [isAuthenticated, fetchAppointments]);
+  // ✅ CORREÇÃO CRÍTICA: NÃO carregar agendamentos automaticamente na inicialização
+  // A página AppointmentsPage.tsx vai controlar quando fazer a primeira requisição
+  // após a auto-seleção de local
+  // useEffect(() => {
+  //   if (isAuthenticated) {
+  //     fetchAppointments();
+  //   }
+  // }, [isAuthenticated, fetchAppointments]);
 
   // Função para buscar lista de agentes
   const fetchAgents = useCallback(async () => {
