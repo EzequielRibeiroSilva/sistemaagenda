@@ -18,10 +18,7 @@ class EvolutionApiService {
     });
 
     // Log de configuração
-    console.log('🔧 Evolution API Service configurado:');
-    console.log(`   Base URL: ${this.baseURL}`);
-    console.log(`   Instance ID: ${this.instanceId}`);
-    console.log(`   API Key: ${this.apiKey ? '***' + this.apiKey.slice(-4) : 'NÃO CONFIGURADA'}`);
+
   }
 
   // Função base para enviar mensagem
@@ -42,14 +39,13 @@ class EvolutionApiService {
         ...options
       };
 
-      console.log(`📱 Enviando mensagem WhatsApp para ${numeroLimpo}:`);
-      console.log(`   Mensagem: ${mensagem.substring(0, 50)}${mensagem.length > 50 ? '...' : ''}`);
+
 
       // Fazer requisição para Evolution API
       const response = await this.client.post(`/message/sendText/${this.instanceId}`, payload);
 
       if (response.data && response.data.key) {
-        console.log(`✅ Mensagem enviada com sucesso! ID: ${response.data.key.id}`);
+  
         return {
           success: true,
           messageId: response.data.key.id,
@@ -61,12 +57,12 @@ class EvolutionApiService {
       }
 
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem WhatsApp:', error.message);
-      
+      console.error('❌ [EvolutionApiService] Erro ao enviar mensagem WhatsApp:', error.message);
+
       // Log detalhado do erro
       if (error.response) {
-        console.error('   Status:', error.response.status);
-        console.error('   Data:', error.response.data);
+        console.error('❌ [EvolutionApiService] Status:', error.response.status);
+        console.error('❌ [EvolutionApiService] Data:', error.response.data);
       }
 
       return {
@@ -90,12 +86,12 @@ class EvolutionApiService {
         mediatype: mediaType
       };
 
-      console.log(`📱 Enviando mensagem com mídia para ${numeroLimpo}`);
+
 
       const response = await this.client.post(`/message/sendMedia/${this.instanceId}`, payload);
 
       if (response.data && response.data.key) {
-        console.log(`✅ Mensagem com mídia enviada! ID: ${response.data.key.id}`);
+  
         return {
           success: true,
           messageId: response.data.key.id,
@@ -107,7 +103,7 @@ class EvolutionApiService {
       }
 
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem com mídia:', error.message);
+      console.error('❌ [EvolutionApiService] Erro ao enviar mensagem com mídia:', error.message);
       return {
         success: false,
         error: error.message,
@@ -120,12 +116,12 @@ class EvolutionApiService {
   // Verificar status da instância
   async verificarStatus() {
     try {
-      console.log('🔍 Verificando status da Evolution API...');
+
       
       const response = await this.client.get(`/instance/connectionState/${this.instanceId}`);
       
       const status = response.data?.instance?.state || 'unknown';
-      console.log(`📊 Status da instância: ${status}`);
+
       
       return {
         success: true,
@@ -135,7 +131,7 @@ class EvolutionApiService {
       };
 
     } catch (error) {
-      console.error('❌ Erro ao verificar status:', error.message);
+      console.error('❌ [EvolutionApiService] Erro ao verificar status:', error.message);
       return {
         success: false,
         error: error.message,

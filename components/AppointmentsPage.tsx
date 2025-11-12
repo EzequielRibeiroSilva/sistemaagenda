@@ -233,7 +233,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         // ✅ NOVO: Adicionar filtro temporal para o backend
         if (filters.timeRemainingStatus !== 'all') {
             apiFilters.time_filter = filters.timeRemainingStatus;
-            console.log('⏰ [AppointmentsPage] Filtro temporal aplicado:', filters.timeRemainingStatus);
         }
 
         // Se o usuário logado for um agente, filtrar apenas seus agendamentos
@@ -246,7 +245,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             apiFilters.unidade_id = parseInt(selectedLocationFilter);
         }
 
-        console.log('🔧 [AppointmentsPage] Filtros enviados para API:', apiFilters);
+
         fetchAppointments(apiFilters);
     }, [currentPage, itemsPerPage, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
     

@@ -96,13 +96,7 @@ export const useInternalBooking = () => {
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('authToken');
 
-    console.log('🔍 [makeAuthenticatedRequest] Iniciando requisição:', {
-      url,
-      method: options.method || 'GET',
-      hasToken: !!token,
-      tokenLength: token ? token.length : 0,
-      headers: options.headers
-    });
+
 
     if (!token) {
       console.error('❌ [makeAuthenticatedRequest] Token não encontrado');
@@ -118,26 +112,13 @@ export const useInternalBooking = () => {
       },
     };
 
-    console.log('🔍 [makeAuthenticatedRequest] Opções da requisição:', {
-      method: requestOptions.method,
-      headers: requestOptions.headers,
-      bodyLength: requestOptions.body ? requestOptions.body.toString().length : 0
-    });
+
 
     try {
-      console.log('🚀 [makeAuthenticatedRequest] Enviando fetch...');
       const response = await fetch(url, requestOptions);
-
-      console.log('📥 [makeAuthenticatedRequest] Resposta recebida:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries())
-      });
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.warn('⚠️ [makeAuthenticatedRequest] Token inválido, removendo do localStorage');
           localStorage.removeItem('authToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('userEmail');
@@ -158,9 +139,7 @@ export const useInternalBooking = () => {
         throw new Error(errorMessage);
       }
 
-      console.log('✅ [makeAuthenticatedRequest] Parseando JSON...');
       const jsonData = await response.json();
-      console.log('✅ [makeAuthenticatedRequest] JSON parseado com sucesso:', jsonData);
 
       return jsonData;
     } catch (fetchError) {
@@ -180,7 +159,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar serviços';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao buscar serviços:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar serviços:', errorMessage);
       return [];
     } finally {
       setIsLoading(false);
@@ -198,7 +177,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar serviços extras';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao buscar serviços extras:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar serviços extras:', errorMessage);
       return [];
     } finally {
       setIsLoading(false);
@@ -216,7 +195,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar agentes';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao buscar agentes:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar agentes:', errorMessage);
       return [];
     } finally {
       setIsLoading(false);
@@ -237,7 +216,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar clientes';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao buscar clientes:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar clientes:', errorMessage);
       return [];
     }
   }, [makeAuthenticatedRequest]);
@@ -273,7 +252,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao criar cliente:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao criar cliente:', errorMessage);
       return null;
     } finally {
       setIsLoading(false);
@@ -296,7 +275,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar detalhes do agendamento';
       setError(errorMessage);
-      console.error('Erro ao buscar detalhes do agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao buscar detalhes do agendamento:', errorMessage);
       return null;
     } finally {
       setIsLoading(false);
@@ -318,7 +297,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar agendamento';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao criar agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao criar agendamento:', errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
@@ -332,25 +311,13 @@ export const useInternalBooking = () => {
       setError(null);
 
       const url = `${API_BASE_URL}/agendamentos/${id}`;
-      console.log('🔍 [useInternalBooking.updateAgendamento] Iniciando atualização:', {
-        url,
-        method: 'PUT',
-        id,
-        idType: typeof id,
-        API_BASE_URL,
-        data,
-        dataKeys: Object.keys(data),
-        timestamp: new Date().toISOString()
-      });
-
-      console.log('🔍 [useInternalBooking.updateAgendamento] Dados detalhados:', JSON.stringify(data, null, 2));
 
       const response = await makeAuthenticatedRequest(url, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
 
-      console.log('✅ [useInternalBooking.updateAgendamento] Resposta recebida:', response);
+
       return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar agendamento';
@@ -383,7 +350,7 @@ export const useInternalBooking = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao finalizar agendamento';
       setError(errorMessage);
-      console.error('[useInternalBooking] Erro ao finalizar agendamento:', errorMessage);
+      console.error('❌ [useInternalBooking] Erro ao finalizar agendamento:', errorMessage);
       throw err;
     } finally {
       setIsLoading(false);

@@ -70,15 +70,7 @@ const ServiceMultiSelectDropdown: React.FC<{
     onChange: (selected: number[]) => void;
     placeholder: string;
 }> = ({ label, options, selectedOptions, onChange, placeholder }) => {
-    // ✅ LOG PARA DEBUG: Verificar prop selectedOptions
-    console.log('🔍 [ServiceMultiSelectDropdown] Props recebidas:', {
-        label,
-        selectedOptions,
-        optionsCount: options.length,
-        placeholder,
-        hasOptions: options.length > 0,
-        firstOptionSample: options.length > 0 ? { id: options[0].id, nome: options[0].nome, type: typeof options[0].id } : null
-    });
+
 
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -106,30 +98,12 @@ const ServiceMultiSelectDropdown: React.FC<{
         ? selectedOptions.map(id => {
             // ✅ CORREÇÃO CRÍTICA: Comparação robusta de IDs (string vs number)
             const foundService = options.find(opt => String(opt.id) === String(id));
-            console.log('🔍 [ServiceMultiSelectDropdown] Busca de serviço:', {
-                searchingId: id,
-                searchingIdType: typeof id,
-                searchingIdAsString: String(id),
-                foundService: foundService ? { id: foundService.id, nome: foundService.nome } : null,
-                allOptionsIds: options.map(opt => ({ id: opt.id, idAsString: String(opt.id), type: typeof opt.id, nome: opt.nome })),
-                comparisonResults: options.map(opt => ({
-                    optId: opt.id,
-                    searchId: id,
-                    stringMatch: String(opt.id) === String(id),
-                    directMatch: opt.id === id
-                }))
-            });
+
             return foundService?.nome;
         }).filter(Boolean).join(', ')
         : placeholder;
 
-    console.log('🔍 [ServiceMultiSelectDropdown] Display value calculado:', {
-        selectedOptionsLength: selectedOptions.length,
-        displayValue,
-        selectedOptions,
-        matchedServices: selectedOptions.map(id => options.find(opt => opt.id === id)),
-        allOptionsIds: options.map(opt => ({ id: opt.id, nome: opt.nome }))
-    });
+
 
     return (
         <FormField label={label}>
@@ -285,10 +259,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [selectedServices, setSelectedServices] = useState<number[]>([]);
     const [selectedExtras, setSelectedExtras] = useState<number[]>([]);
 
-    // ✅ LOG PARA DEBUG: Monitorar mudanças no selectedServices
-    useEffect(() => {
-        console.log('🔍 [NewAppointmentModal] selectedServices atualizado:', selectedServices);
-    }, [selectedServices]);
+
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
     const [date, setDate] = useState('');
     const [startTime, setStartTime] = useState('');
@@ -317,7 +288,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     fetchAgentes()
                 ]);
 
-                console.log('🔍 [NewAppointmentModal] Serviços carregados:', servicos.map(s => ({ id: s.id, nome: s.nome, type: typeof s.id })));
+
                 setAllServices(servicos);
                 setAllExtras(extras);
                 setAllAgents(agentes);
@@ -357,7 +328,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         // ✅ CORREÇÃO CRÍTICA: NÃO sobrescrever agente se estamos em modo de edição
         // O agente já foi definido pelo useEffect de carregamento de dados
         if (isEditing && selectedAgentId) {
-            console.log('⚠️ [NewAppointmentModal] Modo edição: mantendo agente selecionado:', selectedAgentId);
             return;
         }
 
@@ -397,7 +367,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 });
 
                 if (!response.ok) {
-                    console.error('[NewAppointmentModal] Erro ao buscar horários da unidade:', response.status);
+                    console.error('❌ [NewAppointmentModal] Erro ao buscar horários da unidade:', response.status);
                     return;
                 }
 
@@ -414,7 +384,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setUnitSchedule(todosHorarios);
                 }
             } catch (error) {
-                console.error('[NewAppointmentModal] Erro ao buscar horários da unidade:', error);
+                console.error('❌ [NewAppointmentModal] Erro ao buscar horários da unidade:', error);
             }
         };
 
@@ -473,7 +443,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
         // ✅ CORREÇÃO CRÍTICA: Usar horários reais da unidade ao invés de hardcoded
         if (unitSchedule.length === 0) {
-            console.warn('[NewAppointmentModal] Horários da unidade não carregados');
             return [];
         }
 
@@ -500,12 +469,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             }
         }
 
-        console.log('🕒 [NewAppointmentModal] Slots gerados para a data:', {
-            date: selectedDate,
-            agentId,
-            totalSlots: timeSlots.length,
-            slots: timeSlots
-        });
+
 
         // TODO: Filtrar horários já ocupados consultando agendamentos existentes
         return timeSlots.sort();
@@ -541,11 +505,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
         // ⚠️ IMPORTANTE: Só resetar se NÃO for edição
         if (isEditing) {
-            console.log('ℹ️ [NewAppointmentModal] Modo edição: pulando reset do formulário');
             return;
         }
-
-        console.log('🔄 [NewAppointmentModal] Resetando formulário para novo agendamento');
         setIsSearchingClient(false);
         setClientSearchQuery('');
         setTotalPrice(0);
@@ -566,16 +527,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
             // ✅ NOVA CORREÇÃO: Pré-selecionar o agente baseado no slot clicado
             if (newSlotData.agent && newSlotData.agent.id) {
-                console.log('🎯 [NewAppointmentModal] Pré-selecionando agente do slot:', {
-                    agent: newSlotData.agent,
-                    agentId: newSlotData.agent.id,
-                    agentIdType: typeof newSlotData.agent.id
-                });
                 // Converter string para number se necessário
                 const agentId = typeof newSlotData.agent.id === 'string'
                     ? parseInt(newSlotData.agent.id)
                     : newSlotData.agent.id;
-                console.log('🎯 [NewAppointmentModal] Agente ID convertido:', agentId);
                 setSelectedAgentId(agentId);
             }
 
@@ -612,32 +567,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
             // ✅ AGUARDAR SERVIÇOS SEREM CARREGADOS ANTES DE DEFINIR selectedServices
             if (allServices.length === 0) {
-                console.log('⏳ [NewAppointmentModal] Aguardando serviços serem carregados...');
                 return;
             }
 
-            console.log('🔍 [NewAppointmentModal] Detalhes dos serviços carregados:', allServices.map(s => ({
-                id: s.id,
-                nome: s.nome,
-                type: typeof s.id
-            })));
-            console.log('🔍 [NewAppointmentModal] ServiceId do agendamento:', {
-                serviceId: appointmentData.serviceId,
-                type: typeof appointmentData.serviceId
-            });
-            
-            console.log('📋 [NewAppointmentModal] Preenchendo formulário com dados recebidos:', appointmentData);
-            console.log('🔍 [NewAppointmentModal] VERIFICAÇÃO CRÍTICA - Campos obrigatórios:', {
-                hasId: !!appointmentData.id,
-                hasServiceId: !!appointmentData.serviceId,
-                hasAgentId: !!appointmentData.agentId,
-                hasStartTime: !!appointmentData.startTime,
-                hasEndTime: !!appointmentData.endTime,
-                hasDate: !!appointmentData.dateISO,
-                hasStatus: !!appointmentData.status,
-                startTimeValue: appointmentData.startTime,
-                endTimeValue: appointmentData.endTime
-            });
+
             
             setIsLoadingAppointment(true);
             try {
@@ -645,13 +578,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 // Isso evita erro 403 quando AGENTE tenta editar agendamento
                 
                 const parsedId = parseInt(appointmentData.id);
-                console.log('🔍 [NewAppointmentModal] Definindo appointmentId:', {
-                    originalId: appointmentData.id,
-                    originalIdType: typeof appointmentData.id,
-                    parsedId,
-                    parsedIdType: typeof parsedId,
-                    isNaN: isNaN(parsedId)
-                });
                 setAppointmentId(parsedId);
                 
                 // ✅ Preencher agente
@@ -660,25 +586,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         ? parseInt(appointmentData.agentId) 
                         : appointmentData.agentId;
                     setSelectedAgentId(agentIdNumber);
-                    console.log('🔧 [NewAppointmentModal] Agente ID definido:', agentIdNumber);
                 }
                 
                 // ✅ Preencher status
                 if (appointmentData.status) {
                     setStatus(appointmentData.status as AppointmentStatus);
-                    console.log('📊 [NewAppointmentModal] Status definido:', appointmentData.status);
                 }
                 
                 // ✅ Preencher horários
                 if (appointmentData.startTime) {
                     setStartTime(appointmentData.startTime);
-                    console.log('🕐 [NewAppointmentModal] StartTime definido:', appointmentData.startTime);
                 }
                 if (appointmentData.endTime) {
                     setEndTime(appointmentData.endTime);
-                    console.log('🕐 [NewAppointmentModal] EndTime definido:', appointmentData.endTime);
-                } else {
-                    console.warn('⚠️ [NewAppointmentModal] EndTime NÃO ENCONTRADO em appointmentData:', appointmentData);
                 }
                 
                 // ✅ Preencher data (converter de ISO para DD/MM/YYYY)
@@ -686,7 +606,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     const [ano, mes, dia] = appointmentData.dateISO.split('-');
                     const formattedDate = `${dia}/${mes}/${ano}`;
                     setDate(formattedDate);
-                    console.log('📅 [NewAppointmentModal] Data formatada:', formattedDate);
                 }
                 
                 // ✅ Preencher cliente
@@ -698,8 +617,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setClientFirstName(firstName);
                     setClientLastName(lastName);
                     setClientPhone((appointmentData.clientPhone || '').replace('+55', '').trim());
-                    
-                    console.log('👤 [NewAppointmentModal] Cliente preenchido:', { firstName, lastName, phone: appointmentData.clientPhone });
                 }
                 
                 // ⚠️ TEMPORÁRIO: NÃO usar serviceId passado se não existir nos serviços disponíveis
@@ -713,9 +630,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     const serviceExists = allServices.some(s => s.id === serviceIdNumber);
                     if (serviceExists) {
                         setSelectedServices([serviceIdNumber]);
-                        console.log('✅ [NewAppointmentModal] Serviço ID definido (existe):', serviceIdNumber);
                     } else {
-                        console.warn('⚠️ [NewAppointmentModal] Serviço ID não existe, aguardando busca do backend:', serviceIdNumber);
                         setSelectedServices([]); // Deixar vazio para ser preenchido pelo backend
                     }
                 }
@@ -724,24 +639,16 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 // O backend já valida que AGENTE só pode acessar seus próprios agendamentos
                 if (appointmentData.id) {
                     try {
-                        console.log('🔍 [NewAppointmentModal] Buscando detalhes do backend para usuário:', user?.role);
                         const details = await fetchAgendamentoDetalhes(parseInt(appointmentData.id));
-
-                        console.log('🔍 [NewAppointmentModal] Detalhes recebidos do backend:', details);
 
                         if (details) {
                             // Extrair IDs dos serviços e extras
                             const servicoIds = details.servicos?.map(s => s.id) || [];
                             const extraIds = details.extras?.map(e => e.id) || [];
 
-                            console.log('🔍 [NewAppointmentModal] IDs extraídos:', { servicoIds, extraIds });
-
                             // ✅ Atualizar serviços apenas se a busca retornou dados
                             if (servicoIds.length > 0) {
                                 setSelectedServices(servicoIds);
-                                console.log('🔧 [NewAppointmentModal] Serviços atualizados do backend:', servicoIds);
-                            } else {
-                                console.warn('⚠️ [NewAppointmentModal] Nenhum serviço retornado do backend!');
                             }
                             setSelectedExtras(extraIds);
 
@@ -763,16 +670,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             }
 
                             setTotalPrice(calculatedTotal);
-                            console.log('💰 [NewAppointmentModal] Preço total calculado:', calculatedTotal);
                         }
                     } catch (error) {
-                        console.warn('⚠️ [NewAppointmentModal] Erro ao buscar serviços/extras (não crítico):', error);
                         // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
                         // Os serviços já foram preenchidos com serviceId passado
                     }
                 }
-                
-                console.log('✅ [NewAppointmentModal] Formulário preenchido com sucesso');
             } catch (error) {
                 console.error('❌ [NewAppointmentModal] Erro ao preencher formulário:', error);
             } finally {
@@ -944,13 +847,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         }
                     )
                 };
-                
-                console.log('🔍 [NewAppointmentModal] Dados para atualização:', {
-                    appointmentId,
-                    appointmentIdType: typeof appointmentId,
-                    updateData,
-                    userRole: user?.role
-                });
+
                 
                 try {
                     const resultado = await updateAgendamento(appointmentId, updateData);
@@ -976,7 +873,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 }
             }
         } catch (error) {
-            console.error('[NewAppointmentModal] Erro ao salvar agendamento:', error);
+            console.error('❌ [NewAppointmentModal] Erro ao salvar agendamento:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             alert(`Erro ao salvar agendamento: ${errorMessage}`);
         }
