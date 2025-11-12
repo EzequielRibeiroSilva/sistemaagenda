@@ -87,7 +87,12 @@ class AgendamentoController extends BaseController {
         let baseQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades para garantir que agente trabalha na unidade
+          .join('agente_unidades', function() {
+            this.on('agentes.id', '=', 'agente_unidades.agente_id')
+                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
+          });
 
         // RBAC: Aplicar filtros baseados no role do usuário
         if (req.user?.role === 'AGENTE') {
@@ -180,6 +185,8 @@ class AgendamentoController extends BaseController {
           */
         });
 
+
+
         data = await baseQuery
           .select(
             'agendamentos.*',
@@ -197,6 +204,7 @@ class AgendamentoController extends BaseController {
           .orderBy(this.model.db.raw("ABS(agendamentos.data_agendamento - CURRENT_DATE)"), 'asc')
           .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
+
 
 
         // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
@@ -220,7 +228,13 @@ class AgendamentoController extends BaseController {
 
         // Aplicar os mesmos filtros RBAC na contagem total
         let totalQuery = this.model.db(this.model.tableName)
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id');
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades na contagem também
+          .join('agente_unidades', function() {
+            this.on('agentes.id', '=', 'agente_unidades.agente_id')
+                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
+          });
 
         // RBAC: Aplicar filtros baseados no role do usuário
         if (req.user?.role === 'AGENTE') {
@@ -328,7 +342,12 @@ class AgendamentoController extends BaseController {
         let baseQuery = this.model.db('agendamentos')
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades na query sem paginação também
+          .join('agente_unidades', function() {
+            this.on('agentes.id', '=', 'agente_unidades.agente_id')
+                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
+          });
 
         // Aplicar RBAC
         if (userRole === 'AGENTE') {

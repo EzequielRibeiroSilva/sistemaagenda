@@ -190,7 +190,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     // ✅ NOVO: Auto-seleção de local baseada no PLANO (mesma lógica do CalendarPage.tsx)
     useEffect(() => {
-        if (locations.length === 0 || selectedLocationFilter !== 'all') return;
+        // 🔧 CORREÇÃO: Permitir auto-seleção quando selectedLocationFilter === 'all'
+        if (locations.length === 0) return;
+
+        // Se já tem um local específico selecionado, não alterar
+        if (selectedLocationFilter !== 'all') return;
 
         // Caso 1: Plano Single (sempre seleciona o primeiro)
         if (isSinglePlan) {
@@ -216,8 +220,9 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     // ✅ MODIFICADO: Buscar agendamentos quando filtros, página ou LOCAL mudarem
     useEffect(() => {
-        // 🛡️ REGRA DE NEGÓCIO: Não buscar dados se Multi-Plan e nenhum local estiver selecionado
-        if (isMultiPlan && (!selectedLocationFilter || selectedLocationFilter === 'all')) {
+        // 🔧 CORREÇÃO FINAL: Não buscar se selectedLocationFilter === 'all' (aguardando auto-seleção)
+        // Isso evita a requisição inicial que mostra todos os agendamentos
+        if (selectedLocationFilter === 'all') {
             return;
         }
 
@@ -240,12 +245,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             apiFilters.agente_id = parseInt(user.agentId);
         }
 
-        // ✅ NOVO: Adicionar filtro de unidade_id quando local estiver selecionado
+        // ✅ CORREÇÃO: Sempre aplicar filtro de unidade_id quando local específico estiver selecionado
         if (selectedLocationFilter !== 'all') {
             apiFilters.unidade_id = parseInt(selectedLocationFilter);
         }
-
-
         fetchAppointments(apiFilters);
     }, [currentPage, itemsPerPage, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
     
