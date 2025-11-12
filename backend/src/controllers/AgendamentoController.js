@@ -408,7 +408,7 @@ class AgendamentoController extends BaseController {
 
       return res.json({ data });
     } catch (error) {
-      console.error('Erro ao buscar agendamentos:', error);
+      console.error('❌ [AgendamentoController.index] Erro ao buscar agendamentos:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -491,7 +491,7 @@ class AgendamentoController extends BaseController {
         data: data
       });
     } catch (error) {
-      console.error('Erro no show:', error);
+      console.error('❌ [AgendamentoController.show] Erro no show:', error);
       return res.status(500).json({
         error: 'Interno do servidor',
         message: error.message
@@ -728,7 +728,7 @@ class AgendamentoController extends BaseController {
         message: 'Agendamento criado com sucesso'
       });
     } catch (error) {
-      console.error('Erro ao criar agendamento:', error);
+      console.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -938,7 +938,7 @@ class AgendamentoController extends BaseController {
       };
 
     } catch (error) {
-      console.error('Erro ao buscar dados completos:', error);
+      console.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
     }
   }
@@ -1019,7 +1019,7 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
-      console.error('Erro ao finalizar agendamento:', error);
+      console.error('❌ [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

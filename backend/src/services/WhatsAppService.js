@@ -49,7 +49,6 @@ class WhatsAppService {
    */
   async sendMessage(phoneNumber, message) {
     if (!this.isEnabled()) {
-      console.log('[WhatsApp] Serviço desabilitado, mensagem não enviada');
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
@@ -74,8 +73,6 @@ class WhatsAppService {
     try {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
 
-      console.log(`[WhatsApp] Enviando mensagem para ${formattedPhone}`);
-
       // Usar instanceName se disponível, senão usar instanceId
       const instanceIdentifier = this.instanceName || this.instanceId;
 
@@ -84,10 +81,6 @@ class WhatsAppService {
         text: message,
         delay: 1000
       };
-
-      console.log(`[WhatsApp] Payload:`, JSON.stringify(payload, null, 2));
-      console.log(`[WhatsApp] URL: ${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`);
-      console.log(`[WhatsApp] API Key: ${this.evolutionApiKey ? '***' + this.evolutionApiKey.slice(-4) : 'MISSING'}`);
 
       const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
         method: 'POST',
@@ -101,17 +94,15 @@ class WhatsAppService {
 
       const data = await response.json();
 
-      console.log(`[WhatsApp] Response Status: ${response.status}`);
-      console.log(`[WhatsApp] Response Headers:`, Object.fromEntries(response.headers.entries()));
+
 
       if (response.ok) {
-        console.log('[WhatsApp] Mensagem enviada com sucesso');
-        console.log('[WhatsApp] Response Data:', JSON.stringify(data, null, 2));
+
         return { success: true, data };
       } else {
-        console.error('[WhatsApp] Erro ao enviar mensagem:');
-        console.error(`  Status: ${response.status}`);
-        console.error(`  Data:`, JSON.stringify(data, null, 2));
+        console.error('❌ [WhatsApp] Erro ao enviar mensagem:');
+        console.error('❌ [WhatsApp] Status:', response.status);
+        console.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
         return {
           success: false,
           error: {
@@ -123,7 +114,7 @@ class WhatsAppService {
       }
 
     } catch (error) {
-      console.error('[WhatsApp] Erro na requisição:', error);
+      console.error('❌ [WhatsApp] Erro na requisição:', error);
       return { success: false, error: error.message };
     }
   }
@@ -182,21 +173,19 @@ _Esta é uma mensagem automática do sistema de agendamentos._`;
   async sendAppointmentConfirmation(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log(`[WhatsApp] Serviço desabilitado - Confirmação NÃO enviada para ${agendamentoData.cliente.nome}`);
+
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
       const message = this.generateAppointmentMessage(agendamentoData);
       const result = await this.sendMessage(agendamentoData.cliente.telefone, message);
 
-      if (result.success) {
-        console.log(`✅ [WhatsApp] Confirmação enviada para ${agendamentoData.cliente.nome} (${agendamentoData.cliente.telefone})`);
-      } else {
+      if (!result.success) {
         console.error(`❌ [WhatsApp] Falha ao enviar confirmação para ${agendamentoData.cliente.nome}:`, result.error);
 
         // Log mais detalhado para debug
         if (result.error && result.error.response && result.error.response.message) {
-          console.error(`[WhatsApp] Detalhes do erro:`, result.error.response.message);
+          console.error(`❌ [WhatsApp] Detalhes do erro:`, result.error.response.message);
         }
       }
 
@@ -247,14 +236,14 @@ _Esta é uma mensagem automática do sistema de agendamentos._`;
       const result = await this.sendMessage(agendamentoData.cliente.telefone, message);
       
       if (result.success) {
-        console.log(`[WhatsApp] Lembrete enviado para ${agendamentoData.cliente.nome}`);
+
       } else {
-        console.error(`[WhatsApp] Falha ao enviar lembrete para ${agendamentoData.cliente.nome}:`, result.error);
+        console.error(`❌ [WhatsApp] Falha ao enviar lembrete para ${agendamentoData.cliente.nome}:`, result.error);
       }
       
       return result;
     } catch (error) {
-      console.error('[WhatsApp] Erro ao enviar lembrete:', error);
+      console.error('❌ [WhatsApp] Erro ao enviar lembrete:', error);
       return { success: false, error: error.message };
     }
   }

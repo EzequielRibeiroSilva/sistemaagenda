@@ -38,7 +38,7 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
     try {
       const token = localStorage.getItem('authToken');
       if (!token) {
-        console.error('[AvailabilityModal] Token não encontrado');
+        console.error('❌ [AvailabilityModal] Token não encontrado');
         return [];
       }
 
@@ -55,7 +55,7 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
       });
 
       if (!response.ok) {
-        console.error(`[AvailabilityModal] Erro ao buscar disponibilidade: ${response.status}`);
+        console.error(`❌ [AvailabilityModal] Erro ao buscar disponibilidade: ${response.status}`);
         return [];
       }
 
@@ -66,7 +66,7 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({ isOpen, onClose, 
 
       return [];
     } catch (error) {
-      console.error('[AvailabilityModal] Erro ao buscar disponibilidade:', error);
+      console.error('❌ [AvailabilityModal] Erro ao buscar disponibilidade:', error);
       return [];
     }
   };
