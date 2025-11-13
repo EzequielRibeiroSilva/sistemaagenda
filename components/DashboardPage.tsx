@@ -27,6 +27,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         isLoading,
         error,
         fetchAgendamentos,
+        fetchAgendamentosRaw, // ✅ NOVO: Função que retorna dados sem sobrescrever estado
         calculateMetrics
     } = useDashboardData();
 
@@ -232,15 +233,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             diffDays
         });
         
-        // Buscar agendamentos do período anterior
-        fetchAgendamentos(prevFilters).then(() => {
-            // Armazenar os agendamentos do período anterior
-            setPreviousPeriodAgendamentos(agendamentos);
+        // ✅ CORREÇÃO CRÍTICA: Usar fetchAgendamentosRaw para não sobrescrever agendamentos do período atual
+        fetchAgendamentosRaw(prevFilters).then((prevData) => {
+            console.log('✅ [DashboardPage] Período anterior carregado:', prevData.length, 'agendamentos');
+            setPreviousPeriodAgendamentos(prevData);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao buscar período anterior:', err);
             setPreviousPeriodAgendamentos([]);
         });
-    }, [selectedLocation, selectedAgent, selectedService, dateRange, isMultiPlan, fetchAgendamentos]);
+    }, [selectedLocation, selectedAgent, selectedService, dateRange, isMultiPlan, fetchAgendamentos, fetchAgendamentosRaw]);
 
     const handleAppointmentClick = (details: ScheduleSlot['details']) => {
         setModalData({ appointment: details });
