@@ -376,15 +376,17 @@ export const useDashboardData = () => {
       totalNovosClientes
     });
 
-    // 7. RECEITA DO LOCAL (substituindo Média Diária)
-    // Receita do Local = Receita Líquida (o que fica para o proprietário após pagar comissões)
-    const receitaDoLocal = receitaLiquida;
+    // 7. RECEITA DO PROPRIETÁRIO (substituindo Média Diária)
+    // Receita do Proprietário = Receita Bruta - Comissões dos Agentes
+    const receitaDoProprietario = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal)
+      ? receitaBruta - comissoesTotal
+      : 0;
 
-    console.log('🏢 [CARD: Receita do Local] Calculando receita do proprietário:', {
+    console.log('🏢 [CARD: Receita do Proprietário] Calculando receita do proprietário:', {
       receitaBruta: receitaBruta.toFixed(2),
       comissoesTotal: comissoesTotal.toFixed(2),
-      receitaDoLocal: receitaDoLocal.toFixed(2),
-      percentualLocal: receitaBruta > 0 ? `${((receitaDoLocal / receitaBruta) * 100).toFixed(1)}%` : '0%'
+      receitaDoProprietario: receitaDoProprietario.toFixed(2),
+      percentualProprietario: receitaBruta > 0 ? `${((receitaDoProprietario / receitaBruta) * 100).toFixed(1)}%` : '0%'
     });
 
     // 8. TAXA DE CANCELAMENTO
@@ -399,7 +401,7 @@ export const useDashboardData = () => {
     let variacaoTicket = '+0%';
     let variacaoConclusao = '+0%';
     let variacaoNovosClientes = '+0%';
-    let variacaoReceitaLocal = '+0%';
+    let variacaoReceitaProprietario = '+0%';
 
     if (previousPeriodAgendamentos && previousPeriodAgendamentos.length > 0) {
       const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'Cancelado');
@@ -414,7 +416,7 @@ export const useDashboardData = () => {
       const prevClientesUnicos = new Set(prevValid.map(a => a.cliente_id));
       const prevNovosClientes = prevClientesUnicos.size;
 
-      // ✅ RECEITA DO LOCAL do período anterior
+      // ✅ RECEITA DO PROPRIETÁRIO do período anterior
       // Calcular comissões do período anterior (assumindo mesma lógica atual)
       let prevComissoesTotal = 0;
       // Para simplificar, usar a mesma proporção atual: comissões/receita
@@ -422,7 +424,7 @@ export const useDashboardData = () => {
         const proporcaoComissao = comissoesTotal / receitaBruta;
         prevComissoesTotal = prevReceitaBruta * proporcaoComissao;
       }
-      const prevReceitaDoLocal = prevReceitaBruta - prevComissoesTotal;
+      const prevReceitaDoProprietario = prevReceitaBruta - prevComissoesTotal;
       
       if (prevReservas > 0) {
         const diff = ((totalReservas - prevReservas) / prevReservas) * 100;
@@ -450,18 +452,18 @@ export const useDashboardData = () => {
         variacaoNovosClientes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
-      // ✅ RECEITA DO LOCAL: Calcular variação
-      if (prevReceitaDoLocal > 0) {
-        const diff = ((receitaDoLocal - prevReceitaDoLocal) / prevReceitaDoLocal) * 100;
-        variacaoReceitaLocal = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      // ✅ RECEITA DO PROPRIETÁRIO: Calcular variação
+      if (prevReceitaDoProprietario > 0) {
+        const diff = ((receitaDoProprietario - prevReceitaDoProprietario) / prevReceitaDoProprietario) * 100;
+        variacaoReceitaProprietario = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
     }
 
     console.log('📊 [useDashboardData] Métricas calculadas:', {
       totalReservas,
-      receitaLiquida: receitaLiquida.toFixed(2),
+      receitaBruta: receitaBruta.toFixed(2),
       comissoesTotal: comissoesTotal.toFixed(2),
-      receitaDoLocal: receitaDoLocal.toFixed(2),
+      receitaDoProprietario: receitaDoProprietario.toFixed(2),
       taxaOcupacao: taxaOcupacao.toFixed(1),
       ticketMedio: ticketMedio.toFixed(2),
       taxaConclusao: taxaConclusao.toFixed(1),
@@ -477,18 +479,18 @@ export const useDashboardData = () => {
         subtitle: breakdown
       },
       {
-        title: 'Receita Líquida',
-        value: `R$${(Number.isFinite(receitaLiquida) ? receitaLiquida : 0).toFixed(2)}`,
-        isPositive: receitaLiquida >= 0,
+        title: 'Receita Bruta',
+        value: `R$${(Number.isFinite(receitaBruta) ? receitaBruta : 0).toFixed(2)}`,
+        isPositive: receitaBruta >= 0,
         change: variacaoReceita,
-        subtitle: `Receita Bruta: R$${(Number.isFinite(receitaBruta) ? receitaBruta : 0).toFixed(2)}`
+        subtitle: `Total faturado (serviços concluídos)`
       },
       {
-        title: 'Receita do Local',
-        value: `R$${(Number.isFinite(receitaDoLocal) ? receitaDoLocal : 0).toFixed(2)}`,
+        title: 'Receita do Proprietário',
+        value: `R$${(Number.isFinite(receitaDoProprietario) ? receitaDoProprietario : 0).toFixed(2)}`,
         isPositive: true,
-        change: variacaoReceitaLocal,
-        subtitle: `Faturamento do proprietário`
+        change: variacaoReceitaProprietario,
+        subtitle: `Após pagar comissões dos agentes`
       },
       {
         title: 'Comissões de Agentes',
