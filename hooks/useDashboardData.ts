@@ -179,8 +179,8 @@ export const useDashboardData = () => {
     }
   }, [makeAuthenticatedRequest]);
 
-  // Buscar agendamentos com filtros
-  const fetchAgendamentos = useCallback(async (filters: DashboardFilters) => {
+  // Buscar agendamentos com filtros (RETORNA os dados ao invés de salvar no estado)
+  const fetchAgendamentosRaw = useCallback(async (filters: DashboardFilters): Promise<BackendAgendamento[]> => {
     try {
       console.log('📅 [useDashboardData] Buscando agendamentos com filtros:', filters);
       
@@ -216,26 +216,36 @@ export const useDashboardData = () => {
       // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
         // Formato 1: { success: true, data: [...] }
-        setAgendamentos(response.data);
         console.log('✅ [useDashboardData] Agendamentos carregados (formato success/data):', response.data.length);
+        return response.data;
       } else if (response.data && Array.isArray(response.data)) {
         // Formato 2: { data: [...], limitInfo: {...} } ← FORMATO REAL DO BACKEND!
-        setAgendamentos(response.data);
         console.log('✅ [useDashboardData] Agendamentos carregados (formato data/limitInfo):', response.data.length);
+        return response.data;
       } else if (Array.isArray(response)) {
         // Formato 3: [...] (array direto)
-        setAgendamentos(response);
         console.log('✅ [useDashboardData] Agendamentos carregados (array direto):', response.length);
+        return response;
       } else {
         console.warn('⚠️ [useDashboardData] Resposta sem dados válidos:', response);
-        setAgendamentos([]);
+        return [];
       }
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar agendamentos:', err);
-      setAgendamentos([]);
       throw err;
     }
   }, [makeAuthenticatedRequest]);
+  
+  // Buscar agendamentos e salvar no estado (wrapper para compatibilidade)
+  const fetchAgendamentos = useCallback(async (filters: DashboardFilters) => {
+    try {
+      const data = await fetchAgendamentosRaw(filters);
+      setAgendamentos(data);
+    } catch (err) {
+      setAgendamentos([]);
+      throw err;
+    }
+  }, [fetchAgendamentosRaw]);
 
   // Calcular métricas de desempenho
   const calculateMetrics = useCallback((
@@ -611,6 +621,7 @@ export const useDashboardData = () => {
     
     // Funções
     fetchAgendamentos,
+    fetchAgendamentosRaw, // ✅ NOVO: Função que retorna dados sem salvar no estado
     calculateMetrics,
     loadInitialData
   };
