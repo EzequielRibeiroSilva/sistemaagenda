@@ -231,20 +231,31 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     const metrics = useMemo(() => {
         if (agendamentos.length === 0) {
             // Retornar métricas zeradas se não houver agendamentos
-            return [
+            const emptyMetrics = [
                 { title: 'Reservas Totais', value: '0', isPositive: true, change: '+0%', subtitle: 'Nenhum agendamento no período' },
-                { title: 'Receita Líquida', value: 'R$0.00', isPositive: true, change: '+0%', subtitle: 'Receita Bruta: R$0.00' },
-                { title: 'Comissões de Agentes', value: 'R$0.00', isPositive: false, change: '+0%', subtitle: '0 agendamentos concluídos' },
+                { title: 'Receita Bruta', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Total faturado (serviços concluídos)' },
+                { title: 'Receita do Proprietário', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Após pagar comissões dos agentes', adminOnly: true },
+                { title: 'Comissões de Agentes', value: 'R$ 0,00', isPositive: false, change: '+0%', subtitle: '0 agendamentos concluídos' },
                 { title: 'Taxa de Ocupação', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 slots' },
-                { title: 'Ticket Médio', value: 'R$0.00', isPositive: true, change: '+0%', subtitle: 'Por agendamento concluído' },
+                { title: 'Ticket Médio', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Por agendamento concluído' },
                 { title: 'Taxa de Conclusão', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 concluídos' },
-                { title: 'Agendamentos Pendentes', value: '0', isPositive: false, change: '+0%', subtitle: 'Aguardando confirmação' },
+                { title: 'Novos Clientes', value: '0', isPositive: true, change: '+0%', subtitle: 'Clientes únicos no período' },
                 { title: 'Média Diária', value: '0.0', isPositive: true, change: '+0%', subtitle: 'Em 0 dias' }
             ];
+            
+            // ✅ Filtrar cards baseado no role do usuário
+            return userRole === 'AGENTE' 
+                ? emptyMetrics.filter(metric => !metric.adminOnly)
+                : emptyMetrics;
         }
 
-        return calculateMetrics(agendamentos);
-    }, [agendamentos, calculateMetrics]);
+        const allMetrics = calculateMetrics(agendamentos);
+        
+        // ✅ Filtrar cards baseado no role do usuário
+        return userRole === 'AGENTE' 
+            ? allMetrics.filter(metric => !metric.adminOnly)
+            : allMetrics;
+    }, [agendamentos, calculateMetrics, userRole]);
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {

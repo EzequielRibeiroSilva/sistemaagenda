@@ -59,6 +59,14 @@ interface DashboardFilters {
   data_fim: string;
 }
 
+// Função utilitária para formatar valores monetários no padrão brasileiro
+const formatCurrency = (value: number): string => {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
+
 export const useDashboardData = () => {
   // ✅ CORREÇÃO CRÍTICA: Pegar token do contexto de autenticação (igual useCalendarData)
   const { token, isAuthenticated, user } = useAuth();
@@ -480,21 +488,22 @@ export const useDashboardData = () => {
       },
       {
         title: 'Receita Bruta',
-        value: `R$${(Number.isFinite(receitaBruta) ? receitaBruta : 0).toFixed(2)}`,
+        value: `R$ ${formatCurrency(Number.isFinite(receitaBruta) ? receitaBruta : 0)}`,
         isPositive: receitaBruta >= 0,
         change: variacaoReceita,
         subtitle: `Total faturado (serviços concluídos)`
       },
       {
         title: 'Receita do Proprietário',
-        value: `R$${(Number.isFinite(receitaDoProprietario) ? receitaDoProprietario : 0).toFixed(2)}`,
+        value: `R$ ${formatCurrency(Number.isFinite(receitaDoProprietario) ? receitaDoProprietario : 0)}`,
         isPositive: true,
         change: variacaoReceitaProprietario,
-        subtitle: `Após pagar comissões dos agentes`
+        subtitle: `Após pagar comissões dos agentes`,
+        adminOnly: true // ✅ Flag para indicar que apenas ADMIN pode ver
       },
       {
         title: 'Comissões de Agentes',
-        value: `R$${(Number.isFinite(comissoesTotal) ? comissoesTotal : 0).toFixed(2)}`,
+        value: `R$ ${formatCurrency(Number.isFinite(comissoesTotal) ? comissoesTotal : 0)}`,
         isPositive: false,
         change: variacaoComissoes,
         subtitle: `${completedAppointments.length} agendamentos concluídos`
@@ -508,7 +517,7 @@ export const useDashboardData = () => {
       },
       {
         title: 'Ticket Médio',
-        value: `R$${ticketMedio.toFixed(2)}`,
+        value: `R$ ${formatCurrency(ticketMedio)}`,
         isPositive: true,
         change: variacaoTicket,
         subtitle: `Por agendamento concluído`
