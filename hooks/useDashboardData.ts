@@ -400,16 +400,30 @@ export const useDashboardData = () => {
     // 8. TAXA DE CANCELAMENTO
     const totalGeral = agendamentos.length;
     const taxaCancelamento = totalGeral > 0 ? (canceledAppointments.length / totalGeral) * 100 : 0;
+    
+    console.log('❌ [CARD: Taxa de Cancelamento] Calculando taxa de cancelamento:', {
+      totalGeral,
+      cancelados: canceledAppointments.length,
+      taxaCancelamento: taxaCancelamento.toFixed(1) + '%'
+    });
+    
+    // 9. AGENDAMENTOS PENDENTES
+    const totalPendentes = pendingAppointments.length;
+    
+    console.log('⏳ [CARD: Agendamentos Pendentes] Total de pendentes:', {
+      totalPendentes,
+      statusPendente: 'Pendente'
+    });
 
     // Calcular variações
     let variacaoReservas = '+0%';
     let variacaoReceita = '+0%';
     let variacaoComissoes = '+0%';
-    let variacaoOcupacao = '+0%';
     let variacaoTicket = '+0%';
-    let variacaoConclusao = '+0%';
     let variacaoNovosClientes = '+0%';
     let variacaoReceitaProprietario = '+0%';
+    let variacaoCancelamento = '+0%';
+    let variacaoPendentes = '+0%';
 
     if (previousPeriodAgendamentos && previousPeriodAgendamentos.length > 0) {
       const prevValid = previousPeriodAgendamentos.filter(a => a.status !== 'Cancelado');
@@ -449,11 +463,6 @@ export const useDashboardData = () => {
         variacaoTicket = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
-      if (prevConclusao > 0) {
-        const diff = ((taxaConclusao - prevConclusao) / prevConclusao) * 100;
-        variacaoConclusao = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
-      }
-
       // ✅ NOVOS CLIENTES: Calcular variação
       if (prevNovosClientes > 0) {
         const diff = ((totalNovosClientes - prevNovosClientes) / prevNovosClientes) * 100;
@@ -465,6 +474,25 @@ export const useDashboardData = () => {
         const diff = ((receitaDoProprietario - prevReceitaDoProprietario) / prevReceitaDoProprietario) * 100;
         variacaoReceitaProprietario = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
+      
+      // ✅ TAXA DE CANCELAMENTO: Calcular variação
+      const prevCanceled = previousPeriodAgendamentos.filter(a => a.status === 'Cancelado');
+      const prevTotalGeral = previousPeriodAgendamentos.length;
+      const prevTaxaCancelamento = prevTotalGeral > 0 ? (prevCanceled.length / prevTotalGeral) * 100 : 0;
+      
+      if (prevTaxaCancelamento > 0) {
+        const diff = ((taxaCancelamento - prevTaxaCancelamento) / prevTaxaCancelamento) * 100;
+        variacaoCancelamento = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+      
+      // ✅ AGENDAMENTOS PENDENTES: Calcular variação
+      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'Pendente');
+      const prevTotalPendentes = prevPending.length;
+      
+      if (prevTotalPendentes > 0) {
+        const diff = ((totalPendentes - prevTotalPendentes) / prevTotalPendentes) * 100;
+        variacaoPendentes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
     }
 
     console.log('📊 [useDashboardData] Métricas calculadas:', {
@@ -472,10 +500,10 @@ export const useDashboardData = () => {
       receitaBruta: receitaBruta.toFixed(2),
       comissoesTotal: comissoesTotal.toFixed(2),
       receitaDoProprietario: receitaDoProprietario.toFixed(2),
-      taxaOcupacao: taxaOcupacao.toFixed(1),
       ticketMedio: ticketMedio.toFixed(2),
-      taxaConclusao: taxaConclusao.toFixed(1),
-      totalNovosClientes
+      totalNovosClientes,
+      taxaCancelamento: taxaCancelamento.toFixed(1),
+      totalPendentes
     });
 
     return [
@@ -509,25 +537,11 @@ export const useDashboardData = () => {
         subtitle: `${completedAppointments.length} agendamentos concluídos`
       },
       {
-        title: 'Taxa de Ocupação',
-        value: `${taxaOcupacao.toFixed(0)}%`,
-        isPositive: true,
-        change: variacaoOcupacao,
-        subtitle: `${slotsOcupados} de ${slotsDisponiveis} slots`
-      },
-      {
         title: 'Ticket Médio',
         value: `R$ ${formatCurrency(ticketMedio)}`,
         isPositive: true,
         change: variacaoTicket,
         subtitle: `Por agendamento concluído`
-      },
-      {
-        title: 'Taxa de Conclusão',
-        value: `${taxaConclusao.toFixed(0)}%`,
-        isPositive: true,
-        change: variacaoConclusao,
-        subtitle: `${completedAppointments.length} de ${validAppointments.length} concluídos`
       },
       {
         title: 'Novos Clientes',
@@ -537,11 +551,18 @@ export const useDashboardData = () => {
         subtitle: `Clientes únicos no período`
       },
       {
-        title: 'Média Diária',
-        value: diasUnicos > 0 ? (validAppointments.length / diasUnicos).toFixed(1) : '0.0',
-        isPositive: true,
-        change: '+0%',
-        subtitle: `Em ${diasUnicos} dias`
+        title: 'Taxa de Cancelamento',
+        value: `${taxaCancelamento.toFixed(1)}%`,
+        isPositive: taxaCancelamento < 10, // Verde se < 10%, vermelho se >= 10%
+        change: variacaoCancelamento,
+        subtitle: `${canceledAppointments.length} de ${totalGeral} cancelados`
+      },
+      {
+        title: 'Agendamentos Pendentes',
+        value: totalPendentes.toString(),
+        isPositive: totalPendentes < 5, // Verde se < 5, amarelo/vermelho se >= 5
+        change: variacaoPendentes,
+        subtitle: 'Aguardando confirmação'
       }
     ];
   }, []);

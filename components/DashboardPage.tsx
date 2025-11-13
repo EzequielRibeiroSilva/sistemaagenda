@@ -39,6 +39,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         endDate: null 
     });
     
+    // ✅ NOVO: Estado para agendamentos do período anterior (para cálculo de variações)
+    const [previousPeriodAgendamentos, setPreviousPeriodAgendamentos] = useState<any[]>([]);
+    
     // Estados de filtro das outras seções (PreviewSection)
     const [selectedPreviewService, setSelectedPreviewService] = useState('all');
     
@@ -209,6 +212,34 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         console.log('📊 [DashboardPage] Buscando agendamentos com filtros:', filters);
         fetchAgendamentos(filters);
+        
+        // ✅ NOVO: Buscar agendamentos do período anterior para cálculo de variações
+        const diffDays = Math.ceil((dateRange.endDate.getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24));
+        const prevEndDate = new Date(dateRange.startDate);
+        prevEndDate.setDate(prevEndDate.getDate() - 1); // Dia anterior ao início
+        const prevStartDate = new Date(prevEndDate);
+        prevStartDate.setDate(prevStartDate.getDate() - diffDays + 1);
+        
+        const prevFilters = {
+            ...filters,
+            data_inicio: prevStartDate.toISOString().split('T')[0],
+            data_fim: prevEndDate.toISOString().split('T')[0]
+        };
+        
+        console.log('📅 [DashboardPage] Buscando período anterior para variações:', {
+            periodoAtual: `${dataInicio} a ${dataFim}`,
+            periodoAnterior: `${prevFilters.data_inicio} a ${prevFilters.data_fim}`,
+            diffDays
+        });
+        
+        // Buscar agendamentos do período anterior
+        fetchAgendamentos(prevFilters).then(() => {
+            // Armazenar os agendamentos do período anterior
+            setPreviousPeriodAgendamentos(agendamentos);
+        }).catch(err => {
+            console.error('❌ [DashboardPage] Erro ao buscar período anterior:', err);
+            setPreviousPeriodAgendamentos([]);
+        });
     }, [selectedLocation, selectedAgent, selectedService, dateRange, isMultiPlan, fetchAgendamentos]);
 
     const handleAppointmentClick = (details: ScheduleSlot['details']) => {
@@ -236,11 +267,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 { title: 'Receita Bruta', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Total faturado (serviços concluídos)' },
                 { title: 'Receita do Proprietário', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Após pagar comissões dos agentes', adminOnly: true },
                 { title: 'Comissões de Agentes', value: 'R$ 0,00', isPositive: false, change: '+0%', subtitle: '0 agendamentos concluídos' },
-                { title: 'Taxa de Ocupação', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 slots' },
                 { title: 'Ticket Médio', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Por agendamento concluído' },
-                { title: 'Taxa de Conclusão', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 concluídos' },
                 { title: 'Novos Clientes', value: '0', isPositive: true, change: '+0%', subtitle: 'Clientes únicos no período' },
-                { title: 'Média Diária', value: '0.0', isPositive: true, change: '+0%', subtitle: 'Em 0 dias' }
+                { title: 'Taxa de Cancelamento', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 cancelados' },
+                { title: 'Agendamentos Pendentes', value: '0', isPositive: true, change: '+0%', subtitle: 'Aguardando confirmação' }
             ];
             
             // ✅ Filtrar cards baseado no role do usuário
@@ -249,13 +279,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 : emptyMetrics;
         }
 
-        const allMetrics = calculateMetrics(agendamentos);
+        // ✅ CORREÇÃO CRÍTICA: Passar período anterior para calculateMetrics
+        const allMetrics = calculateMetrics(agendamentos, previousPeriodAgendamentos);
         
         // ✅ Filtrar cards baseado no role do usuário
         return userRole === 'AGENTE' 
             ? allMetrics.filter(metric => !metric.adminOnly)
             : allMetrics;
-    }, [agendamentos, calculateMetrics, userRole]);
+    }, [agendamentos, previousPeriodAgendamentos, calculateMetrics, userRole]);
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {
