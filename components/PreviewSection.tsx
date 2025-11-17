@@ -314,11 +314,21 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         serviceName = service?.name || 'Serviço';
       }
 
-      // Buscar dados do agente
+      // ✅ CORREÇÃO CRÍTICA: Buscar dados do agente com fallback robusto
       const backendAgent = backendAgentes.find(a => a.id === apt.agente_id);
-      const agentName = backendAgent ? `${backendAgent.nome} ${backendAgent.sobrenome || ''}`.trim() : 'Agente';
-      const agentEmail = backendAgent?.email || '';
-      const agentAvatar = backendAgent?.avatar;
+      const agentName = backendAgent 
+        ? `${backendAgent.nome || ''} ${backendAgent.sobrenome || ''}`.trim() || 'Agente'
+        : 'Agente';
+      const agentEmail = backendAgent?.email || 'agente@email.com';
+      const agentAvatar = backendAgent?.avatar_url || backendAgent?.avatar;
+      
+      console.log('👤 [PreviewSection] Dados do agente:', {
+        agente_id: apt.agente_id,
+        backendAgent: backendAgent ? { id: backendAgent.id, nome: backendAgent.nome, sobrenome: backendAgent.sobrenome, avatar_url: backendAgent.avatar_url } : null,
+        agentName,
+        agentEmail,
+        agentAvatar
+      });
 
       cardsByAgent[agentId].push({
         id: apt.id,
@@ -473,18 +483,20 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return hoursArray;
   }, [startHour, endHour]);
 
-  // ✅ NOVO: Converter horário (HH:MM) em porcentagem da timeline
+  // ✅ CORRIGIDO: Converter horário (HH:MM) em porcentagem da timeline
   const timeToPercentage = (time: string) => {
     const [h, m] = time.split(':').map(Number);
     // Calcular minutos totais desde startHour
     const totalMinutes = (h - startHour) * 60 + m;
-    // Total de minutos no range
-    const totalDurationMinutes = ((endHour + 1) - startHour) * 60;
+    // ✅ CORREÇÃO CRÍTICA: Total de minutos no range (sem +1)
+    // Se startHour=9 e endHour=17, temos 8 horas = 480 minutos
+    const totalDurationMinutes = (endHour - startHour) * 60;
     return (totalMinutes / totalDurationMinutes) * 100;
   };
 
-  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de posição (para slots antigos)
+  // ✅ CORRIGIDO: Usar horários dinâmicos no cálculo de posição (para slots antigos)
   const getSlotStyle = (start: number, end: number) => {
+    // ✅ CORREÇÃO: Garantir que os slots ocupem o espaço correto
     const totalHours = endHour - startHour;
     const left = ((start - startHour) / totalHours) * 100;
     const width = ((end - start) / totalHours) * 100;
@@ -680,9 +692,10 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
             <div key={agent.id} className={`flex items-center gap-4 h-12 ${agentIndex > 0 ? 'hidden lg:flex' : 'flex'}`}>
               <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full object-cover"/>
               <div className="flex-1 bg-gray-100 h-full rounded relative overflow-hidden">
-                <div className="absolute inset-0 flex justify-around">
-                   {hours.slice(0, -1).map(h => (
-                     <div key={`line-${h}`} className="w-px h-full border-r border-dashed border-gray-300"></div>
+                {/* ✅ CORRIGIDO: Grid com divisões corretas usando CSS Grid */}
+                <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${hours.length - 1}, 1fr)` }}>
+                   {hours.slice(0, -1).map((h, idx) => (
+                     <div key={`line-${h}`} className="border-r border-dashed border-gray-300"></div>
                    ))}
                 </div>
                 
