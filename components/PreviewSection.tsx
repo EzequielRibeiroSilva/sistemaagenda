@@ -145,10 +145,10 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       agentsData: agents.map(a => ({ id: a.id, name: a.name, unidades: a.unidades }))
     });
 
-    // Se 'all' ou não há agentes, retornar todos
-    if (selectedLocation === 'all' || agents.length === 0) {
-      console.log('✅ [PreviewSection] Mostrando todos os agentes');
-      return agents;
+    // ✅ CORREÇÃO: Não permitir 'all' - sempre filtrar por local específico
+    if (!selectedLocation || selectedLocation === 'all' || agents.length === 0) {
+      console.log('⚠️ [PreviewSection] Nenhum local selecionado ou sem agentes');
+      return [];
     }
 
     // Filtrar agentes que trabalham no local selecionado
@@ -178,8 +178,10 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   }, [agents, selectedLocation]);
 
   const filteredSchedules = useMemo(() => {
-    if (selectedLocation === 'all' && selectedService === 'all') {
-        return schedules;
+    // ✅ CORREÇÃO: Não permitir 'all' para location - sempre exigir local específico
+    if (!selectedLocation || selectedLocation === 'all') {
+      console.log('⚠️ [PreviewSection] Nenhum local selecionado, retornando schedules vazios');
+      return [];
     }
     
     return schedules.map(schedule => ({
@@ -188,7 +190,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
             if (appointment.type !== 'booked' || !appointment.details) {
                 return true; 
             }
-            const locationMatch = selectedLocation === 'all' || appointment.details.locationId === selectedLocation;
+            // ✅ CRÍTICO: Sempre filtrar por locationId (não mais permitir 'all')
+            const locationMatch = appointment.details.locationId === selectedLocation;
             const serviceMatch = selectedService === 'all' || appointment.details.serviceId === selectedService;
             return locationMatch && serviceMatch;
         })
@@ -316,10 +319,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     });
   }, [filteredSchedules, startHour, endHour]);
 
-  const locationOptions = [
-      { value: 'all', label: 'Todos Os Locais' },
-      ...locations.map(loc => ({ value: loc.id, label: loc.name }))
-  ];
+  // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
+  // Sempre deve haver um local específico selecionado
+  const locationOptions = locations.map(loc => ({ 
+      value: loc.id, 
+      label: loc.name 
+  }));
 
   const serviceOptions = [
       { value: 'all', label: 'Todos Os Serviços' },
@@ -337,8 +342,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 selectedDate={selectedDate} 
                 onDateChange={(date) => setSelectedDate(date as Date)} 
             />
+            {/* ✅ CORREÇÃO: Dropdown de Local sem opção "Todos os Locais" */}
             <FilterDropdown 
-                label="Locais" 
+                label="" 
                 options={locationOptions} 
                 selectedValue={selectedLocation} 
                 onSelect={setSelectedLocation} 
