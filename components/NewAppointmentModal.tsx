@@ -220,11 +220,12 @@ interface NewAppointmentModalProps {
   appointmentData?: ScheduleSlot['details'];
   newSlotData?: { agent: Agent, start: number, date: Date };
   selectedLocationId?: string; // ✅ CRÍTICO: ID do local selecionado no CalendarPage
+  onSuccess?: () => void; // ✅ NOVO: Callback para atualizar dados após sucesso
 }
 
 // Dados mock removidos - agora usando dados reais do useInternalBooking
 
-const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, appointmentData, newSlotData, selectedLocationId }) => {
+const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, appointmentData, newSlotData, selectedLocationId, onSuccess }) => {
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     // Hook para dados reais
@@ -851,10 +852,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 
                 try {
                     const resultado = await updateAgendamento(appointmentId, updateData);
-                    
+
                     if (resultado) {
                         alert('Agendamento atualizado com sucesso!');
                         onClose();
+                        // ✅ NOVO: Chamar callback de sucesso para atualizar dados
+                        if (onSuccess) {
+                            onSuccess();
+                        }
                     } else {
                         throw new Error('Resposta vazia do servidor');
                     }
@@ -864,10 +869,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 }
             } else {
                 const resultado = await createAgendamento(agendamentoData);
-                
+
                 if (resultado && resultado.success) {
                     alert('Agendamento criado com sucesso!');
                     onClose();
+                    // ✅ NOVO: Chamar callback de sucesso para atualizar dados
+                    if (onSuccess) {
+                        onSuccess();
+                    }
                 } else {
                     throw new Error(resultado?.message || 'Erro ao criar agendamento');
                 }
