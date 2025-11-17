@@ -90,6 +90,16 @@ const ToggleButton: React.FC<{ children: React.ReactNode; active?: boolean, onCl
 );
 
 
+// ✅ NOVO: Interface para horários de funcionamento da unidade
+interface UnitSchedule {
+  dia_semana: number;
+  is_aberto: boolean;
+  horarios_json: Array<{
+    inicio: string;
+    fim: string;
+  }>;
+}
+
 interface PreviewSectionProps {
   schedules: AgentSchedule[];
   locations: Location[];
@@ -102,6 +112,7 @@ interface PreviewSectionProps {
   setViewMode: (mode: 'compromissos' | 'disponibilidade') => void;
   onAppointmentClick: (details: ScheduleSlot['details']) => void;
   onSlotClick: (slotInfo: { agent: Agent, start: number, date: Date }) => void;
+  unitSchedules?: Record<string, UnitSchedule[]>; // ✅ NOVO: Horários de funcionamento por unidade
 }
 
 const PreviewSection: React.FC<PreviewSectionProps> = ({ 
@@ -115,7 +126,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     viewMode,
     setViewMode,
     onAppointmentClick,
-    onSlotClick
+    onSlotClick,
+    unitSchedules = {} // ✅ NOVO: Horários de funcionamento (default vazio)
 }) => {
   const [selectedDate, setSelectedDate] = useState(new Date(2025, 8, 30));
   const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
@@ -141,11 +153,62 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }));
   }, [schedules, selectedLocation, selectedService]);
 
-  const hours = Array.from({ length: 13 }, (_, i) => i + 9); // 9 AM to 9 PM (21h)
+  // ✅ NOVO: Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
+  const { startHour, endHour } = useMemo(() => {
+    console.log('🔍 [PreviewSection] Calculando horários dinâmicos:', {
+      selectedLocation,
+      hasUnitSchedules: !!unitSchedules[selectedLocation],
+      unitSchedules: unitSchedules[selectedLocation]
+    });
+    
+    // Se há unidade selecionada, usar seus horários de funcionamento
+    if (selectedLocation && selectedLocation !== 'all' && unitSchedules[selectedLocation]) {
+      const schedules = unitSchedules[selectedLocation];
+      
+      // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
+      let minHour = 23;
+      let maxHour = 0;
+      let hasValidSchedule = false; // 🚩 Flag para rastrear se um horário foi encontrado
+      
+      schedules.forEach(schedule => {
+        // ✅ CORREÇÃO CRÍTICA: Validar que é um Array antes de iterar
+        if (schedule.is_aberto && Array.isArray(schedule.horarios_json) && schedule.horarios_json.length > 0) {
+          schedule.horarios_json.forEach(periodo => {
+            const startH = parseInt(periodo.inicio.split(':')[0]);
+            const endH = parseInt(periodo.fim.split(':')[0]);
+            
+            if (startH < minHour) minHour = startH;
+            if (endH > maxHour) maxHour = endH;
+            
+            hasValidSchedule = true; // 🎯 Marcar que encontrou horário válido
+          });
+        }
+      });
+      
+      // ✅ Usando a flag de rastreamento
+      if (hasValidSchedule) {
+        console.log(`✅ [PreviewSection] Horários dinâmicos da unidade ${selectedLocation}:`, { startHour: minHour, endHour: maxHour });
+        return { startHour: minHour, endHour: maxHour };
+      }
+    }
+    
+    // Fallback: usar horários padrão
+    console.log('⚠️ [PreviewSection] Usando horários padrão (fallback)');
+    return { startHour: 9, endHour: 21 };
+  }, [selectedLocation, unitSchedules]);
 
+  // ✅ NOVO: Gerar array de horas dinâmico baseado nos horários da unidade
+  const hours = useMemo(() => {
+    const hourCount = endHour - startHour + 1;
+    const hoursArray = Array.from({ length: hourCount }, (_, i) => i + startHour);
+    console.log('🕒 [PreviewSection] Horas geradas:', hoursArray);
+    return hoursArray;
+  }, [startHour, endHour]);
+
+  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de posição
   const getSlotStyle = (start: number, end: number) => {
-    const totalHours = 21 - 9;
-    const left = ((start - 9) / totalHours) * 100;
+    const totalHours = endHour - startHour;
+    const left = ((start - startHour) / totalHours) * 100;
     const width = ((end - start) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
   };
@@ -190,11 +253,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     setPopover(null);
   };
   
+  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de slots disponíveis
   const availableSlots = useMemo(() => {
     return filteredSchedules.map(schedule => {
         const busySlots = [...schedule.appointments].sort((a, b) => a.start - b.start);
         const available = [];
-        let lastEnd = 9;
+        let lastEnd = startHour; // ✅ Usar startHour dinâmico
         
         busySlots.forEach(slot => {
             if (slot.start > lastEnd) {
@@ -203,12 +267,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
             lastEnd = slot.end;
         });
 
-        if (lastEnd < 21) {
-            available.push({ type: 'available', start: lastEnd, end: 21 });
+        if (lastEnd < endHour) { // ✅ Usar endHour dinâmico
+            available.push({ type: 'available', start: lastEnd, end: endHour });
         }
         return available;
     });
-  }, [filteredSchedules]);
+  }, [filteredSchedules, startHour, endHour]);
 
   const locationOptions = [
       { value: 'all', label: 'Todos Os Locais' },

@@ -24,6 +24,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         agentes: backendAgentes,
         servicos: backendServicos,
         unidades: backendUnidades,
+        unitSchedules, // ✅ NOVO: Horários de funcionamento por unidade
         isLoading,
         error,
         fetchAgendamentos,
@@ -448,6 +449,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 setViewMode={setViewMode}
                 onAppointmentClick={handleAppointmentClick}
                 onSlotClick={handleSlotClick}
+                unitSchedules={unitSchedules} // ✅ NOVO: Passar horários de funcionamento
             />
             
             <NewAppointmentModal 
