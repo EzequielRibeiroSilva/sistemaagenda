@@ -3,27 +3,50 @@ import { createPortal } from 'react-dom';
 import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
 import { ChevronDown, Check, MoreHorizontal } from './Icons';
 import DatePicker from './DatePicker';
+import { getAssetUrl } from '../utils/api';
 
-const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['details']> }> = ({ appointment }) => (
-    <div className="bg-white rounded-lg shadow-2xl p-4 w-64 border border-gray-200 text-sm z-50">
-        <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
-            <div>
-                <p className="font-bold text-gray-800 uppercase">{appointment.service}</p>
-                <p className="text-gray-500">{appointment.date}</p>
-                <p className="font-semibold text-blue-600">{appointment.time}</p>
+// ✅ CORRIGIDO: Popover igual ao CalendarPage.tsx
+const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['details']> }> = ({ appointment }) => {
+    const name = appointment.agentName || 'Agente';
+    const fallbackAvatar = `https://i.pravatar.cc/150?u=${appointment.agentEmail}`;
+    
+    return (
+        <div className="bg-white rounded-lg shadow-2xl p-4 w-64 border border-gray-200 text-sm z-50">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
+                <div>
+                    <p className="font-bold text-gray-800 uppercase">{appointment.service}</p>
+                    <p className="text-gray-500">{appointment.date}</p>
+                    <p className="font-semibold text-blue-600">{appointment.time}</p>
+                </div>
+                <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
             </div>
-            <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
-        </div>
-        <div className="flex items-center">
-            <img src={`https://i.pravatar.cc/150?u=${appointment.agentEmail}`} alt={appointment.agentName} className="w-10 h-10 rounded-full object-cover" />
-            <div className="ml-3">
-                <p className="font-bold text-gray-800">{appointment.agentName}</p>
-                <p className="text-gray-500">Telefone: {appointment.agentPhone || 'N/A'}</p>
-                <p className="text-gray-500">E-mail: {appointment.agentEmail}</p>
+            
+            {/* Cliente */}
+            <div className="mb-3 pb-3 border-b border-gray-200">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Cliente</p>
+                <p className="font-semibold text-gray-800">{appointment.client}</p>
+            </div>
+            
+            {/* Agente */}
+            <div className="flex items-center">
+                <img 
+                    src={getAssetUrl(appointment.agentAvatar) || fallbackAvatar} 
+                    alt={name}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md"
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.onerror = null;
+                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
+                    }}
+                />
+                <div className="ml-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Agente</p>
+                    <p className="font-bold text-gray-800">{name}</p>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 
 interface FilterDropdownProps {
@@ -61,7 +84,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
                 <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 py-1">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-30 py-1">
                     {options.map(option => (
                         <a
                             key={option.value}
@@ -723,7 +746,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   return (
                     <div
                       key={card.id}
-                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10 flex flex-col justify-center`}
+                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-20 flex flex-col justify-center`}
                       style={{
                         ...getAppointmentCardStyle(card.startTime, card.endTime),
                         backgroundColor
