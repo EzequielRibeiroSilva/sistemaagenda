@@ -100,6 +100,36 @@ interface UnitSchedule {
   }>;
 }
 
+// ✅ NOVO: Interface para agendamentos do backend
+interface BackendAgendamento {
+  id: number;
+  agente_id: number;
+  servico_id?: number;
+  unidade_id: number;
+  data_agendamento: string;
+  hora_inicio: string;
+  hora_fim: string;
+  status: 'Pendente' | 'Aprovado' | 'Cancelado' | 'Concluído' | 'Não Compareceu';
+  valor_total: number;
+  cliente_nome?: string;
+  cliente_telefone?: string;
+  servicos?: Array<{
+    id: number;
+    nome: string;
+    preco: string;
+  }>;
+}
+
+// ✅ NOVO: Interface para agentes do backend
+interface BackendAgente {
+  id: number;
+  nome: string;
+  sobrenome?: string;
+  email: string;
+  telefone?: string;
+  avatar?: string;
+}
+
 interface PreviewSectionProps {
   schedules: AgentSchedule[];
   locations: Location[];
@@ -114,6 +144,10 @@ interface PreviewSectionProps {
   onSlotClick: (slotInfo: { agent: Agent, start: number, date: Date }) => void;
   unitSchedules?: Record<string, UnitSchedule[]>; // ✅ NOVO: Horários de funcionamento por unidade
   agents?: Agent[]; // ✅ NOVO: Lista de agentes para filtrar por local
+  selectedDate?: Date; // ✅ NOVO: Data selecionada
+  onDateChange?: (date: Date) => void; // ✅ NOVO: Callback para mudar data
+  appointments?: BackendAgendamento[]; // ✅ NOVO: Agendamentos do dia
+  backendAgentes?: BackendAgente[]; // ✅ NOVO: Agentes do backend para detalhes
 }
 
 const PreviewSection: React.FC<PreviewSectionProps> = ({ 
@@ -129,10 +163,22 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     onAppointmentClick,
     onSlotClick,
     unitSchedules = {}, // ✅ NOVO: Horários de funcionamento (default vazio)
-    agents = [] // ✅ NOVO: Lista de agentes (default vazio)
+    agents = [], // ✅ NOVO: Lista de agentes (default vazio)
+    selectedDate: propSelectedDate, // ✅ NOVO: Data selecionada (prop)
+    onDateChange, // ✅ NOVO: Callback para mudar data
+    appointments = [], // ✅ NOVO: Agendamentos do dia
+    backendAgentes = [] // ✅ NOVO: Agentes do backend
 }) => {
-  // ✅ CORREÇÃO: Inicializar com a data atual (hoje)
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // ✅ CORREÇÃO: Usar prop se fornecida, senão usar estado local
+  const [internalSelectedDate, setInternalSelectedDate] = useState(new Date());
+  const selectedDate = propSelectedDate || internalSelectedDate;
+  const handleDateChange = (date: Date) => {
+    if (onDateChange) {
+      onDateChange(date);
+    } else {
+      setInternalSelectedDate(date);
+    }
+  };
   const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ agentIndex: number; start: number; end: number } | null>(null);
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +223,78 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     return filtered;
   }, [agents, selectedLocation]);
+
+  // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
+  const agentAppointmentCards = useMemo(() => {
+    console.log('🔄 [PreviewSection] Transformando agendamentos em cards:', {
+      appointmentsCount: appointments.length,
+      displayedAgentsCount: displayedAgents.length,
+      selectedDate: selectedDate.toISOString().split('T')[0]
+    });
+
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const cardsByAgent: Record<string, Array<{
+      id: number;
+      startTime: string;
+      endTime: string;
+      serviceName: string;
+      clientName: string;
+      status: string;
+      agentName: string;
+      agentAvatar?: string;
+      agentEmail: string;
+    }>> = {};
+
+    // Inicializar arrays vazios para cada agente exibido
+    displayedAgents.forEach(agent => {
+      cardsByAgent[agent.id] = [];
+    });
+
+    // Processar agendamentos
+    appointments.forEach(apt => {
+      // Verificar se o agendamento é do dia selecionado
+      if (apt.data_agendamento !== dateStr) {
+        return;
+      }
+
+      const agentId = apt.agente_id.toString();
+      
+      // Verificar se o agente está sendo exibido
+      if (!cardsByAgent[agentId]) {
+        return;
+      }
+
+      // Buscar nome do serviço
+      let serviceName = 'Serviço';
+      if (apt.servicos && apt.servicos.length > 0) {
+        serviceName = apt.servicos.map(s => s.nome).join(', ');
+      } else if (apt.servico_id) {
+        const service = services.find(s => s.id === apt.servico_id.toString());
+        serviceName = service?.name || 'Serviço';
+      }
+
+      // Buscar dados do agente
+      const backendAgent = backendAgentes.find(a => a.id === apt.agente_id);
+      const agentName = backendAgent ? `${backendAgent.nome} ${backendAgent.sobrenome || ''}`.trim() : 'Agente';
+      const agentEmail = backendAgent?.email || '';
+      const agentAvatar = backendAgent?.avatar;
+
+      cardsByAgent[agentId].push({
+        id: apt.id,
+        startTime: apt.hora_inicio,
+        endTime: apt.hora_fim,
+        serviceName,
+        clientName: apt.cliente_nome || 'Cliente',
+        status: apt.status,
+        agentName,
+        agentAvatar,
+        agentEmail
+      });
+    });
+
+    console.log('✅ [PreviewSection] Cards por agente:', cardsByAgent);
+    return cardsByAgent;
+  }, [appointments, displayedAgents, selectedDate, services, backendAgentes]);
 
   const filteredSchedules = useMemo(() => {
     // ✅ CORREÇÃO: Não permitir 'all' para location - sempre exigir local específico
@@ -251,11 +369,29 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return hoursArray;
   }, [startHour, endHour]);
 
-  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de posição
+  // ✅ NOVO: Converter horário (HH:MM) em porcentagem da timeline
+  const timeToPercentage = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    // Calcular minutos totais desde startHour
+    const totalMinutes = (h - startHour) * 60 + m;
+    // Total de minutos no range
+    const totalDurationMinutes = ((endHour + 1) - startHour) * 60;
+    return (totalMinutes / totalDurationMinutes) * 100;
+  };
+
+  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de posição (para slots antigos)
   const getSlotStyle = (start: number, end: number) => {
     const totalHours = endHour - startHour;
     const left = ((start - startHour) / totalHours) * 100;
     const width = ((end - start) / totalHours) * 100;
+    return { left: `${left}%`, width: `${width}%` };
+  };
+
+  // ✅ NOVO: Calcular posição de um card de agendamento na timeline
+  const getAppointmentCardStyle = (startTime: string, endTime: string) => {
+    const left = timeToPercentage(startTime);
+    const right = timeToPercentage(endTime);
+    const width = right - left;
     return { left: `${left}%`, width: `${width}%` };
   };
 
@@ -297,6 +433,69 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
   const handleSlotMouseLeave = () => {
     setPopover(null);
+  };
+
+  // ✅ NOVO: Handler para hover nos cards de agendamentos
+  const handleAppointmentCardMouseEnter = (e: React.MouseEvent, card: {
+    id: number;
+    startTime: string;
+    endTime: string;
+    serviceName: string;
+    clientName: string;
+    status: string;
+    agentName: string;
+    agentAvatar?: string;
+    agentEmail: string;
+  }) => {
+    if (viewMode !== 'compromissos') return;
+
+    // Formatar data
+    const formattedDate = selectedDate.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+    
+    const formattedTime = `${card.startTime} - ${card.endTime}`;
+
+    const appointmentDetails: NonNullable<ScheduleSlot['details']> = {
+      id: card.id.toString(),
+      service: card.serviceName,
+      client: card.clientName,
+      agentName: card.agentName,
+      agentAvatar: card.agentAvatar,
+      agentEmail: card.agentEmail,
+      agentPhone: undefined,
+      date: formattedDate,
+      time: formattedTime,
+      serviceId: '',
+      locationId: selectedLocation,
+      status: card.status as any
+    };
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const POPOVER_ESTIMATED_HEIGHT = 156;
+    const POPOVER_MARGIN = 8;
+    
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const hasSpaceBelow = spaceBelow >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+    const hasSpaceAbove = rect.top >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+
+    const positionAbove = !hasSpaceBelow && hasSpaceAbove;
+
+    const style: React.CSSProperties = {
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: positionAbove ? `${rect.top - POPOVER_MARGIN}px` : `${rect.bottom + POPOVER_MARGIN}px`,
+        transform: positionAbove ? 'translateY(-100%)' : 'translateY(0)',
+        zIndex: 50,
+    };
+
+    setPopover({
+      visible: true,
+      content: appointmentDetails,
+      style: style,
+    });
   };
   
   // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de slots disponíveis
@@ -341,7 +540,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
             <DatePicker 
                 mode="single" 
                 selectedDate={selectedDate} 
-                onDateChange={(date) => setSelectedDate(date as Date)} 
+                onDateChange={(date) => handleDateChange(date as Date)} 
             />
             {/* ✅ CORREÇÃO: Dropdown de Local sem opção "Todos os Locais" */}
             <FilterDropdown 
@@ -406,29 +605,79 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     );
                 })}
 
-                {viewMode === 'compromissos' && filteredSchedules[agentIndex]?.appointments.map((slot, i) => (
-                  <div 
-                    key={i} 
-                    className={`absolute h-full rounded transition-all duration-200 
-                        ${getSlotColor(slot.type)} 
-                        ${slot.type === 'booked' && viewMode === 'compromissos' ? 'cursor-pointer hover:scale-105 hover:shadow-lg' : ''}
-                        ${viewMode === 'disponibilidade' && slot.type !== 'unavailable' ? 'opacity-70' : ''}
-                    `}
-                    style={getSlotStyle(slot.start, slot.end)}
-                    onMouseEnter={(e) => handleSlotMouseEnter(e, slot)}
-                    onMouseLeave={handleSlotMouseLeave}
-                    onClick={() => slot.type === 'booked' && slot.details && viewMode === 'compromissos' && onAppointmentClick(slot.details)}
-                  >
-                     {slot.type === 'unavailable' && (
-                       <div 
-                         className="w-full h-full"
-                         style={{ 
-                            backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)',
-                         }}
-                       ></div>
-                     )}
-                  </div>
-                ))}
+                {/* ✅ NOVO: Renderizar cards de agendamentos do backend */}
+                {viewMode === 'compromissos' && agentAppointmentCards[agent.id]?.map((card) => {
+                  // Determinar cor e estilo baseado no status
+                  const isApproved = card.status === 'Aprovado';
+                  const isCompleted = card.status === 'Concluído';
+                  const isCancelled = card.status === 'Cancelado';
+                  const isNoShow = card.status === 'Não Compareceu';
+
+                  let cardClasses, iconComponent, backgroundColor;
+
+                  if (isApproved) {
+                    backgroundColor = '#2663EB'; // Azul escuro
+                    cardClasses = 'text-white border border-blue-600';
+                    iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
+                  } else if (isCompleted) {
+                    backgroundColor = '#DBEAFE'; // Azul claro
+                    cardClasses = 'text-blue-800 border border-blue-300';
+                    iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
+                  } else if (isCancelled) {
+                    backgroundColor = '#FFE2E2'; // Vermelho claro
+                    cardClasses = 'text-red-800 border border-red-300';
+                    iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
+                  } else if (isNoShow) {
+                    backgroundColor = '#FEF9C3'; // Amarelo claro
+                    cardClasses = 'text-yellow-800 border border-yellow-300';
+                    iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
+                  } else {
+                    backgroundColor = '#3B82F6'; // Azul padrão
+                    cardClasses = 'text-white';
+                    iconComponent = null;
+                  }
+
+                  const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
+
+                  return (
+                    <div
+                      key={card.id}
+                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10 flex flex-col justify-center`}
+                      style={{
+                        ...getAppointmentCardStyle(card.startTime, card.endTime),
+                        backgroundColor
+                      }}
+                      onMouseEnter={(e) => handleAppointmentCardMouseEnter(e, card)}
+                      onMouseLeave={handleSlotMouseLeave}
+                      onClick={() => {
+                        // Criar objeto de detalhes para o modal
+                        const details: ScheduleSlot['details'] = {
+                          id: card.id.toString(),
+                          service: card.serviceName,
+                          client: card.clientName,
+                          agentName: card.agentName,
+                          agentAvatar: card.agentAvatar,
+                          agentEmail: card.agentEmail,
+                          agentPhone: undefined,
+                          date: selectedDate.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          }),
+                          time: `${card.startTime} - ${card.endTime}`,
+                          serviceId: '',
+                          locationId: selectedLocation,
+                          status: card.status as any
+                        };
+                        onAppointmentClick(details);
+                      }}
+                    >
+                      <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}</p>
+                      <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
+                      {iconComponent}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
