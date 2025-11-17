@@ -148,9 +148,12 @@ interface BackendAgente {
   id: number;
   nome: string;
   sobrenome?: string;
+  name?: string;              // ✅ CRÍTICO: Backend retorna 'name' já formatado (nome completo)
+  nome_exibicao?: string;     // ✅ CRÍTICO: Nome de exibição formatado
   email: string;
   telefone?: string;
   avatar?: string;
+  avatar_url?: string;        // ✅ CRÍTICO: URL do avatar
 }
 
 interface PreviewSectionProps {
@@ -316,15 +319,25 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
       // ✅ CORREÇÃO CRÍTICA: Buscar dados do agente com fallback robusto
       const backendAgent = backendAgentes.find(a => a.id === apt.agente_id);
+      
+      // ✅ PRIORIDADE: nome_exibicao > name > concatenar nome+sobrenome
       const agentName = backendAgent 
-        ? `${backendAgent.nome || ''} ${backendAgent.sobrenome || ''}`.trim() || 'Agente'
+        ? (backendAgent.nome_exibicao || backendAgent.name || `${backendAgent.nome || ''} ${backendAgent.sobrenome || ''}`.trim() || 'Agente')
         : 'Agente';
+      
       const agentEmail = backendAgent?.email || 'agente@email.com';
       const agentAvatar = backendAgent?.avatar_url || backendAgent?.avatar;
       
       console.log('👤 [PreviewSection] Dados do agente:', {
         agente_id: apt.agente_id,
-        backendAgent: backendAgent ? { id: backendAgent.id, nome: backendAgent.nome, sobrenome: backendAgent.sobrenome, avatar_url: backendAgent.avatar_url } : null,
+        backendAgent: backendAgent ? { 
+          id: backendAgent.id, 
+          nome: backendAgent.nome, 
+          sobrenome: backendAgent.sobrenome,
+          name: backendAgent.name,
+          nome_exibicao: backendAgent.nome_exibicao,
+          avatar_url: backendAgent.avatar_url 
+        } : null,
         agentName,
         agentEmail,
         agentAvatar
