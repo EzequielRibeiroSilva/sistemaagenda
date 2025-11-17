@@ -305,7 +305,32 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     const handleCloseModal = () => {
         setAppointmentModalOpen(false);
         setModalData(null);
-    }
+    };
+
+    // ✅ NOVO: Callback para recarregar dados após criar/editar agendamento
+    const handleAppointmentSuccess = () => {
+        console.log('✅ [DashboardPage] Agendamento criado/editado com sucesso - recarregando preview...');
+
+        // Recarregar agendamentos da pré-visualização
+        const filters = {
+            data_inicio: previewDate.toISOString().split('T')[0],
+            data_fim: previewDate.toISOString().split('T')[0]
+        };
+
+        // Adicionar filtro de unidade se não for 'all'
+        if (previewLocation !== 'all') {
+            filters.unidade_id = parseInt(previewLocation);
+        }
+
+        console.log('🔄 [DashboardPage] Recarregando agendamentos da pré-visualização:', filters);
+
+        fetchAgendamentosRaw(filters).then((data) => {
+            console.log('✅ [DashboardPage] Agendamentos da pré-visualização atualizados:', data.length, 'agendamentos');
+            setPreviewAppointments(data);
+        }).catch(err => {
+            console.error('❌ [DashboardPage] Erro ao recarregar agendamentos da pré-visualização:', err);
+        });
+    };
 
     // ✅ CALCULAR MÉTRICAS DE DESEMPENHO
     const metrics = useMemo(() => {
@@ -510,12 +535,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 backendAgentes={backendAgentes} // ✅ NOVO: Passar agentes do backend para detalhes
             />
             
-            <NewAppointmentModal 
-                isOpen={isAppointmentModalOpen} 
-                onClose={handleCloseModal} 
+            <NewAppointmentModal
+                isOpen={isAppointmentModalOpen}
+                onClose={handleCloseModal}
                 appointmentData={modalData?.appointment}
                 newSlotData={modalData?.newSlot}
                 selectedLocationId={previewLocation} // ✅ CRÍTICO: Passar local selecionado para filtrar agentes
+                onSuccess={handleAppointmentSuccess} // ✅ NOVO: Callback para atualizar dados após sucesso
             />
         </div>
     );
