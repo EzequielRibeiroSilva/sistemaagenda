@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
-import { ChevronDown, Check, MoreHorizontal } from './Icons';
+import { ChevronDown, Check, MoreHorizontal, Plus } from './Icons';
 import DatePicker from './DatePicker';
 import { getAssetUrl } from '../utils/api';
 
@@ -195,6 +195,16 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     appointments = [], // ✅ NOVO: Agendamentos do dia
     backendAgentes = [] // ✅ NOVO: Agentes do backend
 }) => {
+  // ✅ DEBUG: Log das props recebidas
+  console.log('🎯 [PreviewSection] Props recebidas:', {
+    agentsCount: agents.length,
+    appointmentsCount: appointments.length,
+    selectedLocation,
+    viewMode,
+    backendAgentesCount: backendAgentes.length,
+    agents: agents.map(a => ({ id: a.id, name: a.name, unidades: a.unidades }))
+  });
+
   // ✅ CORREÇÃO: Usar prop se fornecida, senão usar estado local
   const [internalSelectedDate, setInternalSelectedDate] = useState(new Date());
   const selectedDate = propSelectedDate || internalSelectedDate;
@@ -206,7 +216,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }
   };
   const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
-  const [hoveredSlot, setHoveredSlot] = useState<{ agentIndex: number; start: number; end: number } | null>(null);
+  const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
@@ -639,26 +649,74 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     });
   };
   
-  // ✅ ATUALIZADO: Usar horários dinâmicos no cálculo de slots disponíveis
+  // ✅ NOVO: Calcular slots disponíveis baseado nos agendamentos reais do backend
   const availableSlots = useMemo(() => {
-    return filteredSchedules.map(schedule => {
-        const busySlots = [...schedule.appointments].sort((a, b) => a.start - b.start);
-        const available = [];
-        let lastEnd = startHour; // ✅ Usar startHour dinâmico
-        
-        busySlots.forEach(slot => {
-            if (slot.start > lastEnd) {
-                available.push({ type: 'available', start: lastEnd, end: slot.start });
-            }
-            lastEnd = slot.end;
-        });
-
-        if (lastEnd < endHour) { // ✅ Usar endHour dinâmico
-            available.push({ type: 'available', start: lastEnd, end: endHour });
-        }
-        return available;
+    console.log('🔄 [PreviewSection] Calculando slots disponíveis:', {
+      displayedAgentsCount: displayedAgents.length,
+      appointmentsCount: appointments.length,
+      startHour,
+      endHour,
+      selectedDate: selectedDate.toISOString().split('T')[0],
+      viewMode
     });
-  }, [filteredSchedules, startHour, endHour]);
+
+    return displayedAgents.map((agent, agentIndex) => {
+      // Buscar agendamentos deste agente no dia selecionado
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const agentAppointments = appointments.filter(apt => {
+        const aptDateStr = apt.data_agendamento.split('T')[0];
+        return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
+      });
+
+      console.log(`🔍 [PreviewSection] Agente ${agent.name} (${agent.id}):`, {
+        agentIndex,
+        dateStr,
+        agentAppointments: agentAppointments.length,
+        appointmentsData: agentAppointments.map(a => ({
+          id: a.id,
+          hora_inicio: a.hora_inicio,
+          hora_fim: a.hora_fim
+        }))
+      });
+
+      // Converter agendamentos para slots ocupados (formato: hora numérica)
+      const busySlots = agentAppointments.map(apt => {
+        const startHourNum = parseInt(apt.hora_inicio.split(':')[0]);
+        const endHourNum = parseInt(apt.hora_fim.split(':')[0]);
+        return { start: startHourNum, end: endHourNum };
+      }).sort((a, b) => a.start - b.start);
+
+      // Calcular slots disponíveis
+      const available = [];
+      let lastEnd = startHour;
+
+      busySlots.forEach(slot => {
+        if (slot.start > lastEnd) {
+          available.push({ type: 'available', start: lastEnd, end: slot.start });
+        }
+        lastEnd = Math.max(lastEnd, slot.end);
+      });
+
+      if (lastEnd < endHour) {
+        available.push({ type: 'available', start: lastEnd, end: endHour });
+      }
+
+      // ✅ DEBUG: Se não há slots disponíveis, criar um slot de teste
+      if (available.length === 0 && busySlots.length === 0) {
+        // Se não há agendamentos, todo o período está disponível
+        available.push({ type: 'available', start: startHour, end: endHour });
+      }
+
+      console.log(`✅ [PreviewSection] Slots disponíveis para ${agent.name}:`, {
+        busySlots,
+        available,
+        startHour,
+        endHour,
+        lastEnd
+      });
+      return available;
+    });
+  }, [displayedAgents, appointments, selectedDate, startHour, endHour, viewMode]);
 
   // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
   // Sempre deve haver um local específico selecionado
@@ -671,7 +729,19 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       { value: 'all', label: 'Todos Os Serviços' },
       ...services.map(service => ({ value: service.id, label: service.name }))
   ];
-  
+
+  // ✅ DEBUG: Log do estado geral da PreviewSection
+  console.log('🎯 [PreviewSection] Estado geral:', {
+    viewMode,
+    selectedLocation,
+    displayedAgentsCount: displayedAgents.length,
+    appointmentsCount: appointments.length,
+    availableSlotsCount: availableSlots.length,
+    startHour,
+    endHour,
+    selectedDate: selectedDate.toISOString().split('T')[0]
+  });
+
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -714,7 +784,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         
         <div className="space-y-4">
           {displayedAgents.map((agent, agentIndex) => (
-            <div key={agent.id} className={`flex items-center gap-4 h-12 ${agentIndex > 0 ? 'hidden lg:flex' : 'flex'}`}>
+            <div key={agent.id} className="flex items-center gap-4 h-12">
               <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full object-cover"/>
               <div className="flex-1 bg-gray-100 h-full rounded relative overflow-hidden">
                 {/* ✅ CORRIGIDO: Grid com divisões corretas usando CSS Grid */}
@@ -724,28 +794,83 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                    ))}
                 </div>
                 
-                {viewMode === 'disponibilidade' && displayedAgents[agentIndex] && availableSlots[agentIndex]?.map((slot, i) => {
-                    const isHovered = hoveredSlot?.agentIndex === agentIndex && hoveredSlot.start === slot.start;
+
+
+                {/* ✅ SLOTS CLICÁVEIS: Implementação idêntica à CalendarPage - SEMPRE RENDERIZADOS */}
+                {(() => {
+                  // Filtrar agendamentos deste agente no dia selecionado
+                  const dateStr = selectedDate.toISOString().split('T')[0];
+                  const agentAppointments = appointments.filter(apt => {
+                    const aptDateStr = apt.data_agendamento.split('T')[0];
+                    return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
+                  });
+
+                  // Criar busySlots (igual CalendarPage)
+                  const busySlots = [
+                    ...agentAppointments.map(a => ({
+                      start: a.hora_inicio,
+                      end: a.hora_fim,
+                      type: 'appointment'
+                    }))
+                    // Nota: intervalos serão adicionados quando necessário
+                  ].sort((a, b) => a.start.localeCompare(b.start));
+
+                  // Helper para checar se a hora está livre (igual CalendarPage)
+                  const isSlotAvailable = (hour: number) => {
+                    const slotStart = `${hour.toString().padStart(2, '0')}:00`;
+                    const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
+
+                    // Checa colisão com qualquer slot ocupado
+                    for (const busy of busySlots) {
+                      // (InícioOcupado < FimSlot) E (FimOcupado > InícioSlot)
+                      if (busy.start < slotEnd && busy.end > slotStart) {
+                        return false; // Slot está ocupado
+                      }
+                    }
+                    return true; // Slot está livre
+                  };
+
+                  // Iterar sobre as horas do dia para slots individuais (igual CalendarPage)
+                  const iterableHours = Array.from({ length: endHour - startHour }, (_, i) => i + startHour);
+
+                  return iterableHours.map(hour => {
+                    const isAvailable = isSlotAvailable(hour);
+                    if (!isAvailable) {
+                      return null; // Não renderiza slot clicável
+                    }
+
+                    const slotStartStr = `${hour.toString().padStart(2, '0')}:00`;
+                    const slotEndStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
+
+                    // ID do slot por hora (igual CalendarPage)
+                    const slotId = `${agent.id}-${dateStr}-${slotStartStr}-${slotEndStr}`;
+                    const isHovered = hoveredSlot === slotId;
+
                     return (
-                        <div 
-                            key={`avail-${i}`}
-                            className={`absolute h-full rounded transition-colors cursor-pointer group`}
-                            style={getSlotStyle(slot.start, slot.end)}
-                            onMouseEnter={() => setHoveredSlot({ agentIndex, start: slot.start, end: slot.end })}
-                            onMouseLeave={() => setHoveredSlot(null)}
-                            onClick={() => onSlotClick({ agent: agent, start: slot.start, date: selectedDate })}
+                      <div
+                        key={slotId}
+                        className="absolute h-full cursor-pointer z-30"
+                        style={{
+                          ...getSlotStyle(hour, hour + 1)
+                        }}
+                        onClick={() => onSlotClick({ agent: agent, start: hour, date: selectedDate })}
+                        onMouseEnter={() => setHoveredSlot(slotId)}
+                        onMouseLeave={() => setHoveredSlot(null)}
+                      >
+                        <div
+                          className="w-full h-full transition-all flex items-center justify-center"
+                          style={{
+                            backgroundColor: isHovered ? '#DBEAFE' : 'transparent',
+                            opacity: 1
+                          }}
                         >
-                            {isHovered && 
-                                <div className="absolute inset-0 bg-green-400 opacity-80"></div>
-                            }
-                            {isHovered && (
-                                <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-semibold px-2 py-1 rounded-md whitespace-nowrap">
-                                    {selectedDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}, {slot.start}:00
-                                </div>
-                            )}
+                          {isHovered && <Plus className="w-5 h-5 text-blue-500" />}
                         </div>
+                      </div>
                     );
-                })}
+                  });
+                })()}
+
 
                 {/* ✅ NOVO: Renderizar cards de agendamentos do backend */}
                 {viewMode === 'compromissos' && agentAppointmentCards[agent.id]?.map((card) => {
