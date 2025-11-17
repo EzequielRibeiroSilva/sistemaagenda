@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
 import { ChevronDown, Check, MoreHorizontal } from './Icons';
@@ -229,7 +229,14 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     console.log('🔄 [PreviewSection] Transformando agendamentos em cards:', {
       appointmentsCount: appointments.length,
       displayedAgentsCount: displayedAgents.length,
-      selectedDate: selectedDate.toISOString().split('T')[0]
+      selectedDate: selectedDate.toISOString().split('T')[0],
+      appointmentsData: appointments.map(a => ({
+        id: a.id,
+        agente_id: a.agente_id,
+        data_agendamento: a.data_agendamento,
+        hora_inicio: a.hora_inicio,
+        hora_fim: a.hora_fim
+      }))
     });
 
     const dateStr = selectedDate.toISOString().split('T')[0];
@@ -252,8 +259,19 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     // Processar agendamentos
     appointments.forEach(apt => {
+      // ✅ CORREÇÃO CRÍTICA: Extrair apenas a data (YYYY-MM-DD) do campo data_agendamento
+      // O backend pode retornar 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS'
+      const aptDateStr = apt.data_agendamento.split('T')[0];
+      
+      console.log('🔍 [PreviewSection] Comparando datas:', {
+        aptDateStr,
+        dateStr,
+        match: aptDateStr === dateStr,
+        agente_id: apt.agente_id
+      });
+      
       // Verificar se o agendamento é do dia selecionado
-      if (apt.data_agendamento !== dateStr) {
+      if (aptDateStr !== dateStr) {
         return;
       }
 
@@ -360,6 +378,69 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     console.log('⚠️ [PreviewSection] Usando horários padrão (fallback)');
     return { startHour: 9, endHour: 21 };
   }, [selectedLocation, unitSchedules]);
+
+  // ✅ NOVO: Calcular blocos de intervalo do local (igual CalendarPage)
+  const calculateLocationIntervalBlocks = useCallback((date: Date): Array<{ start: string; end: string; id: string }> => {
+    if (!selectedLocation || selectedLocation === 'all') return [];
+
+    // Helper para obter o dia da semana (1=Segunda, 7=Domingo)
+    const getDayOfWeekIndex = (d: Date): number => {
+      const day = d.getDay();
+      return day === 0 ? 7 : day;
+    };
+
+    const dayIndex = getDayOfWeekIndex(date);
+    const schedules = unitSchedules[selectedLocation];
+    
+    if (!schedules) return [];
+
+    const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
+    
+    // Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
+    if (!daySchedule || !daySchedule.is_aberto) {
+      const startTime = `${startHour.toString().padStart(2, '0')}:00`;
+      const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+      
+      return [{
+        start: startTime,
+        end: endTime,
+        id: `closed-${selectedLocation}-${dayIndex}`
+      }];
+    }
+    
+    // Se não tem horários ou tem apenas 1 período, não há intervalo
+    if (!Array.isArray(daySchedule.horarios_json) || daySchedule.horarios_json.length <= 1) {
+      return [];
+    }
+
+    // Ordenar os horários de funcionamento
+    const sortedPeriods = daySchedule.horarios_json.sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+    const intervals: Array<{ start: string; end: string; id: string }> = [];
+
+    // O intervalo está sempre entre o 'fim' de um período e o 'início' do próximo
+    for (let i = 0; i < sortedPeriods.length - 1; i++) {
+      const currentEnd = sortedPeriods[i].fim;
+      const nextStart = sortedPeriods[i + 1].inicio;
+
+      // Se o fim do período atual for anterior ao início do próximo, há um intervalo
+      if (currentEnd < nextStart) {
+        intervals.push({
+          start: currentEnd,
+          end: nextStart,
+          id: `interval-${selectedLocation}-${dayIndex}-${i}`
+        });
+      }
+    }
+
+    console.log('🔴 [PreviewSection] Intervalos calculados:', intervals);
+    return intervals;
+  }, [selectedLocation, unitSchedules, startHour, endHour]);
+
+  // ✅ NOVO: Calcular intervalos do local para o dia selecionado
+  const locationIntervals = useMemo(() => {
+    return calculateLocationIntervalBlocks(selectedDate);
+  }, [calculateLocationIntervalBlocks, selectedDate]);
 
   // ✅ NOVO: Gerar array de horas dinâmico baseado nos horários da unidade
   const hours = useMemo(() => {
@@ -675,6 +756,25 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                       <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}</p>
                       <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
                       {iconComponent}
+                    </div>
+                  );
+                })}
+
+                {/* ✅ NOVO: Renderizar bloqueios de intervalo do local (linhas vermelhas) */}
+                {viewMode === 'compromissos' && locationIntervals.map(block => {
+                  const blockStyle = getAppointmentCardStyle(block.start, block.end);
+                  return (
+                    <div 
+                      key={block.id} 
+                      className="absolute h-full bg-red-100 rounded z-5" 
+                      style={blockStyle}
+                    >
+                      <div 
+                        className="w-full h-full" 
+                        style={{ 
+                          backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' 
+                        }}
+                      ></div>
                     </div>
                   );
                 })}
