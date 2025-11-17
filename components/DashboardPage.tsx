@@ -48,6 +48,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     // ✅ ESTADOS DE FILTRO DA SEÇÃO PRÉ-VISUALIZAÇÃO (Independentes)
     const [previewLocation, setPreviewLocation] = useState('all');
     const [previewService, setPreviewService] = useState('all');
+    const [previewDate, setPreviewDate] = useState(new Date()); // ✅ NOVO: Data selecionada na pré-visualização
+    const [previewAppointments, setPreviewAppointments] = useState<any[]>([]); // ✅ NOVO: Agendamentos do dia selecionado
     
     const [viewMode, setViewMode] = useState<'compromissos' | 'disponibilidade'>('compromissos');
     const [isAppointmentModalOpen, setAppointmentModalOpen] = useState(false);
@@ -250,6 +252,44 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             setPreviousPeriodAgendamentos([]);
         });
     }, [performanceLocation, performanceAgent, performanceService, dateRange, isMultiPlan, fetchAgendamentos, fetchAgendamentosRaw]);
+
+    // ✅ NOVO: Buscar agendamentos do dia selecionado na pré-visualização
+    useEffect(() => {
+        console.log('🔄 [DashboardPage] useEffect de busca de pré-visualização disparado:', {
+            previewDate: previewDate.toISOString().split('T')[0],
+            previewLocation,
+            isMultiPlan
+        });
+
+        // Para Multi-Plan, exigir seleção de local
+        if (isMultiPlan && (!previewLocation || previewLocation === 'all')) {
+            console.log('⏳ [DashboardPage] Multi-Plan: Aguardando seleção de local na pré-visualização...');
+            setPreviewAppointments([]);
+            return;
+        }
+
+        // Buscar agendamentos do dia selecionado
+        const dateStr = previewDate.toISOString().split('T')[0];
+        const filters: any = {
+            data_inicio: dateStr,
+            data_fim: dateStr
+        };
+
+        // Adicionar filtro de unidade se não for 'all'
+        if (previewLocation !== 'all') {
+            filters.unidade_id = parseInt(previewLocation);
+        }
+
+        console.log('📊 [DashboardPage] Buscando agendamentos da pré-visualização:', filters);
+        
+        fetchAgendamentosRaw(filters).then((data) => {
+            console.log('✅ [DashboardPage] Agendamentos da pré-visualização carregados:', data.length, 'agendamentos');
+            setPreviewAppointments(data);
+        }).catch(err => {
+            console.error('❌ [DashboardPage] Erro ao buscar agendamentos da pré-visualização:', err);
+            setPreviewAppointments([]);
+        });
+    }, [previewDate, previewLocation, isMultiPlan, fetchAgendamentosRaw]);
 
     const handleAppointmentClick = (details: ScheduleSlot['details']) => {
         setModalData({ appointment: details });
@@ -464,6 +504,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onSlotClick={handleSlotClick}
                 unitSchedules={unitSchedules} // ✅ NOVO: Passar horários de funcionamento
                 agents={agents} // ✅ NOVO: Passar lista de agentes para filtrar por local
+                selectedDate={previewDate} // ✅ NOVO: Passar data selecionada
+                onDateChange={setPreviewDate} // ✅ NOVO: Callback para mudar data
+                appointments={previewAppointments} // ✅ NOVO: Passar agendamentos do dia
+                backendAgentes={backendAgentes} // ✅ NOVO: Passar agentes do backend para detalhes
             />
             
             <NewAppointmentModal 
