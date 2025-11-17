@@ -49,6 +49,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
             const calendarWidth = mode === 'range' ? 600 : 288; // w-[600px] ou w-72 (288px)
+            const calendarHeight = mode === 'range' ? 400 : 380; // Altura estimada do calendário
             
             // Calcular posição ideal (alinhado à direita do botão)
             let leftPosition = rect.right - calendarWidth;
@@ -63,8 +64,26 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                 leftPosition = window.innerWidth - calendarWidth - 8; // Margem mínima de 8px da borda direita
             }
             
+            // ✅ CORREÇÃO: Verificar se há espaço abaixo, senão posicionar acima
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const hasSpaceBelow = spaceBelow >= calendarHeight + 16; // 16px de margem
+            
+            let topPosition: number;
+            if (hasSpaceBelow) {
+                // Posicionar abaixo do botão
+                topPosition = rect.bottom + 8;
+            } else {
+                // Posicionar acima do botão
+                topPosition = rect.top - calendarHeight - 8;
+                
+                // Se também não couber acima, posicionar no topo da tela com margem
+                if (topPosition < 8) {
+                    topPosition = 8;
+                }
+            }
+            
             setDropdownPosition({
-                top: rect.bottom + 8,
+                top: topPosition,
                 left: leftPosition
             });
         }
@@ -165,21 +184,37 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
             days.push(<div key={`empty-start-${i}`} className="w-8 h-8 md:w-10 md:h-10"></div>);
         }
 
+        // ✅ NOVO: Obter data atual para comparação
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month, day);
+            date.setHours(0, 0, 0, 0);
             const currentDate = date.getTime();
 
             const isSelected = mode === 'single' && selectedDate?.getTime() === currentDate;
             const isSelectedStart = mode === 'range' && startDate && date.getTime() === startDate.getTime();
             const isSelectedEnd = mode === 'range' && endDate && date.getTime() === endDate.getTime();
             const isInRange = mode === 'range' && startDate && endDate && date > startDate && date < endDate;
+            
+            // ✅ NOVO: Verificar se é o dia atual
+            const isToday = date.getTime() === today.getTime();
 
             let classes = "w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full cursor-pointer transition-colors text-sm ";
+            
+            // ✅ CORREÇÃO: Priorizar dia selecionado, depois dia atual, depois outros
             if (isSelected || isSelectedStart || isSelectedEnd) {
+                // Dia selecionado: fundo azul sólido
                 classes += "bg-blue-600 text-white font-bold";
+            } else if (isToday) {
+                // ✅ NOVO: Dia atual: fundo azul claro com borda azul
+                classes += "bg-blue-100 text-blue-700 font-bold border-2 border-blue-400";
             } else if (isInRange) {
+                // Dia no range: fundo azul claro
                 classes += "bg-blue-100 text-blue-800";
             } else {
+                // Dia normal: hover cinza
                 classes += "hover:bg-gray-100 text-gray-700";
             }
             

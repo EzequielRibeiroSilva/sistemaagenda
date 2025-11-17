@@ -131,7 +131,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     unitSchedules = {}, // ✅ NOVO: Horários de funcionamento (default vazio)
     agents = [] // ✅ NOVO: Lista de agentes (default vazio)
 }) => {
-  const [selectedDate, setSelectedDate] = useState(new Date(2025, 8, 30));
+  // ✅ CORREÇÃO: Inicializar com a data atual (hoje)
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ agentIndex: number; start: number; end: number } | null>(null);
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
