@@ -805,14 +805,20 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
                   });
 
-                  // Criar busySlots (igual CalendarPage)
+                  // Criar busySlots (igual CalendarPage) - INCLUINDO INTERVALOS
                   const busySlots = [
                     ...agentAppointments.map(a => ({
                       start: a.hora_inicio,
                       end: a.hora_fim,
                       type: 'appointment'
+                    })),
+                    // ✅ CRÍTICO: Adicionar intervalos do local para impedir cliques
+                    ...locationIntervals.map(i => ({
+                      start: i.start,
+                      end: i.end,
+                      type: 'interval',
+                      id: i.id
                     }))
-                    // Nota: intervalos serão adicionados quando necessário
                   ].sort((a, b) => a.start.localeCompare(b.start));
 
                   // Helper para checar se a hora está livre (igual CalendarPage)
