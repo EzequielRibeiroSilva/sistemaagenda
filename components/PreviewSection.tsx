@@ -555,7 +555,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   }
   
   const handleSlotMouseEnter = (e: React.MouseEvent, slot: ScheduleSlot) => {
-    if (viewMode !== 'compromissos' || slot.type !== 'booked' || !slot.details) return;
+    if (slot.type !== 'booked' || !slot.details) return;
     
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const POPOVER_ESTIMATED_HEIGHT = 156;
@@ -598,7 +598,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     agentAvatar?: string;
     agentEmail: string;
   }) => {
-    if (viewMode !== 'compromissos') return;
+    // ✅ SEMPRE MOSTRAR: Seção focada em exibir agendamentos
 
     // Formatar data
     const formattedDate = selectedDate.toLocaleDateString('pt-BR', {
@@ -656,8 +656,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       appointmentsCount: appointments.length,
       startHour,
       endHour,
-      selectedDate: selectedDate.toISOString().split('T')[0],
-      viewMode
+      selectedDate: selectedDate.toISOString().split('T')[0]
     });
 
     return displayedAgents.map((agent, agentIndex) => {
@@ -716,7 +715,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       });
       return available;
     });
-  }, [displayedAgents, appointments, selectedDate, startHour, endHour, viewMode]);
+  }, [displayedAgents, appointments, selectedDate, startHour, endHour]);
 
   // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
   // Sempre deve haver um local específico selecionado
@@ -725,14 +724,10 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       label: loc.name 
   }));
 
-  const serviceOptions = [
-      { value: 'all', label: 'Todos Os Serviços' },
-      ...services.map(service => ({ value: service.id, label: service.name }))
-  ];
+  // ✅ REMOVIDO: serviceOptions não é mais necessário
 
   // ✅ DEBUG: Log do estado geral da PreviewSection
   console.log('🎯 [PreviewSection] Estado geral:', {
-    viewMode,
     selectedLocation,
     displayedAgentsCount: displayedAgents.length,
     appointmentsCount: appointments.length,
@@ -760,18 +755,10 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 selectedValue={selectedLocation} 
                 onSelect={setSelectedLocation} 
             />
-            <FilterDropdown 
-                label="Serviços" 
-                options={serviceOptions} 
-                selectedValue={selectedService} 
-                onSelect={setSelectedService} 
-            />
+
           </div>
         </div>
-        <div className="hidden lg:flex bg-gray-100 p-1 rounded-lg items-center">
-          <ToggleButton active={viewMode === 'compromissos'} onClick={() => setViewMode('compromissos')}>Mostrar Compromissos</ToggleButton>
-          <ToggleButton active={viewMode === 'disponibilidade'} onClick={() => setViewMode('disponibilidade')}>Mostrar Disponibilidade</ToggleButton>
-        </div>
+
          <button className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden">
             <MoreHorizontal className="h-5 w-5" />
         </button>
@@ -879,7 +866,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
 
                 {/* ✅ NOVO: Renderizar cards de agendamentos do backend */}
-                {viewMode === 'compromissos' && agentAppointmentCards[agent.id]?.map((card) => {
+                {agentAppointmentCards[agent.id]?.map((card) => {
                   // Determinar cor e estilo baseado no status
                   const isApproved = card.status === 'Aprovado';
                   const isCompleted = card.status === 'Concluído';
@@ -961,7 +948,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 })}
 
                 {/* ✅ NOVO: Renderizar bloqueios de intervalo do local (linhas vermelhas) */}
-                {viewMode === 'compromissos' && locationIntervals.map(block => {
+                {locationIntervals.map(block => {
                   const blockStyle = getAppointmentCardStyle(block.start, block.end);
                   return (
                     <div 
