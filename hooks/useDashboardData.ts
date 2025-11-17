@@ -51,6 +51,16 @@ interface BackendUnidade {
   endereco?: string;
 }
 
+// ✅ NOVO: Interface para horários de funcionamento da unidade
+interface UnitSchedule {
+  dia_semana: number;
+  is_aberto: boolean;
+  horarios_json: Array<{
+    inicio: string;
+    fim: string;
+  }>;
+}
+
 interface DashboardFilters {
   unidade_id?: number;
   agente_id?: number;
@@ -74,6 +84,7 @@ export const useDashboardData = () => {
   const [agentes, setAgentes] = useState<BackendAgente[]>([]);
   const [servicos, setServicos] = useState<BackendServico[]>([]);
   const [unidades, setUnidades] = useState<BackendUnidade[]>([]);
+  const [unitSchedules, setUnitSchedules] = useState<Record<string, UnitSchedule[]>>({}); // ✅ NOVO: Horários por unidade
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,22 +120,45 @@ export const useDashboardData = () => {
       
       console.log('🏢 [useDashboardData] Resposta bruta do backend:', response);
       
+      let unidadesData: BackendUnidade[] = [];
+      
       // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
         // Formato 1: { success: true, data: [...] }
         console.log('✅ [useDashboardData] Unidades carregadas (formato success/data):', response.data.length, response.data);
-        setUnidades(response.data);
+        unidadesData = response.data;
       } else if (response.data && Array.isArray(response.data)) {
         // Formato 2: { data: [...], limitInfo: {...} } ← ESTE É O FORMATO REAL!
         console.log('✅ [useDashboardData] Unidades carregadas (formato data/limitInfo):', response.data.length, response.data);
-        setUnidades(response.data);
+        unidadesData = response.data;
       } else if (Array.isArray(response)) {
         // Formato 3: [...] (array direto)
         console.log('✅ [useDashboardData] Unidades carregadas (array direto):', response.length, response);
-        setUnidades(response);
+        unidadesData = response;
       } else {
         console.error('❌ [useDashboardData] Formato de resposta não reconhecido:', response);
       }
+      
+      setUnidades(unidadesData);
+      
+      // ✅ NOVO: Buscar horários de funcionamento para cada unidade (igual CalendarPage)
+      const schedulesMap: Record<string, UnitSchedule[]> = {};
+      for (const unidade of unidadesData) {
+        try {
+          console.log(`⏰ [useDashboardData] Buscando horários da unidade ${unidade.id}...`);
+          const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${unidade.id}`);
+          
+          if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
+            schedulesMap[unidade.id.toString()] = scheduleResponse.data.horarios_funcionamento;
+            console.log(`✅ [useDashboardData] Horários da unidade ${unidade.id}:`, scheduleResponse.data.horarios_funcionamento);
+          }
+        } catch (err) {
+          console.error(`❌ [useDashboardData] Erro ao buscar horários da unidade ${unidade.id}:`, err);
+        }
+      }
+      setUnitSchedules(schedulesMap);
+      console.log('✅ [useDashboardData] Todos os horários carregados:', schedulesMap);
+      
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar unidades:', err);
       throw err;
@@ -614,6 +648,7 @@ export const useDashboardData = () => {
     agentes,
     servicos,
     unidades,
+    unitSchedules, // ✅ NOVO: Horários de funcionamento por unidade
     
     // Estado
     isLoading,
