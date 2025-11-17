@@ -33,10 +33,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         calculateMetrics
     } = useDashboardData();
 
-    // Estados de filtro da seção Desempenho
-    const [selectedLocation, setSelectedLocation] = useState('all');
-    const [selectedAgent, setSelectedAgent] = useState('all');
-    const [selectedService, setSelectedService] = useState('all');
+    // ✅ ESTADOS DE FILTRO DA SEÇÃO DESEMPENHO (Independentes)
+    const [performanceLocation, setPerformanceLocation] = useState('all');
+    const [performanceAgent, setPerformanceAgent] = useState('all');
+    const [performanceService, setPerformanceService] = useState('all');
     const [dateRange, setDateRange] = useState<{ startDate: Date | null; endDate: Date | null }>({ 
         startDate: null, 
         endDate: null 
@@ -45,8 +45,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     // ✅ NOVO: Estado para agendamentos do período anterior (para cálculo de variações)
     const [previousPeriodAgendamentos, setPreviousPeriodAgendamentos] = useState<any[]>([]);
     
-    // Estados de filtro das outras seções (PreviewSection)
-    const [selectedPreviewService, setSelectedPreviewService] = useState('all');
+    // ✅ ESTADOS DE FILTRO DA SEÇÃO PRÉ-VISUALIZAÇÃO (Independentes)
+    const [previewLocation, setPreviewLocation] = useState('all');
+    const [previewService, setPreviewService] = useState('all');
     
     const [viewMode, setViewMode] = useState<'compromissos' | 'disponibilidade'>('compromissos');
     const [isAppointmentModalOpen, setAppointmentModalOpen] = useState(false);
@@ -68,9 +69,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         agentesCount: backendAgentes.length,
         servicosCount: backendServicos.length,
         agendamentosCount: agendamentos.length,
-        selectedLocation,
-        selectedAgent,
-        selectedService
+        performanceLocation,
+        performanceAgent,
+        performanceService,
+        previewLocation,
+        previewService
     });
 
     // ✅ AUTO-SELEÇÃO DE LOCAL (Idêntico ao CalendarPage)
@@ -80,7 +83,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             agentesLength: backendAgentes.length,
             userRole,
             loggedInAgentId,
-            selectedLocation,
+            performanceLocation,
+            previewLocation,
             timestamp: new Date().toISOString()
         });
 
@@ -137,15 +141,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         }
 
         // 6. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
-        if (newLocationId && newLocationId !== selectedLocation) {
-            console.log(`⚙️ [DashboardPage] Forçando seleção inicial de Local para: ${newLocationId} (Regra: ${userRole})`);
-            setSelectedLocation(newLocationId);
-            console.log('✅ [DashboardPage] DEPOIS setSelectedLocation chamado');
+        // ✅ CORREÇÃO: Aplicar para AMBAS as seções (Desempenho e Pré-Visualização)
+        if (newLocationId && newLocationId !== performanceLocation) {
+            console.log(`⚙️ [DashboardPage] Forçando seleção inicial de Local para AMBAS as seções: ${newLocationId} (Regra: ${userRole})`);
+            setPerformanceLocation(newLocationId);
+            setPreviewLocation(newLocationId);
+            console.log('✅ [DashboardPage] DEPOIS setPerformanceLocation e setPreviewLocation chamados');
         } else {
             console.log('⏭️ [DashboardPage] Seleção NÃO aplicada:', {
                 newLocationId,
-                selectedLocation,
-                isEqual: newLocationId === selectedLocation,
+                performanceLocation,
+                isEqual: newLocationId === performanceLocation,
                 hasNewId: !!newLocationId,
                 userRole
             });
@@ -154,12 +160,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId]);
     // ✅ CORREÇÃO CRÍTICA: Remover selectedLocation das dependências para permitir mudança manual
 
-    // ✅ AUTO-SELEÇÃO DE AGENTE (para usuário AGENTE)
+    // ✅ AUTO-SELEÇÃO DE AGENTE (para usuário AGENTE) - Apenas na seção Desempenho
     useEffect(() => {
         if (loggedInAgentId) {
-            setSelectedAgent(loggedInAgentId);
+            setPerformanceAgent(loggedInAgentId);
         } else {
-            setSelectedAgent('all');
+            setPerformanceAgent('all');
         }
     }, [loggedInAgentId]);
 
@@ -170,9 +176,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             hasEndDate: !!dateRange.endDate,
             startDate: dateRange.startDate?.toISOString().split('T')[0],
             endDate: dateRange.endDate?.toISOString().split('T')[0],
-            selectedLocation,
-            selectedAgent,
-            selectedService,
+            performanceLocation,
+            performanceAgent,
+            performanceService,
             isMultiPlan
         });
 
@@ -182,9 +188,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             return;
         }
 
-        // Para Multi-Plan, exigir seleção de local
-        if (isMultiPlan && selectedLocation === 'all') {
-            console.log('⏳ [DashboardPage] Multi-Plan: Aguardando seleção de local...');
+        // Para Multi-Plan, exigir seleção de local na seção Desempenho
+        if (isMultiPlan && performanceLocation === 'all') {
+            console.log('⏳ [DashboardPage] Multi-Plan: Aguardando seleção de local na seção Desempenho...');
             return;
         }
 
@@ -199,18 +205,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         };
 
         // Adicionar filtro de unidade se não for 'all'
-        if (selectedLocation !== 'all') {
-            filters.unidade_id = parseInt(selectedLocation);
+        if (performanceLocation !== 'all') {
+            filters.unidade_id = parseInt(performanceLocation);
         }
 
         // Adicionar filtro de agente se não for 'all'
-        if (selectedAgent !== 'all') {
-            filters.agente_id = parseInt(selectedAgent);
+        if (performanceAgent !== 'all') {
+            filters.agente_id = parseInt(performanceAgent);
         }
 
         // Adicionar filtro de serviço se não for 'all'
-        if (selectedService !== 'all') {
-            filters.servico_id = parseInt(selectedService);
+        if (performanceService !== 'all') {
+            filters.servico_id = parseInt(performanceService);
         }
 
         console.log('📊 [DashboardPage] Buscando agendamentos com filtros:', filters);
@@ -243,7 +249,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             console.error('❌ [DashboardPage] Erro ao buscar período anterior:', err);
             setPreviousPeriodAgendamentos([]);
         });
-    }, [selectedLocation, selectedAgent, selectedService, dateRange, isMultiPlan, fetchAgendamentos, fetchAgendamentosRaw]);
+    }, [performanceLocation, performanceAgent, performanceService, dateRange, isMultiPlan, fetchAgendamentos, fetchAgendamentosRaw]);
 
     const handleAppointmentClick = (details: ScheduleSlot['details']) => {
         setModalData({ appointment: details });
@@ -349,22 +355,22 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         }));
     }, [backendUnidades]);
 
-    // ✅ FILTRAR AGENTES BASEADO NO LOCAL SELECIONADO
-    const filteredAgents = useMemo(() => {
-        console.log('🔍 [DashboardPage] Filtrando agentes por local:', {
-            selectedLocation,
+    // ✅ FILTRAR AGENTES BASEADO NO LOCAL SELECIONADO DA SEÇÃO DESEMPENHO
+    const performanceFilteredAgents = useMemo(() => {
+        console.log('🔍 [DashboardPage] Filtrando agentes por local (Desempenho):', {
+            performanceLocation,
             totalAgents: agents.length,
             backendAgentesCount: backendAgentes.length
         });
 
-        if (selectedLocation === 'all') {
-            console.log('✅ [DashboardPage] Mostrando todos os agentes (selectedLocation = all)');
+        if (performanceLocation === 'all') {
+            console.log('✅ [DashboardPage] Mostrando todos os agentes (performanceLocation = all)');
             return agents;
         }
         
         // Filtrar agentes que trabalham no local selecionado
         // ✅ CRÍTICO: Converter para string para comparação (igual CalendarPage)
-        const locationIdStr = selectedLocation.toString();
+        const locationIdStr = performanceLocation.toString();
         const filtered = agents.filter(agent => {
             const backendAgent = backendAgentes.find(a => a.id.toString() === agent.id);
             
@@ -372,7 +378,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             const hasLocation = Array.isArray(backendAgent?.unidades) && 
                                backendAgent.unidades.includes(locationIdStr);
             
-            console.log(`🔍 [DashboardPage] Agente ${agent.name}:`, {
+            console.log(`🔍 [DashboardPage] Agente ${agent.name} (Desempenho):`, {
                 agentId: agent.id,
                 unidades: backendAgent?.unidades,
                 locationIdStr,
@@ -382,15 +388,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             return hasLocation;
         });
 
-        console.log('✅ [DashboardPage] Agentes filtrados:', {
-            selectedLocation: locationIdStr,
+        console.log('✅ [DashboardPage] Agentes filtrados (Desempenho):', {
+            performanceLocation: locationIdStr,
             totalAgents: agents.length,
             filteredCount: filtered.length,
             filteredNames: filtered.map(a => a.name)
         });
 
         return filtered;
-    }, [agents, backendAgentes, selectedLocation]);
+    }, [agents, backendAgentes, performanceLocation]);
 
     // ✅ FILTRAR SERVIÇOS BASEADO NO AGENTE SELECIONADO
     // TODO: Implementar quando backend fornecer relação agente-serviço
@@ -430,14 +436,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             <PerformanceSection 
                 metrics={metrics}
                 locations={locations}
-                agents={filteredAgents}
+                agents={performanceFilteredAgents}
                 services={filteredServices}
-                selectedLocation={selectedLocation}
-                setSelectedLocation={setSelectedLocation}
-                selectedAgent={selectedAgent}
-                setSelectedAgent={setSelectedAgent}
-                selectedService={selectedService}
-                setSelectedService={setSelectedService}
+                selectedLocation={performanceLocation}
+                setSelectedLocation={setPerformanceLocation}
+                selectedAgent={performanceAgent}
+                setSelectedAgent={setPerformanceAgent}
+                selectedService={performanceService}
+                setSelectedService={setPerformanceService}
                 loggedInAgentId={loggedInAgentId}
                 userRole={userRole}
                 isMultiPlan={isMultiPlan}
@@ -448,10 +454,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 schedules={filteredAgentSchedules}
                 locations={locations}
                 services={services}
-                selectedLocation={selectedLocation}
-                setSelectedLocation={setSelectedLocation}
-                selectedService={selectedPreviewService}
-                setSelectedService={setSelectedPreviewService}
+                selectedLocation={previewLocation}
+                setSelectedLocation={setPreviewLocation}
+                selectedService={previewService}
+                setSelectedService={setPreviewService}
                 viewMode={viewMode}
                 setViewMode={setViewMode}
                 onAppointmentClick={handleAppointmentClick}
