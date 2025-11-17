@@ -276,6 +276,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       agentName: string;
       agentAvatar?: string;
       agentEmail: string;
+      agentPhone?: string;
+      // ✅ CRÍTICO: Campos necessários para o modal de edição
+      agentId: number;
+      serviceId?: number;
+      clientPhone?: string;
+      dateISO: string;
     }>> = {};
 
     // Inicializar arrays vazios para cada agente exibido
@@ -352,7 +358,13 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         status: apt.status,
         agentName,
         agentAvatar,
-        agentEmail
+        agentEmail,
+        agentPhone: backendAgent?.telefone,
+        // ✅ CRÍTICO: Campos necessários para o modal de edição
+        agentId: apt.agente_id,
+        serviceId: apt.servico_id,
+        clientPhone: apt.cliente_telefone,
+        dateISO: aptDateStr
       });
     });
 
@@ -780,7 +792,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                       onMouseEnter={(e) => handleAppointmentCardMouseEnter(e, card)}
                       onMouseLeave={handleSlotMouseLeave}
                       onClick={() => {
-                        // Criar objeto de detalhes para o modal
+                        // ✅ CORREÇÃO CRÍTICA: Passar TODOS os dados necessários para o modal (igual CalendarPage.tsx)
                         const details: ScheduleSlot['details'] = {
                           id: card.id.toString(),
                           service: card.serviceName,
@@ -788,17 +800,25 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                           agentName: card.agentName,
                           agentAvatar: card.agentAvatar,
                           agentEmail: card.agentEmail,
-                          agentPhone: undefined,
+                          agentPhone: card.agentPhone,
                           date: selectedDate.toLocaleDateString('pt-BR', {
                             day: '2-digit',
                             month: 'long',
                             year: 'numeric'
                           }),
                           time: `${card.startTime} - ${card.endTime}`,
-                          serviceId: '',
+                          // ✅ CRÍTICO: IDs e horários brutos para submissão
+                          serviceId: card.serviceId?.toString() || '',
                           locationId: selectedLocation,
-                          status: card.status as any
+                          agentId: card.agentId.toString(),
+                          startTime: card.startTime,
+                          endTime: card.endTime,
+                          dateISO: card.dateISO, // Data no formato ISO (YYYY-MM-DD)
+                          status: card.status as any,
+                          clientPhone: card.clientPhone || ''
                         };
+                        
+                        console.log('🎯 [PreviewSection] Abrindo modal com dados:', details);
                         onAppointmentClick(details);
                       }}
                     >
