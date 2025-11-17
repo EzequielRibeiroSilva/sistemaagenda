@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { getAssetUrl } from '../utils/api'; // ✅ NOVO: Importar função para URLs de assets
 import PerformanceSection from './PerformanceSection';
 import PreviewSection from './PreviewSection';
 import NewAppointmentModal from './NewAppointmentModal';
@@ -305,22 +306,28 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         return backendAgentes.map(agente => {
             // ✅ CORREÇÃO CRÍTICA: Backend pode retornar 'name' já formatado (igual CalendarPage)
-            // Priorizar 'name' se existir, senão concatenar 'nome' + 'sobrenome'
-            const backendName = (agente as any).name;
-            const displayName = backendName || `${agente.nome} ${agente.sobrenome || ''}`.trim();
+            // Priorizar 'nome_exibicao', depois 'name', senão concatenar 'nome' + 'sobrenome'
+            const displayName = agente.nome_exibicao || (agente as any).name || `${agente.nome} ${agente.sobrenome || ''}`.trim();
+            
+            // ✅ NOVO: Usar avatar real do backend com getAssetUrl (igual CalendarPage)
+            const avatarUrl = agente.avatar 
+                ? getAssetUrl(agente.avatar)
+                : `https://i.pravatar.cc/150?u=${agente.id}`;
             
             console.log(`🔍 [DashboardPage] Agente ${agente.id}:`, {
-                backendName,
+                nome_exibicao: agente.nome_exibicao,
                 nome: agente.nome,
                 sobrenome: agente.sobrenome,
                 displayName,
+                avatar: agente.avatar,
+                avatarUrl,
                 unidades: agente.unidades
             });
 
             return {
                 id: agente.id.toString(),
                 name: displayName,
-                avatar: `https://i.pravatar.cc/150?u=${agente.id}`,
+                avatar: avatarUrl, // ✅ NOVO: Avatar real do backend
                 unidades: agente.unidades // ✅ CRÍTICO: Incluir array de unidades
             };
         });
@@ -450,6 +457,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onAppointmentClick={handleAppointmentClick}
                 onSlotClick={handleSlotClick}
                 unitSchedules={unitSchedules} // ✅ NOVO: Passar horários de funcionamento
+                agents={agents} // ✅ NOVO: Passar lista de agentes para filtrar por local
             />
             
             <NewAppointmentModal 

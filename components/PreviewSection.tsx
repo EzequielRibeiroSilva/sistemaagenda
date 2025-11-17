@@ -113,6 +113,7 @@ interface PreviewSectionProps {
   onAppointmentClick: (details: ScheduleSlot['details']) => void;
   onSlotClick: (slotInfo: { agent: Agent, start: number, date: Date }) => void;
   unitSchedules?: Record<string, UnitSchedule[]>; // ✅ NOVO: Horários de funcionamento por unidade
+  agents?: Agent[]; // ✅ NOVO: Lista de agentes para filtrar por local
 }
 
 const PreviewSection: React.FC<PreviewSectionProps> = ({ 
@@ -127,13 +128,54 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     setViewMode,
     onAppointmentClick,
     onSlotClick,
-    unitSchedules = {} // ✅ NOVO: Horários de funcionamento (default vazio)
+    unitSchedules = {}, // ✅ NOVO: Horários de funcionamento (default vazio)
+    agents = [] // ✅ NOVO: Lista de agentes (default vazio)
 }) => {
   const [selectedDate, setSelectedDate] = useState(new Date(2025, 8, 30));
   const [popover, setPopover] = useState<{ visible: boolean; content: NonNullable<ScheduleSlot['details']>; style: React.CSSProperties } | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ agentIndex: number; start: number; end: number } | null>(null);
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+
+  // ✅ NOVO: Filtrar agentes por local selecionado (igual CalendarPage)
+  const displayedAgents = useMemo(() => {
+    console.log('🔍 [PreviewSection] Filtrando agentes por local:', {
+      selectedLocation,
+      totalAgents: agents.length,
+      agentsData: agents.map(a => ({ id: a.id, name: a.name, unidades: a.unidades }))
+    });
+
+    // Se 'all' ou não há agentes, retornar todos
+    if (selectedLocation === 'all' || agents.length === 0) {
+      console.log('✅ [PreviewSection] Mostrando todos os agentes');
+      return agents;
+    }
+
+    // Filtrar agentes que trabalham no local selecionado
+    const locationIdStr = selectedLocation.toString();
+    const filtered = agents.filter(agent => {
+      const hasLocation = Array.isArray(agent.unidades) && 
+                         agent.unidades.includes(locationIdStr);
+      
+      console.log(`🔍 [PreviewSection] Agente ${agent.name}:`, {
+        agentId: agent.id,
+        unidades: agent.unidades,
+        locationIdStr,
+        hasLocation
+      });
+      
+      return hasLocation;
+    });
+
+    console.log('✅ [PreviewSection] Agentes filtrados:', {
+      selectedLocation: locationIdStr,
+      totalAgents: agents.length,
+      filteredCount: filtered.length,
+      filteredNames: filtered.map(a => a.name)
+    });
+
+    return filtered;
+  }, [agents, selectedLocation]);
 
   const filteredSchedules = useMemo(() => {
     if (selectedLocation === 'all' && selectedService === 'all') {
@@ -324,9 +366,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         </div>
         
         <div className="space-y-4">
-          {filteredSchedules.map((schedule, agentIndex) => (
-            <div key={agentIndex} className={`flex items-center gap-4 h-12 ${agentIndex > 0 ? 'hidden lg:flex' : 'flex'}`}>
-              <img src={schedule.agent.avatar} alt={schedule.agent.name} className="w-10 h-10 rounded-full object-cover"/>
+          {displayedAgents.map((agent, agentIndex) => (
+            <div key={agent.id} className={`flex items-center gap-4 h-12 ${agentIndex > 0 ? 'hidden lg:flex' : 'flex'}`}>
+              <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full object-cover"/>
               <div className="flex-1 bg-gray-100 h-full rounded relative overflow-hidden">
                 <div className="absolute inset-0 flex justify-around">
                    {hours.slice(0, -1).map(h => (
@@ -334,7 +376,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                    ))}
                 </div>
                 
-                {viewMode === 'disponibilidade' && availableSlots[agentIndex].map((slot, i) => {
+                {viewMode === 'disponibilidade' && displayedAgents[agentIndex] && availableSlots[agentIndex]?.map((slot, i) => {
                     const isHovered = hoveredSlot?.agentIndex === agentIndex && hoveredSlot.start === slot.start;
                     return (
                         <div 
@@ -343,7 +385,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                             style={getSlotStyle(slot.start, slot.end)}
                             onMouseEnter={() => setHoveredSlot({ agentIndex, start: slot.start, end: slot.end })}
                             onMouseLeave={() => setHoveredSlot(null)}
-                            onClick={() => onSlotClick({ agent: schedule.agent, start: slot.start, date: selectedDate })}
+                            onClick={() => onSlotClick({ agent: agent, start: slot.start, date: selectedDate })}
                         >
                             {isHovered && 
                                 <div className="absolute inset-0 bg-green-400 opacity-80"></div>
@@ -357,7 +399,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     );
                 })}
 
-                {schedule.appointments.map((slot, i) => (
+                {viewMode === 'compromissos' && filteredSchedules[agentIndex]?.appointments.map((slot, i) => (
                   <div 
                     key={i} 
                     className={`absolute h-full rounded transition-all duration-200 
