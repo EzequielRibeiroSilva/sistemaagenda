@@ -515,6 +515,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onClose={handleCloseModal} 
                 appointmentData={modalData?.appointment}
                 newSlotData={modalData?.newSlot}
+                selectedLocationId={previewLocation} // ✅ CRÍTICO: Passar local selecionado para filtrar agentes
             />
         </div>
     );
