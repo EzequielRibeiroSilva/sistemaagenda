@@ -351,7 +351,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     // ✅ BUSCAR HORÁRIOS DE FUNCIONAMENTO DA UNIDADE SELECIONADA
     useEffect(() => {
         const fetchUnitSchedule = async () => {
-            if (!selectedLocationId) {
+            if (!selectedLocationId || selectedLocationId === 'all') {
                 setUnitSchedule([]);
                 return;
             }

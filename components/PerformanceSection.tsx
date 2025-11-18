@@ -141,10 +141,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
   // ✅ CORREÇÃO CRÍTICA: Notificar período inicial na montagem
   useEffect(() => {
     if (onDateRangeChange && dateRange.startDate && dateRange.endDate) {
-      console.log('📅 [PerformanceSection] Notificando mudança de período:', {
-        startDate: dateRange.startDate.toISOString().split('T')[0],
-        endDate: dateRange.endDate.toISOString().split('T')[0]
-      });
+
       onDateRangeChange(dateRange);
     }
   }, [dateRange.startDate, dateRange.endDate, onDateRangeChange]);
