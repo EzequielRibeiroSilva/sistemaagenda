@@ -92,6 +92,7 @@ export interface AppointmentDetail {
   id: number;
   service: string;
   dateTime: string;
+  date: string; // ✅ NOVO: Data bruta no formato YYYY-MM-DD para navegação ao calendário
   timeRemaining: string;
   timeRemainingStatus: 'happening_now' | 'soon' | 'overdue' | 'pending';
   agent: {

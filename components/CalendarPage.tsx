@@ -94,6 +94,28 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
+
+    // ✅ NOVO: Verificar se há uma data de navegação no localStorage (vindo da busca)
+    useEffect(() => {
+        const navigationDate = localStorage.getItem('calendarNavigationDate');
+        if (navigationDate) {
+            try {
+                console.log('📅 [CalendarPage] Data recebida do localStorage:', navigationDate);
+                // Adicionar 'T00:00:00' para garantir parsing correto no timezone local
+                const parsedDate = new Date(navigationDate + 'T00:00:00');
+                console.log('📅 [CalendarPage] Data parseada:', parsedDate);
+                if (!isNaN(parsedDate.getTime())) {
+                    setCurrentDate(parsedDate);
+                    console.log('📅 [CalendarPage] Navegando para data:', navigationDate, '→', parsedDate.toLocaleDateString('pt-BR'));
+                }
+            } catch (error) {
+                console.error('❌ [CalendarPage] Erro ao parsear data de navegação:', error);
+            } finally {
+                // Limpar o localStorage após usar
+                localStorage.removeItem('calendarNavigationDate');
+            }
+        }
+    }, []);
     
     // ✅ CORREÇÃO: Estado para rastrear qual slot específico está sendo hovereado
     // Formato: "agentId-dateStr-startTime-endTime" (ex: "23-2025-11-04-13:00-14:00")

@@ -7,7 +7,9 @@ interface MobileSearchOverlayProps {
   onAddNewAppointment: () => void;
   onSelectAgent: (agentId: string) => void;
   onSelectService: (serviceId: string) => void;
-  userRole: 'salon' | 'agent';
+  onSelectClient: (clientId: number) => void;
+  onSelectAppointment: (appointmentId: number, appointmentDate: string) => void; // ✅ NOVO: Callback para navegar ao calendário
+  userRole: 'ADMIN' | 'AGENTE';
   loggedInAgentId: string | null;
 }
 
@@ -16,6 +18,8 @@ const MobileSearchOverlay: React.FC<MobileSearchOverlayProps> = ({
   onAddNewAppointment,
   onSelectAgent,
   onSelectService,
+  onSelectClient,
+  onSelectAppointment,
   userRole,
   loggedInAgentId
 }) => {
@@ -33,6 +37,18 @@ const MobileSearchOverlay: React.FC<MobileSearchOverlayProps> = ({
 
   const handleSelectServiceWrapper = (serviceId: string) => {
     onSelectService(serviceId);
+    onClose();
+  };
+
+  // ✅ NOVO: Handler para seleção de cliente
+  const handleSelectClientWrapper = (clientId: number) => {
+    onSelectClient(clientId);
+    onClose();
+  };
+
+  // ✅ NOVO: Handler para seleção de agendamento
+  const handleSelectAppointmentWrapper = (appointmentId: number, appointmentDate: string) => {
+    onSelectAppointment(appointmentId, appointmentDate);
     onClose();
   };
 
@@ -63,6 +79,8 @@ const MobileSearchOverlay: React.FC<MobileSearchOverlayProps> = ({
             onAddNewAppointment={handleAddNew}
             onSelectAgent={handleSelectAgentWrapper}
             onSelectService={handleSelectServiceWrapper}
+            onSelectClient={handleSelectClientWrapper}
+            onSelectAppointment={handleSelectAppointmentWrapper}
             userRole={userRole}
             loggedInAgentId={loggedInAgentId}
           />
