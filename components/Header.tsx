@@ -110,7 +110,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 )}
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-6">
               <div className="h-6 w-px bg-gray-200 "></div>
               <button
                 onClick={() => setModalOpen(true)}
@@ -151,7 +151,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
         
         {/* --- AVATAR (for all screen sizes) --- */}
         {/* This is separate to work with both layouts */}
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative ml-6" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen(!isDropdownOpen)}
               className="focus:outline-none rounded-full"
