@@ -116,25 +116,19 @@ export const useDashboardData = () => {
   // Buscar unidades
   const fetchUnidades = useCallback(async () => {
     try {
-      console.log('🏢 [useDashboardData] Buscando unidades...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
-      
-      console.log('🏢 [useDashboardData] Resposta bruta do backend:', response);
       
       let unidadesData: BackendUnidade[] = [];
       
       // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
         // Formato 1: { success: true, data: [...] }
-        console.log('✅ [useDashboardData] Unidades carregadas (formato success/data):', response.data.length, response.data);
         unidadesData = response.data;
       } else if (response.data && Array.isArray(response.data)) {
         // Formato 2: { data: [...], limitInfo: {...} } ← ESTE É O FORMATO REAL!
-        console.log('✅ [useDashboardData] Unidades carregadas (formato data/limitInfo):', response.data.length, response.data);
         unidadesData = response.data;
       } else if (Array.isArray(response)) {
         // Formato 3: [...] (array direto)
-        console.log('✅ [useDashboardData] Unidades carregadas (array direto):', response.length, response);
         unidadesData = response;
       } else {
         console.error('❌ [useDashboardData] Formato de resposta não reconhecido:', response);
@@ -146,19 +140,16 @@ export const useDashboardData = () => {
       const schedulesMap: Record<string, UnitSchedule[]> = {};
       for (const unidade of unidadesData) {
         try {
-          console.log(`⏰ [useDashboardData] Buscando horários da unidade ${unidade.id}...`);
           const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${unidade.id}`);
-          
+
           if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
             schedulesMap[unidade.id.toString()] = scheduleResponse.data.horarios_funcionamento;
-            console.log(`✅ [useDashboardData] Horários da unidade ${unidade.id}:`, scheduleResponse.data.horarios_funcionamento);
           }
         } catch (err) {
           console.error(`❌ [useDashboardData] Erro ao buscar horários da unidade ${unidade.id}:`, err);
         }
       }
       setUnitSchedules(schedulesMap);
-      console.log('✅ [useDashboardData] Todos os horários carregados:', schedulesMap);
       
     } catch (err) {
       console.error('❌ [useDashboardData] Erro ao buscar unidades:', err);
@@ -169,17 +160,12 @@ export const useDashboardData = () => {
   // Buscar agentes
   const fetchAgentes = useCallback(async () => {
     try {
-      console.log('👥 [useDashboardData] Buscando agentes...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/agentes`);
-      
-      console.log('👥 [useDashboardData] Resposta bruta do backend:', response);
-      
+
       if (response.success && response.data) {
-        console.log('✅ [useDashboardData] Agentes carregados:', response.data.length, response.data);
         setAgentes(response.data);
       } else if (Array.isArray(response)) {
         // ✅ CORREÇÃO: API pode retornar array direto
-        console.log('✅ [useDashboardData] Agentes carregados (array direto):', response.length, response);
         setAgentes(response);
       } else {
         console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
@@ -193,17 +179,12 @@ export const useDashboardData = () => {
   // Buscar serviços
   const fetchServicos = useCallback(async () => {
     try {
-      console.log('🛠️ [useDashboardData] Buscando serviços...');
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/servicos`);
-      
-      console.log('🛠️ [useDashboardData] Resposta bruta do backend:', response);
-      
+
       if (response.success && response.data) {
-        console.log('✅ [useDashboardData] Serviços carregados:', response.data.length, response.data);
         setServicos(response.data);
       } else if (Array.isArray(response)) {
         // ✅ CORREÇÃO: API pode retornar array direto
-        console.log('✅ [useDashboardData] Serviços carregados (array direto):', response.length, response);
         setServicos(response);
       } else {
         console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
@@ -217,49 +198,34 @@ export const useDashboardData = () => {
   // Buscar agendamentos com filtros (RETORNA os dados ao invés de salvar no estado)
   const fetchAgendamentosRaw = useCallback(async (filters: DashboardFilters): Promise<BackendAgendamento[]> => {
     try {
-      console.log('📅 [useDashboardData] Buscando agendamentos com filtros:', filters);
-      
       const params = new URLSearchParams();
       params.append('data_inicio', filters.data_inicio);
       params.append('data_fim', filters.data_fim);
-      
+
       if (filters.unidade_id) {
         params.append('unidade_id', filters.unidade_id.toString());
       }
-      
+
       if (filters.agente_id) {
         params.append('agente_id', filters.agente_id.toString());
       }
-      
+
       if (filters.servico_id) {
         params.append('servico_id', filters.servico_id.toString());
       }
 
       const url = `${API_BASE_URL}/agendamentos?${params.toString()}`;
-      console.log('🌐 [useDashboardData] URL da requisição:', url);
-
       const response = await makeAuthenticatedRequest(url);
-      
-      console.log('📦 [useDashboardData] Resposta do backend:', {
-        success: response.success,
-        dataLength: response.data?.length,
-        hasData: !!response.data,
-        isArray: Array.isArray(response.data),
-        data: response.data
-      });
       
       // ✅ CORREÇÃO CRÍTICA: Suportar múltiplos formatos de resposta
       if (response.success && response.data) {
         // Formato 1: { success: true, data: [...] }
-        console.log('✅ [useDashboardData] Agendamentos carregados (formato success/data):', response.data.length);
         return response.data;
       } else if (response.data && Array.isArray(response.data)) {
         // Formato 2: { data: [...], limitInfo: {...} } ← FORMATO REAL DO BACKEND!
-        console.log('✅ [useDashboardData] Agendamentos carregados (formato data/limitInfo):', response.data.length);
         return response.data;
       } else if (Array.isArray(response)) {
         // Formato 3: [...] (array direto)
-        console.log('✅ [useDashboardData] Agendamentos carregados (array direto):', response.length);
         return response;
       } else {
         console.warn('⚠️ [useDashboardData] Resposta sem dados válidos:', response);
@@ -287,7 +253,6 @@ export const useDashboardData = () => {
     agendamentos: BackendAgendamento[],
     previousPeriodAgendamentos?: BackendAgendamento[]
   ): PerformanceMetric[] => {
-    console.log('📊 [useDashboardData] Calculando métricas para', agendamentos.length, 'agendamentos');
 
     // Filtrar por status (BACKEND RETORNA EM PORTUGUÊS COM PRIMEIRA LETRA MAIÚSCULA)
     const validAppointments = agendamentos.filter(a => a.status !== 'Cancelado');
@@ -297,44 +262,19 @@ export const useDashboardData = () => {
     const pendingAppointments = agendamentos.filter(a => a.status === 'Aprovado');
     const canceledAppointments = agendamentos.filter(a => a.status === 'Cancelado');
 
-    // ✅ LOG DETALHADO: Breakdown por status
-    console.log('🔍 [CARD: Reservas Totais] Breakdown por status:', {
-      total: agendamentos.length,
-      cancelados: canceledAppointments.length,
-      validos: validAppointments.length,
-      confirmados: confirmedAppointments.length,
-      concluidos: completedAppointments.length,
-      pendentes: pendingAppointments.length,
-      statusList: agendamentos.map(a => a.status)
-    });
+
 
     // 1. RESERVAS TOTAIS
     const totalReservas = validAppointments.length;
     const breakdown = `Confirmadas: ${confirmedAppointments.length} | Concluídas: ${completedAppointments.length}`;
-    
-    console.log('✅ [CARD: Reservas Totais] Valor calculado:', {
-      totalReservas,
-      breakdown,
-      formula: `${agendamentos.length} total - ${canceledAppointments.length} cancelados = ${totalReservas} válidos`
-    });
 
     // 2. RECEITA LÍQUIDA E COMISSÕES
     let receitaBruta = 0;
     let comissoesTotal = 0;
 
-    console.log('💰 [CARD: Comissões de Agentes] Iniciando cálculo de comissões...');
-    console.log('💰 [CARD: Comissões de Agentes] Total de agendamentos concluídos:', completedAppointments.length);
-
     completedAppointments.forEach((agendamento, index) => {
       const valorTotal = Number(agendamento.valor_total) || 0;
       receitaBruta += valorTotal;
-
-      console.log(`\n💰 [Agendamento ${index + 1}/${completedAppointments.length}] ID: ${agendamento.id}`, {
-        valorTotal,
-        temServicos: !!agendamento.servicos,
-        qtdServicos: agendamento.servicos?.length || 0,
-        servicos: agendamento.servicos
-      });
 
       if (agendamento.servicos && agendamento.servicos.length > 0) {
         agendamento.servicos.forEach((servico, sIndex) => {
@@ -353,33 +293,17 @@ export const useDashboardData = () => {
 
           const comissaoCalculada = precoServico * (comissaoPercentual / 100);
 
-          console.log(`  📋 [Serviço ${sIndex + 1}] ${servico.nome}:`, {
-            preco: precoServico,
-            comissaoPercentualRaw: servico.comissao_percentual,
-            comissaoPercentualTipo: typeof servico.comissao_percentual,
-            comissaoPercentualConvertido: comissaoPercentual,
-            comissaoPercentual: `${comissaoPercentual}%`,
-            temComissao: comissaoPercentual > 0,
-            valorComissao: comissaoCalculada.toFixed(2)
-          });
+
 
           comissoesTotal += comissaoCalculada;
         });
       } else {
         const comissaoFallback = valorTotal * 0.5;
-        console.log(`  ⚠️ [SEM SERVIÇOS] Usando fallback 50%:`, {
-          valorTotal,
-          comissaoFallback: comissaoFallback.toFixed(2)
-        });
         comissoesTotal += comissaoFallback;
       }
     });
 
-    console.log('\n💰 [CARD: Comissões de Agentes] RESUMO FINAL:', {
-      receitaBruta: receitaBruta.toFixed(2),
-      comissoesTotal: comissoesTotal.toFixed(2),
-      agendamentosConcluidos: completedAppointments.length
-    });
+
 
     // ✅ CORREÇÃO CRÍTICA: Receita Líquida = o que sobra para o proprietário após pagar comissões
     const receitaLiquida = Number.isFinite(receitaBruta) && Number.isFinite(comissoesTotal)
@@ -395,13 +319,7 @@ export const useDashboardData = () => {
       });
     }
 
-    console.log('💰 [VALIDAÇÃO] Cálculo financeiro:', {
-      receitaBruta: `R$${receitaBruta.toFixed(2)}`,
-      comissoesTotal: `R$${comissoesTotal.toFixed(2)}`,
-      receitaLiquida: `R$${receitaLiquida.toFixed(2)}`,
-      percentualComissao: receitaBruta > 0 ? `${((comissoesTotal / receitaBruta) * 100).toFixed(1)}%` : '0%',
-      matematicaCorreta: comissoesTotal <= receitaBruta
-    });
+
 
     // 3. TAXA DE OCUPAÇÃO
     const diasUnicos = new Set(validAppointments.map(a => a.data_agendamento)).size;
@@ -424,11 +342,7 @@ export const useDashboardData = () => {
     const clientesUnicos = new Set(validAppointments.map(a => a.cliente_id));
     const totalClientesUnicos = clientesUnicos.size;
 
-    console.log('👥 [CARD: Clientes Únicos] Calculando clientes únicos no período:', {
-      agendamentosValidos: validAppointments.length,
-      clientesUnicos: Array.from(clientesUnicos),
-      totalClientesUnicos
-    });
+
 
     // 7. RECEITA DO PROPRIETÁRIO (substituindo Média Diária)
     // Receita do Proprietário = Receita Bruta - Comissões dos Agentes
@@ -436,31 +350,18 @@ export const useDashboardData = () => {
       ? receitaBruta - comissoesTotal
       : 0;
 
-    console.log('🏢 [CARD: Receita do Proprietário] Calculando receita do proprietário:', {
-      receitaBruta: receitaBruta.toFixed(2),
-      comissoesTotal: comissoesTotal.toFixed(2),
-      receitaDoProprietario: receitaDoProprietario.toFixed(2),
-      percentualProprietario: receitaBruta > 0 ? `${((receitaDoProprietario / receitaBruta) * 100).toFixed(1)}%` : '0%'
-    });
+
 
     // 8. TAXA DE CANCELAMENTO
     const totalGeral = agendamentos.length;
     const taxaCancelamento = totalGeral > 0 ? (canceledAppointments.length / totalGeral) * 100 : 0;
     
-    console.log('❌ [CARD: Taxa de Cancelamento] Calculando taxa de cancelamento:', {
-      totalGeral,
-      cancelados: canceledAppointments.length,
-      taxaCancelamento: taxaCancelamento.toFixed(1) + '%'
-    });
+
     
     // 9. AGENDAMENTOS PENDENTES (Aprovados aguardando finalização)
     const totalPendentes = pendingAppointments.length;
     
-    console.log('⏳ [CARD: Agendamentos Pendentes] Total de pendentes:', {
-      totalPendentes,
-      statusFiltrado: 'Aprovado',
-      descricao: 'Agendamentos aprovados aguardando finalização'
-    });
+
 
     // Calcular variações
     let variacaoReservas = '+0%';
@@ -550,16 +451,7 @@ export const useDashboardData = () => {
       }
     }
 
-    console.log('📊 [useDashboardData] Métricas calculadas:', {
-      totalReservas,
-      receitaBruta: receitaBruta.toFixed(2),
-      comissoesTotal: comissoesTotal.toFixed(2),
-      receitaDoProprietario: receitaDoProprietario.toFixed(2),
-      ticketMedio: ticketMedio.toFixed(2),
-      totalClientesUnicos,
-      taxaCancelamento: taxaCancelamento.toFixed(1),
-      totalPendentes
-    });
+
 
     return [
       {
@@ -630,15 +522,11 @@ export const useDashboardData = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🚀 [useDashboardData] Carregando dados iniciais...');
-      
       await Promise.all([
         fetchUnidades(),
         fetchAgentes(),
         fetchServicos()
       ]);
-
-      console.log('✅ [useDashboardData] Dados iniciais carregados com sucesso');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar dados';
       setError(errorMessage);

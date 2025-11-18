@@ -28,14 +28,14 @@ class DiagnosticController {
         });
       }
 
-      console.log('🔍 [DIAGNÓSTICO] Iniciando auditoria de usuários ADMIN e agentes...');
+
 
       // 1. Buscar todos os usuários ADMIN
       const usuariosAdmin = await this.usuarioModel.db('usuarios')
         .where('role', 'ADMIN')
         .select('id', 'nome', 'email', 'unidade_id', 'plano', 'limite_unidades', 'status', 'created_at');
 
-      console.log(`📊 [DIAGNÓSTICO] Encontrados ${usuariosAdmin.length} usuários ADMIN`);
+
 
       // 2. Para cada usuário ADMIN, buscar suas unidades e agentes
       const auditResults = await Promise.all(
@@ -128,7 +128,7 @@ class DiagnosticController {
         ).length
       };
 
-      console.log('📊 [DIAGNÓSTICO] Resumo:', diagnosticSummary);
+
 
       // 4. Identificar problemas específicos
       const problemasIdentificados = [];
@@ -180,7 +180,7 @@ class DiagnosticController {
         }
       });
 
-      console.log(`⚠️ [DIAGNÓSTICO] Encontrados ${problemasIdentificados.length} problemas`);
+
 
       return res.json({
         success: true,
