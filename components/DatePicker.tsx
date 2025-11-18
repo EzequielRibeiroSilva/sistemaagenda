@@ -226,7 +226,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         }
 
         const monthName = new Date(year, month).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-        const daysOfWeek = ['DO', 'SE', 'TE', 'QU', 'QI', 'SE', 'SA'];
+        const daysOfWeek = ['DO', 'SE', 'TE', 'QU', 'QI', 'SX', 'SA'];
 
         return (
             <div className="p-4">
