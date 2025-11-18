@@ -68,39 +68,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     const isMultiPlan = user?.plano === 'Multi';
     const isSinglePlan = user?.plano === 'Single';
 
-    console.log('🔍 [DashboardPage] Estado atual:', {
-        userRole,
-        loggedInAgentId,
-        isMultiPlan,
-        isSinglePlan,
-        unidadesCount: backendUnidades.length,
-        agentesCount: backendAgentes.length,
-        servicosCount: backendServicos.length,
-        agendamentosCount: agendamentos.length,
-        performanceLocation,
-        performanceAgent,
-        performanceService,
-        previewLocation,
-        previewService,
-        previewDate: previewDate.toISOString().split('T')[0], // ✅ NOVO: Log da data de pré-visualização
-        previewDateLocal: `${previewDate.getDate()}/${previewDate.getMonth() + 1}/${previewDate.getFullYear()}` // ✅ NOVO: Data no formato local
-    });
+
 
     // ✅ AUTO-SELEÇÃO DE LOCAL (Idêntico ao CalendarPage)
     useEffect(() => {
-        console.log('🔄 [DashboardPage] useEffect de auto-seleção executado:', {
-            unidadesLength: backendUnidades.length,
-            agentesLength: backendAgentes.length,
-            userRole,
-            loggedInAgentId,
-            performanceLocation,
-            previewLocation,
-            timestamp: new Date().toISOString()
-        });
-
         // 1. Garante que temos dados básicos para filtrar
         if (backendUnidades.length === 0 || backendAgentes.length === 0) {
-            console.log('⏭️ [DashboardPage] Dados ainda não carregados, pulando auto-seleção');
             return;
         }
 
@@ -110,61 +83,42 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         if (userRole === 'AGENTE' && loggedInAgentId) {
             const agentData = backendAgentes.find(a => a.id.toString() === loggedInAgentId);
             
-            console.log('🔍 [DashboardPage] Detectado usuário AGENTE:', {
-                loggedInAgentId,
-                agentFound: !!agentData,
-                agentData: agentData ? {
-                    id: agentData.id,
-                    nome: agentData.nome,
-                    unidade_id: agentData.unidade_id,
-                    unidades: agentData.unidades
-                } : null
-            });
+
             
             // ✅ CORREÇÃO CRÍTICA: Priorizar unidade principal do agente
             if (agentData && agentData.unidade_id !== undefined && agentData.unidade_id !== null) {
                 // Caso 1: AGENTE tem unidade principal definida - SEMPRE usar esta
                 newLocationId = agentData.unidade_id.toString();
-                console.log('✅ [DashboardPage] AGENTE com unidade_id principal (PRIORIDADE):', newLocationId);
+
             }
             // Se for AGENTE Multi-Local (que não tem unidade_id no agente, mas tem unidades no array 'unidades'):
             else if (agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
                 // Caso 2: AGENTE sem unidade principal - usar primeira unidade do array
                 newLocationId = agentData.unidades[0];
-                console.log('✅ [DashboardPage] AGENTE multi-local, selecionando primeira unidade:', newLocationId);
+
             }
         }
         // 3. ✅ PRIORIDADE 2: Plano Single
         else if (isSinglePlan) {
             newLocationId = backendUnidades[0]?.id.toString() || null;
-            console.log('✅ [DashboardPage] Plano Single, selecionando único local:', newLocationId);
+
         }
         // 4. ✅ PRIORIDADE 3: ADMIN com unidade padrão
         else if (user?.unidade_id) {
             newLocationId = user.unidade_id.toString();
-            console.log('✅ [DashboardPage] ADMIN com unidade padrão:', newLocationId);
+
         }
         // 5. ✅ PRIORIDADE 4: ADMIN Multi-Local sem padrão
         else if (userRole === 'ADMIN' && isMultiPlan && backendUnidades.length > 0) {
             newLocationId = backendUnidades[0].id.toString();
-            console.log('✅ [DashboardPage] ADMIN multi-local, selecionando primeiro local:', newLocationId);
+
         }
 
         // 6. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
         // ✅ CORREÇÃO: Aplicar para AMBAS as seções (Desempenho e Pré-Visualização)
         if (newLocationId && newLocationId !== performanceLocation) {
-            console.log(`⚙️ [DashboardPage] Forçando seleção inicial de Local para AMBAS as seções: ${newLocationId} (Regra: ${userRole})`);
             setPerformanceLocation(newLocationId);
             setPreviewLocation(newLocationId);
-            console.log('✅ [DashboardPage] DEPOIS setPerformanceLocation e setPreviewLocation chamados');
-        } else {
-            console.log('⏭️ [DashboardPage] Seleção NÃO aplicada:', {
-                newLocationId,
-                performanceLocation,
-                isEqual: newLocationId === performanceLocation,
-                hasNewId: !!newLocationId,
-                userRole
-            });
         }
 
     }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId]);
@@ -183,26 +137,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ BUSCAR AGENDAMENTOS quando filtros ou período mudarem
     useEffect(() => {
-        console.log('🔄 [DashboardPage] useEffect de busca disparado:', {
-            hasStartDate: !!dateRange.startDate,
-            hasEndDate: !!dateRange.endDate,
-            startDate: dateRange.startDate?.toISOString().split('T')[0],
-            endDate: dateRange.endDate?.toISOString().split('T')[0],
-            performanceLocation,
-            performanceAgent,
-            performanceService,
-            isMultiPlan
-        });
-
         // Validar que temos período válido
         if (!dateRange.startDate || !dateRange.endDate) {
-            console.log('⏳ [DashboardPage] Aguardando seleção de período...');
             return;
         }
 
         // Para Multi-Plan, exigir seleção de local na seção Desempenho
         if (isMultiPlan && performanceLocation === 'all') {
-            console.log('⏳ [DashboardPage] Multi-Plan: Aguardando seleção de local na seção Desempenho...');
             return;
         }
 
@@ -231,7 +172,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             filters.servico_id = parseInt(performanceService);
         }
 
-        console.log('📊 [DashboardPage] Buscando agendamentos com filtros:', filters);
+
         fetchAgendamentos(filters);
         
         // ✅ NOVO: Buscar agendamentos do período anterior para cálculo de variações
@@ -247,15 +188,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             data_fim: prevEndDate.toISOString().split('T')[0]
         };
         
-        console.log('📅 [DashboardPage] Buscando período anterior para variações:', {
-            periodoAtual: `${dataInicio} a ${dataFim}`,
-            periodoAnterior: `${prevFilters.data_inicio} a ${prevFilters.data_fim}`,
-            diffDays
-        });
+
         
         // ✅ CORREÇÃO CRÍTICA: Usar fetchAgendamentosRaw para não sobrescrever agendamentos do período atual
         fetchAgendamentosRaw(prevFilters).then((prevData) => {
-            console.log('✅ [DashboardPage] Período anterior carregado:', prevData.length, 'agendamentos');
             setPreviousPeriodAgendamentos(prevData);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao buscar período anterior:', err);
@@ -265,15 +201,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ NOVO: Buscar agendamentos do dia selecionado na pré-visualização
     useEffect(() => {
-        console.log('🔄 [DashboardPage] useEffect de busca de pré-visualização disparado:', {
-            previewDate: previewDate.toISOString().split('T')[0],
-            previewLocation,
-            isMultiPlan
-        });
-
         // Para Multi-Plan, exigir seleção de local
         if (isMultiPlan && (!previewLocation || previewLocation === 'all')) {
-            console.log('⏳ [DashboardPage] Multi-Plan: Aguardando seleção de local na pré-visualização...');
             setPreviewAppointments([]);
             return;
         }
@@ -289,16 +218,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         if (userRole === 'AGENTE' && loggedInAgentId) {
             // Para AGENTE, buscar apenas seus próprios agendamentos
             filters.agente_id = parseInt(loggedInAgentId);
-            console.log('🔍 [DashboardPage] Filtro de AGENTE aplicado:', loggedInAgentId);
         } else if (previewLocation !== 'all') {
             // Para ADMIN, filtrar por unidade
             filters.unidade_id = parseInt(previewLocation);
         }
-
-        console.log('📊 [DashboardPage] Buscando agendamentos da pré-visualização:', filters);
         
         fetchAgendamentosRaw(filters).then((data) => {
-            console.log('✅ [DashboardPage] Agendamentos da pré-visualização carregados:', data.length, 'agendamentos');
+
 
             // ✅ CORREÇÃO CRÍTICA: Transformar BackendAgendamento para formato compatível com PreviewSection
             const transformedAppointments = data.map(apt => ({
@@ -317,7 +243,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 serviceId: apt.servico_id?.toString() || '1'
             }));
 
-            console.log('🔄 [DashboardPage] Agendamentos transformados:', transformedAppointments.length, 'agendamentos');
+
             setPreviewAppointments(transformedAppointments);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao buscar agendamentos da pré-visualização:', err);
@@ -343,7 +269,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ NOVO: Callback para recarregar dados após criar/editar agendamento
     const handleAppointmentSuccess = () => {
-        console.log('✅ [DashboardPage] Agendamento criado/editado com sucesso - recarregando preview...');
 
         // Recarregar agendamentos da pré-visualização
         const filters = {
@@ -355,17 +280,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         if (userRole === 'AGENTE' && loggedInAgentId) {
             // Para AGENTE, buscar apenas seus próprios agendamentos
             filters.agente_id = parseInt(loggedInAgentId);
-            console.log('🔍 [DashboardPage] Filtro de AGENTE aplicado (refresh):', loggedInAgentId);
         } else if (previewLocation !== 'all') {
             // Para ADMIN, filtrar por unidade
             filters.unidade_id = parseInt(previewLocation);
         }
 
-        console.log('🔄 [DashboardPage] Recarregando agendamentos da pré-visualização:', filters);
-
         fetchAgendamentosRaw(filters).then((data) => {
-            console.log('✅ [DashboardPage] Agendamentos da pré-visualização atualizados:', data.length, 'agendamentos');
-
             // ✅ CORREÇÃO CRÍTICA: Transformar BackendAgendamento para formato compatível com PreviewSection
             const transformedAppointments = data.map(apt => ({
                 ...apt,
@@ -383,7 +303,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 serviceId: apt.servico_id?.toString() || '1'
             }));
 
-            console.log('🔄 [DashboardPage] Agendamentos atualizados transformados:', transformedAppointments.length, 'agendamentos');
             setPreviewAppointments(transformedAppointments);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao recarregar agendamentos da pré-visualização:', err);
@@ -422,16 +341,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {
-        console.log('🔍 [DashboardPage] Transformando agentes do backend:', {
-            count: backendAgentes.length,
-            sample: backendAgentes.slice(0, 2).map(a => ({
-                id: a.id,
-                nome: a.nome,
-                sobrenome: a.sobrenome,
-                name: (a as any).name,
-                unidades: a.unidades
-            }))
-        });
 
         return backendAgentes.map(agente => {
             // ✅ CORREÇÃO CRÍTICA: Backend pode retornar 'name' já formatado (igual CalendarPage)
@@ -443,15 +352,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 ? getAssetUrl(agente.avatar)
                 : `https://i.pravatar.cc/150?u=${agente.id}`;
             
-            console.log(`🔍 [DashboardPage] Agente ${agente.id}:`, {
-                nome_exibicao: agente.nome_exibicao,
-                nome: agente.nome,
-                sobrenome: agente.sobrenome,
-                displayName,
-                avatar: agente.avatar,
-                avatarUrl,
-                unidades: agente.unidades
-            });
+
 
             return {
                 id: agente.id.toString(),
@@ -480,14 +381,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ FILTRAR AGENTES BASEADO NO LOCAL SELECIONADO DA SEÇÃO DESEMPENHO
     const performanceFilteredAgents = useMemo(() => {
-        console.log('🔍 [DashboardPage] Filtrando agentes por local (Desempenho):', {
-            performanceLocation,
-            totalAgents: agents.length,
-            backendAgentesCount: backendAgentes.length
-        });
-
         if (performanceLocation === 'all') {
-            console.log('✅ [DashboardPage] Mostrando todos os agentes (performanceLocation = all)');
             return agents;
         }
         
@@ -501,22 +395,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             const hasLocation = Array.isArray(backendAgent?.unidades) && 
                                backendAgent.unidades.includes(locationIdStr);
             
-            console.log(`🔍 [DashboardPage] Agente ${agent.name} (Desempenho):`, {
-                agentId: agent.id,
-                unidades: backendAgent?.unidades,
-                locationIdStr,
-                hasLocation
-            });
+
             
             return hasLocation;
         });
 
-        console.log('✅ [DashboardPage] Agentes filtrados (Desempenho):', {
-            performanceLocation: locationIdStr,
-            totalAgents: agents.length,
-            filteredCount: filtered.length,
-            filteredNames: filtered.map(a => a.name)
-        });
+
 
         return filtered;
     }, [agents, backendAgentes, performanceLocation]);

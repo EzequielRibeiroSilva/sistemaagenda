@@ -195,15 +195,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     appointments = [], // ✅ NOVO: Agendamentos do dia
     backendAgentes = [] // ✅ NOVO: Agentes do backend
 }) => {
-  // ✅ DEBUG: Log das props recebidas
-  console.log('🎯 [PreviewSection] Props recebidas:', {
-    agentsCount: agents.length,
-    appointmentsCount: appointments.length,
-    selectedLocation,
-    viewMode,
-    backendAgentesCount: backendAgentes.length,
-    agents: agents.map(a => ({ id: a.id, name: a.name, unidades: a.unidades }))
-  });
+
 
   // ✅ CORREÇÃO: Usar prop se fornecida, senão usar estado local
   const [internalSelectedDate, setInternalSelectedDate] = useState(new Date());
@@ -222,15 +214,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
   // ✅ NOVO: Filtrar agentes por local selecionado (igual CalendarPage)
   const displayedAgents = useMemo(() => {
-    console.log('🔍 [PreviewSection] Filtrando agentes por local:', {
-      selectedLocation,
-      totalAgents: agents.length,
-      agentsData: agents.map(a => ({ id: a.id, name: a.name, unidades: a.unidades }))
-    });
+
 
     // ✅ CORREÇÃO: Não permitir 'all' - sempre filtrar por local específico
     if (!selectedLocation || selectedLocation === 'all' || agents.length === 0) {
-      console.log('⚠️ [PreviewSection] Nenhum local selecionado ou sem agentes');
+
       return [];
     }
 
@@ -240,40 +228,19 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       const hasLocation = Array.isArray(agent.unidades) && 
                          agent.unidades.includes(locationIdStr);
       
-      console.log(`🔍 [PreviewSection] Agente ${agent.name}:`, {
-        agentId: agent.id,
-        unidades: agent.unidades,
-        locationIdStr,
-        hasLocation
-      });
+
       
       return hasLocation;
     });
 
-    console.log('✅ [PreviewSection] Agentes filtrados:', {
-      selectedLocation: locationIdStr,
-      totalAgents: agents.length,
-      filteredCount: filtered.length,
-      filteredNames: filtered.map(a => a.name)
-    });
+
 
     return filtered;
   }, [agents, selectedLocation]);
 
   // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
   const agentAppointmentCards = useMemo(() => {
-    console.log('🔄 [PreviewSection] Transformando agendamentos em cards:', {
-      appointmentsCount: appointments.length,
-      displayedAgentsCount: displayedAgents.length,
-      selectedDate: selectedDate.toISOString().split('T')[0],
-      appointmentsData: appointments.map(a => ({
-        id: a.id,
-        agente_id: a.agente_id,
-        data_agendamento: a.data_agendamento,
-        hora_inicio: a.hora_inicio,
-        hora_fim: a.hora_fim
-      }))
-    });
+
 
     const dateStr = selectedDate.toISOString().split('T')[0];
     const cardsByAgent: Record<string, Array<{
@@ -305,12 +272,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       // O backend pode retornar 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS'
       const aptDateStr = apt.data_agendamento.split('T')[0];
       
-      console.log('🔍 [PreviewSection] Comparando datas:', {
-        aptDateStr,
-        dateStr,
-        match: aptDateStr === dateStr,
-        agente_id: apt.agente_id
-      });
+
       
       // Verificar se o agendamento é do dia selecionado
       if (aptDateStr !== dateStr) {
@@ -344,20 +306,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       const agentEmail = backendAgent?.email || 'agente@email.com';
       const agentAvatar = backendAgent?.avatar_url || backendAgent?.avatar;
       
-      console.log('👤 [PreviewSection] Dados do agente:', {
-        agente_id: apt.agente_id,
-        backendAgent: backendAgent ? { 
-          id: backendAgent.id, 
-          nome: backendAgent.nome, 
-          sobrenome: backendAgent.sobrenome,
-          name: backendAgent.name,
-          nome_exibicao: backendAgent.nome_exibicao,
-          avatar_url: backendAgent.avatar_url 
-        } : null,
-        agentName,
-        agentEmail,
-        agentAvatar
-      });
+
 
       cardsByAgent[agentId].push({
         id: apt.id,
@@ -378,14 +327,14 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       });
     });
 
-    console.log('✅ [PreviewSection] Cards por agente:', cardsByAgent);
+
     return cardsByAgent;
   }, [appointments, displayedAgents, selectedDate, services, backendAgentes]);
 
   const filteredSchedules = useMemo(() => {
     // ✅ CORREÇÃO: Não permitir 'all' para location - sempre exigir local específico
     if (!selectedLocation || selectedLocation === 'all') {
-      console.log('⚠️ [PreviewSection] Nenhum local selecionado, retornando schedules vazios');
+
       return [];
     }
     
@@ -405,11 +354,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
   // ✅ NOVO: Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
   const { startHour, endHour } = useMemo(() => {
-    console.log('🔍 [PreviewSection] Calculando horários dinâmicos:', {
-      selectedLocation,
-      hasUnitSchedules: !!unitSchedules[selectedLocation],
-      unitSchedules: unitSchedules[selectedLocation]
-    });
+
     
     // Se há unidade selecionada, usar seus horários de funcionamento
     if (selectedLocation && selectedLocation !== 'all' && unitSchedules[selectedLocation]) {
@@ -437,13 +382,13 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       
       // ✅ Usando a flag de rastreamento
       if (hasValidSchedule) {
-        console.log(`✅ [PreviewSection] Horários dinâmicos da unidade ${selectedLocation}:`, { startHour: minHour, endHour: maxHour });
+
         return { startHour: minHour, endHour: maxHour };
       }
     }
     
     // Fallback: usar horários padrão
-    console.log('⚠️ [PreviewSection] Usando horários padrão (fallback)');
+
     return { startHour: 9, endHour: 21 };
   }, [selectedLocation, unitSchedules]);
 
@@ -501,7 +446,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       }
     }
 
-    console.log('🔴 [PreviewSection] Intervalos calculados:', intervals);
+
     return intervals;
   }, [selectedLocation, unitSchedules, startHour, endHour]);
 
@@ -514,7 +459,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   const hours = useMemo(() => {
     const hourCount = endHour - startHour + 1;
     const hoursArray = Array.from({ length: hourCount }, (_, i) => i + startHour);
-    console.log('🕒 [PreviewSection] Horas geradas:', hoursArray);
+
     return hoursArray;
   }, [startHour, endHour]);
 
@@ -651,13 +596,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   
   // ✅ NOVO: Calcular slots disponíveis baseado nos agendamentos reais do backend
   const availableSlots = useMemo(() => {
-    console.log('🔄 [PreviewSection] Calculando slots disponíveis:', {
-      displayedAgentsCount: displayedAgents.length,
-      appointmentsCount: appointments.length,
-      startHour,
-      endHour,
-      selectedDate: selectedDate.toISOString().split('T')[0]
-    });
+
 
     return displayedAgents.map((agent, agentIndex) => {
       // Buscar agendamentos deste agente no dia selecionado
@@ -667,16 +606,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
       });
 
-      console.log(`🔍 [PreviewSection] Agente ${agent.name} (${agent.id}):`, {
-        agentIndex,
-        dateStr,
-        agentAppointments: agentAppointments.length,
-        appointmentsData: agentAppointments.map(a => ({
-          id: a.id,
-          hora_inicio: a.hora_inicio,
-          hora_fim: a.hora_fim
-        }))
-      });
+
 
       // Converter agendamentos para slots ocupados (formato: hora numérica)
       const busySlots = agentAppointments.map(apt => {
@@ -706,13 +636,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         available.push({ type: 'available', start: startHour, end: endHour });
       }
 
-      console.log(`✅ [PreviewSection] Slots disponíveis para ${agent.name}:`, {
-        busySlots,
-        available,
-        startHour,
-        endHour,
-        lastEnd
-      });
+
       return available;
     });
   }, [displayedAgents, appointments, selectedDate, startHour, endHour]);
@@ -727,15 +651,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   // ✅ REMOVIDO: serviceOptions não é mais necessário
 
   // ✅ DEBUG: Log do estado geral da PreviewSection
-  console.log('🎯 [PreviewSection] Estado geral:', {
-    selectedLocation,
-    displayedAgentsCount: displayedAgents.length,
-    appointmentsCount: appointments.length,
-    availableSlotsCount: availableSlots.length,
-    startHour,
-    endHour,
-    selectedDate: selectedDate.toISOString().split('T')[0]
-  });
+
 
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
@@ -936,7 +852,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                           clientPhone: card.clientPhone || ''
                         };
                         
-                        console.log('🎯 [PreviewSection] Abrindo modal com dados:', details);
+
                         onAppointmentClick(details);
                       }}
                     >

@@ -261,7 +261,7 @@ class RBACAgendamentoController extends BaseController {
             template
           );
           if (resultadoWhatsApp.success) {
-            console.log(`✅ WhatsApp enviado para cliente: ${dadosCompletos.cliente.nome}`);
+
           }
         }
       } catch (whatsappError) {
