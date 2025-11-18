@@ -13,12 +13,14 @@ interface HeaderProps {
   setActiveView: (view: string) => void;
   onEditAgent: (agentId: string) => void;
   onEditService: (serviceId: string) => void;
+  onEditClient: (clientId: number) => void;
+  onNavigateToCalendar: (date: string) => void; // ✅ NOVO: Callback para navegar ao calendário com data
   userRole: 'ADMIN' | 'AGENTE';
   onToggleMobileSidebar: () => void;
   loggedInAgentId: string | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
+const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, onEditClient, onNavigateToCalendar, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const { user } = useAuth();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
@@ -62,6 +64,20 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
     onEditService(serviceId);
   };
 
+  // ✅ NOVO: Handler para seleção de cliente
+  const handleSelectClient = (clientId: number) => {
+    setIsSearchFocused(false);
+    setSearchQuery('');
+    onEditClient(clientId);
+  };
+
+  // ✅ NOVO: Handler para seleção de agendamento (navegar ao calendário)
+  const handleSelectAppointment = (appointmentId: number, appointmentDate: string) => {
+    setIsSearchFocused(false);
+    setSearchQuery('');
+    onNavigateToCalendar(appointmentDate);
+  };
+
   return (
     <>
       <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0">
@@ -86,6 +102,8 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                     onAddNewAppointment={handleAddNewAppointment}
                     onSelectAgent={handleSelectAgent}
                     onSelectService={handleSelectService}
+                    onSelectClient={handleSelectClient}
+                    onSelectAppointment={handleSelectAppointment}
                     userRole={userRole}
                     loggedInAgentId={loggedInAgentId}
                   />
@@ -211,6 +229,8 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
           onAddNewAppointment={handleAddNewAppointment}
           onSelectAgent={handleSelectAgent}
           onSelectService={handleSelectService}
+          onSelectClient={handleSelectClient}
+          onSelectAppointment={handleSelectAppointment}
           userRole={userRole}
           loggedInAgentId={loggedInAgentId}
         />

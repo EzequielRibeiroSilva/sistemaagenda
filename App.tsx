@@ -81,6 +81,13 @@ const App: React.FC = () => {
     setActiveView('clients-edit');
   };
 
+  // ✅ NOVO: Handler para navegar ao calendário com data específica
+  const handleNavigateToCalendar = (date: string) => {
+    // Armazenar a data no localStorage para o CalendarPage usar
+    localStorage.setItem('calendarNavigationDate', date);
+    setActiveView('calendar');
+  };
+
   const handleEditLocation = (locationId: number) => {
     setEditingLocationId(locationId);
     setActiveView('locations-edit');
@@ -255,6 +262,8 @@ const App: React.FC = () => {
           setActiveView={setActiveView} 
           onEditAgent={handleEditAgent}
           onEditService={handleEditService}
+          onEditClient={handleEditClient}
+          onNavigateToCalendar={handleNavigateToCalendar}
           userRole={user.role as 'ADMIN' | 'AGENTE'}
           loggedInAgentId={user.agentId}
           onToggleMobileSidebar={() => setMobileSidebarOpen(true)}

@@ -104,6 +104,7 @@ export const useAppointmentManagement = () => {
         id: backendData.id,
         service: 'ERRO',
         dateTime: 'Data Ausente',
+        date: '1970-01-01', // Data padrão para erros
         timeRemaining: 'Erro de Data',
         timeRemainingStatus: 'overdue' as const,
         agent: { name: 'Erro', avatar: '' },
@@ -129,6 +130,7 @@ export const useAppointmentManagement = () => {
         id: backendData.id,
         service: 'ERRO',
         dateTime: 'Data Inválida',
+        date: dateString || '1970-01-01', // Usar dateString ou data padrão
         timeRemaining: 'Erro de Data',
         timeRemainingStatus: 'overdue' as const,
         agent: { name: 'Erro', avatar: '' },
@@ -214,6 +216,7 @@ export const useAppointmentManagement = () => {
       id: backendData.id,
       service,
       dateTime,
+      date: dateString, // ✅ NOVO: Data bruta no formato YYYY-MM-DD para navegação
       timeRemaining,
       timeRemainingStatus,
       agent: {
@@ -336,6 +339,27 @@ export const useAppointmentManagement = () => {
     }
   }, [makeAuthenticatedRequest]);
 
+  // ✅ NOVO: Buscar agendamento específico por ID
+  const fetchAppointmentById = useCallback(async (id: number): Promise<AppointmentDetail | null> => {
+    if (!isAuthenticated || !token) {
+      return null;
+    }
+
+    try {
+      const response: { success: boolean; data: BackendAgendamento } = await makeAuthenticatedRequest(
+        `${API_BASE_URL}/agendamentos/${id}`
+      );
+
+      if (response.success && response.data) {
+        return transformBackendToFrontend(response.data);
+      }
+      return null;
+    } catch (err) {
+      console.error('Erro ao buscar agendamento por ID:', err);
+      return null;
+    }
+  }, [isAuthenticated, token, makeAuthenticatedRequest, transformBackendToFrontend]);
+
   // ✅ CORREÇÃO CRÍTICA: NÃO carregar agendamentos automaticamente na inicialização
   // A página AppointmentsPage.tsx vai controlar quando fazer a primeira requisição
   // após a auto-seleção de local
@@ -374,6 +398,7 @@ export const useAppointmentManagement = () => {
     pagination,
     agentOptions,
     fetchAppointments,
+    fetchAppointmentById,
     updateAppointmentStatus,
     deleteAppointment,
     setError
