@@ -25,9 +25,11 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = 
     }}
     className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
       isActive ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-    }`}
+    } ${isCollapsed ? 'lg:justify-center' : ''}`}
   >
-    {icon}
+    <div>
+      {icon}
+    </div>
     <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>{label}</span>
     <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
       {hasSubmenu && <ChevronDown className="h-4 w-4 text-gray-400" />}
@@ -210,9 +212,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
                     onMouseLeave={handleHideClientsSubmenu}
                     className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
                         activeView.startsWith('clients') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-                    }`}
+                    } ${isCollapsed ? 'lg:justify-center' : ''}`}
                 >
-                    <Users className="h-5 w-5" />
+                    <div>
+                        <Users className="h-5 w-5" />
+                    </div>
                     <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>CLIENTES</span>
                     <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
                        <ChevronRight className="h-4 w-4 text-gray-400" />
@@ -240,9 +244,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
                     onMouseLeave={handleHideServicesSubmenu}
                     className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
                         activeView.startsWith('services') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-                    }`}
+                    } ${isCollapsed ? 'lg:justify-center' : ''}`}
                 >
-                    <Box className="h-5 w-5" />
+                    <div>
+                        <Box className="h-5 w-5" />
+                    </div>
                     <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>SERVIÇOS</span>
                      <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
                         <ChevronRight className="h-4 w-4 text-gray-400" />
