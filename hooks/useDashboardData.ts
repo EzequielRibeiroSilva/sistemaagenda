@@ -566,7 +566,7 @@ export const useDashboardData = () => {
         title: 'Reservas Totais',
         value: totalReservas.toString(),
         isPositive: true,
-        change: variacaoReservas,
+        change: '', // ✅ Removido: Variação não é relevante para este card
         subtitle: breakdown
       },
       {
@@ -595,14 +595,14 @@ export const useDashboardData = () => {
         title: 'Ticket Médio',
         value: `R$ ${formatCurrency(ticketMedio)}`,
         isPositive: true,
-        change: variacaoTicket,
+        change: '', // ✅ Removido: Variação não é relevante para este card
         subtitle: `Por agendamento concluído`
       },
       {
         title: 'Clientes Únicos',
         value: totalClientesUnicos.toString(),
         isPositive: true,
-        change: variacaoNovosClientes,
+        change: '', // ✅ Removido: Variação pode confundir ("Perdi clientes?")
         subtitle: `Clientes diferentes no período`
       },
       {
@@ -616,7 +616,7 @@ export const useDashboardData = () => {
         title: 'Agendamentos Pendentes',
         value: totalPendentes.toString(),
         isPositive: totalPendentes < 5, // Verde se < 5, amarelo/vermelho se >= 5
-        change: variacaoPendentes,
+        change: '', // ✅ Removido: Variação não é relevante para este card
         subtitle: 'Aguardando finalização'
       }
     ];
