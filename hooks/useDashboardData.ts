@@ -420,14 +420,14 @@ export const useDashboardData = () => {
       ? (completedAppointments.length / validAppointments.length) * 100
       : 0;
 
-    // 6. NOVOS CLIENTES (substituindo Agendamentos Pendentes)
+    // 6. CLIENTES ÚNICOS (não "novos" - seria necessário histórico para isso)
     const clientesUnicos = new Set(validAppointments.map(a => a.cliente_id));
-    const totalNovosClientes = clientesUnicos.size;
+    const totalClientesUnicos = clientesUnicos.size;
 
-    console.log('👥 [CARD: Novos Clientes] Calculando novos clientes únicos:', {
+    console.log('👥 [CARD: Clientes Únicos] Calculando clientes únicos no período:', {
       agendamentosValidos: validAppointments.length,
       clientesUnicos: Array.from(clientesUnicos),
-      totalNovosClientes
+      totalClientesUnicos
     });
 
     // 7. RECEITA DO PROPRIETÁRIO (substituindo Média Diária)
@@ -481,9 +481,9 @@ export const useDashboardData = () => {
       const prevTicket = prevCompleted.length > 0 ? prevReceitaBruta / prevCompleted.length : 0;
       const prevConclusao = prevValid.length > 0 ? (prevCompleted.length / prevValid.length) * 100 : 0;
 
-      // ✅ NOVOS CLIENTES do período anterior
+      // ✅ CLIENTES ÚNICOS do período anterior
       const prevClientesUnicos = new Set(prevValid.map(a => a.cliente_id));
-      const prevNovosClientes = prevClientesUnicos.size;
+      const prevClientesUnicosCount = prevClientesUnicos.size;
 
       // ✅ RECEITA DO PROPRIETÁRIO do período anterior
       // Calcular comissões do período anterior (assumindo mesma lógica atual)
@@ -500,9 +500,16 @@ export const useDashboardData = () => {
         variacaoReservas = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
       
+      // ✅ CORREÇÃO CRÍTICA: Comparar receita BRUTA com receita BRUTA (não líquida)
       if (prevReceitaBruta > 0) {
-        const diff = ((receitaLiquida - prevReceitaBruta) / prevReceitaBruta) * 100;
+        const diff = ((receitaBruta - prevReceitaBruta) / prevReceitaBruta) * 100;
         variacaoReceita = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+      }
+
+      // ✅ COMISSÕES: Calcular variação
+      if (prevComissoesTotal > 0) {
+        const diff = ((comissoesTotal - prevComissoesTotal) / prevComissoesTotal) * 100;
+        variacaoComissoes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
       if (prevTicket > 0) {
@@ -510,9 +517,9 @@ export const useDashboardData = () => {
         variacaoTicket = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
-      // ✅ NOVOS CLIENTES: Calcular variação
-      if (prevNovosClientes > 0) {
-        const diff = ((totalNovosClientes - prevNovosClientes) / prevNovosClientes) * 100;
+      // ✅ CLIENTES ÚNICOS: Calcular variação
+      if (prevClientesUnicosCount > 0) {
+        const diff = ((totalClientesUnicos - prevClientesUnicosCount) / prevClientesUnicosCount) * 100;
         variacaoNovosClientes = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
       }
 
@@ -549,7 +556,7 @@ export const useDashboardData = () => {
       comissoesTotal: comissoesTotal.toFixed(2),
       receitaDoProprietario: receitaDoProprietario.toFixed(2),
       ticketMedio: ticketMedio.toFixed(2),
-      totalNovosClientes,
+      totalClientesUnicos,
       taxaCancelamento: taxaCancelamento.toFixed(1),
       totalPendentes
     });
@@ -592,11 +599,11 @@ export const useDashboardData = () => {
         subtitle: `Por agendamento concluído`
       },
       {
-        title: 'Novos Clientes',
-        value: totalNovosClientes.toString(),
+        title: 'Clientes Únicos',
+        value: totalClientesUnicos.toString(),
         isPositive: true,
         change: variacaoNovosClientes,
-        subtitle: `Clientes únicos no período`
+        subtitle: `Clientes diferentes no período`
       },
       {
         title: 'Taxa de Cancelamento',
