@@ -6,6 +6,7 @@ import type { PerformanceMetric } from '../types';
 // Interfaces para dados do backend
 interface BackendAgendamento {
   id: number;
+  cliente_id: number; // ✅ ADICIONADO: ID do cliente (necessário para cálculo de novos clientes)
   agente_id: number;
   servico_id?: number;
   unidade_id: number;
@@ -292,7 +293,8 @@ export const useDashboardData = () => {
     const validAppointments = agendamentos.filter(a => a.status !== 'Cancelado');
     const completedAppointments = agendamentos.filter(a => a.status === 'Concluído');
     const confirmedAppointments = agendamentos.filter(a => a.status === 'Aprovado');
-    const pendingAppointments = agendamentos.filter(a => a.status === 'Pendente');
+    // ✅ CORREÇÃO: "Pendentes" são agendamentos APROVADOS que ainda não foram finalizados
+    const pendingAppointments = agendamentos.filter(a => a.status === 'Aprovado');
     const canceledAppointments = agendamentos.filter(a => a.status === 'Cancelado');
 
     // ✅ LOG DETALHADO: Breakdown por status
@@ -451,12 +453,13 @@ export const useDashboardData = () => {
       taxaCancelamento: taxaCancelamento.toFixed(1) + '%'
     });
     
-    // 9. AGENDAMENTOS PENDENTES
+    // 9. AGENDAMENTOS PENDENTES (Aprovados aguardando finalização)
     const totalPendentes = pendingAppointments.length;
     
     console.log('⏳ [CARD: Agendamentos Pendentes] Total de pendentes:', {
       totalPendentes,
-      statusPendente: 'Pendente'
+      statusFiltrado: 'Aprovado',
+      descricao: 'Agendamentos aprovados aguardando finalização'
     });
 
     // Calcular variações
@@ -530,7 +533,8 @@ export const useDashboardData = () => {
       }
       
       // ✅ AGENDAMENTOS PENDENTES: Calcular variação
-      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'Pendente');
+      // ✅ CORREÇÃO: Filtrar por 'Aprovado' (não 'Pendente')
+      const prevPending = previousPeriodAgendamentos.filter(a => a.status === 'Aprovado');
       const prevTotalPendentes = prevPending.length;
       
       if (prevTotalPendentes > 0) {
@@ -606,7 +610,7 @@ export const useDashboardData = () => {
         value: totalPendentes.toString(),
         isPositive: totalPendentes < 5, // Verde se < 5, amarelo/vermelho se >= 5
         change: variacaoPendentes,
-        subtitle: 'Aguardando confirmação'
+        subtitle: 'Aguardando finalização'
       }
     ];
   }, []);
