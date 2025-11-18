@@ -1123,19 +1123,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     if (isApproved) {
                                         // ✅ APROVADO: #2663EB (azul escuro)
                                         cardClasses = 'text-white border border-blue-600';
-                                        iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
+                                        iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-white" />;
                                     } else if (isCompleted) {
                                         // ✅ CONCLUÍDO: #DBEAFE (azul claro)
                                         cardClasses = 'text-blue-800 border border-blue-300';
-                                        iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
+                                        iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-blue-600" />;
                                     } else if (isCancelled) {
                                         // ❌ CANCELADO: #FFE2E2 (vermelho claro)
                                         cardClasses = 'text-red-800 border border-red-300';
-                                        iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
+                                        iconComponent = <span className="absolute top-1 left-1 text-red-600 font-bold text-xs">✕</span>;
                                     } else if (isNoShow) {
                                         // ⚠️ NÃO COMPARECEU: #FEF9C3 (amarelo claro)
                                         cardClasses = 'text-yellow-800 border border-yellow-300';
-                                        iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
+                                        iconComponent = <span className="absolute top-1 left-1 text-yellow-600 font-bold text-xs">!</span>;
                                     } else {
                                         cardClasses = `${service.color} ${service.textColor}`;
                                         iconComponent = null;
@@ -1167,6 +1167,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                               height: `${height}%`,
                                               ...(backgroundColor && { backgroundColor })
                                           }}>
+                                            {/* Badge do ID no canto superior direito */}
+                                            <div className="absolute top-1 right-1 bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
+                                                #{app.id}
+                                            </div>
                                             <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                             <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                             {/* Ícones para estados especiais */}
@@ -1409,19 +1413,19 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                         if (isApproved) {
                                             // ✅ APROVADO: #2663EB (azul escuro)
                                             cardClasses = 'text-white border border-blue-600';
-                                            iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
+                                            iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-white" />;
                                         } else if (isCompleted) {
                                             // ✅ CONCLUÍDO: #DBEAFE (azul claro)
                                             cardClasses = 'text-blue-800 border border-blue-300';
-                                            iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
+                                            iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-blue-600" />;
                                         } else if (isCancelled) {
                                             // ❌ CANCELADO: #FFE2E2 (vermelho claro)
                                             cardClasses = 'text-red-800 border border-red-300';
-                                            iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
+                                            iconComponent = <span className="absolute top-1 left-1 text-red-600 font-bold text-xs">✕</span>;
                                         } else if (isNoShow) {
                                             // ⚠️ NÃO COMPARECEU: #FEF9C3 (amarelo claro)
                                             cardClasses = 'text-yellow-800 border border-yellow-300';
-                                            iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
+                                            iconComponent = <span className="absolute top-1 left-1 text-yellow-600 font-bold text-xs">!</span>;
                                         } else {
                                             cardClasses = `${service.color} ${service.textColor}`;
                                             iconComponent = null;
@@ -1447,15 +1451,21 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                               onClick={() => handleAppointmentClick(app)}
                                               onMouseEnter={(e) => handleSlotMouseEnter(e, app)}
                                               onMouseLeave={handleSlotMouseLeave}
-                                              className={`absolute w-[calc(100%-4px)] ml-[2px] p-2 rounded-lg ${cardClasses} z-10 cursor-pointer hover:opacity-90 transition-opacity`}
+                                              className={`absolute w-[calc(100%-4px)] ml-[2px] p-2 rounded-lg ${cardClasses} z-10 cursor-pointer hover:opacity-90 transition-opacity flex flex-col`}
                                               style={{
                                                   ...style,
                                                   ...(backgroundColor && { backgroundColor })
                                               }}>
-                                                <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
-                                                <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                                 {/* Ícones para estados especiais */}
                                                 {iconComponent}
+                                                <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
+                                                {/* Horário e ID na mesma linha (Grid Semana) */}
+                                                <div className="flex items-center gap-1.5">
+                                                    <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
+                                                    <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
+                                                        #{app.id}
+                                                    </div>
+                                                </div>
                                             </div>
                                         )
                                     })}
