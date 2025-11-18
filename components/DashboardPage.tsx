@@ -48,7 +48,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     // ✅ ESTADOS DE FILTRO DA SEÇÃO PRÉ-VISUALIZAÇÃO (Independentes)
     const [previewLocation, setPreviewLocation] = useState('all');
     const [previewService, setPreviewService] = useState('all');
-    const [previewDate, setPreviewDate] = useState(new Date()); // ✅ NOVO: Data selecionada na pré-visualização
+    // ✅ CORREÇÃO CRÍTICA: Inicializar com data local (hoje) sem problemas de fuso horário
+    // Usar setHours(0,0,0,0) garante que ao converter para ISO, sempre pegue o dia correto
+    const [previewDate, setPreviewDate] = useState(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Zerar horário para evitar problemas de fuso
+        return today;
+    });
     const [previewAppointments, setPreviewAppointments] = useState<any[]>([]); // ✅ NOVO: Agendamentos do dia selecionado
     
     const [viewMode, setViewMode] = useState<'compromissos' | 'disponibilidade'>('compromissos');
@@ -75,7 +81,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         performanceAgent,
         performanceService,
         previewLocation,
-        previewService
+        previewService,
+        previewDate: previewDate.toISOString().split('T')[0], // ✅ NOVO: Log da data de pré-visualização
+        previewDateLocal: `${previewDate.getDate()}/${previewDate.getMonth() + 1}/${previewDate.getFullYear()}` // ✅ NOVO: Data no formato local
     });
 
     // ✅ AUTO-SELEÇÃO DE LOCAL (Idêntico ao CalendarPage)
@@ -161,6 +169,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     }, [backendUnidades.length, backendAgentes.length, isSinglePlan, isMultiPlan, user?.unidade_id, userRole, loggedInAgentId]);
     // ✅ CORREÇÃO CRÍTICA: Remover selectedLocation das dependências para permitir mudança manual
+
+
 
     // ✅ AUTO-SELEÇÃO DE AGENTE (para usuário AGENTE) - Apenas na seção Desempenho
     useEffect(() => {
@@ -275,8 +285,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             data_fim: dateStr
         };
 
-        // Adicionar filtro de unidade se não for 'all'
-        if (previewLocation !== 'all') {
+        // ✅ CORREÇÃO CRÍTICA: Aplicar filtro de agente para usuários AGENTE (igual CalendarPage)
+        if (userRole === 'AGENTE' && loggedInAgentId) {
+            // Para AGENTE, buscar apenas seus próprios agendamentos
+            filters.agente_id = parseInt(loggedInAgentId);
+            console.log('🔍 [DashboardPage] Filtro de AGENTE aplicado:', loggedInAgentId);
+        } else if (previewLocation !== 'all') {
+            // Para ADMIN, filtrar por unidade
             filters.unidade_id = parseInt(previewLocation);
         }
 
@@ -284,7 +299,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         
         fetchAgendamentosRaw(filters).then((data) => {
             console.log('✅ [DashboardPage] Agendamentos da pré-visualização carregados:', data.length, 'agendamentos');
-            setPreviewAppointments(data);
+
+            // ✅ CORREÇÃO CRÍTICA: Transformar BackendAgendamento para formato compatível com PreviewSection
+            const transformedAppointments = data.map(apt => ({
+                ...apt,
+                // Manter campos originais do backend
+                agente_id: apt.agente_id,
+                data_agendamento: apt.data_agendamento,
+                hora_inicio: apt.hora_inicio,
+                hora_fim: apt.hora_fim,
+                // Adicionar campos no formato CalendarAppointment para compatibilidade
+                agentId: apt.agente_id.toString(),
+                date: apt.data_agendamento.split('T')[0],
+                startTime: apt.hora_inicio,
+                endTime: apt.hora_fim,
+                locationId: apt.unidade_id.toString(),
+                serviceId: apt.servico_id?.toString() || '1'
+            }));
+
+            console.log('🔄 [DashboardPage] Agendamentos transformados:', transformedAppointments.length, 'agendamentos');
+            setPreviewAppointments(transformedAppointments);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao buscar agendamentos da pré-visualização:', err);
             setPreviewAppointments([]);
@@ -317,8 +351,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             data_fim: previewDate.toISOString().split('T')[0]
         };
 
-        // Adicionar filtro de unidade se não for 'all'
-        if (previewLocation !== 'all') {
+        // ✅ CORREÇÃO CRÍTICA: Aplicar filtro de agente para usuários AGENTE (igual CalendarPage)
+        if (userRole === 'AGENTE' && loggedInAgentId) {
+            // Para AGENTE, buscar apenas seus próprios agendamentos
+            filters.agente_id = parseInt(loggedInAgentId);
+            console.log('🔍 [DashboardPage] Filtro de AGENTE aplicado (refresh):', loggedInAgentId);
+        } else if (previewLocation !== 'all') {
+            // Para ADMIN, filtrar por unidade
             filters.unidade_id = parseInt(previewLocation);
         }
 
@@ -326,7 +365,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         fetchAgendamentosRaw(filters).then((data) => {
             console.log('✅ [DashboardPage] Agendamentos da pré-visualização atualizados:', data.length, 'agendamentos');
-            setPreviewAppointments(data);
+
+            // ✅ CORREÇÃO CRÍTICA: Transformar BackendAgendamento para formato compatível com PreviewSection
+            const transformedAppointments = data.map(apt => ({
+                ...apt,
+                // Manter campos originais do backend
+                agente_id: apt.agente_id,
+                data_agendamento: apt.data_agendamento,
+                hora_inicio: apt.hora_inicio,
+                hora_fim: apt.hora_fim,
+                // Adicionar campos no formato CalendarAppointment para compatibilidade
+                agentId: apt.agente_id.toString(),
+                date: apt.data_agendamento.split('T')[0],
+                startTime: apt.hora_inicio,
+                endTime: apt.hora_fim,
+                locationId: apt.unidade_id.toString(),
+                serviceId: apt.servico_id?.toString() || '1'
+            }));
+
+            console.log('🔄 [DashboardPage] Agendamentos atualizados transformados:', transformedAppointments.length, 'agendamentos');
+            setPreviewAppointments(transformedAppointments);
         }).catch(err => {
             console.error('❌ [DashboardPage] Erro ao recarregar agendamentos da pré-visualização:', err);
         });
