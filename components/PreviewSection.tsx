@@ -84,7 +84,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
                 <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-30 py-1">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1">
                     {options.map(option => (
                         <a
                             key={option.value}
