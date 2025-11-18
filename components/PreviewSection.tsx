@@ -789,28 +789,23 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   const isCancelled = card.status === 'Cancelado';
                   const isNoShow = card.status === 'Não Compareceu';
 
-                  let cardClasses, iconComponent, backgroundColor;
+                  let cardClasses, backgroundColor;
 
                   if (isApproved) {
                     backgroundColor = '#2663EB'; // Azul escuro
                     cardClasses = 'text-white border border-blue-600';
-                    iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-white" />;
                   } else if (isCompleted) {
                     backgroundColor = '#DBEAFE'; // Azul claro
                     cardClasses = 'text-blue-800 border border-blue-300';
-                    iconComponent = <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />;
                   } else if (isCancelled) {
                     backgroundColor = '#FFE2E2'; // Vermelho claro
                     cardClasses = 'text-red-800 border border-red-300';
-                    iconComponent = <span className="absolute top-1 right-1 text-red-600 font-bold text-xs">✕</span>;
                   } else if (isNoShow) {
                     backgroundColor = '#FEF9C3'; // Amarelo claro
                     cardClasses = 'text-yellow-800 border border-yellow-300';
-                    iconComponent = <span className="absolute top-1 right-1 text-yellow-600 font-bold text-xs">!</span>;
                   } else {
                     backgroundColor = '#3B82F6'; // Azul padrão
                     cardClasses = 'text-white';
-                    iconComponent = null;
                   }
 
                   const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
@@ -857,8 +852,13 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                       }}
                     >
                       <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}</p>
-                      <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
-                      {iconComponent}
+                      {/* Horário e ID na mesma linha (PreviewSection) */}
+                      <div className="flex items-center gap-1.5">
+                        <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
+                        <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
+                          #{card.id}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
