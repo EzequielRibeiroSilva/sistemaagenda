@@ -317,14 +317,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             if (paymentMethod !== 'all' && app.paymentMethod !== paymentMethod) return false;
             if (createdAt && !app.createdAt.toLowerCase().includes(createdAt.toLowerCase())) return false;
 
-            // Busca geral por cliente, agente ou ID
+            // ✅ CORREÇÃO: Busca APENAS por nome do cliente (não busca agentes)
             if (client) {
                 const searchTerm = client.toLowerCase();
                 const matchesClient = app.client.name.toLowerCase().includes(searchTerm);
-                const matchesAgent = app.agent.name.toLowerCase().includes(searchTerm);
-                const matchesId = String(app.id).includes(searchTerm);
 
-                if (!matchesClient && !matchesAgent && !matchesId) return false;
+                if (!matchesClient) return false;
             }
 
             return true;
