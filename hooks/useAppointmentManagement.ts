@@ -212,6 +212,11 @@ export const useAppointmentManagement = () => {
     }
 
 
+    // 🔍 DEBUG: Log para rastrear observações
+    if (backendData.id === 94) {
+      console.log('🔍 [useAppointmentManagement] Agendamento #94 - observacoes do backend:', backendData.observacoes);
+    }
+
     return {
       id: backendData.id,
       service,
@@ -221,7 +226,8 @@ export const useAppointmentManagement = () => {
       timeRemainingStatus,
       agent: {
         name: backendData.agente_nome,
-        avatar: backendData.agente_avatar_url || `https://i.pravatar.cc/150?u=${backendData.agente_id}` // ✅ CORREÇÃO: Usar avatar real do agente
+        avatar: backendData.agente_avatar_url || `https://i.pravatar.cc/150?u=${backendData.agente_id}`, // ✅ CORREÇÃO: Usar avatar real do agente
+        id: backendData.agente_id // ✅ NOVO: Mapear ID do agente para edição
       },
       client: {
         name: backendData.cliente_nome,
@@ -230,7 +236,8 @@ export const useAppointmentManagement = () => {
       status: backendData.status,
       paymentStatus: backendData.status_pagamento || 'Não Pago', // ✅ CORREÇÃO: Mapear status_pagamento do backend
       createdAt,
-      paymentMethod: backendData.metodo_pagamento || 'Não definido' // ✅ CORREÇÃO: Mapear metodo_pagamento do backend
+      paymentMethod: backendData.metodo_pagamento || 'Não definido', // ✅ CORREÇÃO: Mapear metodo_pagamento do backend
+      observacoes: backendData.observacoes || undefined // ✅ NOVO: Mapear observações do backend
     };
   }, []);
 

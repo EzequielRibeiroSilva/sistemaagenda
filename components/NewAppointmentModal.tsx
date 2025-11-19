@@ -270,6 +270,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [clientPhone, setClientPhone] = useState('');
     const [status, setStatus] = useState<AppointmentStatus>('Aprovado');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+    const [observacoes, setObservacoes] = useState('');
 
     const [isSearchingClient, setIsSearchingClient] = useState(false);
     const [clientSearchQuery, setClientSearchQuery] = useState('');
@@ -540,6 +541,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setClientPhone('');
             setSelectedClient(null);
             setStatus('Aprovado');
+            setObservacoes('');
         }
         // Se não é edição nem novo slot, resetar tudo
         else {
@@ -555,6 +557,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setSelectedClient(null);
             setStatus('Aprovado');
             setAppointmentId(null);
+            setObservacoes('');
         }
     }, [isOpen, isEditing, newSlotData, allAgents]);
 
@@ -620,6 +623,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setClientPhone((appointmentData.clientPhone || '').replace('+55', '').trim());
                 }
                 
+                // ✅ Preencher observações (se existirem)
+                if (appointmentData.observacoes) {
+                    setObservacoes(appointmentData.observacoes);
+                }
+                
                 // ⚠️ TEMPORÁRIO: NÃO usar serviceId passado se não existir nos serviços disponíveis
                 // Deixar vazio e aguardar busca do backend
                 if (appointmentData.serviceId) {
@@ -671,6 +679,16 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             }
 
                             setTotalPrice(calculatedTotal);
+                            
+                            // ✅ Preencher observações do backend (sobrescreve se houver)
+                            if (details.observacoes) {
+                                setObservacoes(details.observacoes);
+                            }
+                            
+                            // ✅ CORREÇÃO: Preencher telefone do cliente do backend
+                            if (details.cliente && details.cliente.telefone) {
+                                setClientPhone(details.cliente.telefone.replace('+55', '').trim());
+                            }
                         }
                     } catch (error) {
                         // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
@@ -818,7 +836,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 hora_inicio: startTime,
                 hora_fim: endTime,
                 unidade_id: parseInt(selectedLocationId),
-                observacoes: '',
+                observacoes: observacoes.trim() || '',
                 ...(selectedClient
                     ? { cliente_id: selectedClient.id }
                     : {
@@ -839,7 +857,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     hora_fim: endTime,
                     status: status,
                     forma_pagamento: paymentMethod,
-                    observacoes: '',
+                    observacoes: observacoes.trim() || '',
                     ...(selectedClient
                         ? { cliente_id: selectedClient.id }
                         : {
@@ -1154,6 +1172,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                             <option value="Cartão Débito">Cartão Débito</option>
                                             <option value="PIX">PIX</option>
                                         </Select>
+                                    </FormField>
+                                    
+                                    <FormField label="Observações">
+                                        <textarea
+                                            value={observacoes}
+                                            onChange={e => setObservacoes(e.target.value)}
+                                            placeholder="Adicione observações sobre o serviço realizado (ex: produtos utilizados, procedimentos específicos, etc.)"
+                                            className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 min-h-[100px] resize-y"
+                                            rows={4}
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Essas observações ficarão registradas no histórico do agendamento
+                                        </p>
                                     </FormField>
                                 </div>
                             </FormSection>

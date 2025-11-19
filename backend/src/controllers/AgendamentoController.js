@@ -209,6 +209,11 @@ class AgendamentoController extends BaseController {
 
         // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
         for (const agendamento of data) {
+          // 🔍 DEBUG: Log para verificar observações do agendamento #94
+          if (agendamento.id === 94) {
+            console.log('🔍 [AgendamentoController] Agendamento #94 - observacoes do DB:', agendamento.observacoes);
+          }
+
           const servicos = await this.model.db('agendamento_servicos')
             .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
             .where('agendamento_servicos.agendamento_id', agendamento.id)
