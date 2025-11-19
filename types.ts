@@ -78,6 +78,7 @@ export interface ScheduleSlot {
         endTime?: string; // Hora de fim bruta (ex: "15:00")
         dateISO?: string; // Data ISO (YYYY-MM-DD)
         clientPhone?: string; // Telefone do cliente
+        observacoes?: string; // Observações sobre o serviço realizado
     }
 }
 
@@ -98,6 +99,7 @@ export interface AppointmentDetail {
   agent: {
     name: string;
     avatar: string;
+    id?: number; // ✅ NOVO: ID do agente para edição
   };
   client: {
     name: string;
@@ -107,6 +109,7 @@ export interface AppointmentDetail {
   paymentStatus: 'Não Pago' | 'Pago';
   createdAt: string;
   paymentMethod?: string;
+  observacoes?: string; // Observações sobre o serviço realizado
 }
 
 export interface Client {

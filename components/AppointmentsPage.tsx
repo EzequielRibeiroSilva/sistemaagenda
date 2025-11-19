@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX, FaUser } from './Icons';
-import type { AppointmentDetail, AppointmentStatus, Location } from '../types';
+import { Table, Download, MoreHorizontal, ChevronDown, CheckCircle, ChevronLeft, ChevronRight, X, Check, RotateCw, UserX, FaUser, MessageSquare } from './Icons';
+import type { AppointmentDetail, AppointmentStatus, Location, ScheduleSlot } from '../types';
 import { useAppointmentManagement, AppointmentFilters } from '../hooks/useAppointmentManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api'; // ✅ CORREÇÃO: Importar getAssetUrl para avatars
 import { useCalendarData } from '../hooks/useCalendarData'; // ✅ NOVO: Hook para obter locations
+import NewAppointmentModal from './NewAppointmentModal'; // ✅ NOVO: Modal para editar agendamentos
 
 // ✅ NOVO: Componente HeaderDropdown reutilizado do CalendarPage.tsx
 const HeaderDropdown: React.FC<{
@@ -159,6 +160,18 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     
     // ✅ NOVO: Estado para seleção de Local
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
+    
+    // ✅ NOVO: Estado para popover de observações
+    const [observationPopover, setObservationPopover] = useState<{
+        x: number;
+        y: number;
+        position: 'above' | 'below';
+        observacoes: string;
+    } | null>(null);
+    
+    // ✅ NOVO: Estados para o modal de edição
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingAppointment, setEditingAppointment] = useState<ScheduleSlot['details'] | null>(null);
 
     const initialFilters = {
         id: '',
@@ -278,6 +291,18 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
     
     const filteredAppointments = useMemo(() => {
+        // 🔍 DEBUG: Log para rastrear observações
+        const app94 = appointments.find(app => app.id === 94);
+        if (app94) {
+            console.log('🔍 [AppointmentsPage] Agendamento #94 encontrado:', {
+                id: app94.id,
+                observacoes: app94.observacoes,
+                hasObservacoes: !!app94.observacoes,
+                observacoesTrimmed: app94.observacoes?.trim(),
+                shouldShowIcon: !!(app94.observacoes && app94.observacoes.trim())
+            });
+        }
+
         // Aplicar filtros locais (os filtros do servidor já foram aplicados)
         const filtered = appointments.filter(app => {
             const { id, service, dateTime, timeRemainingStatus, agent, client, paymentStatus, createdAt, paymentMethod } = filters;
@@ -393,6 +418,92 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     const handleClearFilters = () => {
         setFilters(initialFilters);
         setCurrentPage(1);
+    };
+
+    // ✅ NOVO: Handler para exibir popover de observações
+    const handleObservationMouseEnter = (e: React.MouseEvent, observacoes: string) => {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const POPOVER_ESTIMATED_HEIGHT = 150;
+        const POPOVER_MARGIN = 8;
+        
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const hasSpaceBelow = spaceBelow >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+        const hasSpaceAbove = rect.top >= POPOVER_ESTIMATED_HEIGHT + POPOVER_MARGIN;
+
+        const positionAbove = !hasSpaceBelow && hasSpaceAbove;
+
+        setObservationPopover({
+            x: rect.left + rect.width / 2,
+            y: positionAbove ? rect.top : rect.bottom,
+            position: positionAbove ? 'above' : 'below',
+            observacoes
+        });
+    };
+
+    // ✅ NOVO: Handler para ocultar popover de observações
+    const handleObservationMouseLeave = () => {
+        setObservationPopover(null);
+    };
+
+    // ✅ NOVO: Handler para abrir modal de edição ao clicar na linha
+    const handleRowClick = (app: AppointmentDetail) => {
+        // Converter AppointmentDetail para o formato esperado pelo modal
+        const appointmentData: ScheduleSlot['details'] = {
+            id: app.id.toString(),
+            service: app.service,
+            client: app.client.name,
+            agentName: app.agent.name,
+            agentAvatar: app.agent.avatar,
+            agentEmail: '', // Não temos esse dado aqui
+            agentPhone: '', // Não temos esse dado aqui
+            date: app.dateTime,
+            time: app.dateTime.split(' - ')[1] || '',
+            serviceId: '', // Será carregado do backend
+            locationId: selectedLocationFilter,
+            status: app.status,
+            agentId: app.agent.id, // ✅ CORREÇÃO: Passar ID do agente
+            startTime: app.dateTime.split(' - ')[1] || '',
+            endTime: '', // Será carregado do backend
+            dateISO: app.date,
+            clientPhone: '', // Será carregado do backend
+            observacoes: app.observacoes
+        };
+        
+        setEditingAppointment(appointmentData);
+        setIsEditModalOpen(true);
+    };
+
+    // ✅ NOVO: Handler para fechar modal e recarregar dados
+    const handleCloseEditModal = () => {
+        setIsEditModalOpen(false);
+        setEditingAppointment(null);
+    };
+
+    // ✅ NOVO: Handler para recarregar dados após salvar
+    const handleEditSuccess = () => {
+        // Recarregar agendamentos
+        const apiFilters: AppointmentFilters = {
+            page: currentPage,
+            limit: itemsPerPage,
+        };
+
+        if (filters.status !== 'all') {
+            apiFilters.status = filters.status;
+        }
+
+        if (filters.timeRemainingStatus !== 'all') {
+            apiFilters.time_filter = filters.timeRemainingStatus;
+        }
+
+        if (user?.role === 'AGENTE' && user?.agentId) {
+            apiFilters.agente_id = parseInt(user.agentId);
+        }
+
+        if (selectedLocationFilter !== 'all') {
+            apiFilters.unidade_id = parseInt(selectedLocationFilter);
+        }
+        
+        fetchAppointments(apiFilters);
     };
 
     // Função para mudar página
@@ -520,7 +631,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 </tr>
                             ) : (
                                 filteredAppointments.map(app => (
-                                    <tr key={app.id} className="border-t border-gray-200 hover:bg-gray-50">
+                                    <tr 
+                                        key={app.id} 
+                                        className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                                        onClick={() => handleRowClick(app)}
+                                    >
                                         {visibleColumns.id && <td className="p-3 w-28 text-gray-500 whitespace-nowrap">{app.id}</td>}
                                         {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
                                         {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
@@ -556,9 +671,40 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                             <td className="p-4 w-64">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <span className="font-medium text-gray-800 truncate">{app.client.name}</span>
-                                                    <button className="text-gray-400 hover:text-gray-700 p-1 flex-shrink-0">
-                                                        <MoreHorizontal className="w-4 h-4" />
-                                                    </button>
+                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                        {/* ✅ NOVO: Ícone de observações (apenas se existirem) */}
+                                                        {(() => {
+                                                            const hasObservacoes = app.observacoes && app.observacoes.trim();
+                                                            if (app.id === 94) {
+                                                                console.log('🔍 [AppointmentsPage] Renderizando linha #94:', {
+                                                                    hasObservacoes,
+                                                                    observacoes: app.observacoes,
+                                                                    shouldRenderIcon: !!hasObservacoes,
+                                                                    visibleColumns_cliente: visibleColumns.cliente
+                                                                });
+                                                            }
+                                                            return hasObservacoes ? (
+                                                                <button
+                                                                    className="text-blue-600 hover:text-blue-800 p-2 transition-colors bg-blue-50 rounded-md border-2 border-blue-300"
+                                                                    onMouseEnter={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleObservationMouseEnter(e, app.observacoes!);
+                                                                    }}
+                                                                    onMouseLeave={handleObservationMouseLeave}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    title="Ver observações"
+                                                                >
+                                                                    <MessageSquare className="w-5 h-5" />
+                                                                </button>
+                                                            ) : null;
+                                                        })()}
+                                                        <button 
+                                                            className="text-gray-400 hover:text-gray-700 p-1"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <MoreHorizontal className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </td>
                                         )}
@@ -601,6 +747,38 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                 </div>
             </div>
 
+            {/* ✅ NOVO: Popover de Observações */}
+            {observationPopover && (
+                <div
+                    className="fixed bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-sm z-50 pointer-events-none"
+                    style={{
+                        left: `${observationPopover.x}px`,
+                        top: observationPopover.position === 'above' 
+                            ? `${observationPopover.y - 8}px` 
+                            : `${observationPopover.y + 8}px`,
+                        transform: observationPopover.position === 'above'
+                            ? 'translate(-50%, -100%)'
+                            : 'translate(-50%, 0)',
+                    }}
+                >
+                    <div className="flex items-start gap-2 mb-2">
+                        <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <h3 className="text-sm font-semibold text-gray-800">Observações</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">
+                        {observationPopover.observacoes}
+                    </p>
+                    {/* Seta do popover */}
+                    <div
+                        className="absolute left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-gray-200 transform rotate-45"
+                        style={{
+                            [observationPopover.position === 'above' ? 'bottom' : 'top']: '-6px',
+                            borderWidth: observationPopover.position === 'above' ? '0 1px 1px 0' : '1px 0 0 1px',
+                        }}
+                    />
+                </div>
+            )}
+
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
                     <div className="bg-gray-50 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
@@ -640,6 +818,16 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                     </div>
                 </div>
             )}
+            
+            {/* ✅ NOVO: Modal de Edição de Agendamento */}
+            <NewAppointmentModal
+                isOpen={isEditModalOpen}
+                onClose={handleCloseEditModal}
+                selectedLocationId={selectedLocationFilter}
+                isEditing={true}
+                appointmentData={editingAppointment}
+                onSuccess={handleEditSuccess}
+            />
         </div>
     );
 };
