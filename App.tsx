@@ -21,6 +21,9 @@ import TestAgentsPage from './components/TestAgentsPage';
 import LocationsPage from './components/LocationsPage';
 import CreateLocationPage from './components/CreateLocationPage';
 import EditLocationPage from './components/EditLocationPage';
+import CuponsPage from './components/CuponsPage';
+import CreateCupomPage from './components/CreateCupomPage';
+import EditCupomPage from './components/EditCupomPage';
 import SettingsPage from './components/SettingsPage';
 import LoginPage from './components/LoginPage';
 import AdminSidebar from './components/admin/AdminSidebar';
@@ -39,6 +42,7 @@ const App: React.FC = () => {
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
   const [editingExtraServiceId, setEditingExtraServiceId] = useState<string | null>(null);
+  const [editingCupomId, setEditingCupomId] = useState<number | null>(null);
   const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
 
   // Usar AuthContext
@@ -96,6 +100,11 @@ const App: React.FC = () => {
   const handleEditExtraService = (extraServiceId: string) => {
     setEditingExtraServiceId(extraServiceId);
     setActiveView('services-extra-edit');
+  };
+
+  const handleEditCupom = (cupomId: number) => {
+    setEditingCupomId(cupomId);
+    setActiveView('cupons-edit');
   };
 
   const handleLoginSuccess = (loginData: {
@@ -235,6 +244,9 @@ const App: React.FC = () => {
       case 'locations-list': return <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />;
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
       case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;
+      case 'cupons-list': return <CuponsPage setActiveView={setActiveView} onEditCupom={handleEditCupom} />;
+      case 'cupons-create': return <CreateCupomPage setActiveView={setActiveView} />;
+      case 'cupons-edit': return <EditCupomPage setActiveView={setActiveView} cupomId={editingCupomId} />;
       case 'settings': return <SettingsPage onShowPreview={() => setIsPreviewingBookingPage(true)} />;
       default: return <DashboardPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
     }

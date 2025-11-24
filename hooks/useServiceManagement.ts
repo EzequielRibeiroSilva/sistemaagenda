@@ -316,6 +316,7 @@ export const useServiceManagement = () => {
     loading,
     error,
     fetchServices,
+    fetchServicesList,
     fetchAgents,
     fetchExtraServices,
     fetchService,

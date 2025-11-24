@@ -242,6 +242,84 @@ class Cupom extends BaseModel {
       })
       .first();
   }
+
+  /**
+   * Salvar relacionamentos de cupom com serviços
+   * @param {number} cupomId - ID do cupom
+   * @param {Array<number>} servicoIds - IDs dos serviços
+   * @returns {Promise<void>}
+   */
+  async salvarServicos(cupomId, servicoIds) {
+    const registros = servicoIds.map(servicoId => ({
+      cupom_id: cupomId,
+      servico_id: servicoId,
+      created_at: new Date(),
+      updated_at: new Date()
+    }));
+    
+    await this.db('cupom_servicos').insert(registros);
+  }
+
+  /**
+   * Remover relacionamentos de cupom com serviços
+   * @param {number} cupomId - ID do cupom
+   * @returns {Promise<void>}
+   */
+  async removerServicos(cupomId) {
+    await this.db('cupom_servicos').where('cupom_id', cupomId).del();
+  }
+
+  /**
+   * Buscar serviços de um cupom
+   * @param {number} cupomId - ID do cupom
+   * @returns {Promise<Array<number>>} IDs dos serviços
+   */
+  async buscarServicos(cupomId) {
+    const registros = await this.db('cupom_servicos')
+      .where('cupom_id', cupomId)
+      .select('servico_id');
+    
+    return registros.map(r => r.servico_id);
+  }
+
+  /**
+   * Salvar relacionamentos de cupom com unidades
+   * @param {number} cupomId - ID do cupom
+   * @param {Array<number>} unidadeIds - IDs das unidades
+   * @returns {Promise<void>}
+   */
+  async salvarUnidades(cupomId, unidadeIds) {
+    const registros = unidadeIds.map(unidadeId => ({
+      cupom_id: cupomId,
+      unidade_id: unidadeId,
+      created_at: new Date(),
+      updated_at: new Date()
+    }));
+    
+    await this.db('cupom_unidades').insert(registros);
+  }
+
+  /**
+   * Remover relacionamentos de cupom com unidades
+   * @param {number} cupomId - ID do cupom
+   * @returns {Promise<void>}
+   */
+  async removerUnidades(cupomId) {
+    await this.db('cupom_unidades').where('cupom_id', cupomId).del();
+  }
+
+  /**
+   * Buscar unidades de um cupom
+   * @param {number} cupomId - ID do cupom
+   * @returns {Promise<Array<number>>} IDs das unidades
+   */
+  async buscarUnidades(cupomId) {
+    const registros = await this.db('cupom_unidades')
+      .where('cupom_id', cupomId)
+      .select('unidade_id');
+    
+    return registros.map(r => r.unidade_id);
+  }
 }
 
 module.exports = Cupom;

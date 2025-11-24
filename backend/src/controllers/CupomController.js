@@ -47,9 +47,56 @@ class CupomController {
         filters
       );
 
+      // Adicionar servico_ids e unidade_ids para cada cupom
+      let cuponsComRelacionamentos = result.data;
+      
+      // Verificar se as tabelas de relacionamento existem antes de buscar
+      try {
+        const tabelaExiste = await this.cupomModel.db.schema.hasTable('cupom_servicos');
+        
+        if (tabelaExiste && result.data.length > 0) {
+          cuponsComRelacionamentos = await Promise.all(
+            result.data.map(async (cupom) => {
+              try {
+                const servicoIds = await this.cupomModel.buscarServicos(cupom.id);
+                const unidadeIds = await this.cupomModel.buscarUnidades(cupom.id);
+                return {
+                  ...cupom,
+                  servico_ids: servicoIds,
+                  unidade_ids: unidadeIds
+                };
+              } catch (err) {
+                console.error(`[CupomController] Erro ao buscar relacionamentos do cupom ${cupom.id}:`, err.message);
+                return {
+                  ...cupom,
+                  servico_ids: [],
+                  unidade_ids: []
+                };
+              }
+            })
+          );
+        } else {
+          // Se tabela não existe, retornar cupons sem relacionamentos
+          cuponsComRelacionamentos = result.data.map(cupom => ({
+            ...cupom,
+            servico_ids: [],
+            unidade_ids: []
+          }));
+        }
+      } catch (schemaError) {
+        console.error('[CupomController] Erro ao verificar schema:', schemaError.message);
+        // Em caso de erro, retornar cupons sem relacionamentos
+        cuponsComRelacionamentos = result.data.map(cupom => ({
+          ...cupom,
+          servico_ids: [],
+          unidade_ids: []
+        }));
+      }
+
       return res.json({
         success: true,
-        ...result
+        data: cuponsComRelacionamentos,
+        pagination: result.pagination
       });
     } catch (error) {
       console.error('[CupomController] Erro ao listar cupons:', error);
@@ -93,9 +140,28 @@ class CupomController {
         });
       }
 
+      // Buscar serviços e unidades relacionados com verificação de existência da tabela
+      let servicoIds = [];
+      let unidadeIds = [];
+      
+      try {
+        const tabelaExiste = await this.cupomModel.db.schema.hasTable('cupom_servicos');
+        if (tabelaExiste) {
+          servicoIds = await this.cupomModel.buscarServicos(id);
+          unidadeIds = await this.cupomModel.buscarUnidades(id);
+        }
+      } catch (err) {
+        console.error(`[CupomController.show] Erro ao buscar relacionamentos:`, err.message);
+        // Continuar sem relacionamentos em caso de erro
+      }
+
       return res.json({
         success: true,
-        data: cupom
+        data: {
+          ...cupom,
+          servico_ids: servicoIds,
+          unidade_ids: unidadeIds
+        }
       });
     } catch (error) {
       console.error('[CupomController] Erro ao buscar cupom:', error);
