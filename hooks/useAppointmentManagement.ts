@@ -65,6 +65,7 @@ export const useAppointmentManagement = () => {
     pages: 0
   });
   const [agentOptions, setAgentOptions] = useState<string[]>([]);
+  const [allAgents, setAllAgents] = useState<any[]>([]); // ✅ NOVO: Armazenar agentes completos com unidades
 
   // Função para fazer requisições autenticadas
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
@@ -383,7 +384,11 @@ export const useAppointmentManagement = () => {
       const data = await makeAuthenticatedRequest(`${API_BASE_URL}/agentes/list`);
 
       if (data.success && data.data) {
-        const agentNames = data.data.map((agent: any) => `${agent.nome} ${agent.sobrenome || ''}`.trim());
+        // ✅ NOVO: Armazenar agentes completos (com unidades)
+        setAllAgents(data.data);
+        
+        // Manter agentOptions para compatibilidade (todos os nomes)
+        const agentNames = data.data.map((agent: any) => agent.nome);
         setAgentOptions(agentNames);
       }
     } catch (error) {
@@ -404,6 +409,7 @@ export const useAppointmentManagement = () => {
     error,
     pagination,
     agentOptions,
+    allAgents, // ✅ NOVO: Exportar agentes completos
     fetchAppointments,
     fetchAppointmentById,
     updateAppointmentStatus,
