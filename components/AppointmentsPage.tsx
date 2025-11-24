@@ -125,6 +125,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         error,
         pagination,
         agentOptions,
+        allAgents, // ✅ NOVO: Agentes completos com unidades
         fetchAppointments,
         updateAppointmentStatus,
         deleteAppointment
@@ -276,7 +277,45 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
 
     const serviceOptions = useMemo(() => [...new Set(appointments.map(a => a.service))], [appointments]);
-    // agentOptions agora vem do hook useAppointmentManagement
+    
+    // ✅ NOVO: Filtrar agentes pela unidade selecionada
+    const filteredAgentOptions = useMemo(() => {
+        if (!selectedLocationFilter || selectedLocationFilter === 'all' || allAgents.length === 0) {
+            return agentOptions;
+        }
+        
+        // Converter selectedLocationFilter para número para comparação
+        const locationIdNumber = parseInt(selectedLocationFilter);
+        
+        // Filtrar agentes que trabalham na unidade selecionada
+        const agentesNaUnidade = allAgents.filter(agente => {
+            const agenteUnidades = agente.unidades || [];
+            const agenteUnidadeId = agente.unidade_id;
+            
+            // Verificar se o agente trabalha nesta unidade
+            return agenteUnidades.includes(locationIdNumber) || 
+                   agenteUnidadeId === locationIdNumber;
+        });
+        
+        // Retornar apenas os nomes dos agentes filtrados
+        return agentesNaUnidade.map(agente => agente.nome);
+    }, [selectedLocationFilter, allAgents, agentOptions]);
+    
+    // ✅ NOVO: Resetar filtro de agente quando mudar de unidade e o agente não pertencer à nova unidade
+    useEffect(() => {
+        if (filters.agent === 'all' || !selectedLocationFilter || selectedLocationFilter === 'all') {
+            return;
+        }
+
+        // Verificar se o agente selecionado está na lista de agentes filtrados
+        const agenteExisteNaUnidade = filteredAgentOptions.includes(filters.agent);
+        
+        if (!agenteExisteNaUnidade) {
+            // Resetar filtro de agente se não pertencer à unidade atual
+            setFilters(prev => ({ ...prev, agent: 'all' }));
+        }
+    }, [selectedLocationFilter, filteredAgentOptions, filters.agent]);
+    
     const paymentStatusOptions = useMemo(() => [...new Set(appointments.map(a => a.paymentStatus))], [appointments]);
     const paymentMethodOptions = ['Não definido', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'PIX'];
 
@@ -577,7 +616,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 {visibleColumns.servico && <td className="p-3 w-64 border-t border-gray-200"><FilterSelect name="service" value={filters.service} onChange={handleFilterChange}><option value="all">Todos Os Serviços</option>{serviceOptions.map(s => <option key={s} value={s}>{s}</option>)}</FilterSelect></td>}
                                 {visibleColumns.dataHora && <td className="p-3 w-64 border-t border-gray-200"><FilterInput type="text" name="dateTime" value={filters.dateTime} onChange={handleFilterChange} placeholder="Pesquisar Data/Hora" /></td>}
                                 {visibleColumns.tempoRestante && <td className="p-3 w-32 border-t border-gray-200"><FilterSelect name="timeRemainingStatus" value={filters.timeRemainingStatus} onChange={handleFilterChange}><option value="all">Mostrar Todos</option><option value="soon">Próximo/Agora</option><option value="overdue">Passado</option><option value="pending">Futuro</option></FilterSelect></td>}
-                                {visibleColumns.agente && <td className="p-4 w-64 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={user?.role === 'AGENTE'}><option value="all">Todos Os Agentes</option>{agentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
+                                {visibleColumns.agente && <td className="p-4 w-64 border-t border-gray-200"><FilterSelect name="agent" value={filters.agent} onChange={handleFilterChange} disabled={user?.role === 'AGENTE'}><option value="all">Todos Os Agentes</option>{filteredAgentOptions.map(a => <option key={a} value={a}>{a}</option>)}</FilterSelect></td>}
                                 {visibleColumns.cliente && <td className="p-4 w-64 border-t border-gray-200"><FilterInput type="text" name="client" value={filters.client} onChange={handleFilterChange} placeholder="Pesquisar por Cliente" /></td>}
                                 {visibleColumns.estado && (
                                     <td className="p-3 w-32 border-t border-gray-200">
