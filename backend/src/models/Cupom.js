@@ -34,51 +34,65 @@ class Cupom extends BaseModel {
     const offset = (page - 1) * limit;
     
     let query = this.db(this.tableName)
-      .where('usuario_id', usuarioId);
+      .where(`${this.tableName}.usuario_id`, usuarioId);
+    
+    // Filtro por unidade - JOIN com cupom_unidades
+    if (filters.unidade_id) {
+      query = query
+        .join('cupom_unidades', `${this.tableName}.id`, 'cupom_unidades.cupom_id')
+        .where('cupom_unidades.unidade_id', filters.unidade_id);
+    }
     
     // Aplicar filtros
     if (filters.status) {
-      query = query.where('status', filters.status);
+      query = query.where(`${this.tableName}.status`, filters.status);
     }
     
     if (filters.tipo_desconto) {
-      query = query.where('tipo_desconto', filters.tipo_desconto);
+      query = query.where(`${this.tableName}.tipo_desconto`, filters.tipo_desconto);
     }
     
     if (filters.search) {
       query = query.where(function() {
-        this.where('codigo', 'ilike', `%${filters.search}%`)
-            .orWhere('descricao', 'ilike', `%${filters.search}%`);
+        this.where(`${this.tableName}.codigo`, 'ilike', `%${filters.search}%`)
+            .orWhere(`${this.tableName}.descricao`, 'ilike', `%${filters.search}%`);
       });
     }
     
-    // Buscar dados
+    // Buscar dados - usar distinct para evitar duplicatas do JOIN
     const data = await query
-      .select('*')
-      .orderBy('created_at', 'desc')
+      .distinct(`${this.tableName}.*`)
+      .orderBy(`${this.tableName}.created_at`, 'desc')
       .limit(limit)
       .offset(offset);
     
     // Contar total
-    const countQuery = this.db(this.tableName)
-      .where('usuario_id', usuarioId);
+    let countQuery = this.db(this.tableName)
+      .where(`${this.tableName}.usuario_id`, usuarioId);
+    
+    // Filtro por unidade na contagem
+    if (filters.unidade_id) {
+      countQuery = countQuery
+        .join('cupom_unidades', `${this.tableName}.id`, 'cupom_unidades.cupom_id')
+        .where('cupom_unidades.unidade_id', filters.unidade_id);
+    }
     
     if (filters.status) {
-      countQuery.where('status', filters.status);
+      countQuery.where(`${this.tableName}.status`, filters.status);
     }
     
     if (filters.tipo_desconto) {
-      countQuery.where('tipo_desconto', filters.tipo_desconto);
+      countQuery.where(`${this.tableName}.tipo_desconto`, filters.tipo_desconto);
     }
     
     if (filters.search) {
       countQuery.where(function() {
-        this.where('codigo', 'ilike', `%${filters.search}%`)
-            .orWhere('descricao', 'ilike', `%${filters.search}%`);
+        this.where(`${this.tableName}.codigo`, 'ilike', `%${filters.search}%`)
+            .orWhere(`${this.tableName}.descricao`, 'ilike', `%${filters.search}%`);
       });
     }
     
-    const [{ count }] = await countQuery.count('id as count');
+    const [{ count }] = await countQuery.countDistinct(`${this.tableName}.id as count`);
     const total = parseInt(count);
     
     return {

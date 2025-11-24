@@ -26,6 +26,7 @@ export interface CupomFilters {
   status?: string;
   tipo_desconto?: string;
   search?: string;
+  unidade_id?: string;
 }
 
 export interface CupomPagination {
@@ -69,7 +70,8 @@ export const useCupomManagement = () => {
         limit: limit.toString(),
         ...(filters.status && { status: filters.status }),
         ...(filters.tipo_desconto && { tipo_desconto: filters.tipo_desconto }),
-        ...(filters.search && { search: filters.search })
+        ...(filters.search && { search: filters.search }),
+        ...(filters.unidade_id && { unidade_id: filters.unidade_id })
       });
 
       const response = await fetch(`${API_BASE_URL}/cupons?${queryParams}`, {

@@ -33,12 +33,13 @@ class CupomController {
         });
       }
 
-      const { page = 1, limit = 10, status, tipo_desconto, search } = req.query;
+      const { page = 1, limit = 10, status, tipo_desconto, search, unidade_id } = req.query;
       
       const filters = {};
       if (status) filters.status = status;
       if (tipo_desconto) filters.tipo_desconto = tipo_desconto;
       if (search) filters.search = search;
+      if (unidade_id) filters.unidade_id = parseInt(unidade_id);
 
       const result = await this.cupomModel.findByUsuarioWithPagination(
         usuarioId,

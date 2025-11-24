@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Ticket } from './Icons';
 import { useCupomManagement, Cupom } from '../hooks/useCupomManagement';
+import { useUnitManagement } from '../hooks/useUnitManagement';
 
 interface CupomCardProps {
   cupom: Cupom;
@@ -119,16 +120,24 @@ interface CuponsPageProps {
 
 const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) => {
   const { cupons, loading, error, pagination, fetchCupons } = useCupomManagement();
+  const { units, fetchUnits } = useUnitManagement();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [localFilter, setLocalFilter] = useState('');
 
-  // Carregar cupons quando o componente montar
+  // Carregar unidades quando o componente montar
+  useEffect(() => {
+    fetchUnits();
+  }, [fetchUnits]);
+
+  // Carregar cupons quando o componente montar ou filtros mudarem
   useEffect(() => {
     fetchCupons(1, 20, {
       search: searchTerm,
-      status: statusFilter
+      status: statusFilter,
+      unidade_id: localFilter
     });
-  }, [searchTerm, statusFilter, fetchCupons]);
+  }, [searchTerm, statusFilter, localFilter, fetchCupons]);
 
   const handleEditCupom = (cupomId: number) => {
     if (onEditCupom) {
@@ -145,7 +154,7 @@ const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) =
 
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${units.length > 1 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Buscar cupom
@@ -173,6 +182,26 @@ const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) =
               <option value="Expirado">Expirado</option>
             </select>
           </div>
+          {/* Filtro de Local - só aparece se houver mais de uma unidade */}
+          {units.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Local
+              </label>
+              <select
+                value={localFilter}
+                onChange={(e) => setLocalFilter(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Todos os locais</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id.toString()}>
+                    {unit.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -219,7 +248,7 @@ const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) =
           {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((page) => (
             <button
               key={page}
-              onClick={() => fetchCupons(page, 20, { search: searchTerm, status: statusFilter })}
+              onClick={() => fetchCupons(page, 20, { search: searchTerm, status: statusFilter, unidade_id: localFilter })}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 page === pagination.page
                   ? 'bg-blue-600 text-white'
