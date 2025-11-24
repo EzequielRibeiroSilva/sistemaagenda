@@ -281,6 +281,10 @@ class CupomService {
    * @returns {Promise<Object>} Cupom criado
    */
   async criarCupom(dadosCupom, usuarioId) {
+    // Extrair servico_ids e unidade_ids antes da validação
+    const servicoIds = dadosCupom.servico_ids || [];
+    const unidadeIds = dadosCupom.unidade_ids || [];
+    
     // Validar dados
     const dadosValidados = await this.validarDadosCupom(dadosCupom, usuarioId);
     
@@ -292,6 +296,16 @@ class CupomService {
     
     // Criar cupom
     const cupom = await this.cupomModel.create(dadosValidados);
+    
+    // Salvar relacionamentos com serviços
+    if (servicoIds.length > 0) {
+      await this.cupomModel.salvarServicos(cupom.id, servicoIds);
+    }
+    
+    // Salvar relacionamentos com unidades
+    if (unidadeIds.length > 0) {
+      await this.cupomModel.salvarUnidades(cupom.id, unidadeIds);
+    }
     
     return cupom;
   }
@@ -315,11 +329,43 @@ class CupomService {
       throw new Error('Você não tem permissão para editar este cupom');
     }
     
+    // Extrair servico_ids e unidade_ids antes da validação
+    const servicoIds = dadosCupom.servico_ids || [];
+    const unidadeIds = dadosCupom.unidade_ids || [];
+    
     // Validar dados
     const dadosValidados = await this.validarDadosCupom(dadosCupom, usuarioId, cupomId);
     
     // Atualizar cupom
     const cupomAtualizado = await this.cupomModel.update(cupomId, dadosValidados);
+    
+    // Atualizar relacionamentos com serviços (com verificação de existência da tabela)
+    try {
+      const tabelaExiste = await this.cupomModel.db.schema.hasTable('cupom_servicos');
+      if (tabelaExiste) {
+        await this.cupomModel.removerServicos(cupomId);
+        if (servicoIds.length > 0) {
+          await this.cupomModel.salvarServicos(cupomId, servicoIds);
+        }
+      }
+    } catch (err) {
+      console.error('[CupomService.atualizarCupom] Erro ao atualizar serviços:', err.message);
+      // Continuar sem atualizar relacionamentos em caso de erro
+    }
+    
+    // Atualizar relacionamentos com unidades (com verificação de existência da tabela)
+    try {
+      const tabelaExiste = await this.cupomModel.db.schema.hasTable('cupom_unidades');
+      if (tabelaExiste) {
+        await this.cupomModel.removerUnidades(cupomId);
+        if (unidadeIds.length > 0) {
+          await this.cupomModel.salvarUnidades(cupomId, unidadeIds);
+        }
+      }
+    } catch (err) {
+      console.error('[CupomService.atualizarCupom] Erro ao atualizar unidades:', err.message);
+      // Continuar sem atualizar relacionamentos em caso de erro
+    }
     
     return cupomAtualizado;
   }
