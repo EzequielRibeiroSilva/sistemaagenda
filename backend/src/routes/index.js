@@ -16,6 +16,7 @@ const settingsRoutes = require('./settings');
 const publicRoutes = require('./public');
 const diagnosticsRoutes = require('./diagnostics');
 const testRoutes = require('./test');
+const cuponsRoutes = require('./cupons');
 
 
 // Importar middleware de autenticação real
@@ -42,6 +43,7 @@ router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos/extras', authenticate(), servicosExtrasRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
 router.use('/agendamentos', authenticate(), agendamentosRoutes);
+router.use('/cupons', cuponsRoutes);
 router.use('/settings', settingsRoutes);
 
 // Rotas públicas (sem autenticação)

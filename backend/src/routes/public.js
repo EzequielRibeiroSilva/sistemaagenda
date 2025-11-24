@@ -7,9 +7,11 @@
 const express = require('express');
 const router = express.Router();
 const PublicBookingController = require('../controllers/PublicBookingController');
+const CupomController = require('../controllers/CupomController');
 
-// Inicializar controller
+// Inicializar controllers
 const publicBookingController = new PublicBookingController();
+const cupomController = new CupomController();
 
 /**
  * GET /api/public/salao/:unidadeId
@@ -41,6 +43,15 @@ router.get('/agentes/:id/disponibilidade', async (req, res) => {
  */
 router.post('/agendamento', async (req, res) => {
   await publicBookingController.createAgendamento(req, res);
+});
+
+/**
+ * POST /api/public/cupons/validar
+ * Validar cupom de desconto para uso na página de booking
+ * Sem autenticação - público
+ */
+router.post('/cupons/validar', async (req, res) => {
+  await cupomController.validar(req, res);
 });
 
 /**
