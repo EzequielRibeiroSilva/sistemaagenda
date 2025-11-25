@@ -89,4 +89,59 @@ router.delete('/:id',
   }
 );
 
+// ========================================
+// ROTAS PARA EXCEÇÕES DE CALENDÁRIO
+// ========================================
+
+/**
+ * POST /api/unidades/:id/excecoes
+ * Cria nova exceção de calendário para uma unidade
+ * Body: { data_inicio, data_fim, tipo, descricao }
+ * ADMIN só pode criar exceções em suas unidades, MASTER pode criar em qualquer uma
+ */
+router.post('/:id/excecoes',
+  rbacMiddleware.auditLog('CRIAR_EXCECAO_CALENDARIO'),
+  async (req, res) => {
+    await unidadeController.createExcecao(req, res);
+  }
+);
+
+/**
+ * GET /api/unidades/:id/excecoes
+ * Lista exceções de calendário de uma unidade
+ * Query params: ?dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD (opcionais)
+ * ADMIN só pode ver exceções de suas unidades, MASTER pode ver de qualquer uma
+ */
+router.get('/:id/excecoes',
+  rbacMiddleware.auditLog('LISTAR_EXCECOES_CALENDARIO'),
+  async (req, res) => {
+    await unidadeController.listExcecoes(req, res);
+  }
+);
+
+/**
+ * PUT /api/unidades/:id/excecoes/:excecaoId
+ * Atualiza exceção de calendário
+ * Body: { data_inicio?, data_fim?, tipo?, descricao? }
+ * ADMIN só pode atualizar exceções de suas unidades, MASTER pode atualizar de qualquer uma
+ */
+router.put('/:id/excecoes/:excecaoId',
+  rbacMiddleware.auditLog('ATUALIZAR_EXCECAO_CALENDARIO'),
+  async (req, res) => {
+    await unidadeController.updateExcecao(req, res);
+  }
+);
+
+/**
+ * DELETE /api/unidades/:id/excecoes/:excecaoId
+ * Deleta exceção de calendário
+ * ADMIN só pode deletar exceções de suas unidades, MASTER pode deletar de qualquer uma
+ */
+router.delete('/:id/excecoes/:excecaoId',
+  rbacMiddleware.auditLog('DELETAR_EXCECAO_CALENDARIO'),
+  async (req, res) => {
+    await unidadeController.deleteExcecao(req, res);
+  }
+);
+
 module.exports = router;

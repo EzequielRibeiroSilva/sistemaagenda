@@ -119,8 +119,18 @@ class UnidadeController extends BaseController {
         status: req.body.status || 'Ativo',
         horarios_funcionamento: req.body.horarios_funcionamento || null,
         agentes_ids: req.body.agentes_ids || null,
-        servicos_ids: req.body.servicos_ids || null
+        servicos_ids: req.body.servicos_ids || null,
+        excecoes_calendario: req.body.excecoes_calendario || null
       };
+
+      // Log para debug
+      if (req.body.excecoes_calendario) {
+        console.log(`📅 [UnidadeController] Criando unidade com exceções:`, {
+          isArray: Array.isArray(req.body.excecoes_calendario),
+          length: req.body.excecoes_calendario?.length,
+          data: req.body.excecoes_calendario
+        });
+      }
 
       // Usar service para ambos MASTER e ADMIN (MASTER terá limite bypass no service)
       const result = await this.unidadeService.createUnidade(usuarioId, unidadeData, userRole);
@@ -257,7 +267,15 @@ class UnidadeController extends BaseController {
         });
       }
 
-
+      // Suporte para exceções de calendário
+      if (req.body.excecoes_calendario !== undefined) {
+        updateData.excecoes_calendario = req.body.excecoes_calendario;
+        console.log(`📅 [UnidadeController] excecoes_calendario recebidas:`, {
+          isArray: Array.isArray(req.body.excecoes_calendario),
+          length: req.body.excecoes_calendario?.length,
+          data: req.body.excecoes_calendario
+        });
+      }
 
       // Usar service para atualizar com verificação de permissões
       const unidadeAtualizada = await this.unidadeService.updateUnidade(
@@ -388,6 +406,254 @@ class UnidadeController extends BaseController {
       if (error.code === 'INVALID_STATUS') {
         return res.status(400).json({
           error: 'Status inválido',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // ========================================
+  // MÉTODOS PARA EXCEÇÕES DE CALENDÁRIO
+  // ========================================
+
+  // POST /api/unidades/:id/excecoes - Criar exceção de calendário
+  async createExcecao(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Validar dados obrigatórios
+      const { data_inicio, data_fim, tipo, descricao } = req.body;
+
+      if (!data_inicio || !data_fim) {
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          message: 'data_inicio e data_fim são obrigatórios'
+        });
+      }
+
+      const excecaoData = {
+        data_inicio,
+        data_fim,
+        tipo: tipo || 'Outro',
+        descricao: descricao || null
+      };
+
+      // Criar exceção usando service
+      const excecao = await this.unidadeService.createExcecaoCalendario(
+        usuarioId,
+        parseInt(id),
+        excecaoData,
+        userRole
+      );
+
+      return res.status(201).json({
+        success: true,
+        data: excecao,
+        message: 'Exceção de calendário criada com sucesso'
+      });
+    } catch (error) {
+      console.error('❌ [UnidadeController] Erro ao criar exceção:', error.message);
+
+      if (error.code === 'ACCESS_DENIED') {
+        return res.status(403).json({
+          error: 'Acesso negado',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'EXCECAO_SOBREPOSTA') {
+        return res.status(400).json({
+          error: 'Conflito de datas',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // GET /api/unidades/:id/excecoes - Listar exceções de calendário
+  async listExcecoes(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Filtros opcionais
+      const filters = {};
+      if (req.query.dataInicio) {
+        filters.dataInicio = req.query.dataInicio;
+      }
+      if (req.query.dataFim) {
+        filters.dataFim = req.query.dataFim;
+      }
+
+      // Buscar exceções usando service
+      const excecoes = await this.unidadeService.listExcecoesCalendario(
+        usuarioId,
+        parseInt(id),
+        filters,
+        userRole
+      );
+
+      return res.json({
+        success: true,
+        data: excecoes
+      });
+    } catch (error) {
+      console.error('❌ [UnidadeController] Erro ao listar exceções:', error.message);
+
+      if (error.code === 'ACCESS_DENIED') {
+        return res.status(403).json({
+          error: 'Acesso negado',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // PUT /api/unidades/:id/excecoes/:excecaoId - Atualizar exceção
+  async updateExcecao(req, res) {
+    try {
+      const { excecaoId } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Dados para atualização
+      const excecaoData = {};
+      if (req.body.data_inicio !== undefined) {
+        excecaoData.data_inicio = req.body.data_inicio;
+      }
+      if (req.body.data_fim !== undefined) {
+        excecaoData.data_fim = req.body.data_fim;
+      }
+      if (req.body.tipo !== undefined) {
+        excecaoData.tipo = req.body.tipo;
+      }
+      if (req.body.descricao !== undefined) {
+        excecaoData.descricao = req.body.descricao;
+      }
+
+      // Atualizar exceção usando service
+      const excecaoAtualizada = await this.unidadeService.updateExcecaoCalendario(
+        usuarioId,
+        parseInt(excecaoId),
+        excecaoData,
+        userRole
+      );
+
+      return res.json({
+        success: true,
+        data: excecaoAtualizada,
+        message: 'Exceção de calendário atualizada com sucesso'
+      });
+    } catch (error) {
+      console.error('❌ [UnidadeController] Erro ao atualizar exceção:', error.message);
+
+      if (error.code === 'ACCESS_DENIED') {
+        return res.status(403).json({
+          error: 'Acesso negado',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'EXCECAO_NAO_ENCONTRADA') {
+        return res.status(404).json({
+          error: 'Exceção não encontrada',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'EXCECAO_SOBREPOSTA') {
+        return res.status(400).json({
+          error: 'Conflito de datas',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // DELETE /api/unidades/:id/excecoes/:excecaoId - Deletar exceção
+  async deleteExcecao(req, res) {
+    try {
+      const { excecaoId } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Deletar exceção usando service
+      const deleted = await this.unidadeService.deleteExcecaoCalendario(
+        usuarioId,
+        parseInt(excecaoId),
+        userRole
+      );
+
+      if (!deleted) {
+        return res.status(404).json({
+          error: 'Exceção não encontrada'
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Exceção de calendário deletada com sucesso'
+      });
+    } catch (error) {
+      console.error('❌ [UnidadeController] Erro ao deletar exceção:', error.message);
+
+      if (error.code === 'ACCESS_DENIED') {
+        return res.status(403).json({
+          error: 'Acesso negado',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'EXCECAO_NAO_ENCONTRADA') {
+        return res.status(404).json({
+          error: 'Exceção não encontrada',
           message: error.message
         });
       }

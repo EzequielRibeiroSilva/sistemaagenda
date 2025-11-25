@@ -78,10 +78,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         appointments: backendAppointments,
         unavailableBlocks: backendUnavailableBlocks,
         unitSchedules,
+        calendarExceptions,
         isLoading,
         error,
         loadAllData,
-        fetchAppointments
+        fetchAppointments,
+        isDateBlockedByException
     } = useCalendarData();
 
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -648,13 +650,30 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
         
+        // 🎯 NOVO: Verificar se a data está bloqueada por exceção de calendário
+        const exception = isDateBlockedByException(currentDate, selectedLocationFilter);
+        if (exception) {
+            // ✅ NOVO: Bloquear o dia inteiro se há exceção de calendário
+            const startTime = `${START_HOUR_WEEK.toString().padStart(2, '0')}:00`;
+            const endTime = `${END_HOUR_WEEK.toString().padStart(2, '0')}:00`;
+
+            return [{
+                start: startTime,
+                end: endTime,
+                id: `exception-${selectedLocationFilter}-${exception.id}`,
+                type: 'exception',
+                description: exception.descricao,
+                exceptionType: exception.tipo
+            }];
+        }
+
         // 🎯 CORREÇÃO CRÍTICA: Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
         if (!daySchedule || !daySchedule.is_aberto) {
             // ✅ CORREÇÃO: Usar os limites do grid (START_HOUR_WEEK a END_HOUR_WEEK) ao invés de 00:00-23:59
             // Isso garante que o bloqueio visual não extrapole o grid renderizado
             const startTime = `${START_HOUR_WEEK.toString().padStart(2, '0')}:00`;
             const endTime = `${END_HOUR_WEEK.toString().padStart(2, '0')}:00`;
-            
+
             return [{
                 start: startTime,
                 end: endTime,
@@ -1807,11 +1826,17 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             
                             // 🎯 NOVO: Verificar se o dia está fechado (unidade não funciona)
                             const dayIndex = getDayOfWeekIndex(day);
-                            const schedules = selectedLocationFilter && selectedLocationFilter !== 'all' 
-                                ? unitSchedules[selectedLocationFilter] 
+                            const schedules = selectedLocationFilter && selectedLocationFilter !== 'all'
+                                ? unitSchedules[selectedLocationFilter]
                                 : null;
                             const daySchedule = schedules?.find(s => s.dia_semana === dayIndex);
-                            const isClosed = !daySchedule || !daySchedule.is_aberto;
+
+                            // ✅ NOVO: Verificar se há exceção de calendário para este dia
+                            const exception = selectedLocationFilter && selectedLocationFilter !== 'all'
+                                ? isDateBlockedByException(day, selectedLocationFilter)
+                                : null;
+
+                            const isClosed = !daySchedule || !daySchedule.is_aberto || !!exception;
                             
                             // 🎨 CLASSES CONDICIONAIS APRIMORADAS
                             let containerClass = 'relative flex flex-col items-center flex-shrink-0 transition-all ';
@@ -1837,11 +1862,15 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 indicatorClass = 'absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 h-1 w-6 bg-green-500 rounded-full';
                             }
 
-                            // 🎯 NOVO: Tooltip com dia da semana
+                            // 🎯 NOVO: Tooltip com dia da semana e informações de exceção
                             const weekdayName = day.toLocaleString('pt-BR', { weekday: 'long' });
-                            const tooltipText = isClosed 
-                                ? 'Unidade fechada' 
-                                : `${weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1)}, ${day.getDate()} de ${day.toLocaleString('pt-BR', { month: 'long' })}`;
+                            let tooltipText = `${weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1)}, ${day.getDate()} de ${day.toLocaleString('pt-BR', { month: 'long' })}`;
+
+                            if (exception) {
+                                tooltipText = `${exception.tipo}: ${exception.descricao}`;
+                            } else if (!daySchedule || !daySchedule.is_aberto) {
+                                tooltipText = 'Unidade fechada';
+                            }
                             
                             return (
                                 <div key={day.getDate()} className={containerClass}>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
+import CalendarExceptionsEditor, { CalendarException } from './CalendarExceptionsEditor';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
 import { getDefaultSchedule } from '../utils/schedule';
@@ -150,6 +151,7 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
     const [checkedAgents, setCheckedAgents] = useState<Record<number, boolean>>({});
     const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
     const [schedule, setSchedule] = useState(getDefaultSchedule());
+    const [calendarExceptions, setCalendarExceptions] = useState<CalendarException[]>([]);
 
     // Carregar dados quando o componente montar
     useEffect(() => {
@@ -245,7 +247,13 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
             status: formData.status,
             agentes_ids: selectedAgentIds as number[], // Garante type safety
             servicos_ids: selectedServiceIds as number[], // Garante type safety
-            horarios_funcionamento: schedule
+            horarios_funcionamento: schedule,
+            excecoes_calendario: calendarExceptions.map(exc => ({
+                data_inicio: exc.data_inicio,
+                data_fim: exc.data_fim,
+                tipo: exc.tipo,
+                descricao: exc.descricao
+            }))
         });
 
         setIsSubmitting(false);
@@ -404,6 +412,13 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
                 <AgentScheduleEditor
                     scheduleData={schedule}
                     onScheduleChange={setSchedule}
+                />
+            </FormCard>
+
+            <FormCard title="Calendário de Exceções">
+                <CalendarExceptionsEditor
+                    exceptions={calendarExceptions}
+                    onExceptionsChange={setCalendarExceptions}
                 />
             </FormCard>
 
