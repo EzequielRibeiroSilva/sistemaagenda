@@ -38,6 +38,17 @@ export interface Service {
   nome: string;
 }
 
+export interface CalendarException {
+  id?: number;
+  unidade_id?: number;
+  data_inicio: string;
+  data_fim: string;
+  tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
+  descricao: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface LimitInfo {
   currentCount: number;
   limit: number | null;
@@ -56,6 +67,7 @@ export interface CreateUnitData {
     is_aberto: boolean;
     periodos: { inicio: string; fim: string }[];
   }[];
+  excecoes_calendario?: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>[];
 }
 
 export interface UpdateUnitData {
@@ -68,6 +80,7 @@ export interface UpdateUnitData {
     is_aberto: boolean;
     periodos: { inicio: string; fim: string }[];
   }[];
+  excecoes_calendario?: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>[];
 }
 
 export interface UseUnitManagementReturn {
@@ -88,6 +101,12 @@ export interface UseUnitManagementReturn {
   updateUnit: (id: number, unitData: UpdateUnitData) => Promise<boolean>;
   updateUnitStatus: (id: number, status: 'Ativo' | 'Bloqueado') => Promise<boolean>;
   deleteUnit: (id: number) => Promise<boolean>;
+
+  // Exceções de Calendário
+  fetchUnitExceptions: (unitId: number) => Promise<CalendarException[]>;
+  createUnitException: (unitId: number, exception: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>) => Promise<boolean>;
+  updateUnitException: (unitId: number, exceptionId: number, exception: Partial<Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>>) => Promise<boolean>;
+  deleteUnitException: (unitId: number, exceptionId: number) => Promise<boolean>;
 
   // Utilitários
   clearError: () => void;
@@ -308,6 +327,114 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     return limitInfo.canCreateMore;
   }, [limitInfo]);
 
+  // ========================================
+  // MÉTODOS PARA EXCEÇÕES DE CALENDÁRIO
+  // ========================================
+
+  // Buscar exceções de calendário de uma unidade
+  const fetchUnitExceptions = useCallback(async (unitId: number): Promise<CalendarException[]> => {
+    try {
+      setError(null);
+
+      const response = await authenticatedFetch(`/unidades/${unitId}/excecoes`);
+
+      if (response.success) {
+        return response.data || [];
+      } else {
+        throw new Error(response.message || 'Erro ao buscar exceções');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar exceções';
+      setError(errorMessage);
+      console.error('❌ [useUnitManagement] Erro ao buscar exceções:', err);
+      return [];
+    }
+  }, [authenticatedFetch]);
+
+  // Criar nova exceção de calendário
+  const createUnitException = useCallback(async (
+    unitId: number,
+    exception: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>
+  ): Promise<boolean> => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await authenticatedFetch(`/unidades/${unitId}/excecoes`, {
+        method: 'POST',
+        body: JSON.stringify(exception),
+      });
+
+      if (response.success) {
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao criar exceção');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar exceção';
+      setError(errorMessage);
+      console.error('❌ [useUnitManagement] Erro ao criar exceção:', err);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [authenticatedFetch]);
+
+  // Atualizar exceção de calendário
+  const updateUnitException = useCallback(async (
+    unitId: number,
+    exceptionId: number,
+    exception: Partial<Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>>
+  ): Promise<boolean> => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await authenticatedFetch(`/unidades/${unitId}/excecoes/${exceptionId}`, {
+        method: 'PUT',
+        body: JSON.stringify(exception),
+      });
+
+      if (response.success) {
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao atualizar exceção');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar exceção';
+      setError(errorMessage);
+      console.error('❌ [useUnitManagement] Erro ao atualizar exceção:', err);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [authenticatedFetch]);
+
+  // Deletar exceção de calendário
+  const deleteUnitException = useCallback(async (unitId: number, exceptionId: number): Promise<boolean> => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await authenticatedFetch(`/unidades/${unitId}/excecoes/${exceptionId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.success) {
+        return true;
+      } else {
+        throw new Error(response.message || 'Erro ao deletar exceção');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar exceção';
+      setError(errorMessage);
+      console.error('❌ [useUnitManagement] Erro ao deletar exceção:', err);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [authenticatedFetch]);
+
   // Carregar dados automaticamente quando o hook é inicializado
   useEffect(() => {
     if (isAuthenticated && token) {
@@ -340,6 +467,12 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     updateUnit,
     updateUnitStatus,
     deleteUnit,
+
+    // Exceções de Calendário
+    fetchUnitExceptions,
+    createUnitException,
+    updateUnitException,
+    deleteUnitException,
 
     // Utilitários
     clearError,

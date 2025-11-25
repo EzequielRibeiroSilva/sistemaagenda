@@ -1,6 +1,7 @@
 const Unidade = require('../models/Unidade');
 const Usuario = require('../models/Usuario');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
+const ExcecaoCalendario = require('../models/ExcecaoCalendario');
 const { db } = require('../config/knex');
 
 class UnidadeService {
@@ -173,6 +174,21 @@ class UnidadeService {
 
           await trx('unidade_servicos').insert(associacoesServicos);
 
+        }
+
+        // Criar exceções de calendário (se fornecidas)
+        if (unidadeData.excecoes_calendario && Array.isArray(unidadeData.excecoes_calendario) && unidadeData.excecoes_calendario.length > 0) {
+          console.log(`📅 [UnidadeService] Criando ${unidadeData.excecoes_calendario.length} exceções de calendário`);
+          
+          for (const excecao of unidadeData.excecoes_calendario) {
+            await ExcecaoCalendario.create({
+              unidade_id: novaUnidade.id,
+              data_inicio: excecao.data_inicio,
+              data_fim: excecao.data_fim,
+              tipo: excecao.tipo,
+              descricao: excecao.descricao
+            }, trx);
+          }
         }
 
         await trx.commit();
@@ -454,6 +470,44 @@ class UnidadeService {
           }
         }
 
+        // Atualizar exceções de calendário (se fornecidas)
+        console.log(`🔍 [UnidadeService] updateData.excecoes_calendario:`, updateData.excecoes_calendario);
+        
+        if (updateData.excecoes_calendario !== undefined) {
+          console.log(`📅 [UnidadeService] Atualizando exceções de calendário para unidade ${unidadeId}`);
+          console.log(`📅 [UnidadeService] Tipo: ${typeof updateData.excecoes_calendario}, É Array: ${Array.isArray(updateData.excecoes_calendario)}`);
+          console.log(`📅 [UnidadeService] Quantidade: ${updateData.excecoes_calendario?.length || 0}`);
+          
+          // Remover exceções existentes
+          const deletedCount = await ExcecaoCalendario.deleteByUnidade(unidadeId, trx);
+          console.log(`🗑️ [UnidadeService] ${deletedCount} exceções antigas removidas`);
+          
+          // Criar novas exceções
+          if (Array.isArray(updateData.excecoes_calendario) && updateData.excecoes_calendario.length > 0) {
+            console.log(`📅 [UnidadeService] Criando ${updateData.excecoes_calendario.length} novas exceções...`);
+            
+            for (const excecao of updateData.excecoes_calendario) {
+              console.log(`   ➕ Criando exceção:`, excecao);
+              
+              const excecaoCriada = await ExcecaoCalendario.create({
+                unidade_id: unidadeId,
+                data_inicio: excecao.data_inicio,
+                data_fim: excecao.data_fim,
+                tipo: excecao.tipo,
+                descricao: excecao.descricao
+              }, trx);
+              
+              console.log(`   ✅ Exceção criada com ID: ${excecaoCriada.id}`);
+            }
+            
+            console.log(`✅ [UnidadeService] Todas as ${updateData.excecoes_calendario.length} exceções foram criadas`);
+          } else {
+            console.log(`⚠️ [UnidadeService] Nenhuma exceção para criar (array vazio ou inválido)`);
+          }
+        } else {
+          console.log(`⚠️ [UnidadeService] excecoes_calendario não foi fornecido no updateData`);
+        }
+
         await trx.commit();
 
         // Buscar unidade completa com horários
@@ -526,11 +580,21 @@ class UnidadeService {
         .select('servico_id');
       const servicosIds = servicosAssociados.map(s => s.servico_id);
 
+      // Buscar exceções de calendário (com fallback para array vazio em caso de erro)
+      let excecoes = [];
+      try {
+        excecoes = await ExcecaoCalendario.findByUnidade(unidadeId);
+      } catch (excecaoError) {
+        console.warn('⚠️ [UnidadeService] Erro ao buscar exceções de calendário, continuando sem elas:', excecaoError.message);
+        // Não quebra o fluxo, apenas retorna array vazio
+      }
+
       return {
         ...unidade,
         horarios_funcionamento: horarios,
         agentes_ids: agentesIds,
-        servicos_ids: servicosIds
+        servicos_ids: servicosIds,
+        excecoes_calendario: excecoes
       };
     } catch (error) {
       console.error('Erro ao buscar unidade com horários:', error);
@@ -570,6 +634,165 @@ class UnidadeService {
       is_aberto: false,
       periodos: []
     }));
+  }
+
+  // ========================================
+  // MÉTODOS PARA EXCEÇÕES DE CALENDÁRIO
+  // ========================================
+
+  /**
+   * Criar exceção de calendário para uma unidade
+   * @param {number} userId - ID do usuário
+   * @param {number} unidadeId - ID da unidade
+   * @param {Object} excecaoData - Dados da exceção
+   * @param {string} userRole - Role do usuário
+   * @returns {Promise<Object>} Exceção criada
+   */
+  async createExcecaoCalendario(userId, unidadeId, excecaoData, userRole) {
+    try {
+      // Verificar se pode acessar a unidade
+      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+
+      if (!canAccess) {
+        const error = new Error('Você não tem permissão para editar esta unidade');
+        error.code = 'ACCESS_DENIED';
+        throw error;
+      }
+
+      // Criar exceção
+      const excecao = await ExcecaoCalendario.create({
+        ...excecaoData,
+        unidade_id: unidadeId
+      });
+
+      console.log(`✅ [UnidadeService] Exceção de calendário criada: ID ${excecao.id}, Unidade ${unidadeId}`);
+      return excecao;
+    } catch (error) {
+      console.error('❌ [UnidadeService] Erro ao criar exceção de calendário:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar exceção de calendário
+   * @param {number} userId - ID do usuário
+   * @param {number} excecaoId - ID da exceção
+   * @param {Object} excecaoData - Dados para atualização
+   * @param {string} userRole - Role do usuário
+   * @returns {Promise<Object>} Exceção atualizada
+   */
+  async updateExcecaoCalendario(userId, excecaoId, excecaoData, userRole) {
+    try {
+      // Buscar exceção para verificar unidade_id
+      const excecaoExistente = await ExcecaoCalendario.findById(excecaoId);
+      
+      if (!excecaoExistente) {
+        const error = new Error('Exceção não encontrada');
+        error.code = 'EXCECAO_NAO_ENCONTRADA';
+        throw error;
+      }
+
+      // Verificar se pode acessar a unidade
+      const canAccess = await this.canAccessUnidade(userId, excecaoExistente.unidade_id, userRole);
+
+      if (!canAccess) {
+        const error = new Error('Você não tem permissão para editar esta exceção');
+        error.code = 'ACCESS_DENIED';
+        throw error;
+      }
+
+      // Atualizar exceção
+      const excecaoAtualizada = await ExcecaoCalendario.update(excecaoId, excecaoData);
+
+      console.log(`✅ [UnidadeService] Exceção de calendário atualizada: ID ${excecaoId}`);
+      return excecaoAtualizada;
+    } catch (error) {
+      console.error('❌ [UnidadeService] Erro ao atualizar exceção de calendário:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletar exceção de calendário
+   * @param {number} userId - ID do usuário
+   * @param {number} excecaoId - ID da exceção
+   * @param {string} userRole - Role do usuário
+   * @returns {Promise<boolean>} True se deletado com sucesso
+   */
+  async deleteExcecaoCalendario(userId, excecaoId, userRole) {
+    try {
+      // Buscar exceção para verificar unidade_id
+      const excecaoExistente = await ExcecaoCalendario.findById(excecaoId);
+      
+      if (!excecaoExistente) {
+        const error = new Error('Exceção não encontrada');
+        error.code = 'EXCECAO_NAO_ENCONTRADA';
+        throw error;
+      }
+
+      // Verificar se pode acessar a unidade
+      const canAccess = await this.canAccessUnidade(userId, excecaoExistente.unidade_id, userRole);
+
+      if (!canAccess) {
+        const error = new Error('Você não tem permissão para deletar esta exceção');
+        error.code = 'ACCESS_DENIED';
+        throw error;
+      }
+
+      // Deletar exceção
+      const deleted = await ExcecaoCalendario.delete(excecaoId);
+
+      console.log(`✅ [UnidadeService] Exceção de calendário deletada: ID ${excecaoId}`);
+      return deleted;
+    } catch (error) {
+      console.error('❌ [UnidadeService] Erro ao deletar exceção de calendário:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Listar exceções de calendário de uma unidade
+   * @param {number} userId - ID do usuário
+   * @param {number} unidadeId - ID da unidade
+   * @param {Object} filters - Filtros opcionais (dataInicio, dataFim)
+   * @param {string} userRole - Role do usuário
+   * @returns {Promise<Array>} Lista de exceções
+   */
+  async listExcecoesCalendario(userId, unidadeId, filters, userRole) {
+    try {
+      // Verificar se pode acessar a unidade
+      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+
+      if (!canAccess) {
+        const error = new Error('Você não tem permissão para acessar esta unidade');
+        error.code = 'ACCESS_DENIED';
+        throw error;
+      }
+
+      // Buscar exceções
+      const excecoes = await ExcecaoCalendario.findByUnidade(unidadeId, filters);
+
+      return excecoes;
+    } catch (error) {
+      console.error('❌ [UnidadeService] Erro ao listar exceções de calendário:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Verificar se uma data está bloqueada por exceção
+   * @param {number} unidadeId - ID da unidade
+   * @param {Date|string} data - Data a verificar
+   * @returns {Promise<Object|null>} Exceção que bloqueia a data ou null
+   */
+  async isDataBloqueadaPorExcecao(unidadeId, data) {
+    try {
+      const excecao = await ExcecaoCalendario.isDataBloqueada(unidadeId, data);
+      return excecao;
+    } catch (error) {
+      console.error('❌ [UnidadeService] Erro ao verificar se data está bloqueada:', error.message);
+      throw error;
+    }
   }
 }
 

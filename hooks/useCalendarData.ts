@@ -124,16 +124,29 @@ const SERVICE_COLORS = [
   { color: 'bg-indigo-600', textColor: 'text-white' },
 ];
 
+// ✅ NOVO: Interface para exceções de calendário
+interface CalendarException {
+  id: number;
+  unidade_id: number;
+  data_inicio: string;
+  data_fim: string;
+  tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
+  descricao: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const useCalendarData = () => {
   const { token, isAuthenticated, user } = useAuth();
-  
+
   const [agents, setAgents] = useState<CalendarAgent[]>([]);
   const [services, setServices] = useState<CalendarService[]>([]);
   const [locations, setLocations] = useState<CalendarLocation[]>([]);
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [unavailableBlocks, setUnavailableBlocks] = useState<CalendarUnavailableBlock[]>([]);
   const [unitSchedules, setUnitSchedules] = useState<Record<string, UnitSchedule[]>>({});
-  
+  const [calendarExceptions, setCalendarExceptions] = useState<Record<string, CalendarException[]>>({});
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -282,6 +295,8 @@ export const useCalendarData = () => {
         
         // Buscar horários de funcionamento para cada unidade
         const schedulesMap: Record<string, UnitSchedule[]> = {};
+        const exceptionsMap: Record<string, CalendarException[]> = {};
+
         for (const location of locationsData) {
           try {
             const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}`);
@@ -289,11 +304,23 @@ export const useCalendarData = () => {
             if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
               schedulesMap[location.id.toString()] = scheduleResponse.data.horarios_funcionamento;
             }
+
+            // ✅ NOVO: Buscar exceções de calendário para cada unidade
+            try {
+              const exceptionsResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}/excecoes`);
+              if (exceptionsResponse.success && Array.isArray(exceptionsResponse.data)) {
+                exceptionsMap[location.id.toString()] = exceptionsResponse.data;
+              }
+            } catch (excErr) {
+              console.warn(`⚠️ [useCalendarData] Erro ao buscar exceções da unidade ${location.id}:`, excErr);
+              exceptionsMap[location.id.toString()] = [];
+            }
           } catch (err) {
             console.error(`❌ [useCalendarData] Erro ao buscar horários da unidade ${location.id}:`, err);
           }
         }
         setUnitSchedules(schedulesMap);
+        setCalendarExceptions(exceptionsMap);
         
         return transformedLocations;
       }
@@ -425,6 +452,16 @@ export const useCalendarData = () => {
       throw err;
     }
   }, []);
+
+  // ✅ NOVO: Função para verificar se uma data está bloqueada por exceção
+  const isDateBlockedByException = useCallback((date: Date, locationId: string): CalendarException | null => {
+    const locationExceptions = calendarExceptions[locationId] || [];
+    const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    return locationExceptions.find(exception => {
+      return dateStr >= exception.data_inicio && dateStr <= exception.data_fim;
+    }) || null;
+  }, [calendarExceptions]);
 
   // Carregar todos os dados iniciais (APENAS dados estáticos)
   // ✅ CORREÇÃO: CalendarPage é responsável por buscar agendamentos com filtros corretos
@@ -559,6 +596,7 @@ export const useCalendarData = () => {
       setLocations([]);
       setAppointments([]);
       setUnavailableBlocks([]);
+      setCalendarExceptions({});
     }
   }, [isAuthenticated, loadAllData]);
 
@@ -570,11 +608,12 @@ export const useCalendarData = () => {
     appointments,
     unavailableBlocks,
     unitSchedules,
-    
+    calendarExceptions,
+
     // Estado
     isLoading,
     error,
-    
+
     // Ações
     loadAllData,
     fetchAppointments,
@@ -582,8 +621,9 @@ export const useCalendarData = () => {
     createAppointment,
     updateAppointment,
     deleteAppointment,
-    
+
     // Utilitários
-    setError
+    setError,
+    isDateBlockedByException
   };
 };

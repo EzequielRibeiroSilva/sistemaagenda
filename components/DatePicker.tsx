@@ -48,8 +48,8 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
     useEffect(() => {
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
-            const calendarWidth = mode === 'range' ? 600 : 288; // w-[600px] ou w-72 (288px)
-            const calendarHeight = mode === 'range' ? 400 : 380; // Altura estimada do calendário
+            const calendarWidth = mode === 'range' ? 480 : 280; // Reduzido: 480px para range, 280px para single
+            const calendarHeight = mode === 'range' ? 320 : 300; // Reduzido: altura mais compacta
             
             // Calcular posição ideal (alinhado à direita do botão)
             let leftPosition = rect.right - calendarWidth;
@@ -181,7 +181,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         const days = [];
 
         for (let i = 0; i < firstDayOfMonth; i++) {
-            days.push(<div key={`empty-start-${i}`} className="w-8 h-8 md:w-10 md:h-10"></div>);
+            days.push(<div key={`empty-start-${i}`} className="w-7 h-7"></div>);
         }
 
         // ✅ NOVO: Obter data atual para comparação
@@ -201,7 +201,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
             // ✅ NOVO: Verificar se é o dia atual
             const isToday = date.getTime() === today.getTime();
 
-            let classes = "w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full cursor-pointer transition-colors text-sm ";
+            let classes = "w-7 h-7 flex items-center justify-center rounded-full cursor-pointer transition-colors text-xs ";
             
             // ✅ CORREÇÃO: Priorizar dia selecionado, depois dia atual, depois outros
             if (isSelected || isSelectedStart || isSelectedEnd) {
@@ -229,10 +229,10 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         const daysOfWeek = ['DO', 'SE', 'TE', 'QU', 'QI', 'SX', 'SA'];
 
         return (
-            <div className="p-4">
-                <div className="text-center font-semibold mb-4 capitalize">{monthName}</div>
+            <div className="p-3">
+                <div className="text-center font-semibold mb-3 capitalize text-sm">{monthName}</div>
                 <div className="grid grid-cols-7 gap-y-1 text-center text-xs text-blue-600 font-bold mb-2">
-                    {daysOfWeek.map(day => <div key={day}>{day}</div>)}
+                    {daysOfWeek.map(day => <div key={day} className="h-5 flex items-center justify-center">{day}</div>)}
                 </div>
                 <div className="grid grid-cols-7 gap-y-1">
                     {days}
@@ -249,29 +249,29 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     const calendarDropdown = isOpen && portalRoot ? (
-        <div 
+        <div
             ref={datePickerRef}
-            className={`fixed ${mode === 'range' ? 'w-[600px]' : 'w-72'} bg-white rounded-lg shadow-xl border border-gray-200 z-[100]`}
+            className={`fixed ${mode === 'range' ? 'w-[480px]' : 'w-[280px]'} bg-white rounded-lg shadow-xl border border-gray-200 z-[100]`}
             style={{
                 top: `${dropdownPosition.top}px`,
                 left: `${dropdownPosition.left}px`
             }}
         >
-                    <div className="flex justify-between items-center p-4 border-b">
-                        <button onClick={prevMonth} className="p-2 rounded-full hover:bg-gray-100"><ChevronLeft className="h-5 w-5 text-gray-600" /></button>
+                    <div className="flex justify-between items-center p-3 border-b">
+                        <button onClick={prevMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronLeft className="h-4 w-4 text-gray-600" /></button>
                         <div className="flex-1 flex justify-around">
                             {/* Month names are now inside renderCalendar */}
                         </div>
-                        <button onClick={nextMonth} className="p-2 rounded-full hover:bg-gray-100"><ChevronRight className="h-5 w-5 text-gray-600" /></button>
+                        <button onClick={nextMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronRight className="h-4 w-4 text-gray-600" /></button>
                     </div>
                     <div className="flex">
                         <div className={mode === 'range' ? 'w-1/2 border-r' : 'w-full'}>{renderCalendar(currentMonth, currentYear)}</div>
                         {mode === 'range' && <div className="w-1/2">{renderCalendar(nextCalendarMonth, nextCalendarYear)}</div>}
                     </div>
                     {mode === 'range' && (
-                        <div className="flex justify-end p-4 border-t">
-                            <button onClick={handleCancel} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
-                            <button onClick={handleApply} className="ml-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">Aplicar</button>
+                        <div className="flex justify-end p-3 border-t">
+                            <button onClick={handleCancel} className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
+                            <button onClick={handleApply} className="ml-2 px-3 py-1.5 text-xs font-semibold text-white bg-[#2663EB] rounded-lg hover:bg-[#1d4ed8]">Aplicar</button>
                         </div>
                     )}
         </div>

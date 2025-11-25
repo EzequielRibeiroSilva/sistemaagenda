@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
-import { useUnitManagement } from '../hooks/useUnitManagement';
+import CalendarExceptionsEditor from './CalendarExceptionsEditor';
+import { useUnitManagement, CalendarException } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
 import { getDefaultSchedule, mergeWithDefaultSchedule, type ScheduleDay } from '../utils/schedule';
 
@@ -138,7 +139,8 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         services,
         loading,
         error,
-        clearError
+        clearError,
+        fetchUnitExceptions
     } = useUnitManagement();
 
     // Component state for form fields
@@ -155,6 +157,9 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
     // Estado para horários (7 dias da semana)
     const [scheduleData, setScheduleData] = useState<ScheduleDay[]>(getDefaultSchedule());
+    
+    // Estado para exceções de calendário
+    const [calendarExceptions, setCalendarExceptions] = useState<CalendarException[]>([]);
 
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -201,6 +206,16 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                         // Usar função utilitária para mesclar com 7 dias padrão
                         const horariosCompletos = mergeWithDefaultSchedule(horariosDoBackend);
                         setScheduleData(horariosCompletos); // Garante sempre 7 dias
+                    }
+
+                    // Carregar exceções de calendário
+                    try {
+                        const exceptions = await fetchUnitExceptions(locationId);
+                        setCalendarExceptions(exceptions || []);
+                    } catch (excError) {
+                        console.warn('⚠️ [EditLocationPage] Erro ao carregar exceções, continuando sem elas:', excError);
+                        // Não quebra o fluxo, apenas deixa array vazio
+                        setCalendarExceptions([]);
                     }
                 } else {
                     console.error('❌ [EditLocationPage] Unidade não encontrada ou erro ao carregar');
@@ -311,10 +326,14 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
             status: formData.status,
             agentes_ids: Array.from(selectedAgents) as number[],
             servicos_ids: Array.from(selectedServices) as number[],
-            horarios_funcionamento: scheduleData // ✅ CORREÇÃO: Nome padronizado (array com 7 dias garantido)
+            horarios_funcionamento: scheduleData, // ✅ CORREÇÃO: Nome padronizado (array com 7 dias garantido)
+            excecoes_calendario: calendarExceptions.map(exc => ({
+                data_inicio: exc.data_inicio,
+                data_fim: exc.data_fim,
+                tipo: exc.tipo,
+                descricao: exc.descricao
+            }))
         };
-
-
 
         const success = await updateUnit(locationId, updateData);
 
@@ -478,6 +497,13 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                 <AgentScheduleEditor
                     scheduleData={scheduleData}
                     onScheduleChange={setScheduleData}
+                />
+            </FormCard>
+
+            <FormCard title="Calendário de Exceções">
+                <CalendarExceptionsEditor
+                    exceptions={calendarExceptions}
+                    onExceptionsChange={setCalendarExceptions}
                 />
             </FormCard>
 
