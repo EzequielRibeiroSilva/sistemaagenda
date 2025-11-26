@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { useCalendarData } from '../hooks/useCalendarData'; // ✅ NOVO: Importar hook para exceções de calendário
 import { getAssetUrl } from '../utils/api'; // ✅ NOVO: Importar função para URLs de assets
 import PerformanceSection from './PerformanceSection';
 import PreviewSection from './PreviewSection';
@@ -32,6 +33,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         fetchAgendamentosRaw, // ✅ NOVO: Função que retorna dados sem sobrescrever estado
         calculateMetrics
     } = useDashboardData();
+
+    // ✅ NOVO: Hook para exceções de calendário
+    const {
+        calendarExceptions,
+        isDateBlockedByException
+    } = useCalendarData();
 
     // ✅ ESTADOS DE FILTRO DA SEÇÃO DESEMPENHO (Independentes)
     const [performanceLocation, setPerformanceLocation] = useState('all');
@@ -457,7 +464,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onDateRangeChange={setDateRange}
             />
             
-            <PreviewSection 
+            <PreviewSection
                 schedules={filteredAgentSchedules}
                 locations={locations}
                 services={services}
@@ -475,6 +482,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onDateChange={setPreviewDate} // ✅ NOVO: Callback para mudar data
                 appointments={previewAppointments} // ✅ NOVO: Passar agendamentos do dia
                 backendAgentes={backendAgentes} // ✅ NOVO: Passar agentes do backend para detalhes
+                calendarExceptions={calendarExceptions} // ✅ NOVO: Passar exceções de calendário
+                isDateBlockedByException={isDateBlockedByException} // ✅ NOVO: Função para verificar bloqueios
             />
             
             <NewAppointmentModal

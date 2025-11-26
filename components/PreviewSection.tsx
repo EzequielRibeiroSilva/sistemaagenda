@@ -156,6 +156,16 @@ interface BackendAgente {
   avatar_url?: string;        // ✅ CRÍTICO: URL do avatar
 }
 
+// ✅ NOVO: Interface para exceções de calendário
+interface CalendarException {
+  id: number;
+  unidade_id: number;
+  data_inicio: string;
+  data_fim: string;
+  tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
+  descricao: string;
+}
+
 interface PreviewSectionProps {
   schedules: AgentSchedule[];
   locations: Location[];
@@ -174,9 +184,11 @@ interface PreviewSectionProps {
   onDateChange?: (date: Date) => void; // ✅ NOVO: Callback para mudar data
   appointments?: BackendAgendamento[]; // ✅ NOVO: Agendamentos do dia
   backendAgentes?: BackendAgente[]; // ✅ NOVO: Agentes do backend para detalhes
+  calendarExceptions?: Record<string, CalendarException[]>; // ✅ NOVO: Exceções de calendário
+  isDateBlockedByException?: (date: Date, locationId: string) => CalendarException | null; // ✅ NOVO: Função para verificar bloqueios
 }
 
-const PreviewSection: React.FC<PreviewSectionProps> = ({ 
+const PreviewSection: React.FC<PreviewSectionProps> = ({
     schedules,
     locations,
     services,
@@ -193,7 +205,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     selectedDate: propSelectedDate, // ✅ NOVO: Data selecionada (prop)
     onDateChange, // ✅ NOVO: Callback para mudar data
     appointments = [], // ✅ NOVO: Agendamentos do dia
-    backendAgentes = [] // ✅ NOVO: Agentes do backend
+    backendAgentes = [], // ✅ NOVO: Agentes do backend
+    calendarExceptions = {}, // ✅ NOVO: Exceções de calendário
+    isDateBlockedByException // ✅ NOVO: Função para verificar bloqueios
 }) => {
 
 
@@ -237,6 +251,14 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     return filtered;
   }, [agents, selectedLocation]);
+
+  // ✅ NOVO: Verificar se o dia está bloqueado por exceção de calendário
+  const dayException = useMemo(() => {
+    if (!isDateBlockedByException || !selectedLocation || selectedLocation === 'all') {
+      return null;
+    }
+    return isDateBlockedByException(selectedDate, selectedLocation);
+  }, [isDateBlockedByException, selectedDate, selectedLocation]);
 
   // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
   const agentAppointmentCards = useMemo(() => {
@@ -684,7 +706,29 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         <div className="grid text-center text-sm text-gray-500 mb-4" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
           {hours.map(hour => <div key={hour}>{hour}</div>)}
         </div>
-        
+
+        {/* ✅ NOVO: Mensagem quando o dia está bloqueado por exceção */}
+        {dayException && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded-r-lg">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <span className="text-red-400 text-lg">🚫</span>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">
+                  {dayException.tipo}
+                </h3>
+                <p className="text-sm text-red-700 mt-1">
+                  {dayException.descricao}
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  Não é possível criar novos agendamentos neste dia.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           {displayedAgents.map((agent, agentIndex) => (
             <div key={agent.id} className="flex items-center gap-4 h-12">
@@ -744,7 +788,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
                   return iterableHours.map(hour => {
                     const isAvailable = isSlotAvailable(hour);
-                    if (!isAvailable) {
+
+                    // ✅ NOVO: Bloquear slots se há exceção de calendário
+                    if (dayException || !isAvailable) {
                       return null; // Não renderiza slot clicável
                     }
 
@@ -867,20 +913,43 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 {locationIntervals.map(block => {
                   const blockStyle = getAppointmentCardStyle(block.start, block.end);
                   return (
-                    <div 
-                      key={block.id} 
-                      className="absolute h-full bg-red-100 rounded z-5" 
+                    <div
+                      key={block.id}
+                      className="absolute h-full bg-red-100 rounded z-5"
                       style={blockStyle}
                     >
-                      <div 
-                        className="w-full h-full" 
-                        style={{ 
-                          backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' 
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)'
                         }}
                       ></div>
                     </div>
                   );
                 })}
+
+                {/* ✅ NOVO: Renderizar bloqueio por exceção de calendário (dia inteiro) */}
+                {dayException && (
+                  <div
+                    className="absolute h-full w-full bg-red-50 rounded z-10"
+                    style={{ left: 0, right: 0 }}
+                    title={`${dayException.tipo}: ${dayException.descricao}`}
+                  >
+                    <div
+                      className="w-full h-full"
+                      style={{
+                        backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)'
+                      }}
+                    >
+                      {/* Label da exceção */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-red-400 text-white px-2 py-1 rounded text-xs font-medium shadow-sm opacity-90">
+                          🚫 {dayException.tipo}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
