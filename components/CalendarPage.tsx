@@ -640,7 +640,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     };
 
     // 🎯 NOVA FUNÇÃO: Calcular Blocos de Intervalo do Local para uma determinada data
-    const calculateLocationIntervalBlocks = (date: Date): Array<{ start: string; end: string; id: string }> => {
+    const calculateLocationIntervalBlocks = (date: Date): Array<{ start: string; end: string; id: string; type?: string; description?: string; exceptionType?: string }> => {
         if (!selectedLocationFilter || selectedLocationFilter === 'all') return [];
 
         const dayIndex = getDayOfWeekIndex(date);
@@ -650,12 +650,20 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
         
-        // 🎯 NOVO: Verificar se a data está bloqueada por exceção de calendário
-        const exception = isDateBlockedByException(currentDate, selectedLocationFilter);
+        // 🎯 CORREÇÃO CRÍTICA: Usar o parâmetro 'date' ao invés de 'currentDate'
+        // Isso garante que a verificação seja feita para a data correta em todas as vistas
+        const exception = isDateBlockedByException(date, selectedLocationFilter);
         if (exception) {
-            // ✅ NOVO: Bloquear o dia inteiro se há exceção de calendário
-            const startTime = `${START_HOUR_WEEK.toString().padStart(2, '0')}:00`;
-            const endTime = `${END_HOUR_WEEK.toString().padStart(2, '0')}:00`;
+            // ✅ BLOQUEIO POR EXCEÇÃO: Bloquear o dia inteiro (8h-21h para Vista Dia)
+            // Usar START_HOUR_DAY e END_HOUR_DAY para Vista Dia (mais amplo que WEEK)
+            const startTime = `${START_HOUR_DAY.toString().padStart(2, '0')}:00`;
+            const endTime = `${(END_HOUR_DAY + 1).toString().padStart(2, '0')}:00`;
+
+            console.log(`🚫 [CalendarPage] EXCEÇÃO DE CALENDÁRIO detectada para ${date.toISOString().split('T')[0]}:`, {
+                tipo: exception.tipo,
+                descricao: exception.descricao,
+                bloqueio: `${startTime} - ${endTime}`
+            });
 
             return [{
                 start: startTime,
@@ -1201,9 +1209,27 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 {locationIntervals.map(block => {
                                     const top = timeToPercentageDay(block.start);
                                     const height = timeToPercentageDay(block.end) - top;
+                                    
+                                    // ✅ NOVO: Estilo diferenciado para exceções de calendário (estilo sutil como intervalos)
+                                    const isException = block.type === 'exception';
+
                                     return (
-                                        <div key={block.id} className="absolute w-full bg-red-100 rounded-lg z-5" style={{ top: `${top}%`, height: `${height}%` }}>
-                                            <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
+                                        <div
+                                            key={block.id}
+                                            className={`absolute w-full ${isException ? 'bg-red-50' : 'bg-red-100'} rounded-lg z-5`}
+                                            style={{ top: `${top}%`, height: `${height}%` }}
+                                            title={isException ? `${block.exceptionType}: ${block.description}` : 'Intervalo de funcionamento'}
+                                        >
+                                            <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}>
+                                                {/* ✅ NOVO: Label sutil para exceções de calendário */}
+                                                {isException && (
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <div className="bg-red-400 text-white px-2 py-1 rounded text-xs font-medium shadow-sm opacity-90">
+                                                            🚫 {block.exceptionType}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}
