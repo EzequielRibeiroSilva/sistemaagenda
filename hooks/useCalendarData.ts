@@ -307,12 +307,19 @@ export const useCalendarData = () => {
 
             // ✅ NOVO: Buscar exceções de calendário para cada unidade
             try {
-              const exceptionsResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}/excecoes`);
+              // 🎯 CORREÇÃO: Adicionar cache-busting para evitar cache 304
+              const cacheBuster = Date.now();
+              const exceptionsResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${location.id}/excecoes?_t=${cacheBuster}`);
+
               if (exceptionsResponse.success && Array.isArray(exceptionsResponse.data)) {
                 exceptionsMap[location.id.toString()] = exceptionsResponse.data;
+                console.log(`✅ [useCalendarData] ${exceptionsResponse.data.length} exceções carregadas para unidade ${location.id} (${location.nome})`);
+              } else {
+                console.warn(`⚠️ [useCalendarData] Resposta inválida para exceções da unidade ${location.id}:`, exceptionsResponse);
+                exceptionsMap[location.id.toString()] = [];
               }
             } catch (excErr) {
-              console.warn(`⚠️ [useCalendarData] Erro ao buscar exceções da unidade ${location.id}:`, excErr);
+              console.error(`❌ [useCalendarData] Erro ao buscar exceções da unidade ${location.id}:`, excErr);
               exceptionsMap[location.id.toString()] = [];
             }
           } catch (err) {
@@ -321,7 +328,10 @@ export const useCalendarData = () => {
         }
         setUnitSchedules(schedulesMap);
         setCalendarExceptions(exceptionsMap);
-        
+
+        const totalExceptions = Object.values(exceptionsMap).reduce((sum, exceptions) => sum + exceptions.length, 0);
+        console.log(`📊 [useCalendarData] ${totalExceptions} exceções de calendário carregadas para ${Object.keys(exceptionsMap).length} unidades`);
+
         return transformedLocations;
       }
       
@@ -458,9 +468,19 @@ export const useCalendarData = () => {
     const locationExceptions = calendarExceptions[locationId] || [];
     const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    return locationExceptions.find(exception => {
-      return dateStr >= exception.data_inicio && dateStr <= exception.data_fim;
+    const foundException = locationExceptions.find(exception => {
+      // 🎯 CORREÇÃO CRÍTICA: Converter datas ISO para formato YYYY-MM-DD para comparação
+      const startDate = exception.data_inicio.split('T')[0]; // Remove timezone e hora
+      const endDate = exception.data_fim.split('T')[0]; // Remove timezone e hora
+      const isInRange = dateStr >= startDate && dateStr <= endDate;
+      return isInRange;
     }) || null;
+
+    if (foundException) {
+      console.log(`🚫 [isDateBlockedByException] Data ${dateStr} BLOQUEADA por exceção:`, foundException.tipo, '-', foundException.descricao);
+    }
+
+    return foundException;
   }, [calendarExceptions]);
 
   // Carregar todos os dados iniciais (APENAS dados estáticos)
