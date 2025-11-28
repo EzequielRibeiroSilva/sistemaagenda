@@ -102,8 +102,16 @@ class ClienteController {
         this.clienteModel.countByUnidade(unidadeId, filtros)
       ]);
 
+      // Calcular pontos disponíveis para cada cliente (em paralelo)
+      const clientesComPontos = await Promise.all(
+        clientes.map(async (cliente) => {
+          const pontosDisponiveis = await this.clienteModel.calcularPontosDisponiveis(cliente.id, unidadeId);
+          return { ...cliente, pontos_disponiveis: pontosDisponiveis };
+        })
+      );
+
       // Formatar dados para o frontend
-      const clientesFormatados = clientes.map(cliente => ({
+      const clientesFormatados = clientesComPontos.map(cliente => ({
         id: cliente.id,
         name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
         firstName: cliente.primeiro_nome,
@@ -115,6 +123,7 @@ class ClienteController {
         whatsappId: cliente.whatsapp_id,
         createdAt: cliente.created_at,
         updatedAt: cliente.updated_at,
+        pontosDisponiveis: cliente.pontos_disponiveis || 0, // Pontos disponíveis do cliente
         // Campos calculados para compatibilidade com frontend existente
         totalApps: 0, // TODO: Implementar contagem de agendamentos
         nextAppStatus: 'n/a',
@@ -413,6 +422,53 @@ class ClienteController {
 
     } catch (error) {
       console.error('❌ [ClienteController.createForAgendamento] Erro ao criar cliente para agendamento:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /api/clientes/:id/pontos - Buscar pontos disponíveis de um cliente
+   * Query params: unidade_id (obrigatório)
+   */
+  async getPontos(req, res) {
+    try {
+      const clienteId = parseInt(req.params.id);
+      const unidadeId = parseInt(req.query.unidade_id);
+
+      if (!clienteId || isNaN(clienteId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente inválido'
+        });
+      }
+
+      if (!unidadeId || isNaN(unidadeId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID da unidade é obrigatório'
+        });
+      }
+
+      // Calcular pontos disponíveis
+      const pontosDisponiveis = await this.clienteModel.calcularPontosDisponiveis(clienteId, unidadeId);
+
+      // Verificar se é o primeiro agendamento
+      const isPrimeiroAgendamento = await this.clienteModel.isPrimeiroAgendamento(clienteId, unidadeId);
+
+      res.status(200).json({
+        success: true,
+        pontos_disponiveis: pontosDisponiveis,
+        is_primeiro_agendamento: isPrimeiroAgendamento,
+        pode_usar_pontos: !isPrimeiroAgendamento, // Só pode usar pontos se NÃO for o primeiro
+        message: `Cliente tem ${pontosDisponiveis} pontos disponíveis`
+      });
+
+    } catch (error) {
+      console.error('❌ [ClienteController.getPontos] Erro ao buscar pontos do cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',

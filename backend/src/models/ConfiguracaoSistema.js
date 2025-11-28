@@ -27,6 +27,11 @@ class ConfiguracaoSistema {
           'permitir_cancelamento',
           'tempo_limite_cancelar_horas',
           'periodo_futuro_dias',
+          // Campos de pontos
+          'pontos_ativo',
+          'pontos_por_real',
+          'reais_por_pontos',
+          'pontos_validade_meses',
           'created_at',
           'updated_at'
         )
@@ -52,7 +57,12 @@ class ConfiguracaoSistema {
         tempo_limite_agendar_horas: 2, // 2 horas antes
         permitir_cancelamento: true,
         tempo_limite_cancelar_horas: 4, // 4 horas antes
-        periodo_futuro_dias: 365 // 1 ano
+        periodo_futuro_dias: 365, // 1 ano
+        // Configurações de pontos (padrão: desativado)
+        pontos_ativo: false,
+        pontos_por_real: 1.00, // 1 ponto por R$ 1,00
+        reais_por_pontos: 10.00, // 10 pontos = R$ 1,00 de desconto
+        pontos_validade_meses: 12 // 12 meses de validade
       };
 
       await this.db(this.tableName).insert(defaultConfig);

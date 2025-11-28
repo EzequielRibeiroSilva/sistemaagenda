@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Download, Plus, CheckCircle, ChevronLeft, ChevronRight, MoreHorizontal } from './Icons';
 import { useClientManagement, type ClientFilters } from '../hooks/useClientManagement';
+import { useSettingsManagement } from '../hooks/useSettingsManagement';
 
 const FilterInput: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
     <input
@@ -35,9 +36,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         subscriberCount
     } = useClientManagement();
 
+    // Hook de configurações para verificar se sistema de pontos está ativo
+    const { settings, loadSettings } = useSettingsManagement();
+    const pontosAtivo = settings?.pontos_ativo || false;
+
     // ✅ CORREÇÃO: Carregar dados iniciais APENAS UMA VEZ
     useEffect(() => {
         applyFilters({});
+        loadSettings(); // Carregar configurações para verificar se pontos está ativo
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Array vazio = executa apenas uma vez
 
@@ -141,6 +147,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 <th className="p-3 text-left font-semibold text-gray-600">ID</th>
                                 <th className="p-3 text-left font-semibold text-gray-600">NOME COMPLETO</th>
                                 <th className="p-3 text-left font-semibold text-gray-600">TELEFONE</th>
+                                {pontosAtivo && (
+                                    <th className="p-3 text-center font-semibold text-gray-600">
+                                        PONTOS
+                                    </th>
+                                )}
                                 <th className="p-3 text-left font-semibold text-gray-600">
                                     {subscriberCount} ASSINANTES
                                     {subscriberCount > 0 && (
@@ -182,6 +193,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                         disabled={loading}
                                     />
                                 </td>
+                                {pontosAtivo && (
+                                    <td className="p-3 border-t border-gray-200">
+                                        {/* Coluna de pontos sem filtro */}
+                                    </td>
+                                )}
                                 <td className="p-3 border-t border-gray-200">
                                     <button
                                         onClick={handleClearFilters}
@@ -196,7 +212,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={4} className="p-8 text-center text-gray-500">
+                                    <td colSpan={pontosAtivo ? 5 : 4} className="p-8 text-center text-gray-500">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                                             Carregando clientes...
@@ -205,7 +221,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 </tr>
                             ) : clients.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="p-8 text-center text-gray-500">
+                                    <td colSpan={pontosAtivo ? 5 : 4} className="p-8 text-center text-gray-500">
                                         <div className="space-y-3">
                                             <div className="text-gray-600 font-medium">
                                                 {hasActiveFilters ? '🔍 Nenhum cliente encontrado com esses filtros' : '👥 Nenhum cliente cadastrado'}
@@ -251,6 +267,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                             )}
                                         </td>
                                         <td className="p-3 text-gray-600 whitespace-nowrap">{client.phone}</td>
+                                        {pontosAtivo && (
+                                            <td className="p-3 text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <span className="text-lg font-bold text-yellow-600">
+                                                        {client.pontosDisponiveis || 0}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">pts</span>
+                                                </div>
+                                            </td>
+                                        )}
                                         <td className="p-3 text-center">
                                             {client.isSubscriber && (
                                                 <div className="flex items-center justify-center gap-2">
@@ -275,6 +301,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 <th className="p-3 text-left font-semibold text-gray-600">ID</th>
                                 <th className="p-3 text-left font-semibold text-gray-600">NOME COMPLETO</th>
                                 <th className="p-3 text-left font-semibold text-gray-600">TELEFONE</th>
+                                {pontosAtivo && (
+                                    <th className="p-3 text-center font-semibold text-gray-600">PONTOS</th>
+                                )}
                                 <th className="p-3 text-left font-semibold text-gray-600">{subscriberCount} ASSINANTES</th>
                             </tr>
                         </tfoot>

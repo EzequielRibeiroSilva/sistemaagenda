@@ -145,6 +145,11 @@ class SettingsService {
       permitir_cancelamento: configuracao.permitir_cancelamento,
       tempo_limite_cancelar_horas: configuracao.tempo_limite_cancelar_horas,
       periodo_futuro_dias: configuracao.periodo_futuro_dias,
+      // Configurações de pontos
+      pontos_ativo: configuracao.pontos_ativo || false,
+      pontos_por_real: parseFloat(configuracao.pontos_por_real) || 1.00,
+      reais_por_pontos: parseFloat(configuracao.reais_por_pontos) || 10.00,
+      pontos_validade_meses: configuracao.pontos_validade_meses || 12,
       created_at: configuracao.created_at,
       updated_at: configuracao.updated_at
     };
@@ -203,6 +208,27 @@ class SettingsService {
     if (dadosConfiguracao.periodo_futuro_dias !== undefined) {
       if (dadosConfiguracao.periodo_futuro_dias < 1 || dadosConfiguracao.periodo_futuro_dias > 730) {
         erros.push('Período futuro deve estar entre 1 e 730 dias (2 anos)');
+      }
+    }
+
+    // Validações de Pontos
+    if (dadosConfiguracao.pontos_por_real !== undefined) {
+      const pontosReal = parseFloat(dadosConfiguracao.pontos_por_real);
+      if (isNaN(pontosReal) || pontosReal < 0.01 || pontosReal > 100) {
+        erros.push('Pontos por real deve estar entre 0.01 e 100');
+      }
+    }
+
+    if (dadosConfiguracao.reais_por_pontos !== undefined) {
+      const reaisPontos = parseFloat(dadosConfiguracao.reais_por_pontos);
+      if (isNaN(reaisPontos) || reaisPontos < 1 || reaisPontos > 1000) {
+        erros.push('Reais por pontos deve estar entre 1 e 1000');
+      }
+    }
+
+    if (dadosConfiguracao.pontos_validade_meses !== undefined) {
+      if (dadosConfiguracao.pontos_validade_meses < 1 || dadosConfiguracao.pontos_validade_meses > 60) {
+        erros.push('Validade dos pontos deve estar entre 1 e 60 meses (5 anos)');
       }
     }
 

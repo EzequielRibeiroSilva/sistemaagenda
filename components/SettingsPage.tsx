@@ -64,6 +64,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     const [cancellationTimeLimit, setCancellationTimeLimit] = useState(4);
     const [futurePeriod, setFuturePeriod] = useState(365);
 
+    // Estados para Sistema de Pontos
+    const [pontosAtivo, setPontosAtivo] = useState(false);
+    const [pontosPorReal, setPontosPorReal] = useState(1.0);
+    const [reaisPorPontos, setReaisPorPontos] = useState(10.0);
+    const [pontosValidadeMeses, setPontosValidadeMeses] = useState(12);
+
     // Estados para alteração de senha
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -92,6 +98,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
             setAllowCancellation(settings.permitir_cancelamento);
             setCancellationTimeLimit(settings.tempo_limite_cancelar_horas);
             setFuturePeriod(settings.periodo_futuro_dias);
+            // Sincronizar estados de pontos
+            setPontosAtivo(settings.pontos_ativo || false);
+            setPontosPorReal(settings.pontos_por_real || 1.0);
+            setReaisPorPontos(settings.reais_por_pontos || 10.0);
+            setPontosValidadeMeses(settings.pontos_validade_meses || 12);
         }
     }, [settings]);
 
@@ -165,6 +176,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 permitir_cancelamento: allowCancellation,
                 tempo_limite_cancelar_horas: cancellationTimeLimit,
                 periodo_futuro_dias: futurePeriod,
+                // Sistema de Pontos
+                pontos_ativo: pontosAtivo,
+                pontos_por_real: pontosPorReal,
+                reais_por_pontos: reaisPorPontos,
+                pontos_validade_meses: pontosValidadeMeses,
                 // Logo
                 logoFile: logoFile || undefined,
                 // Senha
@@ -337,6 +353,134 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
           <FormRow label="">
               <p className="text-sm text-gray-600">
                   Configure os valores acima e clique em "Salvar Definições" no final da página.
+              </p>
+          </FormRow>
+      </Card>
+
+      <Card title="Sistema de Pontos">
+          <FormRow label="Ativar Sistema de Pontos">
+              <ToggleSwitch enabled={pontosAtivo} setEnabled={setPontosAtivo} />
+          </FormRow>
+          
+          {pontosAtivo && (
+              <>
+                  <FormRow label="">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <p className="text-sm text-blue-800 font-semibold mb-3">
+                              Como funciona o sistema de pontos?
+                          </p>
+                          <ul className="text-sm text-blue-700 space-y-2">
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>Cliente ganha pontos a cada real gasto (após descontos)</span>
+                              </li>
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>Pontos podem ser convertidos em descontos futuros</span>
+                              </li>
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>Pontos expiram após o período de validade configurado</span>
+                              </li>
+                          </ul>
+                      </div>
+                  </FormRow>
+
+                  <FormRow label="Regra de Ganho">
+                      <div className="space-y-3">
+                          <div className="space-y-2">
+                              <label className="text-sm text-gray-700 font-medium block">
+                                  A cada R$ 1,00 gasto, o cliente ganha
+                              </label>
+                              <div className="flex items-center gap-2">
+                                  <Input
+                                      value={pontosPorReal.toString()}
+                                      onChange={(e) => setPontosPorReal(parseFloat(e.target.value) || 1.0)}
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      max="100"
+                                      placeholder="1.00"
+                                  />
+                                  <span className="text-sm text-gray-600 whitespace-nowrap">ponto(s)</span>
+                              </div>
+                          </div>
+                          <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              Exemplo: Se configurar 1.00, um serviço de R$ 50,00 gera 50 pontos
+                          </p>
+                      </div>
+                  </FormRow>
+
+                  <FormRow label="Regra de Conversão">
+                      <div className="space-y-3">
+                          <div className="space-y-2">
+                              <label className="text-sm text-gray-700 font-medium block">
+                                  A cada
+                              </label>
+                              <div className="flex items-center gap-2">
+                                  <Input
+                                      value={reaisPorPontos.toString()}
+                                      onChange={(e) => setReaisPorPontos(parseFloat(e.target.value) || 10.0)}
+                                      type="number"
+                                      step="1"
+                                      min="1"
+                                      max="1000"
+                                      placeholder="10.00"
+                                  />
+                                  <span className="text-sm text-gray-600 whitespace-nowrap">pontos, o cliente ganha R$ 1,00 de desconto</span>
+                              </div>
+                          </div>
+                          <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              Exemplo: Se configurar 10, o cliente precisa de 100 pontos para R$ 10,00 de desconto
+                          </p>
+                      </div>
+                  </FormRow>
+
+                  <FormRow label="Validade dos Pontos (meses)">
+                      <div className="space-y-3">
+                          <Input
+                              value={pontosValidadeMeses.toString()}
+                              onChange={(e) => setPontosValidadeMeses(parseInt(e.target.value) || 12)}
+                              type="number"
+                              min="1"
+                              max="60"
+                              placeholder="12"
+                          />
+                          <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              Pontos expiram após {pontosValidadeMeses} {pontosValidadeMeses === 1 ? 'mês' : 'meses'} da data de ganho
+                          </p>
+                      </div>
+                  </FormRow>
+
+                  <FormRow label="">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <p className="text-sm text-blue-800 font-semibold mb-3">
+                              Simulação com suas configurações:
+                          </p>
+                          <ul className="text-sm text-blue-700 space-y-2">
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>Serviço de R$ 100,00 = <strong>{(100 * pontosPorReal).toFixed(0)} pontos</strong></span>
+                              </li>
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>{reaisPorPontos} pontos = <strong>R$ 1,00 de desconto</strong></span>
+                              </li>
+                              <li className="flex items-start">
+                                  <span className="mr-2">•</span>
+                                  <span>{(100 * pontosPorReal).toFixed(0)} pontos = <strong>R$ {((100 * pontosPorReal) / reaisPorPontos).toFixed(2)} de desconto</strong></span>
+                              </li>
+                          </ul>
+                      </div>
+                  </FormRow>
+              </>
+          )}
+
+          <FormRow label="">
+              <p className="text-sm text-gray-600">
+                  {pontosAtivo 
+                      ? 'Configure as regras acima e clique em "Salvar Definições" para ativar o sistema de pontos.'
+                      : 'Ative o sistema de pontos para permitir que seus clientes acumulem e utilizem pontos como desconto.'}
               </p>
           </FormRow>
       </Card>

@@ -12,6 +12,7 @@ import {
   InternalCliente
 } from '../hooks/useInternalBooking';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettingsManagement } from '../hooks/useSettingsManagement';
 
 // Helper components for styling consistency
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -278,6 +279,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [appointmentId, setAppointmentId] = useState<number | null>(null);
     const [isLoadingAppointment, setIsLoadingAppointment] = useState(false);
 
+    // ✅ NOVO: Estados para sistema de pontos
+    const [clienteId, setClienteId] = useState<number | null>(null);
+    const [pontosDisponiveis, setPontosDisponiveis] = useState<number>(0);
+    const [pontosUsados, setPontosUsados] = useState<number>(0);
+    const [descontoCalculado, setDescontoCalculado] = useState<number>(0);
+    const [valorFinal, setValorFinal] = useState<number>(0);
+    const [podeUsarPontos, setPodeUsarPontos] = useState<boolean>(false);
+
+    // ✅ NOVO: Hook para configurações de pontos
+    const { settings, loadSettings } = useSettingsManagement();
+    const pontosAtivo = settings?.pontos_ativo || false;
+    const reaisPorPontos = settings?.reais_por_pontos || 10;
+
     const isEditing = !!appointmentData;
 
     // Carregar dados iniciais
@@ -294,6 +308,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 setAllServices(servicos);
                 setAllExtras(extras);
                 setAllAgents(agentes);
+                
+                // ✅ NOVO: Carregar configurações de pontos
+                await loadSettings();
             } catch (error) {
             }
         };
@@ -301,7 +318,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         if (isOpen) {
             loadInitialData();
         }
-    }, [isOpen, fetchServicos, fetchServicosExtras, fetchAgentes]);
+    }, [isOpen, fetchServicos, fetchServicosExtras, fetchAgentes, loadSettings]);
 
     // ✅ FILTRAR AGENTES POR UNIDADE SELECIONADA
     useEffect(() => {
@@ -689,6 +706,39 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             if (details.cliente && details.cliente.telefone) {
                                 setClientPhone(details.cliente.telefone.replace('+55', '').trim());
                             }
+                            
+                            // ✅ NOVO: Armazenar ID do cliente e buscar pontos disponíveis
+                            if (details.cliente && details.cliente.id) {
+                                setClienteId(details.cliente.id);
+                                
+                                // ✅ CORREÇÃO: Usar unidade_id do agendamento ao invés de selectedLocationId
+                                // Isso garante que a busca funcione na primeira abertura do modal
+                                const unidadeIdDoAgendamento = details.unidade_id || appointmentData.locationId;
+                                
+                                // Buscar pontos disponíveis do cliente
+                                if (pontosAtivo && unidadeIdDoAgendamento) {
+                                    try {
+                                        const token = localStorage.getItem('authToken');
+                                        const response = await fetch(
+                                            `http://localhost:3000/api/clientes/${details.cliente.id}/pontos?unidade_id=${unidadeIdDoAgendamento}`,
+                                            {
+                                                headers: {
+                                                    'Authorization': `Bearer ${token}`,
+                                                    'Content-Type': 'application/json'
+                                                }
+                                            }
+                                        );
+                                        
+                                        if (response.ok) {
+                                            const data = await response.json();
+                                            setPontosDisponiveis(data.pontos_disponiveis || 0);
+                                            setPodeUsarPontos(data.pode_usar_pontos || false);
+                                        }
+                                    } catch (error) {
+                                        console.error('❌ Erro ao buscar pontos do cliente:', error);
+                                    }
+                                }
+                            }
                         }
                     } catch (error) {
                         // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
@@ -735,6 +785,23 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         }
         // Depender de TUDO que afeta o preço
     }, [selectedServices, selectedExtras, allServices, allExtras]);
+    
+    // ✅ NOVO: Calcular desconto e valor final quando pontos usados mudarem
+    useEffect(() => {
+        if (!pontosAtivo || pontosUsados === 0) {
+            setDescontoCalculado(0);
+            setValorFinal(totalPrice);
+            return;
+        }
+        
+        // Fórmula: desconto = (pontos / reais_por_pontos) * 1
+        // Exemplo: 400 pontos / 20 = 20 reais de desconto
+        const desconto = (pontosUsados / reaisPorPontos) * 1;
+        const valorComDesconto = Math.max(0, totalPrice - desconto);
+        
+        setDescontoCalculado(desconto);
+        setValorFinal(valorComDesconto);
+    }, [pontosUsados, totalPrice, pontosAtivo, reaisPorPontos]);
 
     if (!isOpen || !portalRoot) return null;
 
@@ -765,13 +832,39 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const modalTitle = isEditing ? 'Editar Compromisso' : 'Novo Agendamento';
     const submitButtonText = isEditing ? 'Salvar Alterações' : 'Criar Compromisso';
 
-    const handleSelectClient = (client: InternalCliente) => {
+    const handleSelectClient = async (client: InternalCliente) => {
         setSelectedClient(client);
         setClientFirstName(client.primeiro_nome);
         setClientLastName(client.ultimo_nome);
         setClientPhone(client.telefone.replace('+55', '').trim());
         setIsSearchingClient(false);
         setClientSearchQuery('');
+        
+        // ✅ NOVO: Armazenar ID do cliente e buscar pontos
+        setClienteId(client.id);
+        
+        if (pontosAtivo && selectedLocationId) {
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(
+                    `http://localhost:3000/api/clientes/${client.id}/pontos?unidade_id=${selectedLocationId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    setPontosDisponiveis(data.pontos_disponiveis || 0);
+                    setPodeUsarPontos(data.pode_usar_pontos || false);
+                }
+            } catch (error) {
+                console.error('❌ Erro ao buscar pontos do cliente:', error);
+            }
+        }
     }
 
     const handleCreateNewClient = async () => {
@@ -858,6 +951,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     status: status,
                     forma_pagamento: paymentMethod,
                     observacoes: observacoes.trim() || '',
+                    // ✅ NOVO: Incluir pontos usados se houver
+                    ...(pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
                     ...(selectedClient
                         ? { cliente_id: selectedClient.id }
                         : {
@@ -1164,6 +1259,76 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         <p>Valor Total:</p>
                                         <p>R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
                                     </div>
+                                    
+                                    {/* ✅ NOVO: Sistema de Pontos */}
+                                    {pontosAtivo && clienteId && (
+                                        <>
+                                            <div className="border-t border-gray-200 my-3"></div>
+                                            
+                                            <div className={`${podeUsarPontos ? 'bg-[#F0F6FF] border-blue-200' : 'bg-gray-50 border-gray-300'} border rounded-lg p-4 space-y-3`}>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm font-medium text-gray-700">Saldo de Pontos:</span>
+                                                    <span className={`text-lg font-bold ${podeUsarPontos ? 'text-blue-600' : 'text-gray-500'}`}>{pontosDisponiveis} pts</span>
+                                                </div>
+                                                {pontosDisponiveis > 0 && (
+                                                    <div className="text-xs text-gray-500">
+                                                        Equivalente a R$ {((pontosDisponiveis / reaisPorPontos) * 1).toFixed(2).replace('.', ',')} de desconto
+                                                    </div>
+                                                )}
+                                                
+                                                {!podeUsarPontos && (
+                                                    <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-700">
+                                                        Pontos só podem ser usados a partir do segundo agendamento. Continue acumulando!
+                                                    </div>
+                                                )}
+                                                
+                                                {podeUsarPontos && pontosDisponiveis > 0 && (
+                                                <FormField label="Quantos pontos deseja usar?">
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            max={pontosDisponiveis}
+                                                            value={pontosUsados}
+                                                            onChange={(e) => {
+                                                                const valor = parseInt(e.target.value) || 0;
+                                                                if (valor <= pontosDisponiveis) {
+                                                                    setPontosUsados(valor);
+                                                                } else {
+                                                                    alert(`Você só tem ${pontosDisponiveis} pontos disponíveis.`);
+                                                                }
+                                                            }}
+                                                            placeholder="0"
+                                                            className="flex-1"
+                                                            disabled={!podeUsarPontos}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPontosUsados(pontosDisponiveis)}
+                                                            className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 whitespace-nowrap disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                                            disabled={!podeUsarPontos}
+                                                        >
+                                                            Usar Tudo
+                                                        </button>
+                                                    </div>
+                                                </FormField>
+                                                )}
+                                                
+                                                {pontosUsados > 0 && (
+                                                    <div className="space-y-2 pt-2 border-t border-blue-300">
+                                                        <div className="flex justify-between text-sm">
+                                                            <span className="text-gray-600">Desconto aplicado:</span>
+                                                            <span className="font-bold text-green-600">- R$ {descontoCalculado.toFixed(2).replace('.', ',')}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-base font-bold">
+                                                            <span className="text-gray-800">Valor Final:</span>
+                                                            <span className="text-blue-600">R$ {valorFinal.toFixed(2).replace('.', ',')}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                     
                                     <FormField label="Forma de Pagamento">
                                         <Select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>

@@ -364,6 +364,69 @@ class Cliente extends BaseModel {
       .orderBy('primeiro_nome', 'asc')
       .limit(10); // Limitar resultados para performance
   }
+
+  /**
+   * Calcular pontos disponíveis de um cliente
+   * Soma todos os créditos não expirados e subtrai os débitos
+   * @param {number} clienteId - ID do cliente
+   * @param {number} unidadeId - ID da unidade
+   * @returns {Promise<number>} Total de pontos disponíveis
+   */
+  async calcularPontosDisponiveis(clienteId, unidadeId) {
+    try {
+      const hoje = new Date().toISOString().split('T')[0];
+
+      // Buscar todos os créditos não expirados
+      const creditos = await this.db('pontos_historico')
+        .where('cliente_id', clienteId)
+        .where('unidade_id', unidadeId)
+        .where('tipo', 'CREDITO')
+        .where('expirado', false)
+        .where(function() {
+          this.whereNull('data_validade')
+              .orWhere('data_validade', '>=', hoje);
+        })
+        .sum('pontos as total')
+        .first();
+
+      // Buscar todos os débitos
+      const debitos = await this.db('pontos_historico')
+        .where('cliente_id', clienteId)
+        .where('unidade_id', unidadeId)
+        .where('tipo', 'DEBITO')
+        .sum('pontos as total')
+        .first();
+
+      const totalCreditos = parseFloat(creditos?.total || 0);
+      const totalDebitos = parseFloat(debitos?.total || 0);
+
+      return totalCreditos - totalDebitos;
+    } catch (error) {
+      console.error('[Cliente] Erro ao calcular pontos disponíveis:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Verificar se é o primeiro agendamento do cliente
+   * @param {number} clienteId - ID do cliente
+   * @param {number} unidadeId - ID da unidade
+   * @returns {Promise<boolean>} True se for o primeiro agendamento
+   */
+  async isPrimeiroAgendamento(clienteId, unidadeId) {
+    try {
+      const count = await this.db('agendamentos')
+        .where('cliente_id', clienteId)
+        .where('unidade_id', unidadeId)
+        .count('id as total')
+        .first();
+
+      return parseInt(count?.total || 0) === 0;
+    } catch (error) {
+      console.error('[Cliente] Erro ao verificar primeiro agendamento:', error);
+      return true; // Em caso de erro, considerar como primeiro para segurança
+    }
+  }
 }
 
 module.exports = Cliente;
