@@ -661,6 +661,22 @@ class AgendamentoController extends BaseController {
       const valorExtras = servicosExtrasData.reduce((total, extra) => total + parseFloat(extra.preco), 0);
       const valorTotal = valorServicos + valorExtras;
 
+      // ✅ REGRA DE NEGÓCIO: Verificar se cliente pode usar pontos (apenas a partir do 2º agendamento)
+      const pontosUsados = parseInt(outrosDados.pontos_usados || 0);
+      if (pontosUsados > 0) {
+        const ClienteModel = require('../models/Cliente');
+        const clienteModel = new ClienteModel(this.model.db);
+        
+        const isPrimeiro = await clienteModel.isPrimeiroAgendamento(clienteIdFinal, unidade_id);
+        
+        if (isPrimeiro) {
+          return res.status(400).json({
+            error: 'Pontos não disponíveis',
+            message: 'Pontos só podem ser usados a partir do segundo agendamento'
+          });
+        }
+      }
+
       const dadosAgendamento = {
         cliente_id: clienteIdFinal, // ✅ USAR O ID DO CLIENTE (CRIADO OU EXISTENTE)
         agente_id,
@@ -711,6 +727,43 @@ class AgendamentoController extends BaseController {
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
 
+      // ✅ NOVO: GATILHO DE PONTOS - Gerar pontos automaticamente ao criar agendamento
+      try {
+        // Buscar configurações de pontos da unidade
+        const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+        const configuracaoModel = new ConfiguracaoSistema(this.model.db); // ✅ CORREÇÃO: Passar db
+        const configuracao = await configuracaoModel.findByUnidade(unidade_id);
+
+        if (configuracao && configuracao.pontos_ativo && valorTotal > 0) {
+          // Calcular pontos: pontos = valor_total * pontos_por_real
+          const pontosPorReal = parseFloat(configuracao.pontos_por_real) || 1.00;
+          const pontosValidade = configuracao.pontos_validade_meses || 12;
+          const pontosGerados = Math.floor(valorTotal * pontosPorReal);
+
+          // Calcular data de validade
+          const dataValidade = new Date();
+          dataValidade.setMonth(dataValidade.getMonth() + pontosValidade);
+
+          // Inserir crédito de pontos na tabela pontos_historico
+          await this.model.db('pontos_historico').insert({
+            cliente_id: clienteIdFinal,
+            unidade_id: unidade_id,
+            agendamento_id: agendamento.id,
+            tipo: 'CREDITO',
+            pontos: pontosGerados,
+            valor_real: valorTotal,
+            descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
+            data_validade: dataValidade.toISOString().split('T')[0],
+            expirado: false,
+            created_at: new Date()
+          });
+
+          console.log(`✅ [AgendamentoController] Pontos gerados: ${pontosGerados} pts para cliente #${clienteIdFinal} (R$ ${valorTotal.toFixed(2)})`);
+        }
+      } catch (pontosError) {
+        console.error('❌ [AgendamentoController] Erro ao gerar pontos:', pontosError);
+        // Não falhar a criação do agendamento por erro nos pontos
+      }
 
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente

@@ -18,6 +18,11 @@ export interface SystemSettings {
   permitir_cancelamento: boolean;
   tempo_limite_cancelar_horas: number;
   periodo_futuro_dias: number;
+  // Sistema de Pontos
+  pontos_ativo?: boolean;
+  pontos_por_real?: number;
+  reais_por_pontos?: number;
+  pontos_validade_meses?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -255,6 +260,11 @@ export const useSettingsManagement = () => {
     permitir_cancelamento?: boolean;
     tempo_limite_cancelar_horas?: number;
     periodo_futuro_dias?: number;
+    // Sistema de Pontos
+    pontos_ativo?: boolean;
+    pontos_por_real?: number;
+    reais_por_pontos?: number;
+    pontos_validade_meses?: number;
     // Logo
     logoFile?: File;
     // Senha
@@ -280,6 +290,12 @@ export const useSettingsManagement = () => {
       if (data.permitir_cancelamento !== undefined) formData.append('permitir_cancelamento', data.permitir_cancelamento.toString());
       if (data.tempo_limite_cancelar_horas !== undefined) formData.append('tempo_limite_cancelar_horas', data.tempo_limite_cancelar_horas.toString());
       if (data.periodo_futuro_dias !== undefined) formData.append('periodo_futuro_dias', data.periodo_futuro_dias.toString());
+
+      // Adicionar configurações de pontos
+      if (data.pontos_ativo !== undefined) formData.append('pontos_ativo', data.pontos_ativo.toString());
+      if (data.pontos_por_real !== undefined) formData.append('pontos_por_real', data.pontos_por_real.toString());
+      if (data.reais_por_pontos !== undefined) formData.append('reais_por_pontos', data.reais_por_pontos.toString());
+      if (data.pontos_validade_meses !== undefined) formData.append('pontos_validade_meses', data.pontos_validade_meses.toString());
 
       // Adicionar logo (se houver)
       if (data.logoFile) {

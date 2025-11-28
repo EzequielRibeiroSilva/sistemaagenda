@@ -14,6 +14,7 @@ export interface Client {
   whatsappId?: number;
   createdAt: string;
   updatedAt: string;
+  pontosDisponiveis?: number; // Pontos disponíveis do cliente (sistema de pontos)
   // Campos calculados para compatibilidade
   totalApps: number;
   nextAppStatus: string;

@@ -23,6 +23,19 @@ router.get('/search',
   }
 );
 
+/**
+ * GET /api/clientes/:id/pontos
+ * Buscar pontos disponíveis de um cliente
+ * Query params: ?unidade_id=40
+ * ✅ AGENTE e ADMIN podem consultar pontos
+ */
+router.get('/:id/pontos',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  async (req, res) => {
+    await clienteController.getPontos(req, res);
+  }
+);
+
 // ✅ Middleware para exigir role ADMIN APENAS nas rotas que não são de busca
 // Movido para depois da rota /search para não bloquear AGENTEs
 router.use(rbacMiddleware.requireRole('ADMIN'));
