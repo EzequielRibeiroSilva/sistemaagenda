@@ -669,23 +669,27 @@ class PublicBookingController {
 
       // Preparar dados para notificação WhatsApp
       const nomeCompleto = `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim();
+      const nomeAgenteCompleto = `${agente.nome} ${agente.sobrenome || ''}`.trim();
+      
       const agendamentoCompleto = {
         cliente: {
-          nome: nomeCompleto,
-          telefone: cliente.telefone
+          nome: nomeCompleto
         },
+        cliente_telefone: cliente.telefone,
         agente: {
-          nome: agente.nome
+          nome: nomeAgenteCompleto
         },
+        agente_telefone: agente.telefone,
         unidade: {
           nome: unidade.nome
         },
+        unidade_telefone: unidade.telefone,
+        agendamento_id: agendamento.id,
         data_agendamento: agendamento.data_agendamento,
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,
         valor_total: agendamento.valor_total,
-        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco })),
-        extras: servicosExtras.map(e => ({ nome: e.nome, preco: e.preco }))
+        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco }))
       };
 
       // Enviar notificação WhatsApp (não bloquear a resposta)

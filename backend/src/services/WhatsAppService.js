@@ -20,7 +20,7 @@ class WhatsAppService {
    * Verificar se o serviço está habilitado
    */
   isEnabled() {
-    return this.enabled && this.evolutionApiUrl && this.evolutionApiKey;
+    return this.enabled && !!this.evolutionApiUrl && !!this.evolutionApiKey;
   }
 
   /**
@@ -79,7 +79,8 @@ class WhatsAppService {
       const payload = {
         number: formattedPhone,
         text: message,
-        delay: 1000
+        delay: 1000,
+        linkPreview: false // Desabilitar preview de links
       };
 
       const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
@@ -120,76 +121,158 @@ class WhatsAppService {
   }
 
   /**
-   * Gerar mensagem de confirmação de agendamento
+   * Gerar link WhatsApp formatado
    */
-  generateAppointmentMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, hora_fim, servicos, extras = [], valor_total } = agendamentoData;
-    
-    const dataFormatada = new Date(data_agendamento + 'T00:00:00').toLocaleDateString('pt-BR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-
-    const servicosTexto = servicos.map(s => `• ${s.nome} - R$ ${parseFloat(s.preco || 0).toFixed(2).replace('.', ',')}`).join('\n');
-
-    // Adicionar extras se houver
-    let extrasTexto = '';
-    if (extras && extras.length > 0) {
-      extrasTexto = `\n\n✨ *Serviços Extras:*\n${extras.map(e => `• ${e.nome} - R$ ${parseFloat(e.preco || 0).toFixed(2).replace('.', ',')}`).join('\n')}`;
-    }
-
-    return `🎉 *Agendamento Confirmado!*
-
-Olá, ${cliente.nome}! Seu agendamento na ${unidade.nome} foi CONFIRMADO!
-
-📋 *Detalhes do Agendamento:*
-📍 Local: ${unidade.nome}
-👤 Profissional: ${agente.nome}
-📅 Data: ${dataFormatada}
-🕐 Horário: ${hora_inicio} às ${hora_fim}
-
-💼 *Serviços:*
-${servicosTexto}${extrasTexto}
-
-💰 *Valor Total: R$ ${parseFloat(valor_total || 0).toFixed(2).replace('.', ',')}*
-
-⚠️ *Importante:*
-• Chegue com 10 minutos de antecedência
-• Em caso de cancelamento, avise com pelo menos 2 horas de antecedência
-• Traga um documento com foto
-
-Se precisar cancelar ou reagendar, entre em contato conosco.
-
-Obrigado por escolher nossos serviços! 😊
-
-_Esta é uma mensagem automática do sistema de agendamentos._`;
+  generateWhatsAppLink(phoneNumber) {
+    const cleanPhone = this.formatPhoneNumber(phoneNumber);
+    return `https://wa.me/${cleanPhone}`;
   }
 
   /**
-   * Enviar notificação de agendamento criado
+   * Gerar link de gestão de agendamento
+   */
+  generateManagementLink(agendamentoId) {
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return `${baseUrl}/gerenciar-agendamento/${agendamentoId}`;
+  }
+
+  /**
+   * Formatar data e hora para exibição
+   */
+  formatDateTime(data_agendamento, hora_inicio) {
+    try {
+      let dataObj;
+      
+      // Se já é um objeto Date
+      if (data_agendamento instanceof Date) {
+        dataObj = data_agendamento;
+      } 
+      // Se é uma string no formato YYYY-MM-DD
+      else if (typeof data_agendamento === 'string') {
+        // Adicionar horário para evitar problemas de timezone
+        dataObj = new Date(data_agendamento + 'T12:00:00');
+      } 
+      // Tentar converter de qualquer outra forma
+      else {
+        dataObj = new Date(data_agendamento);
+      }
+      
+      // Verificar se a data é válida
+      if (isNaN(dataObj.getTime())) {
+        console.error('[WhatsApp] Data inválida recebida:', data_agendamento);
+        return `Data não disponível às ${hora_inicio}`;
+      }
+      
+      const dataFormatada = dataObj.toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      });
+      
+      return `${dataFormatada} às ${hora_inicio}`;
+    } catch (error) {
+      console.error('[WhatsApp] Erro ao formatar data:', error);
+      return `Data não disponível às ${hora_inicio}`;
+    }
+  }
+
+  /**
+   * Gerar lista de serviços formatada
+   */
+  formatServicos(servicos) {
+    if (!servicos || servicos.length === 0) return 'Serviço';
+    if (servicos.length === 1) return servicos[0].nome;
+    return servicos.map(s => s.nome).join(', ');
+  }
+
+  /**
+   * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
+   */
+  generateAppointmentConfirmationClient(agendamentoData) {
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+    const linkGestao = this.generateManagementLink(agendamento_id);
+    const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+    const wppAgente = this.generateWhatsAppLink(agente_telefone);
+
+    return `👋 Olá, *${cliente.nome}*! Ficamos muito felizes com seu agendamento na *${unidade.nome}*.
+
+Seu horário está confirmadíssimo:
+✂️ ${servicoTexto} com *${agente.nome}*
+🗓 ${dataHora}
+
+🎫 ID do Agendamento: *#${agendamento_id}*
+
+Precisa alterar algo? Gerencie seu horário através deste link:
+🔗 ${linkGestao}
+
+Canais de atendimento:
+🏠 ${unidade.nome}: ${wppLocal}
+👤 Agente ${agente.nome}: ${wppAgente}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * 1. CONFIRMAÇÃO DE AGENDAMENTO - AGENTE
+   */
+  generateAppointmentConfirmationAgent(agendamentoData) {
+    const { cliente, data_agendamento, hora_inicio, servicos, agendamento_id, cliente_telefone, unidade_telefone } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+    const wppCliente = this.generateWhatsAppLink(cliente_telefone);
+    const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+
+    return `🆕 *Novo Agendamento:* ${cliente.nome} agendou ${servicoTexto}.
+
+🗓 ${dataHora}
+🎫 ID: *#${agendamento_id}*
+
+Contatos:
+👤 Cliente ${cliente.nome}: ${wppCliente}
+🏠 Suporte Local: ${wppLocal}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * Enviar confirmação de agendamento (cliente + agente)
    */
   async sendAppointmentConfirmation(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-
+        console.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
-      const message = this.generateAppointmentMessage(agendamentoData);
-      const result = await this.sendMessage(agendamentoData.cliente.telefone, message);
+      const results = { cliente: null, agente: null };
 
-      if (!result.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar confirmação para ${agendamentoData.cliente.nome}:`, result.error);
+      // Enviar para o cliente
+      const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
+      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
 
-        // Log mais detalhado para debug
-        if (result.error && result.error.response && result.error.response.message) {
-          console.error(`❌ [WhatsApp] Detalhes do erro:`, result.error.response.message);
+      if (!results.cliente.success) {
+        console.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+      } else {
+        console.log(`✅ [WhatsApp] Confirmação enviada para cliente ${agendamentoData.cliente.nome}`);
+      }
+
+      // Enviar para o agente
+      if (agendamentoData.agente_telefone) {
+        const messageAgente = this.generateAppointmentConfirmationAgent(agendamentoData);
+        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        if (!results.agente.success) {
+          console.error(`❌ [WhatsApp] Falha ao enviar confirmação para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+        } else {
+          console.log(`✅ [WhatsApp] Confirmação enviada para agente ${agendamentoData.agente.nome}`);
         }
       }
 
-      return result;
+      return results;
     } catch (error) {
       console.error('❌ [WhatsApp] Erro ao enviar confirmação:', error);
       return { success: false, error: error.message };
@@ -197,53 +280,263 @@ _Esta é uma mensagem automática do sistema de agendamentos._`;
   }
 
   /**
-   * Gerar mensagem de lembrete de agendamento
+   * 4. LEMBRETE 24 HORAS ANTES - CLIENTE
    */
-  generateReminderMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio } = agendamentoData;
+  generateReminder24hMessage(agendamentoData) {
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id } = agendamentoData;
     
-    const dataFormatada = new Date(data_agendamento + 'T00:00:00').toLocaleDateString('pt-BR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long'
-    });
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+    const linkGestao = this.generateManagementLink(agendamento_id);
 
-    return `⏰ *Lembrete de Agendamento*
+    return `⏰ Oi, *${cliente.nome}*! A equipe da *${unidade.nome}* está ansiosa para te receber.
 
-Olá, ${cliente.nome}! Lembramos que você tem um agendamento amanhã.
+Passando para lembrar do seu horário amanhã:
+🗓 ${dataHora}
+✂️ ${servicoTexto}
 
-📋 *Detalhes:*
-📍 Local: ${unidade.nome}
-👤 Profissional: ${agente.nome}
-📅 Data: ${dataFormatada}
-🕐 Horário: ${hora_inicio}
+Teve algum imprevisto? Por favor, use o link abaixo para nos avisar ou reagendar:
+🔗 ${linkGestao}
 
-⚠️ *Lembre-se:*
-• Chegue com 10 minutos de antecedência
-• Traga um documento com foto
-
-Nos vemos em breve! 😊
-
-_Esta é uma mensagem automática do sistema de agendamentos._`;
+_Mensagem automática do Tally_`;
   }
 
   /**
-   * Enviar lembrete de agendamento
+   * 4. LEMBRETE 2 HORAS ANTES - CLIENTE
    */
-  async sendAppointmentReminder(agendamentoData) {
-    try {
-      const message = this.generateReminderMessage(agendamentoData);
-      const result = await this.sendMessage(agendamentoData.cliente.telefone, message);
-      
-      if (result.success) {
+  generateReminder2hMessage(agendamentoData) {
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, agente_telefone, unidade_telefone, agendamento_id } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+    const wppAgente = this.generateWhatsAppLink(agente_telefone);
+    const linkGestao = this.generateManagementLink(agendamento_id);
 
+    return `⏳ É quase hora, *${cliente.nome}*! Tudo pronto aqui na *${unidade.nome}* para te atender.
+
+Te esperamos às ${hora_inicio} com o(a) *${agente.nome}*.
+
+Como chegar / Contato:
+🏠 ${unidade.nome}: ${wppLocal}
+👤 Agente ${agente.nome}: ${wppAgente}
+
+Gerenciar: ${linkGestao}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * 2. CONFIRMAÇÃO DE CANCELAMENTO - CLIENTE
+   */
+  generateCancellationClient(agendamentoData) {
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agente_telefone, unidade_telefone, agendamento_id } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+    const linkGestao = this.generateManagementLink(agendamento_id);
+    const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+    const wppAgente = this.generateWhatsAppLink(agente_telefone);
+
+    return `❌ *Cancelado:* Olá, *${cliente.nome}*. O agendamento de ${servicoTexto} na *${unidade.nome}* para ${dataHora} foi cancelado conforme solicitado.
+
+Deseja realizar um novo agendamento? Acesse: ${linkGestao}
+
+Dúvidas?
+🏠 ${unidade.nome}: ${wppLocal}
+👤 Agente ${agente.nome}: ${wppAgente}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * 2. CONFIRMAÇÃO DE CANCELAMENTO - AGENTE
+   */
+  generateCancellationAgent(agendamentoData) {
+    const { cliente, data_agendamento, hora_inicio, servicos, agendamento_id } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+
+    return `🚫 *Cancelamento:* ${cliente.nome} cancelou o serviço ${servicoTexto} de ${dataHora}.
+
+🎫 ID: *#${agendamento_id}*
+✅ Sua agenda para este horário foi liberada.
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * 3. CONFIRMAÇÃO DE REAGENDAMENTO - CLIENTE
+   */
+  generateRescheduleClient(agendamentoData) {
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, unidade_telefone } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+    const linkGestao = this.generateManagementLink(agendamento_id);
+    const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+
+    return `🔄 Olá, *${cliente.nome}*! Atualizamos seu horário na *${unidade.nome}*.
+
+Seguem os novos detalhes:
+🗓 Nova Data: ${dataHora}
+✂️ ${servicoTexto} com *${agente.nome}*
+
+🎫 ID: *#${agendamento_id}*
+
+Gerenciar agendamento: 🔗 ${linkGestao}
+
+Dúvidas? 🏠 ${unidade.nome}: ${wppLocal}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * 3. CONFIRMAÇÃO DE REAGENDAMENTO - AGENTE
+   */
+  generateRescheduleAgent(agendamentoData) {
+    const { cliente, data_agendamento, hora_inicio, servicos, agendamento_id } = agendamentoData;
+    
+    const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
+    const servicoTexto = this.formatServicos(servicos);
+
+    return `🔄 *Agenda Atualizada:* O agendamento de ${cliente.nome} (*#${agendamento_id}*) foi alterado.
+
+Novo Horário: 🗓 ${dataHora} | ${servicoTexto}
+
+_Mensagem automática do Tally_`;
+  }
+
+  /**
+   * Enviar cancelamento (cliente + agente)
+   */
+  async sendCancellationNotification(agendamentoData) {
+    try {
+      if (!this.isEnabled()) {
+        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const results = { cliente: null, agente: null };
+
+      // Enviar para o cliente
+      const messageCliente = this.generateCancellationClient(agendamentoData);
+      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
+
+      if (!results.cliente.success) {
+        console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
-        console.error(`❌ [WhatsApp] Falha ao enviar lembrete para ${agendamentoData.cliente.nome}:`, result.error);
+        console.log(`✅ [WhatsApp] Cancelamento enviado para cliente ${agendamentoData.cliente.nome}`);
+      }
+
+      // Enviar para o agente
+      if (agendamentoData.agente_telefone) {
+        const messageAgente = this.generateCancellationAgent(agendamentoData);
+        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        if (!results.agente.success) {
+          console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+        } else {
+          console.log(`✅ [WhatsApp] Cancelamento enviado para agente ${agendamentoData.agente.nome}`);
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('❌ [WhatsApp] Erro ao enviar cancelamento:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enviar reagendamento (cliente + agente)
+   */
+  async sendRescheduleNotification(agendamentoData) {
+    try {
+      if (!this.isEnabled()) {
+        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const results = { cliente: null, agente: null };
+
+      // Enviar para o cliente
+      const messageCliente = this.generateRescheduleClient(agendamentoData);
+      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
+
+      if (!results.cliente.success) {
+        console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+      } else {
+        console.log(`✅ [WhatsApp] Reagendamento enviado para cliente ${agendamentoData.cliente.nome}`);
+      }
+
+      // Enviar para o agente
+      if (agendamentoData.agente_telefone) {
+        const messageAgente = this.generateRescheduleAgent(agendamentoData);
+        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        if (!results.agente.success) {
+          console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+        } else {
+          console.log(`✅ [WhatsApp] Reagendamento enviado para agente ${agendamentoData.agente.nome}`);
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('❌ [WhatsApp] Erro ao enviar reagendamento:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enviar lembrete 24h (apenas cliente)
+   */
+  async sendReminder24h(agendamentoData) {
+    try {
+      if (!this.isEnabled()) {
+        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const message = this.generateReminder24hMessage(agendamentoData);
+      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+      
+      if (!result.success) {
+        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 24h para ${agendamentoData.cliente.nome}:`, result.error);
+      } else {
+        console.log(`✅ [WhatsApp] Lembrete 24h enviado para ${agendamentoData.cliente.nome}`);
       }
       
       return result;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar lembrete:', error);
+      console.error('❌ [WhatsApp] Erro ao enviar lembrete 24h:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enviar lembrete 2h (apenas cliente)
+   */
+  async sendReminder2h(agendamentoData) {
+    try {
+      if (!this.isEnabled()) {
+        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const message = this.generateReminder2hMessage(agendamentoData);
+      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+      
+      if (!result.success) {
+        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 2h para ${agendamentoData.cliente.nome}:`, result.error);
+      } else {
+        console.log(`✅ [WhatsApp] Lembrete 2h enviado para ${agendamentoData.cliente.nome}`);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('❌ [WhatsApp] Erro ao enviar lembrete 2h:', error);
       return { success: false, error: error.message };
     }
   }

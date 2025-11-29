@@ -768,11 +768,13 @@ class AgendamentoController extends BaseController {
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
       try {
+        console.log(`📱 [AgendamentoController] Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
 
         // Buscar dados completos para a mensagem
         const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
         
         if (!dadosCompletos) {
+          console.error('❌ [AgendamentoController] Dados completos não encontrados para agendamento #' + agendamento.id);
           return res.status(201).json({
             success: true,
             data: agendamentoCompleto,
@@ -780,22 +782,40 @@ class AgendamentoController extends BaseController {
           });
         }
         
+        console.log('✅ [AgendamentoController] Dados completos obtidos:', {
+          cliente_telefone: dadosCompletos.cliente_telefone,
+          agente_telefone: dadosCompletos.agente_telefone,
+          unidade_telefone: dadosCompletos.unidade_telefone,
+          agendamento_id: dadosCompletos.agendamento_id
+        });
 
-        if (dadosCompletos && dadosCompletos.cliente && dadosCompletos.cliente.telefone) {
+        if (dadosCompletos && dadosCompletos.cliente_telefone) {
+          console.log(`📤 [AgendamentoController] Enviando confirmação para cliente: ${dadosCompletos.cliente.nome}`);
           
           // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
           const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
+          console.log('📊 [AgendamentoController] Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
 
-          if (resultadoWhatsApp.success) {
+          if (resultadoWhatsApp.cliente && resultadoWhatsApp.cliente.success) {
+            console.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o cliente');
           } else {
+            console.error('❌ [AgendamentoController] Falha ao enviar mensagem para o cliente:', resultadoWhatsApp.cliente?.error);
+          }
+
+          if (resultadoWhatsApp.agente && resultadoWhatsApp.agente.success) {
+            console.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o agente');
+          } else if (resultadoWhatsApp.agente) {
+            console.error('❌ [AgendamentoController] Falha ao enviar mensagem para o agente:', resultadoWhatsApp.agente?.error);
           }
         } else {
-          // Dados incompletos - não foi possível enviar notificação
+          console.error('❌ [AgendamentoController] Telefone do cliente não encontrado nos dados completos');
         }
         
         
       } catch (whatsappError) {
+        console.error('❌ [AgendamentoController] Erro no envio de WhatsApp:', whatsappError);
+        console.error('❌ [AgendamentoController] Stack:', whatsappError.stack);
         // Não falhar a criação do agendamento por erro no WhatsApp
       }
 
@@ -987,31 +1007,38 @@ class AgendamentoController extends BaseController {
       // ✅ CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
       const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
-
-      // ✅ CORREÇÃO: Formatar dados para o template usando objetos separados
+      // ✅ NOVO: Formatar dados para as novas mensagens do Tally
       return {
+        // Dados do cliente
         cliente: {
-          nome: nomeCliente,
-          telefone: cliente.telefone,
-          email: cliente.email || null
+          nome: nomeCliente
         },
+        cliente_telefone: cliente.telefone,
+        
+        // Dados do agente
         agente: {
-          nome: `${agente.nome} ${agente.sobrenome || ''}`.trim() // Nome completo do agente
+          nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
         },
+        agente_telefone: agente.telefone,
+        
+        // Dados da unidade
         unidade: {
-          nome: unidade.nome,
-          endereco: unidade.endereco
+          nome: unidade.nome
         },
-        // ✅ CORREÇÃO: Usar dados dos serviços buscados separadamente
-        servicos: servicos.map(s => ({
-          nome: s.nome,
-          preco: s.preco
-        })),
-        extras: [], // TODO: Buscar extras se necessário
+        unidade_telefone: unidade.telefone,
+        
+        // Dados do agendamento
+        agendamento_id: agendamento.id,
         data_agendamento: agendamento.data_agendamento,
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,
-        valor_total: agendamento.valor_total
+        valor_total: agendamento.valor_total,
+        
+        // Serviços
+        servicos: servicos.map(s => ({
+          nome: s.nome,
+          preco: s.preco
+        }))
       };
 
     } catch (error) {
