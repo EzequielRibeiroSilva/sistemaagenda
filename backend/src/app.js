@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const config = require('./config/config');
 const { testConnection } = require('./config/database');
 const apiRoutes = require('./routes/index');
+const reminderJob = require('./jobs/reminderJob');
 
 const app = express();
 
@@ -172,11 +173,16 @@ async function startServer() {
       } else {
         console.log('⚠️  Evolution API sem chave de acesso');
       }
+
+      // Iniciar cron job de lembretes
+      console.log('\n🔔 Inicializando sistema de lembretes automáticos...');
+      reminderJob.start();
     });
     
     // Graceful shutdown
     process.on('SIGTERM', () => {
       console.log('🛑 Recebido SIGTERM, encerrando servidor...');
+      reminderJob.stop();
       server.close(() => {
         console.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -185,6 +191,7 @@ async function startServer() {
     
     process.on('SIGINT', () => {
       console.log('🛑 Recebido SIGINT, encerrando servidor...');
+      reminderJob.stop();
       server.close(() => {
         console.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
