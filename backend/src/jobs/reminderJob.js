@@ -1,7 +1,7 @@
 /**
  * Job: reminderJob
  * Descrição: Cron job para envio automático de lembretes de agendamentos
- * Frequência: A cada 60 minutos
+ * Frequência: A cada 30 minutos
  * Horário permitido: 06:00 - 23:00
  */
 
@@ -11,7 +11,7 @@ const ReminderService = require('../services/ReminderService');
 class ReminderJob {
   constructor() {
     this.reminderService = new ReminderService();
-    this.cronExpression = '0 * * * *'; // A cada hora (minuto 0)
+    this.cronExpression = '*/30 * * * *'; // A cada 30 minutos
     this.isRunning = false;
     this.lastExecution = null;
     this.executionCount = 0;
@@ -59,7 +59,7 @@ class ReminderJob {
       console.log(`✅ [ReminderJob] EXECUÇÃO #${this.executionCount} CONCLUÍDA`);
       console.log(`⏱️ Duração: ${duration}s`);
       console.log(`📊 Lembretes 24h: ${results.reminders24h.sent}/${results.reminders24h.processed} enviados`);
-      console.log(`📊 Lembretes 2h: ${results.reminders2h.sent}/${results.reminders2h.processed} enviados`);
+      console.log(`📊 Lembretes 1h: ${results.reminders2h.sent}/${results.reminders2h.processed} enviados`);
       console.log('='.repeat(80) + '\n');
 
     } catch (error) {
@@ -78,7 +78,7 @@ class ReminderJob {
   start() {
     console.log('\n' + '='.repeat(80));
     console.log('🚀 [ReminderJob] INICIANDO CRON JOB DE LEMBRETES');
-    console.log(`📅 Expressão Cron: ${this.cronExpression} (a cada 60 minutos)`);
+    console.log(`📅 Expressão Cron: ${this.cronExpression} (a cada 30 minutos)`);
     console.log(`⏰ Horário permitido: 06:00 - 23:00`);
     console.log(`🔄 Retry: 3 tentativas por lembrete`);
     console.log(`📱 Canal: WhatsApp via Evolution API`);
@@ -116,7 +116,13 @@ class ReminderJob {
   getNextExecutionTime() {
     const now = new Date();
     const next = new Date(now);
-    next.setHours(now.getHours() + 1, 0, 0, 0);
+    // Próxima execução: arredondar para o próximo múltiplo de 30 minutos
+    const minutes = now.getMinutes();
+    if (minutes < 30) {
+      next.setMinutes(30, 0, 0);
+    } else {
+      next.setHours(now.getHours() + 1, 0, 0, 0);
+    }
     return next.toLocaleString('pt-BR');
   }
 

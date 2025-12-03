@@ -137,6 +137,18 @@ class WhatsAppService {
   }
 
   /**
+   * Gerar link de booking da unidade
+   * @param {string} unidadeSlug - Slug da unidade (ex: 'barbearia-dudu')
+   * @param {number} unidadeId - ID da unidade (obrigatório)
+   * @returns {string} Link completo de booking
+   */
+  generateBookingLink(unidadeSlug, unidadeId) {
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    // Formato: /{slug}/booking/{unidade_id}
+    return `${baseUrl}/${unidadeSlug}/booking/${unidadeId}`;
+  }
+
+  /**
    * Formatar data e hora para exibição
    */
   formatDateTime(data_agendamento, hora_inicio) {
@@ -206,7 +218,8 @@ Seu horário está confirmadíssimo:
 🎫 ID do Agendamento: *#${agendamento_id}*
 
 Precisa alterar algo? Gerencie seu horário através deste link:
-🔗 ${linkGestao}
+
+${linkGestao}
 
 Canais de atendimento:
 🏠 ${unidade.nome}: ${wppLocal}
@@ -302,10 +315,10 @@ _Mensagem automática do Tally_`;
   }
 
   /**
-   * 4. LEMBRETE 2 HORAS ANTES - CLIENTE
+   * 4. LEMBRETE 1 HORA ANTES - CLIENTE
    */
   generateReminder2hMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, agente_telefone, unidade_telefone, agendamento_id } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, agente_telefone, unidade_telefone, unidade_endereco, agendamento_id } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
@@ -317,7 +330,8 @@ _Mensagem automática do Tally_`;
 Te esperamos às ${hora_inicio} com o(a) *${agente.nome}*.
 
 Como chegar / Contato:
-🏠 ${unidade.nome}: ${wppLocal}
+🏠 ${unidade.nome}: ${unidade_endereco || 'Endereço não informado'}
+📞 Telefone: ${wppLocal}
 👤 Agente ${agente.nome}: ${wppAgente}
 
 Gerenciar: ${linkGestao}
@@ -329,17 +343,19 @@ _Mensagem automática do Tally_`;
    * 2. CONFIRMAÇÃO DE CANCELAMENTO - CLIENTE
    */
   generateCancellationClient(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agente_telefone, unidade_telefone, agendamento_id } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agente_telefone, unidade_telefone, unidade_slug, agendamento_id } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
-    const linkGestao = this.generateManagementLink(agendamento_id);
+    const linkBooking = this.generateBookingLink(unidade_slug || unidade.slug_url, unidade.id);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
 
     return `❌ *Cancelado:* Olá, *${cliente.nome}*. O agendamento de ${servicoTexto} na *${unidade.nome}* para ${dataHora} foi cancelado conforme solicitado.
 
-Deseja realizar um novo agendamento? Acesse: ${linkGestao}
+Deseja realizar um novo agendamento? Acesse:
+
+${linkBooking}
 
 Dúvidas?
 🏠 ${unidade.nome}: ${wppLocal}
@@ -384,7 +400,9 @@ Seguem os novos detalhes:
 
 🎫 ID: *#${agendamento_id}*
 
-Gerenciar agendamento: 🔗 ${linkGestao}
+Gerenciar agendamento:
+
+${linkGestao}
 
 Dúvidas? 🏠 ${unidade.nome}: ${wppLocal}
 
@@ -516,7 +534,7 @@ _Mensagem automática do Tally_`;
   }
 
   /**
-   * Enviar lembrete 2h (apenas cliente)
+   * Enviar lembrete 1h (apenas cliente)
    */
   async sendReminder2h(agendamentoData) {
     try {
@@ -529,14 +547,14 @@ _Mensagem automática do Tally_`;
       const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
       
       if (!result.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 2h para ${agendamentoData.cliente.nome}:`, result.error);
+        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 1h para ${agendamentoData.cliente.nome}:`, result.error);
       } else {
-        console.log(`✅ [WhatsApp] Lembrete 2h enviado para ${agendamentoData.cliente.nome}`);
+        console.log(`✅ [WhatsApp] Lembrete 1h enviado para ${agendamentoData.cliente.nome}`);
       }
       
       return result;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar lembrete 2h:', error);
+      console.error('❌ [WhatsApp] Erro ao enviar lembrete 1h:', error);
       return { success: false, error: error.message };
     }
   }
