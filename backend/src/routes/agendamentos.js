@@ -33,6 +33,9 @@ router.put('/:id', (req, res) => {
 // DELETE /api/agendamentos/:id - Deletar agendamento
 router.delete('/:id', (req, res) => agendamentoController.destroy(req, res));
 
+// PATCH /api/agendamentos/:id/cancel - Cancelar agendamento
+router.patch('/:id/cancel', (req, res) => agendamentoController.cancel(req, res));
+
 // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
 router.patch('/:id/finalize', (req, res) => agendamentoController.finalize(req, res));
 

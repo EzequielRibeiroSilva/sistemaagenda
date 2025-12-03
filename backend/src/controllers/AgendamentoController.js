@@ -950,6 +950,46 @@ class AgendamentoController extends BaseController {
 
       const data = await this.model.update(id, dadosParaAtualizar); // ✅ CORREÇÃO: usar dados filtrados
       
+      // ✅ PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
+      const foiCancelado = (status === 'Cancelado' && agendamento.status !== 'Cancelado');
+
+      if (foiCancelado) {
+        // Buscar dados completos para enviar notificações de cancelamento
+        const dadosCompletos = await this.buscarDadosCompletos(id);
+
+        if (dadosCompletos) {
+          try {
+            await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+            console.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
+          } catch (whatsappError) {
+            console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
+          }
+        }
+      } else {
+        // ✅ PRIORIDADE 2: Verificar se houve mudança de data/hora para enviar notificação de reagendamento
+        const houveReagendamento = (
+          (hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
+          (hora_fim && hora_fim !== agendamento.hora_fim) ||
+          (data_agendamento && data_agendamento !== agendamento.data_agendamento)
+        );
+
+        if (houveReagendamento) {
+          // Buscar dados completos para enviar notificações
+          const dadosCompletos = await this.buscarDadosCompletos(id);
+
+          if (dadosCompletos) {
+            // Enviar notificações de reagendamento para cliente e agente
+            try {
+              await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
+              console.log(`✅ [AgendamentoController] Notificações de REAGENDAMENTO enviadas para agendamento #${id}`);
+            } catch (whatsappError) {
+              console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de reagendamento:`, whatsappError);
+              // Não falhar a requisição se o WhatsApp falhar
+            }
+          }
+        }
+      }
+      
       return res.json({ 
         success: true,
         data,
@@ -988,9 +1028,10 @@ class AgendamentoController extends BaseController {
         .where('id', agendamento.agente_id)
         .first();
 
-      // Buscar unidade separadamente
+      // Buscar unidade separadamente (incluindo slug_url para link de booking)
       const unidade = await this.model.db('unidades')
         .where('id', agendamento.unidade_id)
+        .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
         .first();
 
 
@@ -1023,9 +1064,14 @@ class AgendamentoController extends BaseController {
         
         // Dados da unidade
         unidade: {
-          nome: unidade.nome
+          id: unidade.id,
+          nome: unidade.nome,
+          endereco: unidade.endereco,
+          slug_url: unidade.slug_url
         },
         unidade_telefone: unidade.telefone,
+        unidade_endereco: unidade.endereco,
+        unidade_slug: unidade.slug_url,
         
         // Dados do agendamento
         agendamento_id: agendamento.id,
@@ -1044,6 +1090,91 @@ class AgendamentoController extends BaseController {
     } catch (error) {
       console.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
+    }
+  }
+
+  // PATCH /api/agendamentos/:id/cancel - Cancelar agendamento
+  async cancel(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Buscar agendamento com filtro de escopo
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.id', id);
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+      } else {
+        agendamentoQuery = agendamentoQuery
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('unidades.usuario_id', usuarioId);
+      }
+
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      // Verificar se já está cancelado
+      if (agendamento.status === 'Cancelado') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento já está cancelado'
+        });
+      }
+
+      // Atualizar status para Cancelado
+      await this.model.db(this.model.tableName)
+        .where('id', id)
+        .update({
+          status: 'Cancelado',
+          updated_at: new Date()
+        });
+
+      // Buscar dados completos para enviar notificações
+      const dadosCompletos = await this.buscarDadosCompletos(id);
+
+      if (dadosCompletos) {
+        // Enviar notificações de cancelamento para cliente e agente
+        try {
+          await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+          console.log(`✅ [AgendamentoController] Notificações de cancelamento enviadas para agendamento #${id}`);
+        } catch (whatsappError) {
+          console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
+          // Não falhar a requisição se o WhatsApp falhar
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Agendamento cancelado com sucesso',
+        data: {
+          id: parseInt(id),
+          status: 'Cancelado'
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
     }
   }
 

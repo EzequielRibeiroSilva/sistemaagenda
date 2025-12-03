@@ -4,7 +4,7 @@
  * Funcionalidades: Buscar agendamentos elegíveis, enviar lembretes, rastrear status
  */
 
-const db = require('../config/database');
+const { db } = require('../config/knex');
 const WhatsAppService = require('./WhatsAppService');
 
 class ReminderService {
@@ -56,7 +56,7 @@ class ReminderService {
         .join('agentes as ag', 'a.agente_id', 'ag.id')
         .join('unidades as u', 'a.unidade_id', 'u.id')
         .where('a.data_agendamento', tomorrowStr)
-        .where('a.status', 'Confirmado')
+        .where('a.status', 'Aprovado') // ✅ CORREÇÃO: Status correto é 'Aprovado', não 'Confirmado'
         .whereNull('le.id') // Ainda não enviou lembrete de 24h
         .select(
           'a.id as agendamento_id',
@@ -72,7 +72,8 @@ class ReminderService {
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
           'u.nome as unidade_nome',
-          'u.telefone as unidade_telefone'
+          'u.telefone as unidade_telefone',
+          'u.endereco as unidade_endereco'
         );
 
       // Buscar serviços para cada agendamento
@@ -95,27 +96,41 @@ class ReminderService {
   }
 
   /**
-   * Buscar agendamentos elegíveis para lembrete de 2h
+   * Buscar agendamentos elegíveis para lembrete de 1h
    * Critérios:
    * - Data do agendamento = hoje
-   * - Hora do agendamento entre 2h e 3h a partir de agora
-   * - Status = 'Confirmado'
-   * - Ainda não enviou lembrete de 2h
+   * - Hora do agendamento entre 30min e 1h30 a partir de agora
+   * - Status = 'Aprovado'
+   * - Ainda não enviou lembrete de 1h
    */
   async getAppointmentsFor2hReminder() {
     try {
-      console.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 2h...');
+      console.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 1h...');
 
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
+      // Obter horário atual em São Paulo
+      const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+      const nowDate = new Date(nowSP);
       
-      // Calcular janela de tempo: 2h a 3h a partir de agora
-      const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      const threeHoursLater = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+      // Data de hoje em São Paulo (formato YYYY-MM-DD)
+      const todayStr = nowDate.toLocaleDateString('en-CA'); // en-CA retorna YYYY-MM-DD
       
-      const startTime = twoHoursLater.toTimeString().slice(0, 5); // HH:MM
-      const endTime = threeHoursLater.toTimeString().slice(0, 5); // HH:MM
+      // Calcular janela de tempo: agora até 1h30 a partir de agora (horário de São Paulo)
+      // Isso garante que agendamentos criados próximos ao horário sejam capturados
+      const oneHourThirtyLater = new Date(nowDate.getTime() + 90 * 60 * 1000);
+      
+      // Formatar horários no formato HH:MM para comparação com o banco
+      const startTime = nowDate.toLocaleTimeString('pt-BR', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+      const endTime = oneHourThirtyLater.toLocaleTimeString('pt-BR', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
 
+      console.log(`🕐 [ReminderService] Horário atual SP: ${nowDate.toLocaleString('pt-BR')}`);
       console.log(`🕐 [ReminderService] Buscando agendamentos entre ${startTime} e ${endTime}`);
 
       const appointments = await db('agendamentos as a')
@@ -127,7 +142,7 @@ class ReminderService {
         .join('agentes as ag', 'a.agente_id', 'ag.id')
         .join('unidades as u', 'a.unidade_id', 'u.id')
         .where('a.data_agendamento', todayStr)
-        .where('a.status', 'Confirmado')
+        .where('a.status', 'Aprovado') // ✅ CORREÇÃO: Status correto é 'Aprovado', não 'Confirmado'
         .whereBetween('a.hora_inicio', [startTime, endTime])
         .whereNull('le.id') // Ainda não enviou lembrete de 2h
         .select(
@@ -144,7 +159,8 @@ class ReminderService {
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
           'u.nome as unidade_nome',
-          'u.telefone as unidade_telefone'
+          'u.telefone as unidade_telefone',
+          'u.endereco as unidade_endereco'
         );
 
       // Buscar serviços para cada agendamento
@@ -157,11 +173,11 @@ class ReminderService {
         appointment.servicos = servicos;
       }
 
-      console.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 2h`);
+      console.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 1h`);
       
       return appointments;
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao buscar agendamentos para 2h:', error);
+      console.error('❌ [ReminderService] Erro ao buscar agendamentos para 1h:', error);
       throw error;
     }
   }
@@ -171,7 +187,7 @@ class ReminderService {
    */
   async createReminderRecord(agendamentoId, unidadeId, tipoLembrete, telefone) {
     try {
-      const [id] = await db('lembretes_enviados').insert({
+      const result = await db('lembretes_enviados').insert({
         agendamento_id: agendamentoId,
         unidade_id: unidadeId,
         tipo_lembrete: tipoLembrete,
@@ -182,7 +198,9 @@ class ReminderService {
         updated_at: db.fn.now()
       }).returning('id');
 
-      return id;
+      // Extrair o ID numérico do resultado
+      const id = result[0]?.id || result[0];
+      return typeof id === 'object' ? id.id : id;
     } catch (error) {
       // Se erro de constraint única, significa que já existe registro
       if (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo') {
@@ -266,7 +284,8 @@ class ReminderService {
           nome: appointment.agente_nome
         },
         unidade: {
-          nome: appointment.unidade_nome
+          nome: appointment.unidade_nome,
+          endereco: appointment.unidade_endereco
         },
         data_agendamento: appointment.data_agendamento,
         hora_inicio: appointment.hora_inicio,
@@ -275,7 +294,8 @@ class ReminderService {
         agendamento_id: appointment.agendamento_id,
         cliente_telefone: appointment.cliente_telefone,
         agente_telefone: appointment.agente_telefone,
-        unidade_telefone: appointment.unidade_telefone
+        unidade_telefone: appointment.unidade_telefone,
+        unidade_endereco: appointment.unidade_endereco
       };
 
       // Tentar enviar com retry
@@ -387,15 +407,15 @@ class ReminderService {
   }
 
   /**
-   * Processar lembretes de 2h
+   * Processar lembretes de 1h
    */
   async process2hReminders() {
     try {
-      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 2H =====');
+      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 1H =====');
 
       // Verificar horário permitido
       if (!this.isWithinAllowedHours()) {
-        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 2h.');
+        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 1h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 1 };
       }
 
@@ -403,7 +423,7 @@ class ReminderService {
       const appointments = await this.getAppointmentsFor2hReminder();
 
       if (appointments.length === 0) {
-        console.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 2h.');
+        console.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 1h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 0 };
       }
 
@@ -424,13 +444,13 @@ class ReminderService {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 2H CONCLUÍDO =====`);
+      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 1H CONCLUÍDO =====`);
       console.log(`📊 Total: ${appointments.length} | Enviados: ${sent} | Falhas: ${failed}`);
 
       return { processed: appointments.length, sent, failed, skipped: 0 };
 
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao processar lembretes de 2h:', error);
+      console.error('❌ [ReminderService] Erro ao processar lembretes de 1h:', error);
       throw error;
     }
   }
