@@ -183,6 +183,69 @@ class ReminderService {
   }
 
   /**
+   * Buscar lembretes programados prontos para envio
+   * Critérios:
+   * - Status = 'programado'
+   * - enviar_em <= agora
+   */
+  async getScheduledRemindersReadyToSend() {
+    try {
+      console.log('🔍 [ReminderService] Buscando lembretes programados prontos para envio...');
+
+      const now = new Date();
+
+      const reminders = await db('lembretes_enviados as le')
+        .join('agendamentos as a', 'le.agendamento_id', 'a.id')
+        .join('clientes as c', 'a.cliente_id', 'c.id')
+        .join('agentes as ag', 'a.agente_id', 'ag.id')
+        .join('unidades as u', 'a.unidade_id', 'u.id')
+        .where('le.status', 'programado')
+        .where('le.enviar_em', '<=', now)
+        .where('a.status', 'Aprovado') // Apenas agendamentos aprovados
+        .forUpdate() // 🔒 Lock pessimista: bloqueia os registros para evitar race conditions
+        .skipLocked() // ⏭️ Pula registros já bloqueados por outra transação
+        .select(
+          'le.id as lembrete_id',
+          'le.tipo_lembrete',
+          'le.tipo_notificacao',
+          'le.enviar_em',
+          'a.id as agendamento_id',
+          'a.data_agendamento',
+          'a.hora_inicio',
+          'a.hora_fim',
+          'a.unidade_id',
+          'c.id as cliente_id',
+          db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
+          'c.telefone as cliente_telefone',
+          'ag.id as agente_id',
+          db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
+          'ag.telefone as agente_telefone',
+          'u.id as unidade_id',
+          'u.nome as unidade_nome',
+          'u.telefone as unidade_telefone',
+          'u.endereco as unidade_endereco'
+        );
+
+      // Buscar serviços para cada lembrete
+      for (const reminder of reminders) {
+        const servicos = await db('agendamento_servicos as ags')
+          .join('servicos as s', 'ags.servico_id', 's.id')
+          .where('ags.agendamento_id', reminder.agendamento_id)
+          .select('s.id', 's.nome');
+        
+        reminder.servicos = servicos;
+      }
+
+      console.log(`✅ [ReminderService] Encontrados ${reminders.length} lembretes programados prontos para envio`);
+      
+      return reminders;
+    } catch (error) {
+      console.error('❌ [ReminderService] Erro ao buscar lembretes programados:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Registrar lembrete na tabela lembretes_enviados
    */
   async createReminderRecord(agendamentoId, unidadeId, tipoLembrete, telefone) {
@@ -456,7 +519,113 @@ class ReminderService {
   }
 
   /**
-   * Processar todos os lembretes (24h e 2h)
+   * Processar lembretes programados prontos para envio
+   */
+  async processScheduledReminders() {
+    try {
+      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES PROGRAMADOS =====');
+
+      // Verificar horário permitido
+      if (!this.isWithinAllowedHours()) {
+        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de lembretes programados.');
+        return { processed: 0, sent: 0, failed: 0, skipped: 1 };
+      }
+
+      // Buscar lembretes programados prontos para envio
+      const reminders = await this.getScheduledRemindersReadyToSend();
+
+      if (reminders.length === 0) {
+        console.log('✅ [ReminderService] Nenhum lembrete programado pronto para envio.');
+        return { processed: 0, sent: 0, failed: 0, skipped: 0 };
+      }
+
+      // Processar cada lembrete
+      let sent = 0;
+      let failed = 0;
+
+      for (const reminder of reminders) {
+        const { lembrete_id, tipo_lembrete } = reminder;
+
+        try {
+          console.log(`📤 [ReminderService] Enviando lembrete programado #${lembrete_id} (${tipo_lembrete})...`);
+
+          // Preparar dados para geração da mensagem
+          const agendamentoData = {
+            cliente: {
+              nome: reminder.cliente_nome
+            },
+            agente: {
+              nome: reminder.agente_nome
+            },
+            unidade: {
+              nome: reminder.unidade_nome,
+              endereco: reminder.unidade_endereco
+            },
+            data_agendamento: reminder.data_agendamento,
+            hora_inicio: reminder.hora_inicio,
+            hora_fim: reminder.hora_fim,
+            servicos: reminder.servicos || [],
+            agendamento_id: reminder.agendamento_id,
+            cliente_telefone: reminder.cliente_telefone,
+            agente_telefone: reminder.agente_telefone,
+            unidade_telefone: reminder.unidade_telefone,
+            unidade_endereco: reminder.unidade_endereco
+          };
+
+          // Enviar via WhatsApp
+          let result;
+          if (tipo_lembrete === '24h') {
+            result = await this.whatsappService.sendReminder24h(agendamentoData);
+          } else if (tipo_lembrete === '2h') {
+            result = await this.whatsappService.sendReminder2h(agendamentoData);
+          }
+
+          if (result.success) {
+            // Sucesso - atualizar status
+            await this.updateReminderStatus(lembrete_id, 'enviado', {
+              whatsappMessageId: result.data?.messageId || result.data?.key?.id
+            });
+
+            console.log(`✅ [ReminderService] Lembrete programado #${lembrete_id} enviado com sucesso`);
+            sent++;
+          } else {
+            // Falha - atualizar status
+            await this.updateReminderStatus(lembrete_id, 'falha', {
+              erro: result.error
+            });
+
+            console.error(`❌ [ReminderService] Falha ao enviar lembrete programado #${lembrete_id}:`, result.error);
+            failed++;
+          }
+
+        } catch (error) {
+          console.error(`❌ [ReminderService] Erro ao processar lembrete programado #${lembrete_id}:`, error);
+          
+          // Atualizar status para falha
+          await this.updateReminderStatus(lembrete_id, 'falha', {
+            erro: error.message
+          });
+          
+          failed++;
+        }
+
+        // Pequeno delay entre envios
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO DE LEMBRETES PROGRAMADOS CONCLUÍDO =====`);
+      console.log(`📊 Total: ${reminders.length} | Enviados: ${sent} | Falhas: ${failed}`);
+
+      return { processed: reminders.length, sent, failed, skipped: 0 };
+
+    } catch (error) {
+      console.error('❌ [ReminderService] Erro ao processar lembretes programados:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Processar todos os lembretes (24h, 2h e programados)
    */
   async processAllReminders() {
     try {
@@ -465,6 +634,7 @@ class ReminderService {
 
       const results = {
         timestamp: new Date().toISOString(),
+        scheduled: await this.processScheduledReminders(), // ✅ NOVO: Processar lembretes programados
         reminders24h: await this.process24hReminders(),
         reminders2h: await this.process2hReminders()
       };
