@@ -32,6 +32,7 @@ services:
     container_name: painel_agendamento_backend
     restart: unless-stopped
     environment:
+      TZ: America/Sao_Paulo  # ✅ CRÍTICO: Fuso horário do Brasil (UTC-3)
       NODE_ENV: development
       PORT: 3000
       PG_HOST: db

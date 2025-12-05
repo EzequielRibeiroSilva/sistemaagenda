@@ -50,11 +50,14 @@ class PublicBookingController {
       // Buscar configurações da unidade
       const configuracoes = await this.configuracaoModel.findByUnidade(unidadeId);
 
-      // Buscar agentes ativos da unidade
+      // ✅ CORREÇÃO CRÍTICA: Buscar agentes usando tabela de associação agente_unidades
+      // Isso garante que apenas agentes REALMENTE associados à unidade sejam retornados
       const agentes = await db('agentes')
-        .where('unidade_id', unidadeId)
-        .where('status', 'Ativo')
-        .select('id', 'nome', 'nome_exibicao', 'biografia', 'avatar_url');
+        .join('agente_unidades', 'agentes.id', 'agente_unidades.agente_id')
+        .where('agente_unidades.unidade_id', unidadeId)
+        .where('agentes.status', 'Ativo')
+        .select('agentes.id', 'agentes.nome', 'agentes.nome_exibicao', 'agentes.biografia', 'agentes.avatar_url')
+        .distinct();
 
       // ✅ NOVA ARQUITETURA MANY-TO-MANY: Buscar serviços ativos da unidade
       const servicosRaw = await db('servicos')
@@ -100,11 +103,22 @@ class PublicBookingController {
       console.log(`[PublicBooking] Associações agente-serviço: ${associacoesAgenteServico.length} registros`);
 
       // Buscar horários de funcionamento dos agentes da unidade
+      // ✅ CORREÇÃO CRÍTICA: Filtrar por unidade_id para agentes multi-unidade
       const horariosAgentes = await db('horarios_funcionamento')
         .whereIn('agente_id', agentes.map(a => a.id))
+        .where('unidade_id', unidadeId) // ✅ Filtrar apenas horários desta unidade
         .select('agente_id', 'dia_semana', 'ativo', 'periodos');
 
-      console.log(`[PublicBooking] Horários dos agentes: ${horariosAgentes.length} registros`);
+      console.log(`[PublicBooking] Horários dos agentes para unidade ${unidadeId}: ${horariosAgentes.length} registros`);
+
+      // ✅ CORREÇÃO CRÍTICA: Buscar horários de funcionamento DA UNIDADE
+      // Necessário para determinar quais dias a unidade está aberta (interseção com horários do agente)
+      const horariosUnidade = await db('horarios_funcionamento_unidade')
+        .where('unidade_id', unidadeId)
+        .select('dia_semana', 'is_aberto', 'horarios_json')
+        .orderBy('dia_semana');
+
+      console.log(`[PublicBooking] Horários da unidade ${unidadeId}: ${horariosUnidade.length} registros`);
 
       const salonData = {
         unidade: {
@@ -112,7 +126,8 @@ class PublicBookingController {
           nome: unidade.nome,
           endereco: unidade.endereco,
           telefone: unidade.telefone,
-          slug_url: unidade.slug_url
+          slug_url: unidade.slug_url,
+          usuario_id: unidade.usuario_id // ✅ CRÍTICO: Incluir usuario_id para buscar todos os locais
         },
         configuracoes: configuracoes || {
           nome_negocio: unidade.nome,
@@ -128,7 +143,8 @@ class PublicBookingController {
         extras,
         agente_servicos: associacoesAgenteServico,
         servico_extras: associacoesServicoExtra,
-        horarios_agentes: horariosAgentes
+        horarios_agentes: horariosAgentes,
+        horarios_unidade: horariosUnidade // ✅ CRÍTICO: Incluir horários da unidade para interseção no frontend
       };
 
       console.log(`[PublicBooking] Dados carregados: ${agentes.length} agentes, ${servicos.length} serviços`);
@@ -281,19 +297,14 @@ class PublicBookingController {
       }
 
       // 2. HIERARQUIA: Buscar horários específicos do AGENTE (ativo ou inativo)
-      // ✅ CORREÇÃO: Filtrar por unidade_id quando agente trabalha em múltiplas unidades
+      // ✅ CORREÇÃO CRÍTICA: SEMPRE filtrar por unidade_id para agentes multi-unidade
       const horarioAgente = await db('horarios_funcionamento')
         .where('agente_id', agenteId)
         .where('dia_semana', diaSemana)
-        .where(function() {
-          // Se unidade_id foi fornecido, filtrar por ele
-          if (unidade_id) {
-            this.where('unidade_id', unidadeIdParaUsar);
-          }
-        })
+        .where('unidade_id', unidadeIdParaUsar) // ✅ SEMPRE filtrar por unidade
         .first();
 
-      console.log(`[PublicBooking] Horário do agente para dia ${diaSemana}:`, horarioAgente);
+      console.log(`[PublicBooking] Horário do agente para dia ${diaSemana} na unidade ${unidadeIdParaUsar}:`, horarioAgente);
 
       // REGRA DE INTERSEÇÃO: Calcular (Horários do Agente) ∩ (Horários do Local)
       let horariosParaUsar = [];
@@ -303,8 +314,14 @@ class PublicBookingController {
         console.log(`[PublicBooking] Horários do agente:`, horarioAgente.periodos);
         console.log(`[PublicBooking] Horários da unidade:`, horarioUnidade.horarios_json);
 
+        // ✅ NORMALIZAR FORMATO: Converter start/end para inicio/fim
+        const periodosAgenteNormalizados = horarioAgente.periodos.map(p => ({
+          inicio: p.inicio || p.start,
+          fim: p.fim || p.end
+        }));
+
         // APLICAR INTERSEÇÃO: Para cada período do agente, calcular sobreposição com períodos da unidade
-        horariosParaUsar = this.calcularIntersecaoHorarios(horarioAgente.periodos, horarioUnidade.horarios_json);
+        horariosParaUsar = this.calcularIntersecaoHorarios(periodosAgenteNormalizados, horarioUnidade.horarios_json);
         console.log(`[PublicBooking] Horários após interseção:`, horariosParaUsar);
 
       } else if (horarioAgente && (!horarioAgente.ativo || !horarioAgente.periodos || horarioAgente.periodos.length === 0)) {
@@ -344,10 +361,12 @@ class PublicBookingController {
       console.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
 
       // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
+      // ✅ CRÍTICO: Passar data para bloquear horários passados
       const slotsDisponiveis = this.generateAvailableSlots(
         horariosParaUsar,
         agendamentosExistentes,
-        duracaoMinutos
+        duracaoMinutos,
+        data // ✅ Passa a data para verificar se é dia atual e bloquear horários passados
       );
 
       // Retornar slots completos com hora_inicio, hora_fim e disponivel
@@ -380,11 +399,20 @@ class PublicBookingController {
    * Gerar slots de horários disponíveis
    * Algoritmo: Para cada período de funcionamento, gerar slots de 15 em 15 minutos
    * e verificar se há espaço suficiente para a duração solicitada
+   * ✅ NOVO: Bloqueia horários que já passaram (para o dia atual)
    */
-  generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos) {
+  generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos, dataAgendamento) {
     const slots = [];
     // CORREÇÃO CRÍTICA: Usar a duração do serviço como intervalo dos slots
     const intervaloSlot = duracaoMinutos; // Slots baseados na duração real do serviço
+
+    // ✅ CRÍTICO: Obter horário atual para bloquear slots passados
+    const agora = new Date();
+    const dataAgendamentoObj = new Date(dataAgendamento + 'T00:00:00');
+    const isDiaAtual = dataAgendamentoObj.toDateString() === agora.toDateString();
+    const horarioAtualEmMinutos = isDiaAtual ? (agora.getHours() * 60 + agora.getMinutes()) : 0;
+
+    console.log(`[PublicBooking] Gerando slots para ${dataAgendamento} (dia atual: ${isDiaAtual}, horário atual: ${this.minutesToTime(horarioAtualEmMinutos)})`);
 
     for (const periodo of horariosJson) {
       const inicio = this.timeToMinutes(periodo.inicio);
@@ -398,6 +426,12 @@ class PublicBookingController {
         // Verificar se há espaço suficiente para a duração completa
         if (minuto + duracaoMinutos > fim) {
           continue; // Não cabe no período de funcionamento
+        }
+
+        // ✅ CRÍTICO: Bloquear horários que já passaram (apenas para o dia atual)
+        if (isDiaAtual && minuto < horarioAtualEmMinutos) {
+          console.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (já passou)`);
+          continue; // Horário já passou, não disponibilizar
         }
 
         // Verificar se não conflita com agendamentos existentes
@@ -423,6 +457,7 @@ class PublicBookingController {
     // Ordenar slots por horário
     slots.sort((a, b) => this.timeToMinutes(a.hora_inicio) - this.timeToMinutes(b.hora_inicio));
 
+    console.log(`[PublicBooking] ✅ ${slots.length} slots disponíveis gerados (horários passados bloqueados)`);
     return slots;
   }
 
