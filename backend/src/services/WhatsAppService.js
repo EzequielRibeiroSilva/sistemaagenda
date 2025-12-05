@@ -4,6 +4,8 @@
  * Funcionalidades: Envio de notificações de agendamento, confirmações, lembretes
  */
 
+const NotificacaoModel = require('../models/NotificacaoModel');
+
 class WhatsAppService {
   constructor() {
     this.evolutionApiUrl = process.env.EVO_API_BASE_URL || process.env.EVOLUTION_API_URL || 'http://localhost:8080';
@@ -12,8 +14,7 @@ class WhatsAppService {
     this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
     this.enabled = process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true' || process.env.WHATSAPP_ENABLED === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
-
-
+    this.notificacaoModel = new NotificacaoModel();
   }
 
   /**
@@ -198,6 +199,34 @@ class WhatsAppService {
   }
 
   /**
+   * Registrar notificação no banco de dados
+   * @param {Object} data - Dados da notificação
+   * @returns {Promise<number|null>} - ID da notificação criada ou null
+   */
+  async registrarNotificacao(data) {
+    try {
+      const notificacaoId = await this.notificacaoModel.create({
+        agendamento_id: data.agendamento_id,
+        unidade_id: data.unidade_id,
+        tipo_notificacao: data.tipo_notificacao,
+        status: data.status || 'pendente',
+        tentativas: data.tentativas || 0,
+        telefone_destino: data.telefone_destino,
+        mensagem_enviada: data.mensagem_enviada || null,
+        whatsapp_message_id: data.whatsapp_message_id || null,
+        erro_detalhes: data.erro_detalhes || null,
+        enviado_em: data.status === 'enviado' ? new Date() : null
+      });
+
+      console.log(`✅ [WhatsAppService] Notificação ${data.tipo_notificacao} registrada: ID ${notificacaoId}`);
+      return notificacaoId;
+    } catch (error) {
+      console.error(`❌ [WhatsAppService] Erro ao registrar notificação:`, error);
+      return null;
+    }
+  }
+
+  /**
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
    */
   generateAppointmentConfirmationClient(agendamentoData) {
@@ -267,6 +296,19 @@ _Mensagem automática do Tally_`;
       const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
       results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
 
+      // ✅ Registrar notificação para o cliente
+      await this.registrarNotificacao({
+        agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+        unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+        tipo_notificacao: 'confirmacao',
+        status: results.cliente.success ? 'enviado' : 'falha',
+        tentativas: 1,
+        telefone_destino: agendamentoData.cliente_telefone,
+        mensagem_enviada: results.cliente.success ? messageCliente : null,
+        whatsapp_message_id: results.cliente.data?.messageId || results.cliente.data?.key?.id || null,
+        erro_detalhes: results.cliente.success ? null : JSON.stringify(results.cliente.error)
+      });
+
       if (!results.cliente.success) {
         console.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
@@ -277,6 +319,19 @@ _Mensagem automática do Tally_`;
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateAppointmentConfirmationAgent(agendamentoData);
         results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        // ✅ Registrar notificação para o agente
+        await this.registrarNotificacao({
+          agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+          unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+          tipo_notificacao: 'confirmacao',
+          status: results.agente.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: agendamentoData.agente_telefone,
+          mensagem_enviada: results.agente.success ? messageAgente : null,
+          whatsapp_message_id: results.agente.data?.messageId || results.agente.data?.key?.id || null,
+          erro_detalhes: results.agente.success ? null : JSON.stringify(results.agente.error)
+        });
 
         if (!results.agente.success) {
           console.error(`❌ [WhatsApp] Falha ao enviar confirmação para agente ${agendamentoData.agente.nome}:`, results.agente.error);
@@ -441,6 +496,19 @@ _Mensagem automática do Tally_`;
       const messageCliente = this.generateCancellationClient(agendamentoData);
       results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
 
+      // ✅ Registrar notificação para o cliente
+      await this.registrarNotificacao({
+        agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+        unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+        tipo_notificacao: 'cancelamento',
+        status: results.cliente.success ? 'enviado' : 'falha',
+        tentativas: 1,
+        telefone_destino: agendamentoData.cliente_telefone,
+        mensagem_enviada: results.cliente.success ? messageCliente : null,
+        whatsapp_message_id: results.cliente.data?.messageId || results.cliente.data?.key?.id || null,
+        erro_detalhes: results.cliente.success ? null : JSON.stringify(results.cliente.error)
+      });
+
       if (!results.cliente.success) {
         console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
@@ -451,6 +519,19 @@ _Mensagem automática do Tally_`;
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateCancellationAgent(agendamentoData);
         results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        // ✅ Registrar notificação para o agente
+        await this.registrarNotificacao({
+          agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+          unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+          tipo_notificacao: 'cancelamento',
+          status: results.agente.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: agendamentoData.agente_telefone,
+          mensagem_enviada: results.agente.success ? messageAgente : null,
+          whatsapp_message_id: results.agente.data?.messageId || results.agente.data?.key?.id || null,
+          erro_detalhes: results.agente.success ? null : JSON.stringify(results.agente.error)
+        });
 
         if (!results.agente.success) {
           console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
@@ -482,6 +563,19 @@ _Mensagem automática do Tally_`;
       const messageCliente = this.generateRescheduleClient(agendamentoData);
       results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
 
+      // ✅ Registrar notificação para o cliente
+      await this.registrarNotificacao({
+        agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+        unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+        tipo_notificacao: 'reagendamento',
+        status: results.cliente.success ? 'enviado' : 'falha',
+        tentativas: 1,
+        telefone_destino: agendamentoData.cliente_telefone,
+        mensagem_enviada: results.cliente.success ? messageCliente : null,
+        whatsapp_message_id: results.cliente.data?.messageId || results.cliente.data?.key?.id || null,
+        erro_detalhes: results.cliente.success ? null : JSON.stringify(results.cliente.error)
+      });
+
       if (!results.cliente.success) {
         console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
@@ -492,6 +586,19 @@ _Mensagem automática do Tally_`;
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateRescheduleAgent(agendamentoData);
         results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+
+        // ✅ Registrar notificação para o agente
+        await this.registrarNotificacao({
+          agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+          unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+          tipo_notificacao: 'reagendamento',
+          status: results.agente.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: agendamentoData.agente_telefone,
+          mensagem_enviada: results.agente.success ? messageAgente : null,
+          whatsapp_message_id: results.agente.data?.messageId || results.agente.data?.key?.id || null,
+          erro_detalhes: results.agente.success ? null : JSON.stringify(results.agente.error)
+        });
 
         if (!results.agente.success) {
           console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);

@@ -12,6 +12,7 @@ const Agendamento = require('../models/Agendamento');
 const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const WhatsAppService = require('../services/WhatsAppService');
+const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
 const { db } = require('../config/knex');
 
 class PublicBookingController {
@@ -23,6 +24,7 @@ class PublicBookingController {
     this.agendamentoModel = new Agendamento();
     this.configuracaoModel = new ConfiguracaoSistema(db);
     this.whatsAppService = new WhatsAppService();
+    this.scheduledReminderService = new ScheduledReminderService(); // ✅ NOVO
   }
 
   /**
@@ -692,12 +694,28 @@ class PublicBookingController {
         servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco }))
       };
 
-      // Enviar notificação WhatsApp (não bloquear a resposta)
+      // Enviar notificação WhatsApp e criar lembretes programados (não bloquear a resposta)
       setImmediate(async () => {
         try {
+          console.log(`📧 [PublicBooking] Iniciando envio de confirmação para agendamento #${agendamento.id}`);
+          
+          // 1. Enviar confirmação imediata
           await this.whatsAppService.sendAppointmentConfirmation(agendamentoCompleto);
+          console.log(`✅ [PublicBooking] Confirmação enviada para agendamento #${agendamento.id}`);
+          
+          // 2. Criar lembretes programados (24h e 1h antes)
+          console.log(`📅 [PublicBooking] Criando lembretes programados para agendamento #${agendamento.id}`);
+          const result = await this.scheduledReminderService.criarLembretesProgramados({
+            agendamento_id: agendamento.id,
+            unidade_id: agendamento.unidade_id,
+            data_agendamento: agendamento.data_agendamento,
+            hora_inicio: agendamento.hora_inicio,
+            cliente_telefone: cliente.telefone
+          });
+          console.log(`✅ [PublicBooking] Lembretes programados criados:`, result);
         } catch (whatsappError) {
-          console.error('[PublicBooking] Erro ao enviar WhatsApp:', whatsappError);
+          console.error('❌ [PublicBooking] Erro ao enviar WhatsApp ou criar lembretes:', whatsappError);
+          console.error('❌ [PublicBooking] Stack:', whatsappError.stack);
           // Não falhar o agendamento por erro no WhatsApp
         }
       });
