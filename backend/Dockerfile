@@ -1,8 +1,8 @@
 # Dockerfile para Backend Node.js
 FROM node:18-alpine
 
-# Instalar curl para healthcheck
-RUN apk add --no-cache curl
+# Instalar curl para healthcheck e tzdata para suporte a fusos horários
+RUN apk add --no-cache curl tzdata
 
 # Definir diretório de trabalho
 WORKDIR /app

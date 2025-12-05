@@ -40,9 +40,16 @@ interface BookingPageProps {
 }
 
 const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPreview }) => {
-  const { salonData, isLoading, error, loadSalonData, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento, getExtrasByServices } = usePublicBooking();
+  const { salonData, availableLocations, isLoading, error, loadSalonData, loadAvailableLocations, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento, getExtrasByServices } = usePublicBooking();
 
   const [unidadeId, setUnidadeId] = useState<number | null>(null);
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+  const [tempSelectedLocationId, setTempSelectedLocationId] = useState<number | null>(null);
+  const [usuarioId, setUsuarioId] = useState<number | null>(null);
+  
+  // ✅ CRÍTICO: Preservar configurações iniciais da empresa (logo e nome)
+  // Essas configurações não devem mudar ao trocar de local
+  const [businessConfig, setBusinessConfig] = useState<{ logo_url: string | null; nome_negocio: string } | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
@@ -115,13 +122,66 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     loadData();
   }, [isPreview, loadSalonData, findUnidadeBySlug]);
-
-  // Efeito para pular para seleção de agente (não há múltiplas unidades na API pública)
+  
+  // ✅ CRÍTICO: Preservar configurações da empresa na primeira carga
+  // Logo e nome do negócio não devem mudar ao trocar de local
   useEffect(() => {
-    if (salonData && currentStep === 1) {
-      setCurrentStep(2); // Pular direto para seleção de agente
+    if (salonData && !businessConfig) {
+      console.log('[BookingPage] 🏪 Salvando configurações iniciais da empresa');
+      setBusinessConfig({
+        logo_url: salonData.configuracoes.logo_url,
+        nome_negocio: salonData.configuracoes.nome_negocio
+      });
     }
-  }, [salonData, currentStep]);
+  }, [salonData, businessConfig]);
+
+  // Efeito para carregar locais disponíveis e decidir se mostra step 1 ou pula
+  useEffect(() => {
+    const loadLocationsAndDecide = async () => {
+      // ✅ CORREÇÃO CRÍTICA: Remover verificação de currentStep para evitar race condition
+      // Este useEffect deve executar SEMPRE que salonData estiver disponível
+      if (!salonData) return;
+
+      console.log('[BookingPage] 🔍 salonData carregado, iniciando verificação de locais...');
+
+      // Extrair usuario_id dos dados do salão
+      const userId = salonData.unidade.usuario_id;
+      if (!userId) {
+        console.error('[BookingPage] ❌ usuario_id não encontrado nos dados do salão');
+        setCurrentStep(2); // Pular para serviços se não conseguir carregar locais
+        return;
+      }
+
+      console.log(`[BookingPage] 📊 usuario_id encontrado: ${userId}`);
+      setUsuarioId(userId);
+
+      // Carregar todos os locais disponíveis do usuário
+      console.log(`[BookingPage] 🔄 Buscando locais para usuario_id ${userId}...`);
+      const locations = await loadAvailableLocations(userId);
+
+      console.log(`[BookingPage] 📍 Locais encontrados: ${locations.length}`);
+      if (locations.length > 0) {
+        console.log('[BookingPage] 📋 Lista de locais:', locations.map(l => ({ id: l.id, nome: l.nome })));
+      }
+
+      if (locations.length === 0) {
+        console.log('[BookingPage] ⚠️ Nenhum local encontrado, pulando step 1');
+        setCurrentStep(2); // Pular para seleção de serviços
+      } else if (locations.length === 1) {
+        // Apenas 1 local: auto-selecionar e pular para serviços
+        console.log('[BookingPage] ✅ Apenas 1 local disponível, auto-selecionando e pulando step 1');
+        setSelectedLocationId(locations[0].id);
+        setTempSelectedLocationId(locations[0].id);
+        setCurrentStep(2); // Pular para seleção de serviços
+      } else {
+        // Múltiplos locais: permanecer no step 1 para seleção
+        console.log(`[BookingPage] ✅ ${locations.length} locais disponíveis, PERMANECENDO no step 1 para seleção`);
+        // ✅ CRÍTICO: NÃO mudar o currentStep, deixar em 1 para mostrar seleção de locais
+      }
+    };
+
+    loadLocationsAndDecide();
+  }, [salonData, loadAvailableLocations]); // ✅ CORREÇÃO: Remover currentStep das dependências
 
   // Efeito para carregar extras filtrados quando serviços são selecionados
   useEffect(() => {
@@ -149,47 +209,37 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const resetToStep = (step: number) => {
     setCurrentStep(step);
-    if (step <= 2) { setSelectedAgentId(null); setTempSelectedAgentId(null); }
-    if (step <= 3) { setSelectedServiceIds([]); setTempSelectedServiceIds([]); }
+    if (step <= 1) { setSelectedLocationId(null); setTempSelectedLocationId(null); }
+    if (step <= 2) { setSelectedServiceIds([]); setTempSelectedServiceIds([]); }
+    if (step <= 3) { setSelectedAgentId(null); setTempSelectedAgentId(null); }
     if (step <= 4) { setSelectedExtraServiceIds([]); setTempSelectedExtraServiceIds([]); }
     if (step <= 5) { setSelectedDate(new Date()); setSelectedTime(null); setTempSelectedTime(null); setAvailableSlots([]); }
     if (step <= 6) { setClientName(''); setClientPhone(''); }
   };
 
-  // Função para avançar da seleção de serviços (passo 3) para próximo passo
+  // Função para avançar da seleção de serviços (passo 2) para próximo passo
   const handleAdvanceFromServices = async () => {
     setSelectedServiceIds(tempSelectedServiceIds);
-
-    // Verificar se há extras disponíveis para os serviços selecionados
-    if (unidadeId && tempSelectedServiceIds.length > 0) {
-      try {
-        const extras = await getExtrasByServices(unidadeId, tempSelectedServiceIds);
-        if (extras.length === 0) {
-          // Não há extras disponíveis, pular para seleção de data/hora
-          console.log('[BookingPage] Nenhum extra disponível, pulando para seleção de data/hora');
-          setCurrentStep(5);
-          return;
-        }
-      } catch (error) {
-        console.error('[BookingPage] Erro ao verificar extras, pulando para seleção de data/hora:', error);
-        setCurrentStep(5);
-        return;
-      }
-    }
-
-    // Há extras disponíveis, ir para seleção de extras
-    setCurrentStep(4);
+    // Avançar para seleção de agente
+    setCurrentStep(3);
   };
 
   const selectedAgent = useMemo(() => salonData?.agentes.find(a => a.id === selectedAgentId), [salonData, selectedAgentId]);
   const selectedServices = useMemo(() => salonData?.servicos.filter(s => selectedServiceIds.includes(s.id)) || [], [salonData, selectedServiceIds]);
 
-  // Extrair dias de trabalho do agente selecionado (usar tempSelectedAgentId para preview no calendário)
-  const agentWorkingDays = useMemo(() => {
+  // ✅ CORREÇÃO CRÍTICA: Calcular dias disponíveis baseado na INTERSEÇÃO entre unidade E agente
+  // REGRA: Um dia só está disponível se AMBOS (unidade E agente) estiverem abertos
+  const availableDays = useMemo(() => {
     const agentId = selectedAgentId || tempSelectedAgentId; // Usar temp para preview
-    if (!salonData?.horarios_agentes || !agentId) return [];
+    if (!salonData?.horarios_agentes || !salonData?.horarios_unidade || !agentId) return [];
 
-    const workingDays = salonData.horarios_agentes
+    // 1. Buscar dias em que a UNIDADE está aberta
+    const unidadeOpenDays = salonData.horarios_unidade
+      .filter(h => h.is_aberto && h.horarios_json && h.horarios_json.length > 0)
+      .map(h => h.dia_semana);
+
+    // 2. Buscar dias em que o AGENTE trabalha
+    const agentWorkingDays = salonData.horarios_agentes
       .filter(h => {
         // Dia deve estar ativo E ter pelo menos um período de trabalho definido
         return h.agente_id === agentId &&
@@ -197,39 +247,38 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                h.periodos &&
                h.periodos.length > 0;
       })
-      .map(h => h.dia_semana); // Retorna array de números apenas dos dias com horários
+      .map(h => h.dia_semana);
 
-    console.log(`[BookingPage] Horários do agente ${agentId}:`, salonData.horarios_agentes.filter(h => h.agente_id === agentId));
-    console.log(`[BookingPage] Dias de trabalho do agente ${agentId}:`, workingDays);
-    return workingDays;
+    // 3. INTERSEÇÃO: Dias disponíveis = dias que a unidade está aberta E o agente trabalha
+    const daysAvailable = unidadeOpenDays.filter(day => agentWorkingDays.includes(day));
+
+    console.log(`[BookingPage] 🏢 Unidade aberta nos dias:`, unidadeOpenDays);
+    console.log(`[BookingPage] 👤 Agente ${agentId} trabalha nos dias:`, agentWorkingDays);
+    console.log(`[BookingPage] ✅ Dias DISPONÍVEIS (interseção):`, daysAvailable);
+    
+    return daysAvailable;
   }, [salonData, selectedAgentId, tempSelectedAgentId]);
 
   const availableAgents = useMemo(() => {
     if (!salonData) return [];
+    
+    console.log(`[BookingPage] 👥 availableAgents calculado:`, {
+      total: salonData.agentes.length,
+      unidadeId: salonData.unidade.id,
+      agentes: salonData.agentes.map(a => ({ id: a.id, nome: a.nome }))
+    });
+    
     return salonData.agentes;
   }, [salonData]);
 
   const availableServices = useMemo(() => {
-    if (!salonData || !selectedAgentId) return [];
+    if (!salonData) return [];
 
-    // Filtrar serviços baseado nas associações agente-serviço
-    if (salonData.agente_servicos) {
-      const servicosDoAgente = salonData.agente_servicos
-        .filter(associacao => associacao.agente_id === selectedAgentId)
-        .map(associacao => associacao.servico_id);
-
-      const servicosFiltrados = salonData.servicos.filter(servico =>
-        servicosDoAgente.includes(servico.id)
-      );
-
-      console.log(`[BookingPage] Serviços filtrados para agente ${selectedAgentId}:`, servicosFiltrados.length);
-      return servicosFiltrados;
-    }
-
-    // Fallback: se não há associações, mostrar todos os serviços
-    console.log('[BookingPage] Usando fallback: todos os serviços');
+    // ✅ NOVA LÓGICA: Mostrar TODOS os serviços do local (sem filtrar por agente)
+    // O agente será selecionado DEPOIS dos serviços
+    console.log(`[BookingPage] Serviços disponíveis no local:`, salonData.servicos.length);
     return salonData.servicos;
-  }, [salonData, selectedAgentId]);
+  }, [salonData]);
 
   const handleToggleService = (serviceId: number) => {
     setTempSelectedServiceIds(prev => {
@@ -275,12 +324,71 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     }
   };
 
-  // Efeito para carregar slots quando agente ou data mudarem
+  // ✅ OTIMIZAÇÃO: Carregar horários automaticamente quando entrar no Step 5
   useEffect(() => {
-    if (selectedAgentId && selectedDate && currentStep === 4) {
-      loadAvailableSlots(selectedAgentId, selectedDate);
-    }
-  }, [selectedAgentId, selectedDate, currentStep, getAgenteDisponibilidade]);
+    const autoLoadSlotsOnStep5 = async () => {
+      // Verificar se acabou de entrar no Step 5
+      if (currentStep !== 5) return;
+      
+      // Verificar se tem agente e serviços selecionados
+      if (!selectedAgent || !selectedServices || selectedServices.length === 0) {
+        console.log('[BookingPage] ⚠️ Aguardando agente e serviços para carregar horários');
+        return;
+      }
+      
+      // Verificar se já tem uma data selecionada
+      if (!selectedDate) {
+        console.log('[BookingPage] ⚠️ Nenhuma data selecionada');
+        return;
+      }
+      
+      // ✅ CORREÇÃO: Verificar se o dia está disponível (interseção unidade + agente)
+      const dayOfWeek = selectedDate.getDay();
+      const isDayAvailable = availableDays.includes(dayOfWeek);
+      
+      if (!isDayAvailable) {
+        console.log('[BookingPage] ⚠️ Dia não disponível (unidade fechada OU agente não trabalha)');
+        return;
+      }
+      
+      // ✅ CORREÇÃO CRÍTICA: Verificar se já carregou horários para evitar loop infinito
+      if (availableTimeSlots.length > 0) {
+        console.log('[BookingPage] ℹ️ Horários já carregados, pulando auto-load');
+        return;
+      }
+      
+      // ✅ CARREGAR HORÁRIOS AUTOMATICAMENTE
+      console.log('[BookingPage] 🚀 Auto-carregando horários do dia atual ao entrar no Step 5');
+      
+      // Chamar a lógica de handleDateSelect diretamente (inline) para evitar problemas de dependência
+      setIsLoadingSlots(true);
+      setAvailableTimeSlots([]);
+      
+      try {
+        const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
+        const dateStr = selectedDate.toISOString().split('T')[0];
+        
+        console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min, unidade: ${unidadeId})`);
+        
+        const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
+        
+        if (disponibilidade && disponibilidade.slots_disponiveis) {
+          setAvailableTimeSlots(disponibilidade.slots_disponiveis);
+          console.log(`[BookingPage] ✅ ${disponibilidade.slots_disponiveis.length} slots disponíveis carregados automaticamente`);
+        } else {
+          setAvailableTimeSlots([]);
+          console.log('[BookingPage] ⚠️ Nenhum slot disponível');
+        }
+      } catch (error) {
+        console.error('[BookingPage] ❌ Erro ao buscar disponibilidade:', error);
+        setAvailableTimeSlots([]);
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+    
+    autoLoadSlotsOnStep5();
+  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, availableTimeSlots.length]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -292,9 +400,67 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   // Render Steps
 
+  const renderLocationSelection = () => {
+    console.log('[BookingPage] 🎨 Renderizando seleção de locais');
+    console.log('[BookingPage] 📍 availableLocations.length:', availableLocations.length);
+    console.log('[BookingPage] 📋 availableLocations:', availableLocations);
+    
+    return (
+      <div className="flex flex-col h-full">
+        <StepHeader title="Escolha um local" />
+        <div className="p-4 space-y-3 overflow-y-auto">
+          {availableLocations.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-500">Carregando locais disponíveis...</p>
+            </div>
+          ) : (
+            availableLocations.map(location => (
+              <SelectionCard
+                key={location.id}
+                title={location.nome}
+                subtitle={location.endereco}
+                onClick={() => setTempSelectedLocationId(location.id)}
+                isSelected={tempSelectedLocationId === location.id}
+              />
+            ))
+          )}
+        </div>
+        <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
+          <button
+            onClick={async () => {
+              if (!tempSelectedLocationId) return;
+              
+              console.log('[BookingPage] ✅ Local selecionado:', tempSelectedLocationId);
+              
+              // Confirmar seleção do local
+              setSelectedLocationId(tempSelectedLocationId);
+              
+              // ✅ CRÍTICO: Atualizar unidadeId para o local selecionado
+              setUnidadeId(tempSelectedLocationId);
+              
+              // Carregar dados do local selecionado
+              console.log('[BookingPage] 🔄 Carregando dados do local', tempSelectedLocationId);
+              await loadSalonData(tempSelectedLocationId);
+              
+              console.log('[BookingPage] 📊 Dados carregados. Agentes disponíveis:', salonData?.agentes.length || 0);
+              
+              // Avançar para seleção de serviços
+              console.log('[BookingPage] ➡️ Avançando para Step 2 (serviços)');
+              setCurrentStep(2);
+            }}
+            disabled={!tempSelectedLocationId || availableLocations.length === 0}
+            className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+          >
+            Próximo
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderAgentSelection = () => (
      <div className="flex flex-col h-full">
-      <StepHeader title="Escolha um profissional" />
+      <StepHeader title="Escolha um profissional" onBack={() => resetToStep(2)} />
       <div className="p-4 space-y-3 overflow-y-auto">
         {availableAgents.map(agent => (
           <SelectionCard
@@ -311,7 +477,19 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         <button
           onClick={() => {
             setSelectedAgentId(tempSelectedAgentId);
-            setCurrentStep(3);
+            
+            // ✅ CRÍTICO: Verificar se há extras disponíveis antes de avançar
+            console.log('[BookingPage] 🔍 Verificando extras disponíveis...');
+            console.log('[BookingPage] filteredExtras.length:', filteredExtras.length);
+            
+            // Se não houver extras, pular Step 4 e ir direto para Step 5 (Data/Hora)
+            if (filteredExtras.length === 0) {
+              console.log('[BookingPage] ⏭️ Nenhum extra disponível, pulando Step 4');
+              setCurrentStep(5);
+            } else {
+              console.log('[BookingPage] ➡️ Extras disponíveis, indo para Step 4');
+              setCurrentStep(4);
+            }
           }}
           disabled={!tempSelectedAgentId}
           className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
@@ -324,7 +502,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   
   const renderServiceSelection = () => (
     <div className="flex flex-col h-full">
-      <StepHeader title="Escolha um ou mais serviços" onBack={() => resetToStep(2)} />
+      <StepHeader title="Escolha um ou mais serviços" onBack={() => resetToStep(1)} />
       <div className="p-4 space-y-3 overflow-y-auto">
         {availableServices.map(service => (
           <SelectionCard
@@ -363,7 +541,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                 ) : filteredExtras.length === 0 ? (
                     <div className="text-center py-8">
                         <p className="text-gray-500">Nenhum serviço extra disponível para os serviços selecionados.</p>
-                        <p className="text-gray-400 text-sm mt-2">Você pode pular esta etapa.</p>
+                        <p className="text-gray-400 text-sm mt-2">Clique em "Pular esta etapa" para continuar.</p>
                     </div>
                 ) : (
                     filteredExtras.map(extra => (
@@ -380,7 +558,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
                 <button
                     onClick={() => {
-                        // Confirma a seleção e avança para a próxima etapa (passo 5)
+                        console.log('[BookingPage] ✅ Extras selecionados:', tempSelectedExtraServiceIds);
+                        // Confirma a seleção (ou vazio se pulou) e avança para a próxima etapa (passo 5)
                         setSelectedExtraServiceIds(tempSelectedExtraServiceIds);
                         setCurrentStep(5);
                     }}
@@ -419,9 +598,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
 
       const dateStr = date.toISOString().split('T')[0];
-      console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min)`);
+      console.log(`[BookingPage] Buscando disponibilidade para ${dateStr} (duração: ${totalDuration}min, unidade: ${unidadeId})`);
 
-      const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
+      // ✅ CORREÇÃO CRÍTICA: Passar unidadeId para filtrar horários do agente multi-unidade
+      const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
 
       if (disponibilidade && disponibilidade.slots_disponiveis) {
         setAvailableTimeSlots(disponibilidade.slots_disponiveis);
@@ -504,9 +684,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               const day = i + 1;
               const date = new Date(year, month, day);
               const dayOfWeek = date.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
-              const worksThatDay = agentWorkingDays.includes(dayOfWeek);
+              const isDayAvailable = availableDays.includes(dayOfWeek); // ✅ CORREÇÃO: Usar interseção unidade + agente
               const isPastDate = date < today;
-              const isAvailable = date >= today && worksThatDay; // Só disponível se for futuro E o agente trabalha nesse dia
+              const isAvailable = date >= today && isDayAvailable; // ✅ Só disponível se for futuro E (unidade aberta E agente trabalha)
               const isSelected = selectedDate?.toDateString() === date.toDateString();
 
               // Determinar estilo baseado no status do dia
@@ -514,7 +694,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               let textStyle = '';
 
               if (isSelected) {
-                buttonStyle = 'bg-gray-800 text-white';
+                buttonStyle = 'bg-[#2663EB] text-white';
                 textStyle = 'text-white';
               } else if (isAvailable) {
                 buttonStyle = 'bg-lime-100/60 hover:bg-lime-200';
@@ -533,7 +713,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                   className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${buttonStyle}`}
                   title={
                     isPastDate ? 'Data já passou' :
-                    !worksThatDay ? 'Agente não trabalha neste dia' :
+                    !isDayAvailable ? 'Local fechado ou agente não trabalha neste dia' :
                     'Clique para selecionar'
                   }
                 >
@@ -550,7 +730,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     return (
       <div className="flex flex-col h-full">
-        <StepHeader title="Escolha data e hora" onBack={() => resetToStep(4)} />
+        <StepHeader title="Escolha data e hora" onBack={() => {
+          // ✅ CRÍTICO: Voltar para Step 4 se houver extras, senão voltar para Step 3
+          if (filteredExtras.length > 0) {
+            resetToStep(4);
+          } else {
+            resetToStep(3);
+          }
+        }} />
         <div className="p-4 overflow-y-auto space-y-4">
           <Calendar />
           {selectedDate && (
@@ -809,13 +996,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const renderStep = () => {
     switch(currentStep) {
-      case 2: return renderAgentSelection();
-      case 3: return renderServiceSelection();
+      case 1: return renderLocationSelection();
+      case 2: return renderServiceSelection();
+      case 3: return renderAgentSelection();
       case 4: return renderExtraServiceSelection();
       case 5: return renderDateTimeSelection();
       case 6: return renderClientDetails();
       case 7: return renderSuccess();
-      default: return renderAgentSelection();
+      default: return renderLocationSelection();
     }
   }
 
@@ -846,14 +1034,27 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           )}
           <header className="p-4 text-center bg-white border-b border-gray-200">
             <img
-              src={salonData.configuracoes.logo_url ? getAssetUrl(salonData.configuracoes.logo_url) : `https://avatar.iran.liara.run/public/boy?username=${salonData.configuracoes.nome_negocio}`}
-              alt={salonData.configuracoes.nome_negocio}
+              src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://avatar.iran.liara.run/public/boy?username=${businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}`}
+              alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
               className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
             />
-            <h1 className="text-xl font-bold text-gray-900">{salonData.configuracoes.nome_negocio}</h1>
-            {salonData.unidade.endereco && (
-              <p className="text-sm text-gray-600 mt-1">{salonData.unidade.endereco}</p>
-            )}
+            <h1 className="text-xl font-bold text-gray-900">{businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}</h1>
+            {currentStep === 1 ? (
+              <p className="text-sm text-gray-600 mt-1">Escolha um local para continuar</p>
+            ) : selectedLocationId ? (
+              <div className="mt-1">
+                <p className="text-sm font-semibold text-gray-700">{salonData.unidade.nome}</p>
+                {salonData.unidade.endereco && (
+                  <p className="text-sm text-gray-600">{salonData.unidade.endereco}</p>
+                )}
+                {/* ✅ NOVO: Mostrar nome do agente selecionado no Step 5 (Data/Hora) */}
+                {currentStep === 5 && selectedAgent && (
+                  <p className="text-xs text-blue-600 mt-1 font-medium">
+                    Profissional: {selectedAgent.nome_exibicao || selectedAgent.nome}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </header>
         </div>
 

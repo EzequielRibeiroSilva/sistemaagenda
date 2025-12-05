@@ -9,6 +9,7 @@ export interface PublicUnidade {
   endereco: string;
   telefone: string;
   slug_url: string;
+  usuario_id?: number; // ✅ CRÍTICO: ID do usuário ADMIN dono da unidade
 }
 
 export interface PublicAgente {
@@ -54,6 +55,12 @@ export interface HorarioAgente {
   periodos: { inicio: string; fim: string }[];
 }
 
+export interface HorarioUnidade {
+  dia_semana: number;
+  is_aberto: boolean;
+  horarios_json: { inicio: string; fim: string }[];
+}
+
 export interface PublicAgenteServico {
   agente_id: number;
   servico_id: number;
@@ -73,6 +80,7 @@ export interface SalonData {
   agente_servicos: PublicAgenteServico[];
   servico_extras: PublicServicoExtra[];
   horarios_agentes: HorarioAgente[];
+  horarios_unidade: HorarioUnidade[]; // ✅ CRÍTICO: Horários da unidade para interseção
 }
 
 export interface SlotDisponivel {
@@ -113,6 +121,7 @@ export interface AgendamentoCriado {
 
 export const usePublicBooking = () => {
   const [salonData, setSalonData] = useState<SalonData | null>(null);
+  const [availableLocations, setAvailableLocations] = useState<PublicUnidade[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,15 +181,20 @@ export const usePublicBooking = () => {
   }, []);
 
   // Buscar disponibilidade de um agente com duração dinâmica
-  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number): Promise<DisponibilidadeData | null> => {
+  // ✅ CRÍTICO: Adicionado parâmetro unidadeId para suportar agentes multi-unidade
+  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number, unidadeId?: number): Promise<DisponibilidadeData | null> => {
     try {
-      console.log(`[usePublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos || 60}min)`);
+      console.log(`[usePublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos || 60}min, unidade: ${unidadeId || 'não especificada'})`);
 
       // Construir URL com parâmetro de duração
       const url = new URL(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade`);
       url.searchParams.set('data', data);
       if (duracaoMinutos) {
         url.searchParams.set('duration', duracaoMinutos.toString());
+      }
+      // ✅ CORREÇÃO CRÍTICA: Enviar unidade_id para backend filtrar horários corretamente
+      if (unidadeId) {
+        url.searchParams.set('unidade_id', unidadeId.toString());
       }
 
       const response = await fetch(url.toString());
@@ -260,11 +274,41 @@ export const usePublicBooking = () => {
     }
   }, []);
 
+  // Buscar todos os locais disponíveis por usuario_id (extraído da primeira unidade)
+  const loadAvailableLocations = useCallback(async (usuarioId: number) => {
+    try {
+      console.log(`[usePublicBooking] Carregando locais disponíveis para usuario_id ${usuarioId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/public/usuario/${usuarioId}/unidades`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao carregar locais');
+      }
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Locais não encontrados');
+      }
+      
+      setAvailableLocations(data.data);
+      console.log(`[usePublicBooking] ${data.data.length} locais carregados`);
+      return data.data;
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error('[usePublicBooking] Erro ao carregar locais:', errorMessage);
+      setAvailableLocations([]);
+      return [];
+    }
+  }, []);
+
   return {
     salonData,
+    availableLocations,
     isLoading,
     error,
     loadSalonData,
+    loadAvailableLocations,
     findUnidadeBySlug,
     getAgenteDisponibilidade,
     createAgendamento,
