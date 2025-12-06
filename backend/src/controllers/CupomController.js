@@ -397,14 +397,14 @@ class CupomController {
    */
   async validar(req, res) {
     try {
-      const { codigo, cliente_id, valor_pedido } = req.body;
+      const { codigo, cliente_id, valor_pedido, unidade_id, servico_ids } = req.body;
 
       // Validar parâmetros obrigatórios
-      if (!codigo || !cliente_id || !valor_pedido) {
+      if (!codigo || valor_pedido === undefined || !unidade_id) {
         return res.status(400).json({
           success: false,
           error: 'Parâmetros inválidos',
-          message: 'Código do cupom, ID do cliente e valor do pedido são obrigatórios'
+          message: 'Código do cupom, valor do pedido e ID da unidade são obrigatórios'
         });
       }
 
@@ -416,11 +416,13 @@ class CupomController {
         });
       }
 
-      // Validar uso do cupom
+      // Validar uso do cupom com contexto completo
       const validacao = await this.cupomService.validarUsoCupom(
         codigo,
-        parseInt(cliente_id),
-        parseFloat(valor_pedido)
+        cliente_id ? parseInt(cliente_id) : null,
+        parseFloat(valor_pedido),
+        parseInt(unidade_id),
+        servico_ids || []
       );
 
       if (!validacao.valido) {

@@ -38,6 +38,14 @@ router.get('/agentes/:id/disponibilidade', async (req, res) => {
 });
 
 /**
+ * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y
+ * Buscar cliente por telefone (para pré-preencher dados)
+ */
+router.get('/cliente/buscar', async (req, res) => {
+  await publicBookingController.buscarCliente(req, res);
+});
+
+/**
  * POST /api/public/agendamento
  * Criar novo agendamento público
  */
