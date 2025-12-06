@@ -516,6 +516,62 @@ class PublicBookingController {
   }
 
   /**
+   * GET /api/public/cliente/buscar
+   * Buscar cliente por telefone (para pré-preencher dados)
+   */
+  async buscarCliente(req, res) {
+    try {
+      const { telefone, unidade_id } = req.query;
+
+      if (!telefone || !unidade_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetros inválidos',
+          message: 'Telefone e unidade_id são obrigatórios'
+        });
+      }
+
+      // Limpar telefone (remover caracteres não numéricos)
+      const telefoneLimpo = telefone.replace(/\D/g, '');
+
+      // Buscar cliente por telefone na unidade
+      const cliente = await db('clientes')
+        .where('unidade_id', unidade_id)
+        .where(function() {
+          this.where('telefone', telefone)
+              .orWhere('telefone', `+55${telefoneLimpo}`)
+              .orWhere('telefone', `+${telefoneLimpo}`)
+              .orWhere('telefone', telefoneLimpo);
+        })
+        .first();
+
+      if (cliente) {
+        return res.json({
+          success: true,
+          cliente: {
+            id: cliente.id,
+            primeiro_nome: cliente.primeiro_nome,
+            ultimo_nome: cliente.ultimo_nome,
+            telefone: cliente.telefone
+          }
+        });
+      } else {
+        return res.json({
+          success: true,
+          cliente: null
+        });
+      }
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao buscar cliente:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao buscar cliente'
+      });
+    }
+  }
+
+  /**
    * POST /api/public/agendamento
    * Criar novo agendamento
    */
@@ -720,6 +776,7 @@ class PublicBookingController {
         unidade: {
           nome: unidade.nome
         },
+        unidade_id: agendamento.unidade_id, // ✅ CRÍTICO: Adicionar unidade_id para registro de notificações
         unidade_telefone: unidade.telefone,
         agendamento_id: agendamento.id,
         data_agendamento: agendamento.data_agendamento,

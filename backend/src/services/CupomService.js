@@ -143,11 +143,13 @@ class CupomService {
   /**
    * Validar se cupom pode ser usado
    * @param {string} codigo - Código do cupom
-   * @param {number} clienteId - ID do cliente
+   * @param {number|null} clienteId - ID do cliente (pode ser null para novos clientes)
    * @param {number} valorPedido - Valor total do pedido
+   * @param {number} unidadeId - ID da unidade onde o agendamento está sendo feito
+   * @param {Array<number>} servicoIds - IDs dos serviços selecionados
    * @returns {Promise<Object>} Resultado da validação
    */
-  async validarUsoCupom(codigo, clienteId, valorPedido) {
+  async validarUsoCupom(codigo, clienteId, valorPedido, unidadeId, servicoIds = []) {
     // 1. Buscar cupom ativo e válido
     const cupom = await this.cupomModel.buscarCupomValidoParaUso(codigo);
     
@@ -159,7 +161,57 @@ class CupomService {
       };
     }
 
-    // 2. Verificar valor mínimo do pedido
+    // 2. ✅ CRÍTICO: Verificar se o cupom pertence ao mesmo usuário/empresa da unidade
+    // Buscar usuario_id da unidade
+    const unidade = await this.cupomModel.db('unidades')
+      .where('id', unidadeId)
+      .select('usuario_id')
+      .first();
+    
+    if (!unidade) {
+      return {
+        valido: false,
+        erro: 'Unidade não encontrada',
+        codigo_erro: 'UNIDADE_INVALIDA'
+      };
+    }
+
+    if (cupom.usuario_id !== unidade.usuario_id) {
+      return {
+        valido: false,
+        erro: 'Este cupom não é válido para esta unidade',
+        codigo_erro: 'CUPOM_NAO_PERTENCE_UNIDADE'
+      };
+    }
+
+    // 3. ✅ Verificar se o cupom é válido para a unidade específica (se houver restrição)
+    const cupomUnidades = await this.cupomModel.buscarUnidades(cupom.id);
+    
+    if (cupomUnidades.length > 0 && !cupomUnidades.includes(unidadeId)) {
+      return {
+        valido: false,
+        erro: 'Este cupom não é válido para esta unidade',
+        codigo_erro: 'CUPOM_NAO_APLICAVEL_UNIDADE'
+      };
+    }
+
+    // 4. ✅ Verificar se o cupom é válido para os serviços selecionados (se houver restrição)
+    const cupomServicos = await this.cupomModel.buscarServicos(cupom.id);
+    
+    if (cupomServicos.length > 0) {
+      // Se o cupom tem restrição de serviços, pelo menos um serviço selecionado deve estar na lista
+      const temServicoValido = servicoIds.some(servicoId => cupomServicos.includes(servicoId));
+      
+      if (!temServicoValido) {
+        return {
+          valido: false,
+          erro: 'Este cupom não é válido para os serviços selecionados',
+          codigo_erro: 'CUPOM_NAO_APLICAVEL_SERVICOS'
+        };
+      }
+    }
+
+    // 5. Verificar valor mínimo do pedido
     if (cupom.valor_minimo_pedido && valorPedido < cupom.valor_minimo_pedido) {
       return {
         valido: false,
@@ -169,7 +221,7 @@ class CupomService {
       };
     }
 
-    // 3. Verificar limite de uso total
+    // 6. Verificar limite de uso total
     if (cupom.limite_uso_total && cupom.uso_atual >= cupom.limite_uso_total) {
       return {
         valido: false,
@@ -178,8 +230,8 @@ class CupomService {
       };
     }
 
-    // 4. Verificar limite de uso por cliente
-    if (cupom.limite_uso_por_cliente) {
+    // 7. Verificar limite de uso por cliente (somente se clienteId for fornecido)
+    if (cupom.limite_uso_por_cliente && clienteId) {
       const usosCliente = await this.cupomModel.contarUsosPorCliente(cupom.id, clienteId);
       
       if (usosCliente >= cupom.limite_uso_por_cliente) {
@@ -191,7 +243,7 @@ class CupomService {
       }
     }
 
-    // 5. Calcular desconto
+    // 8. Calcular desconto
     const desconto = this.calcularDesconto(cupom, valorPedido);
 
     return {

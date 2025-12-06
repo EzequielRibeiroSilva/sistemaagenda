@@ -1,9 +1,10 @@
 
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase } from './Icons';
+import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase, Tag, X } from './Icons';
 import { usePublicBooking, SalonData, PublicAgente, PublicServico, PublicExtra, SlotDisponivel } from '../hooks/usePublicBooking';
-import { getAssetUrl } from '../utils/api';
+import { useCupomManagement } from '../hooks/useCupomManagement';
+import { getAssetUrl, API_BASE_URL } from '../utils/api';
 
 // --- Componentes da UI ---
 
@@ -63,6 +64,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [availableSlots, setAvailableSlots] = useState<SlotDisponivel[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+  
+  // Estados para cupom de desconto
+  const [cupomCodigo, setCupomCodigo] = useState('');
+  const [cupomAplicado, setCupomAplicado] = useState<any>(null);
+  const [cupomErro, setCupomErro] = useState<string | null>(null);
+  const [isValidatingCupom, setIsValidatingCupom] = useState(false);
+  const [clienteId, setClienteId] = useState<number | null>(null);
 
   // Estados temporários para seleções
   const [tempSelectedAgentId, setTempSelectedAgentId] = useState<number | null>(null);
@@ -762,7 +770,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                       key={slot.hora_inicio}
                       onClick={() => setTempSelectedTime(slot.hora_inicio)}
                       className={`p-3 rounded-lg border font-semibold text-center transition-colors ${
-                        tempSelectedTime === slot.hora_inicio ? 'bg-gray-800 text-white border-gray-800' :
+                        tempSelectedTime === slot.hora_inicio ? 'bg-[#2663EB] text-white border-[#2663EB]' :
                         'bg-lime-100/60 border-lime-200 text-gray-800 hover:border-lime-500'
                       }`}
                     >
@@ -802,6 +810,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     <div className="flex flex-col h-full">
       <StepHeader title="Seus dados" onBack={() => resetToStep(5)} />
       <div className="p-4 space-y-4 overflow-y-auto">
+        {/* Título da seção */}
+        <h3 className="text-base font-semibold text-gray-800">Informações do Cliente</h3>
+        
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Nome Completo</label>
           <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
@@ -811,29 +822,18 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(85) 99999-9999" className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
           <p className="text-xs text-gray-500 mt-1">Você receberá a confirmação do agendamento neste número.</p>
         </div>
-
-        {/* Informações sobre o processo */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="flex items-start space-x-2">
-            <div className="text-blue-600 mt-0.5">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-blue-800">Como funciona:</p>
-              <ul className="text-xs text-blue-700 mt-1 space-y-1">
-                <li>• Se você já é nosso cliente, seus dados serão encontrados automaticamente</li>
-                <li>• Se é a primeira vez, criaremos seu cadastro rapidamente</li>
-                <li>• A confirmação será enviada via WhatsApp instantaneamente</li>
-              </ul>
-            </div>
-          </div>
-        </div>
       </div>
        <div className="p-4 mt-auto border-t border-gray-200 bg-white">
-        <button onClick={handleCreateAppointment} disabled={!clientName || !clientPhone || isCreatingAppointment} className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400">
-            {isCreatingAppointment ? 'Criando agendamento...' : 'Finalizar Agendamento'}
+        <button 
+          onClick={async () => {
+            // Buscar cliente existente antes de ir para revisão
+            await buscarClienteExistente(clientPhone);
+            setCurrentStep(7);
+          }} 
+          disabled={!clientName || !clientPhone} 
+          className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+        >
+            Continuar para Revisão
         </button>
       </div>
     </div>
@@ -885,7 +885,15 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (agendamentoCriado) {
         console.log('[BookingPage] Agendamento criado com sucesso:', agendamentoCriado.agendamento_id);
         console.log('[BookingPage] Cliente processado e WhatsApp enviado automaticamente');
-        setCurrentStep(7); // Ir para tela de sucesso
+        
+        // ✅ Atualizar nome do cliente com o nome completo retornado do backend
+        // Isso garante que se o cliente já existia, o nome completo será exibido
+        if (agendamentoCriado.cliente?.nome) {
+          setClientName(agendamentoCriado.cliente.nome);
+          console.log('[BookingPage] Nome do cliente atualizado para:', agendamentoCriado.cliente.nome);
+        }
+        
+        setCurrentStep(8); // Ir para tela de sucesso
       }
 
     } catch (error) {
@@ -907,48 +915,299 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     }
   };
 
-  const renderConfirmation = () => {
-    const totalPrice = useMemo(() => selectedServices.reduce((total, s) => total + (Number(s.preco) || 0), 0), [selectedServices]);
-    const totalDuration = useMemo(() => selectedServices.reduce((total, s) => total + s.duracao_minutos, 0), [selectedServices]);
+  // Função para buscar cliente existente por telefone
+  const buscarClienteExistente = async (telefone: string) => {
+    try {
+      // Formatar telefone para busca
+      const telefoneLimpo = telefone.trim().replace(/\D/g, '');
+      
+      // Buscar cliente no backend
+      const response = await fetch(`${API_BASE_URL}/public/cliente/buscar?telefone=${telefoneLimpo}&unidade_id=${unidadeId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.cliente) {
+          // Cliente encontrado - atualizar nome completo
+          const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
+          if (nomeCompleto && nomeCompleto !== clientName) {
+            setClientName(nomeCompleto);
+            console.log('[BookingPage] Cliente existente encontrado:', nomeCompleto);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[BookingPage] Erro ao buscar cliente:', error);
+      // Não bloquear o fluxo se houver erro
+    }
+  };
+
+  // Função para validar cupom
+  const handleValidarCupom = async () => {
+    if (!cupomCodigo.trim()) {
+      setCupomErro('Digite um código de cupom');
+      return;
+    }
+
+    if (!unidadeId) {
+      setCupomErro('Erro: Unidade não identificada');
+      return;
+    }
+
+    setIsValidatingCupom(true);
+    setCupomErro(null);
+
+    try {
+      // Calcular valor total dos serviços e extras
+      const selectedExtraServices = filteredExtras.filter(e => selectedExtraServiceIds.includes(e.id));
+      const valorServicos = selectedServices.reduce((total, s) => total + (Number(s.preco) || 0), 0);
+      const valorExtras = selectedExtraServices.reduce((total, e) => total + (Number(e.preco) || 0), 0);
+      const valorTotal = valorServicos + valorExtras;
+
+      const response = await fetch(`${API_BASE_URL}/public/cupons/validar`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          codigo: cupomCodigo.trim().toUpperCase(),
+          cliente_id: clienteId || null, // ✅ Enviar null se não tiver cliente_id
+          valor_pedido: valorTotal,
+          unidade_id: unidadeId, // ✅ CRÍTICO: Enviar unidade_id para validação de propriedade
+          servico_ids: selectedServiceIds // ✅ Enviar serviços para validação de restrições
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.valido) {
+        setCupomAplicado({
+          codigo: cupomCodigo.trim().toUpperCase(),
+          tipo_desconto: data.cupom.tipo_desconto,
+          valor_desconto: data.cupom.valor_desconto,
+          desconto_calculado: data.desconto.valor_desconto
+        });
+        setCupomErro(null);
+      } else {
+        setCupomErro(data.error || 'Cupom inválido');
+        setCupomAplicado(null);
+      }
+    } catch (error) {
+      console.error('[BookingPage] Erro ao validar cupom:', error);
+      setCupomErro('Erro ao validar cupom. Tente novamente.');
+      setCupomAplicado(null);
+    } finally {
+      setIsValidatingCupom(false);
+    }
+  };
+
+  // Função para remover cupom
+  const handleRemoverCupom = () => {
+    setCupomAplicado(null);
+    setCupomCodigo('');
+    setCupomErro(null);
+  };
+
+  // Renderizar Fase 7: Revisão e Checkout
+  const renderCheckout = () => {
+    // Buscar objetos completos dos extras selecionados
+    const selectedExtraServices = filteredExtras.filter(e => selectedExtraServiceIds.includes(e.id));
+    
+    const valorServicos = selectedServices.reduce((total, s) => total + (Number(s.preco) || 0), 0);
+    const valorExtras = selectedExtraServices.reduce((total, e) => total + (Number(e.preco) || 0), 0);
+    const subtotal = valorServicos + valorExtras;
+    const desconto = cupomAplicado ? cupomAplicado.desconto_calculado : 0;
+    const valorFinal = Math.max(0, subtotal - desconto);
+    const totalDuration = selectedServices.reduce((total, s) => total + s.duracao_minutos, 0) + 
+                         selectedExtraServices.reduce((total, e) => total + e.duracao_minutos, 0);
 
     return (
-     <div className="flex flex-col h-full">
-      <StepHeader title="Resumo do Agendamento" onBack={() => resetToStep(4)} />
-       <div className="p-6 space-y-4 text-gray-700 overflow-y-auto">
-          <div className="py-2 border-b border-gray-200">
-            <span className="font-semibold flex items-center gap-2 mb-2"><Briefcase className="w-4 h-4 text-gray-400" /> Serviços</span>
-            <ul className="list-disc list-inside pl-2 space-y-1">
-              {selectedServices.map(service => (
-                <li key={service.id} className="flex justify-between">
-                  <span>{service.nome}</span>
-                  <span>R$ {(Number(service.preco) || 0).toFixed(2).replace('.', ',')}</span>
-                </li>
-              ))}
-            </ul>
+      <div className="flex flex-col h-full">
+        <StepHeader title="Detalhes da Reserva" onBack={() => resetToStep(6)} />
+        
+        <div className="p-4 space-y-4 overflow-y-auto">
+          {/* Mensagem informativa */}
+          <p className="text-sm text-gray-600">
+            Revise os detalhes abaixo. Você pode voltar para editar ou confirmar sua reserva.
+          </p>
+
+          {/* Serviço Principal */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Serviço</h3>
+            {selectedServices.map(service => (
+              <div key={service.id} className="flex justify-between items-center mb-2">
+                <span className="text-gray-800 font-medium">{service.nome}</span>
+                <span className="text-gray-800 font-semibold">R$ {(Number(service.preco) || 0).toFixed(2).replace('.', ',')}</span>
+              </div>
+            ))}
+            {selectedExtraServices.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-xs text-gray-500 mb-2">Serviços Extras:</p>
+                {selectedExtraServices.map(extra => (
+                  <div key={extra.id} className="flex justify-between items-center mb-1 text-sm">
+                    <span className="text-gray-600">{extra.nome}</span>
+                    <span className="text-gray-600">R$ {(Number(extra.preco) || 0).toFixed(2).replace('.', ',')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-         <div className="flex justify-between items-center py-2 border-b border-gray-200">
-           <span className="font-semibold flex items-center gap-2"><Users className="w-4 h-4 text-gray-400" /> Profissional</span>
-           <span>{selectedAgent?.nome_exibicao || selectedAgent?.nome}</span>
-         </div>
-         <div className="flex justify-between items-center py-2 border-b border-gray-200">
-           <span className="font-semibold flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /> Data e Hora</span>
-           <span className="text-right">{selectedDate?.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}, {selectedTime}</span>
-         </div>
-         <div className="flex justify-between items-center py-2 border-b border-gray-200">
-            <span className="font-semibold">Duração Total</span>
-            <span className="font-semibold">{totalDuration} min</span>
+
+          {/* Data e Horário */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Data e Horário</h3>
+            <div className="flex items-center gap-2 text-blue-600 font-medium">
+              <Calendar className="w-5 h-5" />
+              <span>
+                {selectedDate?.toLocaleDateString('pt-BR', { 
+                  weekday: 'long', 
+                  day: 'numeric', 
+                  month: 'long',
+                  year: 'numeric'
+                }).replace(/^\w/, c => c.toUpperCase())}, {selectedTime}
+              </span>
+            </div>
           </div>
-         <div className="flex justify-between items-center pt-4">
-           <span className="font-bold text-lg">Valor Total</span>
-           <span className="font-bold text-lg text-blue-600">R$ {totalPrice.toFixed(2).replace('.', ',')}</span>
-         </div>
-       </div>
-       <div className="p-4 mt-auto border-t border-gray-200 bg-white">
-        <button onClick={handleCreateAppointment} disabled={isCreatingAppointment} className="w-full bg-green-600 text-white font-bold py-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400">
-            {isCreatingAppointment ? 'Confirmando...' : 'Confirmar Agendamento'}
-        </button>
+
+          {/* Cliente */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Cliente</h3>
+            <div>
+              <p className="text-gray-800 font-medium">{clientName}</p>
+              <p className="text-sm text-gray-500">{clientPhone}</p>
+            </div>
+          </div>
+
+          {/* Profissional Selecionado */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Selecionado</h3>
+            <div className="flex items-center gap-3">
+              {selectedAgent?.avatar_url ? (
+                <img 
+                  src={getAssetUrl(selectedAgent.avatar_url)} 
+                  alt={selectedAgent.nome_exibicao || selectedAgent.nome}
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+                  {(selectedAgent?.nome_exibicao || selectedAgent?.nome || '').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p className="text-gray-800 font-medium">{selectedAgent?.nome_exibicao || selectedAgent?.nome}</p>
+                <p className="text-sm text-gray-500">Profissional</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Cupom de Desconto */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Cupom de Desconto</h3>
+            
+            {!cupomAplicado ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={cupomCodigo}
+                    onChange={(e) => {
+                      setCupomCodigo(e.target.value.toUpperCase());
+                      setCupomErro(null);
+                    }}
+                    placeholder="Digite o código do cupom"
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                    disabled={isValidatingCupom}
+                  />
+                  <button
+                    onClick={handleValidarCupom}
+                    disabled={isValidatingCupom || !cupomCodigo.trim()}
+                    className="px-6 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isValidatingCupom ? 'Validando...' : 'Aplicar'}
+                  </button>
+                </div>
+                {cupomErro && (
+                  <p className="text-xs text-red-600 flex items-center gap-1">
+                    <X className="w-3 h-3" />
+                    {cupomErro}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-green-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-green-800">{cupomAplicado.codigo}</p>
+                      <p className="text-xs text-green-600">
+                        {cupomAplicado.tipo_desconto === 'percentual' 
+                          ? `${cupomAplicado.valor_desconto}% de desconto`
+                          : `R$ ${cupomAplicado.valor_desconto.toFixed(2).replace('.', ',')} de desconto`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleRemoverCupom}
+                    className="p-1 hover:bg-green-100 rounded-full transition-colors"
+                  >
+                    <X className="w-4 h-4 text-green-700" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Resumo de Valores */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Resumo</h3>
+            <div className="space-y-2">
+              {valorServicos > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Serviços</span>
+                  <span className="text-gray-800">R$ {valorServicos.toFixed(2).replace('.', ',')}</span>
+                </div>
+              )}
+              {valorExtras > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Extras</span>
+                  <span className="text-gray-800">R$ {valorExtras.toFixed(2).replace('.', ',')}</span>
+                </div>
+              )}
+              {desconto > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-green-600">Desconto</span>
+                  <span className="text-green-600 font-semibold">- R$ {desconto.toFixed(2).replace('.', ',')}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex justify-between items-center">
+                  <span className="text-base font-bold text-gray-800">Preço Total</span>
+                  <span className="text-xl font-bold text-gray-900">R$ {valorFinal.toFixed(2).replace('.', ',')}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Botão de Confirmação */}
+        <div className="p-4 mt-auto border-t border-gray-200 bg-white">
+          <button 
+            onClick={handleCreateAppointment} 
+            disabled={isCreatingAppointment} 
+            className="w-full bg-[#2663EB] text-white font-bold py-4 rounded-lg hover:bg-[#1d4ed8] transition-colors disabled:bg-gray-400 flex items-center justify-center gap-2"
+          >
+            {isCreatingAppointment ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Confirmando reserva...
+              </>
+            ) : (
+              'Confirmar reserva'
+            )}
+          </button>
+        </div>
       </div>
-    </div>
     );
   };
 
@@ -1002,7 +1261,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       case 4: return renderExtraServiceSelection();
       case 5: return renderDateTimeSelection();
       case 6: return renderClientDetails();
-      case 7: return renderSuccess();
+      case 7: return renderCheckout();
+      case 8: return renderSuccess();
       default: return renderLocationSelection();
     }
   }
