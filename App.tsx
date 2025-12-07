@@ -31,6 +31,7 @@ import AdminSidebar from './components/admin/AdminSidebar';
 import AdminDashboardPage from './components/admin/AdminDashboardPage';
 import AdminHeader from './components/admin/AdminHeader';
 import BookingPage from './components/BookingPage';
+import ManageBookingPage from './components/ManageBookingPage';
 import { useMasterUsers } from './hooks/useMasterUsers';
 import { useAuth } from './contexts/AuthContext';
 
@@ -172,6 +173,11 @@ const App: React.FC = () => {
   const path = window.location.pathname;
 
   // ROTAS PÚBLICAS (DEVEM VIR PRIMEIRO - SEM AUTENTICAÇÃO)
+
+  // Rota de gerenciamento de agendamento: /gerenciar-agendamento/:id
+  if (path.startsWith('/gerenciar-agendamento/')) {
+    return <ManageBookingPage />;
+  }
 
   // Rota de agendamento: /booking/:unidadeId
   if (path.startsWith('/booking/')) {
