@@ -5,35 +5,7 @@ import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase, Tag, X } from './
 import { usePublicBooking, SalonData, PublicAgente, PublicServico, PublicExtra, SlotDisponivel } from '../hooks/usePublicBooking';
 import { useCupomManagement } from '../hooks/useCupomManagement';
 import { getAssetUrl, API_BASE_URL } from '../utils/api';
-
-// --- Componentes da UI ---
-
-const StepHeader: React.FC<{ title: string; onBack?: () => void }> = ({ title, onBack }) => (
-  <div className="relative text-center p-4 border-b border-gray-200 shrink-0 bg-white">
-    {onBack && (
-      <button onClick={onBack} className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100">
-        <ChevronLeft className="w-6 h-6 text-gray-600" />
-      </button>
-    )}
-    <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-  </div>
-);
-
-const SelectionCard: React.FC<{
-  imageUrl?: string;
-  title: string;
-  subtitle?: string;
-  onClick: () => void;
-  isSelected: boolean;
-}> = ({ imageUrl, title, subtitle, onClick, isSelected }) => (
-  <button onClick={onClick} className={`w-full flex items-center p-4 bg-white rounded-lg border-2 transition-all text-left ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-400'}`}>
-    {imageUrl && <img src={imageUrl} alt={title} className="w-12 h-12 rounded-full object-cover mr-4" />}
-    <div>
-      <p className="font-bold text-gray-800">{title}</p>
-      {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
-    </div>
-  </button>
-);
+import { StepHeader, SelectionCard } from './booking/SharedComponents';
 
 interface BookingPageProps {
   isPreview?: boolean;

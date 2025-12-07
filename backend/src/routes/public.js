@@ -54,6 +54,38 @@ router.post('/agendamento', async (req, res) => {
 });
 
 /**
+ * GET /api/public/agendamento/:id/preview
+ * Buscar dados básicos do agendamento (unidade_id) sem validação
+ */
+router.get('/agendamento/:id/preview', async (req, res) => {
+  await publicBookingController.getAgendamentoPreview(req, res);
+});
+
+/**
+ * GET /api/public/agendamento/:id
+ * Buscar detalhes de um agendamento (com validação de telefone)
+ */
+router.get('/agendamento/:id', async (req, res) => {
+  await publicBookingController.getAgendamento(req, res);
+});
+
+/**
+ * PUT /api/public/agendamento/:id/reagendar
+ * Reagendar um agendamento (alterar data e hora)
+ */
+router.put('/agendamento/:id/reagendar', async (req, res) => {
+  await publicBookingController.reagendarAgendamento(req, res);
+});
+
+/**
+ * PATCH /api/public/agendamento/:id/cancelar
+ * Cancelar um agendamento
+ */
+router.patch('/agendamento/:id/cancelar', async (req, res) => {
+  await publicBookingController.cancelarAgendamento(req, res);
+});
+
+/**
  * POST /api/public/cupons/validar
  * Validar cupom de desconto para uso na página de booking
  * Sem autenticação - público

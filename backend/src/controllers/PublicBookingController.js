@@ -48,7 +48,58 @@ class PublicBookingController {
       }
 
       // Buscar configurações da unidade
-      const configuracoes = await this.configuracaoModel.findByUnidade(unidadeId);
+      let configuracoes = await this.configuracaoModel.findByUnidade(unidadeId);
+      
+      console.log(`[PublicBooking] Configurações da unidade ${unidadeId}:`, {
+        logo_url: configuracoes?.logo_url,
+        nome_negocio: configuracoes?.nome_negocio,
+        usuario_id: unidade.usuario_id
+      });
+      
+      // ✅ CORREÇÃO: Se a unidade não tem configurações OU não tem logo, buscar logo de qualquer unidade do usuário
+      if ((!configuracoes || !configuracoes.logo_url) && unidade.usuario_id) {
+        console.log(`[PublicBooking] Unidade ${unidadeId} sem logo, buscando logo global do usuário ${unidade.usuario_id}`);
+        
+        // Se não tem configurações, criar objeto padrão
+        if (!configuracoes) {
+          configuracoes = {
+            nome_negocio: unidade.nome,
+            logo_url: null,
+            duracao_servico_horas: 1,
+            tempo_limite_agendar_horas: 2,
+            permitir_cancelamento: true,
+            tempo_limite_cancelar_horas: 4,
+            periodo_futuro_dias: 365
+          };
+        }
+        
+        // Buscar TODAS as unidades do usuário
+        const unidadesDoUsuario = await db('unidades')
+          .where('usuario_id', unidade.usuario_id)
+          .where('status', 'Ativo')
+          .orderBy('id', 'asc');
+        
+        console.log(`[PublicBooking] Encontradas ${unidadesDoUsuario.length} unidades do usuário ${unidade.usuario_id}`);
+        
+        // Buscar a primeira unidade que tenha logo configurado
+        for (const unidadeAux of unidadesDoUsuario) {
+          if (unidadeAux.id !== unidadeId) {
+            const configAux = await this.configuracaoModel.findByUnidade(unidadeAux.id);
+            if (configAux && configAux.logo_url) {
+              console.log(`[PublicBooking] ✅ Logo encontrado na unidade ${unidadeAux.id}: ${configAux.logo_url}`);
+              configuracoes.logo_url = configAux.logo_url;
+              configuracoes.nome_negocio = configAux.nome_negocio || configuracoes.nome_negocio;
+              break;
+            } else {
+              console.log(`[PublicBooking] ❌ Unidade ${unidadeAux.id} também não tem logo`);
+            }
+          }
+        }
+        
+        if (!configuracoes.logo_url) {
+          console.log(`[PublicBooking] ⚠️ Nenhuma unidade do usuário ${unidade.usuario_id} tem logo configurado`);
+        }
+      }
 
       // ✅ CORREÇÃO CRÍTICA: Buscar agentes usando tabela de associação agente_unidades
       // Isso garante que apenas agentes REALMENTE associados à unidade sejam retornados
@@ -830,6 +881,506 @@ class PublicBookingController {
         error: 'Erro interno do servidor',
         message: 'Erro ao criar agendamento'
       });
+    }
+  }
+
+  /**
+   * GET /api/public/agendamento/:id/preview
+   * Buscar dados básicos do agendamento (unidade_id) sem validação de telefone
+   * Usado para carregar logo e informações da unidade antes da validação
+   */
+  async getAgendamentoPreview(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log(`[PublicBooking] Buscando preview do agendamento #${id}`);
+
+      // Buscar apenas unidade_id do agendamento
+      const agendamento = await this.agendamentoModel.db('agendamentos')
+        .where('agendamentos.id', id)
+        .select('agendamentos.unidade_id')
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado',
+          message: 'Este agendamento não existe'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          unidade_id: agendamento.unidade_id
+        }
+      });
+
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao buscar preview do agendamento:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao buscar preview do agendamento'
+      });
+    }
+  }
+
+  /**
+   * GET /api/public/agendamento/:id
+   * Buscar detalhes de um agendamento público (com validação de telefone)
+   */
+  async getAgendamento(req, res) {
+    try {
+      const { id } = req.params;
+      const { telefone } = req.query;
+
+      console.log(`[PublicBooking] Buscando agendamento #${id} com telefone ${telefone}`);
+
+      if (!telefone) {
+        return res.status(400).json({
+          success: false,
+          error: 'Telefone é obrigatório',
+          message: 'Informe o telefone do cliente para validar o acesso'
+        });
+      }
+
+      // Buscar agendamento com todos os dados relacionados
+      const agendamento = await this.agendamentoModel.db('agendamentos')
+        .where('agendamentos.id', id)
+        .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+        .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+        .select(
+          'agendamentos.*',
+          'clientes.primeiro_nome as cliente_primeiro_nome',
+          'clientes.ultimo_nome as cliente_ultimo_nome',
+          'clientes.telefone as cliente_telefone',
+          'agentes.nome as agente_nome',
+          'agentes.nome_exibicao as agente_nome_exibicao',
+          'agentes.avatar_url as agente_avatar_url',
+          'unidades.nome as unidade_nome',
+          'unidades.endereco as unidade_endereco'
+        )
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado',
+          message: 'Este agendamento não existe'
+        });
+      }
+
+      // Validar telefone do cliente (normalizar ambos para comparação)
+      const telefoneNormalizado = telefone.replace(/\D/g, '');
+      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+
+      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
+          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+
+      // Buscar serviços do agendamento
+      const servicos = await this.agendamentoModel.db('agendamento_servicos')
+        .where('agendamento_id', id)
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos');
+
+      // Buscar extras do agendamento (se houver)
+      const extras = await this.agendamentoModel.db('agendamento_servicos_extras')
+        .where('agendamento_id', id)
+        .join('servicos_extras', 'agendamento_servicos_extras.servico_extra_id', 'servicos_extras.id')
+        .select('servicos_extras.id', 'servicos_extras.nome', 'servicos_extras.preco', 'servicos_extras.duracao_minutos');
+
+      // Montar resposta
+      const response = {
+        id: agendamento.id,
+        status: agendamento.status,
+        data_agendamento: agendamento.data_agendamento,
+        hora_inicio: agendamento.hora_inicio,
+        hora_fim: agendamento.hora_fim,
+        valor_total: parseFloat(agendamento.valor_total),
+        observacoes: agendamento.observacoes,
+        cliente: {
+          nome: `${agendamento.cliente_primeiro_nome} ${agendamento.cliente_ultimo_nome}`.trim(),
+          telefone: agendamento.cliente_telefone
+        },
+        agente: {
+          id: agendamento.agente_id,
+          nome: agendamento.agente_nome_exibicao || agendamento.agente_nome,
+          avatar_url: agendamento.agente_avatar_url
+        },
+        unidade: {
+          id: agendamento.unidade_id,
+          nome: agendamento.unidade_nome,
+          endereco: agendamento.unidade_endereco
+        },
+        servicos: servicos.map(s => ({
+          id: s.id,
+          nome: s.nome,
+          preco: parseFloat(s.preco),
+          duracao_minutos: s.duracao_minutos
+        })),
+        extras: extras.map(e => ({
+          id: e.id,
+          nome: e.nome,
+          preco: parseFloat(e.preco),
+          duracao_minutos: e.duracao_minutos
+        }))
+      };
+
+      res.json({
+        success: true,
+        data: response
+      });
+
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao buscar agendamento:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao buscar agendamento'
+      });
+    }
+  }
+
+  /**
+   * PUT /api/public/agendamento/:id/reagendar
+   * Reagendar um agendamento (alterar data e hora)
+   */
+  async reagendarAgendamento(req, res) {
+    try {
+      const { id } = req.params;
+      const { telefone, data_agendamento, hora_inicio } = req.body;
+
+      console.log(`[PublicBooking] Reagendando agendamento #${id}`);
+
+      // Validações
+      if (!telefone || !data_agendamento || !hora_inicio) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados incompletos',
+          message: 'Telefone, data e hora são obrigatórios'
+        });
+      }
+
+      // Buscar agendamento
+      const agendamento = await this.agendamentoModel.db('agendamentos')
+        .where('agendamentos.id', id)
+        .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+        .select('agendamentos.*', 'clientes.telefone as cliente_telefone')
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      // Validar telefone
+      const telefoneNormalizado = telefone.replace(/\D/g, '');
+      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+
+      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
+          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+
+      // Verificar se agendamento pode ser reagendado
+      if (agendamento.status === 'Cancelado') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento cancelado',
+          message: 'Não é possível reagendar um agendamento cancelado'
+        });
+      }
+
+      if (agendamento.status === 'Concluído') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento concluído',
+          message: 'Não é possível reagendar um agendamento já concluído'
+        });
+      }
+
+      // Buscar serviços para calcular duração total
+      const servicos = await this.agendamentoModel.db('agendamento_servicos')
+        .where('agendamento_id', id)
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .select('servicos.duracao_minutos');
+
+      const duracaoTotal = servicos.reduce((sum, s) => sum + s.duracao_minutos, 0);
+
+      // Calcular hora_fim
+      const [horas, minutos] = hora_inicio.split(':').map(Number);
+      const horaFimDate = new Date();
+      horaFimDate.setHours(horas, minutos + duracaoTotal, 0, 0);
+      const hora_fim = horaFimDate.toTimeString().slice(0, 5);
+
+      // Atualizar agendamento
+      await this.agendamentoModel.db('agendamentos')
+        .where('id', id)
+        .update({
+          data_agendamento,
+          hora_inicio,
+          hora_fim,
+          updated_at: this.agendamentoModel.db.fn.now()
+        });
+
+      console.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
+
+      // Enviar notificação de reagendamento (assíncrono)
+      setImmediate(async () => {
+        try {
+          // Buscar dados completos para enviar notificações
+          const dadosCompletos = await this.buscarDadosCompletos(id);
+          
+          if (dadosCompletos) {
+            await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
+            console.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
+            
+            // Atualizar lembretes programados com nova data/hora
+            await this.scheduledReminderService.atualizarLembretesProgramados({
+              agendamento_id: id,
+              unidade_id: agendamento.unidade_id,
+              data_agendamento,
+              hora_inicio,
+              cliente_telefone: dadosCompletos.cliente_telefone
+            });
+            console.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
+          }
+        } catch (err) {
+          console.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Agendamento reagendado com sucesso',
+        data: {
+          id,
+          data_agendamento,
+          hora_inicio,
+          hora_fim
+        }
+      });
+
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao reagendar agendamento:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao reagendar agendamento'
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/public/agendamento/:id/cancelar
+   * Cancelar um agendamento
+   */
+  async cancelarAgendamento(req, res) {
+    try {
+      const { id } = req.params;
+      const { telefone, motivo } = req.body;
+
+      console.log(`[PublicBooking] Cancelando agendamento #${id}`);
+
+      if (!telefone) {
+        return res.status(400).json({
+          success: false,
+          error: 'Telefone é obrigatório',
+          message: 'Informe o telefone do cliente para validar o cancelamento'
+        });
+      }
+
+      // Buscar agendamento
+      const agendamento = await this.agendamentoModel.db('agendamentos')
+        .where('agendamentos.id', id)
+        .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+        .select('agendamentos.*', 'clientes.telefone as cliente_telefone')
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      // Validar telefone
+      const telefoneNormalizado = telefone.replace(/\D/g, '');
+      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+
+      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
+          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+
+      // Verificar se já está cancelado
+      if (agendamento.status === 'Cancelado') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento já cancelado',
+          message: 'Este agendamento já foi cancelado anteriormente'
+        });
+      }
+
+      // Verificar se já foi concluído
+      if (agendamento.status === 'Concluído') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento concluído',
+          message: 'Não é possível cancelar um agendamento já concluído'
+        });
+      }
+
+      // Atualizar status para Cancelado
+      await this.agendamentoModel.db('agendamentos')
+        .where('id', id)
+        .update({
+          status: 'Cancelado',
+          observacoes: motivo ? `Cancelado pelo cliente: ${motivo}` : 'Cancelado pelo cliente',
+          updated_at: this.agendamentoModel.db.fn.now()
+        });
+
+      console.log(`✅ [PublicBooking] Agendamento #${id} cancelado`);
+
+      // Enviar notificação de cancelamento (assíncrono)
+      setImmediate(async () => {
+        try {
+          // Buscar dados completos para enviar notificações
+          const dadosCompletos = await this.buscarDadosCompletos(id);
+          
+          if (dadosCompletos) {
+            await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+            console.log(`✅ [PublicBooking] Notificações de cancelamento enviadas para agendamento #${id}`);
+            
+            // Cancelar lembretes programados
+            await this.scheduledReminderService.cancelarLembretesProgramados(id);
+            console.log(`✅ [PublicBooking] Lembretes programados cancelados para agendamento #${id}`);
+          }
+        } catch (err) {
+          console.error('❌ [PublicBooking] Erro ao enviar notificação de cancelamento:', err);
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Agendamento cancelado com sucesso'
+      });
+
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao cancelar agendamento:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao cancelar agendamento'
+      });
+    }
+  }
+
+  /**
+   * Método auxiliar para buscar dados completos do agendamento
+   * Usado para enviar notificações de WhatsApp
+   */
+  async buscarDadosCompletos(agendamentoId) {
+    try {
+      // Buscar dados do agendamento
+      const agendamento = await this.agendamentoModel.db('agendamentos')
+        .where('id', agendamentoId)
+        .first();
+
+      if (!agendamento) {
+        return null;
+      }
+
+      // Buscar cliente
+      const cliente = await this.agendamentoModel.db('clientes')
+        .where('id', agendamento.cliente_id)
+        .first();
+
+      // Buscar agente
+      const agente = await this.agendamentoModel.db('agentes')
+        .where('id', agendamento.agente_id)
+        .first();
+
+      // Buscar unidade (incluindo slug_url para link de booking)
+      const unidade = await this.agendamentoModel.db('unidades')
+        .where('id', agendamento.unidade_id)
+        .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
+        .first();
+
+      if (!cliente || !agente || !unidade) {
+        return null;
+      }
+
+      // Buscar serviços
+      const servicos = await this.agendamentoModel.db('agendamento_servicos')
+        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+        .where('agendamento_servicos.agendamento_id', agendamentoId)
+        .select('servicos.nome', 'servicos.preco');
+
+      // Formatar nome do cliente
+      const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
+
+      // Retornar dados formatados para WhatsApp
+      return {
+        // Dados do cliente
+        cliente: {
+          nome: nomeCliente
+        },
+        cliente_telefone: cliente.telefone,
+        
+        // Dados do agente
+        agente: {
+          nome: `${agente.nome} ${agente.sobrenome || ''}`.trim()
+        },
+        agente_telefone: agente.telefone,
+        
+        // Dados da unidade
+        unidade: {
+          id: unidade.id,
+          nome: unidade.nome,
+          endereco: unidade.endereco,
+          slug_url: unidade.slug_url
+        },
+        unidade_id: unidade.id,
+        unidade_telefone: unidade.telefone,
+        unidade_endereco: unidade.endereco,
+        unidade_slug: unidade.slug_url,
+        
+        // Dados do agendamento
+        agendamento_id: agendamento.id,
+        data_agendamento: agendamento.data_agendamento,
+        hora_inicio: agendamento.hora_inicio,
+        hora_fim: agendamento.hora_fim,
+        valor_total: agendamento.valor_total,
+        
+        // Serviços
+        servicos: servicos.map(s => ({
+          nome: s.nome,
+          preco: s.preco
+        }))
+      };
+
+    } catch (error) {
+      console.error('❌ [PublicBooking.buscarDadosCompletos] Erro ao buscar dados completos:', error);
+      return null;
     }
   }
 }
