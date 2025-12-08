@@ -110,6 +110,12 @@ export interface AppointmentDetail {
   createdAt: string;
   paymentMethod?: string;
   observacoes?: string; // Observações sobre o serviço realizado
+  // ✅ NOVO: Campos necessários para edição no modal
+  serviceId?: number;
+  startTime?: string;
+  endTime?: string;
+  locationId?: number;
+  clientPhone?: string;
 }
 
 export interface Client {

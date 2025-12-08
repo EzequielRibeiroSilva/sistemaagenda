@@ -222,11 +222,13 @@ interface NewAppointmentModalProps {
   newSlotData?: { agent: Agent, start: number, date: Date };
   selectedLocationId?: string; // ✅ CRÍTICO: ID do local selecionado no CalendarPage
   onSuccess?: () => void; // ✅ NOVO: Callback para atualizar dados após sucesso
+  // ✅ NOVO: Permite passar apenas o ID para buscar dados do agendamento internamente
+  appointmentId?: number;
 }
 
 // Dados mock removidos - agora usando dados reais do useInternalBooking
 
-const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, appointmentData, newSlotData, selectedLocationId, onSuccess }) => {
+const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, appointmentData: externalAppointmentData, newSlotData, selectedLocationId, onSuccess, appointmentId: propAppointmentId }) => {
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     // Hook para dados reais
@@ -243,6 +245,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         isLoading,
         error
     } = useInternalBooking();
+
+    // ✅ NOVO: Estado para dados carregados via appointmentId (prop)
+    const [loadedAppointmentData, setLoadedAppointmentData] = useState<ScheduleSlot['details'] | null>(null);
+    const [isLoadingFromProp, setIsLoadingFromProp] = useState(false);
+
+    // ✅ NOVO: Usar dados externos ou carregados internamente
+    const appointmentData = externalAppointmentData || loadedAppointmentData;
 
     // Hook para autenticação
     const { user } = useAuth();
@@ -293,6 +302,86 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const reaisPorPontos = settings?.reais_por_pontos || 10;
 
     const isEditing = !!appointmentData;
+    
+    // 🔍 DEBUG: Log para rastrear o que o modal está recebendo
+    useEffect(() => {
+        if (isOpen) {
+            console.log('🔍 [NewAppointmentModal] Modal aberto com:');
+            console.log('🔍 [NewAppointmentModal] isEditing:', isEditing);
+            console.log('🔍 [NewAppointmentModal] appointmentData:', appointmentData);
+            console.log('🔍 [NewAppointmentModal] newSlotData:', newSlotData);
+            console.log('🔍 [NewAppointmentModal] propAppointmentId:', propAppointmentId);
+        }
+    }, [isOpen, isEditing, appointmentData, newSlotData, propAppointmentId]);
+
+    // ✅ NOVO: Buscar dados do agendamento quando appointmentId for passado via prop
+    useEffect(() => {
+        const loadAppointmentFromId = async () => {
+            if (!isOpen || !propAppointmentId || externalAppointmentData) {
+                return; // Não buscar se já temos dados externos
+            }
+
+            console.log('🔄 [NewAppointmentModal] Buscando dados do agendamento ID:', propAppointmentId);
+            setIsLoadingFromProp(true);
+
+            try {
+                const detalhes = await fetchAgendamentoDetalhes(propAppointmentId);
+
+                if (detalhes) {
+                    console.log('✅ [NewAppointmentModal] Dados do agendamento carregados:', detalhes);
+                    console.log('📅 [NewAppointmentModal] data_agendamento raw:', detalhes.data_agendamento);
+
+                    // ✅ CORREÇÃO: Extrair apenas a data (YYYY-MM-DD) do formato ISO
+                    // Backend pode retornar: "2025-12-06" ou "2025-12-06T03:00:00.000Z"
+                    let dateISOClean = detalhes.data_agendamento;
+                    if (dateISOClean && dateISOClean.includes('T')) {
+                        dateISOClean = dateISOClean.split('T')[0]; // Pega apenas "2025-12-06"
+                    }
+                    console.log('📅 [NewAppointmentModal] dateISO limpo:', dateISOClean);
+
+                    // Converter dados do backend para formato ScheduleSlot['details']
+                    const formattedDate = new Date(dateISOClean + 'T12:00:00').toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric'
+                    });
+                    const formattedTime = `${detalhes.hora_inicio} - ${detalhes.hora_fim}`;
+
+                    const convertedData: ScheduleSlot['details'] = {
+                        id: detalhes.id.toString(),
+                        service: detalhes.servicos?.[0]?.nome || 'Serviço não encontrado',
+                        client: detalhes.cliente?.nome_completo || '',
+                        agentName: detalhes.agente?.nome || '',
+                        agentAvatar: '',
+                        agentEmail: '',
+                        agentPhone: '',
+                        date: formattedDate,
+                        time: formattedTime,
+                        serviceId: detalhes.servicos?.[0]?.id?.toString() || '',
+                        locationId: detalhes.unidade_id?.toString() || selectedLocationId || '', // ✅ USAR unidade_id do agendamento
+                        agentId: detalhes.agente_id?.toString() || '',
+                        startTime: detalhes.hora_inicio,
+                        endTime: detalhes.hora_fim,
+                        dateISO: dateISOClean, // ✅ CORREÇÃO: Usar data limpa (YYYY-MM-DD)
+                        status: detalhes.status as any || 'Aprovado',
+                        clientPhone: detalhes.cliente?.telefone || '',
+                        observacoes: detalhes.observacoes
+                    };
+
+                    console.log('📤 [NewAppointmentModal] Dados convertidos:', convertedData);
+                    setLoadedAppointmentData(convertedData);
+                } else {
+                    console.error('❌ [NewAppointmentModal] Agendamento não encontrado');
+                }
+            } catch (err) {
+                console.error('❌ [NewAppointmentModal] Erro ao buscar agendamento:', err);
+            } finally {
+                setIsLoadingFromProp(false);
+            }
+        };
+
+        loadAppointmentFromId();
+    }, [isOpen, propAppointmentId, externalAppointmentData, fetchAgendamentoDetalhes, selectedLocationId]);
 
     // Carregar dados iniciais
     useEffect(() => {
@@ -520,7 +609,18 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     // ✅ CORREÇÃO CRÍTICA: Resetar formulário ANTES de carregar dados (APENAS para novos agendamentos)
     useEffect(() => {
-        if (!isOpen) return;
+        // ✅ NOVO: Limpar dados carregados quando modal fecha
+        if (!isOpen) {
+            setLoadedAppointmentData(null);
+            // ✅ CORREÇÃO: Limpar estados de pontos ao fechar modal
+            setClienteId(null);
+            setPontosDisponiveis(0);
+            setPontosUsados(0);
+            setPodeUsarPontos(false);
+            setDescontoCalculado(0);
+            setValorFinal(0);
+            return;
+        }
 
         // ⚠️ IMPORTANTE: Só resetar se NÃO for edição
         if (isEditing) {
@@ -707,37 +807,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                 setClientPhone(details.cliente.telefone.replace('+55', '').trim());
                             }
                             
-                            // ✅ NOVO: Armazenar ID do cliente e buscar pontos disponíveis
+                            // ✅ CORREÇÃO: Apenas armazenar ID do cliente e unidade_id
+                            // A busca de pontos agora é feita em um useEffect separado que depende de settings
                             if (details.cliente && details.cliente.id) {
                                 setClienteId(details.cliente.id);
-                                
-                                // ✅ CORREÇÃO: Usar unidade_id do agendamento ao invés de selectedLocationId
-                                // Isso garante que a busca funcione na primeira abertura do modal
-                                const unidadeIdDoAgendamento = details.unidade_id || appointmentData.locationId;
-                                
-                                // Buscar pontos disponíveis do cliente
-                                if (pontosAtivo && unidadeIdDoAgendamento) {
-                                    try {
-                                        const token = localStorage.getItem('authToken');
-                                        const response = await fetch(
-                                            `http://localhost:3000/api/clientes/${details.cliente.id}/pontos?unidade_id=${unidadeIdDoAgendamento}`,
-                                            {
-                                                headers: {
-                                                    'Authorization': `Bearer ${token}`,
-                                                    'Content-Type': 'application/json'
-                                                }
-                                            }
-                                        );
-                                        
-                                        if (response.ok) {
-                                            const data = await response.json();
-                                            setPontosDisponiveis(data.pontos_disponiveis || 0);
-                                            setPodeUsarPontos(data.pode_usar_pontos || false);
-                                        }
-                                    } catch (error) {
-                                        console.error('❌ Erro ao buscar pontos do cliente:', error);
-                                    }
-                                }
                             }
                         }
                     } catch (error) {
@@ -785,7 +858,54 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         }
         // Depender de TUDO que afeta o preço
     }, [selectedServices, selectedExtras, allServices, allExtras]);
-    
+
+    // ✅ CORREÇÃO CRÍTICA: Buscar pontos do cliente DEPOIS que settings estiver carregado
+    // Este useEffect separado garante que pontosAtivo esteja correto antes de fazer a busca
+    useEffect(() => {
+        const buscarPontosDoCliente = async () => {
+            // ✅ Precisa de: modal aberto, cliente identificado, settings carregado, pontos ativo
+            if (!isOpen || !clienteId || !settings || !pontosAtivo) {
+                return;
+            }
+
+            // ✅ Usar locationId do appointmentData (vem do agendamento) ou selectedLocationId
+            const unidadeId = appointmentData?.locationId || selectedLocationId;
+
+            if (!unidadeId) {
+                console.log('⚠️ [Pontos] unidadeId não disponível');
+                return;
+            }
+
+            console.log('🔍 [Pontos] Buscando pontos do cliente:', clienteId, 'unidade:', unidadeId);
+
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(
+                    `http://localhost:3000/api/clientes/${clienteId}/pontos?unidade_id=${unidadeId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ [Pontos] Dados recebidos:', data);
+                    setPontosDisponiveis(data.pontos_disponiveis || 0);
+                    setPodeUsarPontos(data.pode_usar_pontos || false);
+                } else {
+                    console.error('❌ [Pontos] Erro na resposta:', response.status);
+                }
+            } catch (error) {
+                console.error('❌ [Pontos] Erro ao buscar pontos do cliente:', error);
+            }
+        };
+
+        buscarPontosDoCliente();
+    }, [isOpen, clienteId, settings, pontosAtivo, appointmentData?.locationId, selectedLocationId]);
+
     // ✅ NOVO: Calcular desconto e valor final quando pontos usados mudarem
     useEffect(() => {
         if (!pontosAtivo || pontosUsados === 0) {
@@ -793,12 +913,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setValorFinal(totalPrice);
             return;
         }
-        
+
         // Fórmula: desconto = (pontos / reais_por_pontos) * 1
         // Exemplo: 400 pontos / 20 = 20 reais de desconto
         const desconto = (pontosUsados / reaisPorPontos) * 1;
         const valorComDesconto = Math.max(0, totalPrice - desconto);
-        
+
         setDescontoCalculado(desconto);
         setValorFinal(valorComDesconto);
     }, [pontosUsados, totalPrice, pontosAtivo, reaisPorPontos]);
@@ -829,7 +949,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         e.stopPropagation();
     };
     
-    const modalTitle = isEditing ? 'Editar Compromisso' : 'Novo Agendamento';
+    const modalTitle = isEditing ? 'Editar Agendamento' : 'Novo Agendamento';
     const submitButtonText = isEditing ? 'Salvar Alterações' : 'Criar Compromisso';
 
     const handleSelectClient = async (client: InternalCliente) => {
@@ -1111,15 +1231,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
                         {/* Loading Indicator */}
-                        {isLoadingAppointment && (
+                        {(isLoadingAppointment || isLoadingFromProp) && (
                             <div className="flex items-center justify-center py-12">
                                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
                                 <span className="ml-3 text-gray-600 font-medium">Carregando detalhes do agendamento...</span>
                             </div>
                         )}
-                        
+
                         {/* Service Section */}
-                        {!isLoadingAppointment && (
+                        {!isLoadingAppointment && !isLoadingFromProp && (
                         <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-4">
                             <ServiceMultiSelectDropdown
                                 label="Escolha Do Serviço"
@@ -1204,7 +1324,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         )}
 
                         {/* Client Section */}
-                        {!isLoadingAppointment && (
+                        {!isLoadingAppointment && !isLoadingFromProp && (
                         <FormSection
                             title="Cliente"
                             actions={!isSearchingClient && (
@@ -1219,7 +1339,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         )}
 
                         {/* Price Section */}
-                        {!isLoadingAppointment && (
+                        {!isLoadingAppointment && !isLoadingFromProp && (
                         <FormSection
                             title="Total do Serviço"
                             actions={
@@ -1243,7 +1363,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         )}
                         
                         {/* Payment Section - Only shows on edit */}
-                        {!isLoadingAppointment && isEditing && (
+                        {!isLoadingAppointment && !isLoadingFromProp && isEditing && (
                             <FormSection title="Finalizar Agendamento">
                                 <div className="space-y-4">
                                      <div className="text-sm space-y-2 text-gray-600 p-3 bg-gray-50 rounded-lg">

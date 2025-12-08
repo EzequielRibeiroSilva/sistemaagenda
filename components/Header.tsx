@@ -222,6 +222,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
         </div>
         
       </header>
+      {/* ✅ REATIVADO: Modal de Novo Agendamento */}
       <NewAppointmentModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
       {isMobileSearchOpen && (
         <MobileSearchOverlay

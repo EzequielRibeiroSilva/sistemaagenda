@@ -440,7 +440,6 @@ const NotificationsPage: React.FC = () => {
           isOpen={isEditModalOpen}
           onClose={handleCloseEditModal}
           selectedLocationId={selectedLocationFilter}
-          isEditing={true}
           appointmentId={selectedAgendamentoId}
           onSuccess={handleEditSuccess}
         />
