@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Search, Plus, RotateCw, ChevronDown, Check } from './Icons';
@@ -13,6 +12,7 @@ import {
 } from '../hooks/useInternalBooking';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
+import { useToast } from '../contexts/ToastContext';
 
 // Helper components for styling consistency
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (

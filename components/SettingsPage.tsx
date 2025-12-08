@@ -4,6 +4,7 @@ import { Copy, Check, MessageSquare, Eye, Upload } from './Icons';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
+import { useToast } from '../contexts/ToastContext';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
@@ -44,6 +45,7 @@ interface SettingsPageProps {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     const { user, updateUser } = useAuth();
+    const toast = useToast();
     const {
         settings,
         loading,
@@ -205,10 +207,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 setConfirmPassword('');
             }
 
-            alert('Definições salvas com sucesso!');
+            toast.success('Definições Salvas!', 'Todas as configurações foram atualizadas com sucesso.');
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro ao salvar definições';
-            alert(`Erro: ${errorMessage}`);
+            toast.error('Erro ao Salvar', errorMessage);
         } finally {
             setSavingSettings(false);
         }

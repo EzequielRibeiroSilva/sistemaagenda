@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { Plus, Edit, MapPin, Phone, AlertCircle, CheckCircle, XCircle, X } from './Icons';
+import { Plus, Edit, MapPin, Phone, AlertCircle, CheckCircle, XCircle, X, Lock, Unlock } from './Icons';
 import { useUnitManagement, Unit } from '../hooks/useUnitManagement';
+import { useToast } from '../contexts/ToastContext';
 
 interface LocationCardProps {
   id: number;
@@ -12,9 +13,10 @@ interface LocationCardProps {
   onEdit: (id: number) => void;
   onToggleStatus: (id: number, currentStatus: 'Ativo' | 'Bloqueado') => void;
   onDelete: (id: number) => void;
+  isConfirmingDelete?: boolean;
 }
 
-const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus, onDelete }) => (
+const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus, onDelete, isConfirmingDelete = false }) => (
   <div className="bg-white rounded-lg shadow-sm border border-gray-200">
     <div className="h-40 bg-gradient-to-br from-blue-500 to-blue-600 rounded-t-lg flex items-center justify-center">
       <MapPin className="w-12 h-12 text-white opacity-80" />
@@ -39,8 +41,12 @@ const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefon
         <div className="flex space-x-2">
           <button
             onClick={() => onDelete(id)}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Excluir"
+            className={`p-2 rounded-lg transition-colors ${
+              isConfirmingDelete
+                ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                : 'text-red-600 hover:bg-red-50'
+            }`}
+            title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir'}
           >
             <X className="w-4 h-4" />
           </button>
@@ -48,15 +54,15 @@ const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefon
             onClick={() => onToggleStatus(id, status)}
             className={`p-2 rounded-lg transition-colors ${
               status === 'Ativo'
-                ? 'text-red-600 hover:bg-red-50'
-                : 'text-green-600 hover:bg-green-50'
+                ? 'text-blue-600 hover:bg-blue-50'
+                : 'text-red-600 hover:bg-red-50'
             }`}
-            title={status === 'Ativo' ? 'Bloquear' : 'Ativar'}
+            title={status === 'Ativo' ? 'Bloquear' : 'Desbloquear'}
           >
             {status === 'Ativo' ? (
-              <XCircle className="w-4 h-4" />
+              <Lock className="w-4 h-4" />
             ) : (
-              <CheckCircle className="w-4 h-4" />
+              <Unlock className="w-4 h-4" />
             )}
           </button>
           <button
@@ -125,6 +131,7 @@ interface LocationsPageProps {
 }
 
 const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLocation }) => {
+  const toast = useToast();
   const {
     units,
     limitInfo,
@@ -138,31 +145,49 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
 
   const [statusLoading, setStatusLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   const handleToggleStatus = async (id: number, currentStatus: 'Ativo' | 'Bloqueado') => {
     const newStatus = currentStatus === 'Ativo' ? 'Bloqueado' : 'Ativo';
+    const unit = units.find(u => u.id === id);
 
     setStatusLoading(id);
     const success = await updateUnitStatus(id, newStatus);
     setStatusLoading(null);
 
-    if (!success) {
-      // O erro já é tratado pelo hook
-      console.error('❌ [LocationsPage] Erro ao alterar status da unidade');
+    if (success) {
+      const action = newStatus === 'Ativo' ? 'ativado' : 'bloqueado';
+      toast.success('Status Atualizado!', `O local "${unit?.nome}" foi ${action} com sucesso.`);
+    } else {
+      toast.error('Erro ao Alterar Status', 'Não foi possível alterar o status do local.');
     }
   };
 
   const handleDeleteLocation = async (id: number) => {
-    if (!confirm('Tem certeza que deseja excluir este local? Esta ação não pode ser desfeita.')) {
-      return;
-    }
+    const unit = units.find(u => u.id === id);
+    
+    // Se já está confirmando este item, executar a exclusão
+    if (confirmingDelete === id) {
+      setDeleteLoading(id);
+      setConfirmingDelete(null);
+      
+      const success = await deleteUnit(id);
+      setDeleteLoading(null);
 
-    setDeleteLoading(id);
-    const success = await deleteUnit(id);
-    setDeleteLoading(null);
-
-    if (!success) {
-      console.error('❌ [LocationsPage] Erro ao excluir unidade');
+      if (success) {
+        toast.success('Local Excluído!', `O local "${unit?.nome}" foi removido com sucesso.`);
+      } else {
+        toast.error('Erro ao Excluir', 'Não foi possível excluir o local. Tente novamente.');
+      }
+    } else {
+      // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
+      setConfirmingDelete(id);
+      toast.warning('Confirme a Exclusão', `Clique novamente no X para confirmar a exclusão de "${unit?.nome}".`);
+      
+      // Resetar confirmação após 5 segundos
+      setTimeout(() => {
+        setConfirmingDelete(null);
+      }, 5000);
     }
   };
 
@@ -219,6 +244,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
               key={unit.id}
               id={unit.id}
               name={unit.nome}
+              isConfirmingDelete={confirmingDelete === unit.id}
               endereco={unit.endereco}
               telefone={unit.telefone}
               status={unit.status}
