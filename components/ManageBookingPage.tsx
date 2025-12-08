@@ -194,6 +194,9 @@ const ManageBookingPage: React.FC = () => {
             placeholder="(85) 99999-9999"
             className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
           />
+          <p className="text-xs text-gray-500 mt-2">
+            Você pode digitar com ou sem DDD e com ou sem código do país. Ex: +5585985502643, 85985502643, 985502643 ou 85502643
+          </p>
         </div>
       </div>
 
