@@ -973,15 +973,69 @@ class PublicBookingController {
       }
 
       // Validar telefone do cliente (normalizar ambos para comparação)
-      const telefoneNormalizado = telefone.replace(/\D/g, '');
-      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      let telefoneNormalizado = telefone.replace(/\D/g, '');
+      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
-          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+      // ✅ VALIDAÇÃO FLEXÍVEL PARA TELEFONES BRASILEIROS
+      // Aceita 4 formatos válidos:
+      // 1. Com código do país: +5585985502643 (13 dígitos: 55 + 85 + 985502643)
+      // 2. Completo com DDD: 85985502643 (11 dígitos: 85 + 985502643)
+      // 3. Com prefixo 9 sem DDD: 985502643 (9 dígitos)
+      // 4. Sem prefixo 9 sem DDD: 85502643 (8 dígitos)
+      
+      // Remover código do país (55) se presente
+      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
+        telefoneNormalizado = telefoneNormalizado.substring(2); // Remove '55'
+      }
+      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
+        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2); // Remove '55'
+      }
+      
+      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9); // 985502643
+      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8); // 85502643
+      
+      const telefoneValido = (
+        telefoneNormalizado === telefoneClienteNormalizado || // Completo: 85985502643
+        telefoneNormalizado === ultimosNoveDigitos ||         // Com 9: 985502643
+        telefoneNormalizado === ultimosOitoDigitos            // Sem 9: 85502643
+      );
+      
+      if (!telefoneValido) {
+        console.log(`[PublicBooking] ❌ Validação de telefone falhou:`, {
+          telefoneDigitado: telefoneNormalizado,
+          telefoneEsperado: telefoneClienteNormalizado,
+          formatoAceitos: {
+            completo: telefoneClienteNormalizado,
+            com9: ultimosNoveDigitos,
+            sem9: ultimosOitoDigitos
+          }
+        });
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
           message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+      
+      console.log(`[PublicBooking] ✅ Telefone validado com sucesso para agendamento #${id}`);
+
+      // ✅ VALIDAÇÃO DE DATA: Bloquear acesso a agendamentos passados
+      // Cliente não pode gerenciar agendamentos que já aconteceram
+      const dataAgendamento = new Date(agendamento.data_agendamento);
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0); // Zerar horas para comparar apenas a data
+      
+      if (dataAgendamento < hoje) {
+        const diasPassados = Math.floor((hoje - dataAgendamento) / (1000 * 60 * 60 * 24));
+        console.log(`[PublicBooking] ❌ Agendamento #${id} já passou há ${diasPassados} dia(s)`);
+        return res.status(410).json({
+          success: false,
+          error: 'Agendamento expirado',
+          message: 'Este agendamento já aconteceu e não pode mais ser gerenciado',
+          data: {
+            data_agendamento: agendamento.data_agendamento,
+            dias_passados: diasPassados
+          }
         });
       }
 
@@ -1083,16 +1137,47 @@ class PublicBookingController {
         });
       }
 
-      // Validar telefone
-      const telefoneNormalizado = telefone.replace(/\D/g, '');
-      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      // Validar telefone (mesma lógica do getAgendamento)
+      let telefoneNormalizado = telefone.replace(/\D/g, '');
+      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
-          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+      // Remover código do país (55) se presente
+      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
+        telefoneNormalizado = telefoneNormalizado.substring(2);
+      }
+      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
+        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2);
+      }
+      
+      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9);
+      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8);
+      
+      const telefoneValido = (
+        telefoneNormalizado === telefoneClienteNormalizado ||
+        telefoneNormalizado === ultimosNoveDigitos ||
+        telefoneNormalizado === ultimosOitoDigitos
+      );
+
+      if (!telefoneValido) {
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
           message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+
+      // ✅ VALIDAÇÃO DE DATA: Bloquear reagendamento de agendamentos passados
+      const dataAgendamentoAtual = new Date(agendamento.data_agendamento);
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
+      if (dataAgendamentoAtual < hoje) {
+        const diasPassados = Math.floor((hoje - dataAgendamentoAtual) / (1000 * 60 * 60 * 24));
+        console.log(`[PublicBooking] ❌ Tentativa de reagendar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
+        return res.status(410).json({
+          success: false,
+          error: 'Agendamento expirado',
+          message: 'Este agendamento já aconteceu e não pode mais ser reagendado'
         });
       }
 
@@ -1218,16 +1303,47 @@ class PublicBookingController {
         });
       }
 
-      // Validar telefone
-      const telefoneNormalizado = telefone.replace(/\D/g, '');
-      const telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      // Validar telefone (mesma lógica do getAgendamento)
+      let telefoneNormalizado = telefone.replace(/\D/g, '');
+      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      if (!telefoneClienteNormalizado.includes(telefoneNormalizado) && 
-          !telefoneNormalizado.includes(telefoneClienteNormalizado)) {
+      // Remover código do país (55) se presente
+      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
+        telefoneNormalizado = telefoneNormalizado.substring(2);
+      }
+      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
+        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2);
+      }
+      
+      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9);
+      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8);
+      
+      const telefoneValido = (
+        telefoneNormalizado === telefoneClienteNormalizado ||
+        telefoneNormalizado === ultimosNoveDigitos ||
+        telefoneNormalizado === ultimosOitoDigitos
+      );
+
+      if (!telefoneValido) {
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
           message: 'Telefone não corresponde ao agendamento'
+        });
+      }
+
+      // ✅ VALIDAÇÃO DE DATA: Bloquear cancelamento de agendamentos passados
+      const dataAgendamentoAtual = new Date(agendamento.data_agendamento);
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
+      if (dataAgendamentoAtual < hoje) {
+        const diasPassados = Math.floor((hoje - dataAgendamentoAtual) / (1000 * 60 * 60 * 24));
+        console.log(`[PublicBooking] ❌ Tentativa de cancelar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
+        return res.status(410).json({
+          success: false,
+          error: 'Agendamento expirado',
+          message: 'Este agendamento já aconteceu e não pode mais ser cancelado'
         });
       }
 
