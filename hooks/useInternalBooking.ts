@@ -41,6 +41,7 @@ export interface AgendamentoDetalhes {
   id: number;
   cliente_id: number;
   agente_id: number;
+  unidade_id: number; // ✅ NOVO: ID da unidade
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;

@@ -484,7 +484,24 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     // ✅ NOVO: Handler para abrir modal de edição ao clicar na linha
     const handleRowClick = (app: AppointmentDetail) => {
-        // Converter AppointmentDetail para o formato esperado pelo modal
+        console.log('🎯 [AppointmentsPage] ===== CLIQUE NA LINHA DETECTADO =====');
+        console.log('🎯 [AppointmentsPage] VOCÊ CLICOU NO ID #' + app.id);
+        console.log('🔍 [AppointmentsPage] handleRowClick - Dados BRUTOS do agendamento:', app);
+        console.log('🔍 [AppointmentsPage] serviceId:', app.serviceId);
+        console.log('🔍 [AppointmentsPage] startTime:', app.startTime);
+        console.log('🔍 [AppointmentsPage] endTime:', app.endTime);
+        console.log('🔍 [AppointmentsPage] locationId:', app.locationId);
+        console.log('🔍 [AppointmentsPage] agent.id:', app.agent.id);
+
+        // ✅ CORREÇÃO: Formatar data e horário similar ao CalendarPage
+        const formattedDate = new Date(app.date + 'T00:00:00').toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        const formattedTime = app.startTime && app.endTime ? `${app.startTime} - ${app.endTime}` : app.dateTime;
+
+        // ✅ CORREÇÃO: Converter AppointmentDetail para o formato esperado pelo modal (igual ao CalendarPage)
         const appointmentData: ScheduleSlot['details'] = {
             id: app.id.toString(),
             service: app.service,
@@ -493,21 +510,31 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             agentAvatar: app.agent.avatar,
             agentEmail: '', // Não temos esse dado aqui
             agentPhone: '', // Não temos esse dado aqui
-            date: app.dateTime,
-            time: app.dateTime.split(' - ')[1] || '',
-            serviceId: '', // Será carregado do backend
-            locationId: selectedLocationFilter,
+            date: formattedDate,
+            time: formattedTime,
+            // ✅ CRÍTICO: IDs e horários brutos para submissão (igual ao CalendarPage)
+            serviceId: app.serviceId?.toString() || '',
+            locationId: app.locationId?.toString() || selectedLocationFilter,
+            agentId: app.agent.id?.toString() || '',
+            startTime: app.startTime || '',
+            endTime: app.endTime || '',
+            dateISO: app.date, // Data no formato ISO (YYYY-MM-DD)
             status: app.status,
-            agentId: app.agent.id, // ✅ CORREÇÃO: Passar ID do agente
-            startTime: app.dateTime.split(' - ')[1] || '',
-            endTime: '', // Será carregado do backend
-            dateISO: app.date,
-            clientPhone: '', // Será carregado do backend
+            clientPhone: app.clientPhone || '',
             observacoes: app.observacoes
         };
-        
+
+        console.log('📤 [AppointmentsPage] Dados CONVERTIDOS enviados ao modal:', appointmentData);
+        console.log('📤 [AppointmentsPage] appointmentData.serviceId:', appointmentData.serviceId);
+        console.log('📤 [AppointmentsPage] appointmentData.agentId:', appointmentData.agentId);
+        console.log('📤 [AppointmentsPage] appointmentData.startTime:', appointmentData.startTime);
+        console.log('📤 [AppointmentsPage] appointmentData.endTime:', appointmentData.endTime);
+        console.log('📤 [AppointmentsPage] appointmentData.dateISO:', appointmentData.dateISO);
+
+        console.log('🔄 [AppointmentsPage] Atualizando estados do modal...');
         setEditingAppointment(appointmentData);
         setIsEditModalOpen(true);
+        console.log('✅ [AppointmentsPage] Estados atualizados - Modal deve abrir agora!');
     };
 
     // ✅ NOVO: Handler para fechar modal e recarregar dados
@@ -670,10 +697,24 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                 filteredAppointments.map(app => (
                                     <tr 
                                         key={app.id} 
-                                        className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
-                                        onClick={() => handleRowClick(app)}
+                                        className="border-t border-gray-200 hover:bg-gray-50"
                                     >
-                                        {visibleColumns.id && <td className="p-3 w-28 text-gray-500 whitespace-nowrap">{app.id}</td>}
+                                        {visibleColumns.id && (
+                                            <td className="p-3 w-28 whitespace-nowrap">
+                                                <button
+                                                    onClick={(e) => {
+                                                        console.log('🔥 [AppointmentsPage] BOTÃO CLICADO! ID:', app.id);
+                                                        e.preventDefault();
+                                                        e.stopPropagation(); // Evitar duplo clique
+                                                        handleRowClick(app);
+                                                    }}
+                                                    className="text-blue-600 hover:text-blue-800 font-semibold hover:underline cursor-pointer"
+                                                    type="button"
+                                                >
+                                                    #{app.id}
+                                                </button>
+                                            </td>
+                                        )}
                                         {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
                                         {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
                                         {visibleColumns.tempoRestante && <td className="p-3 w-32"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
@@ -857,11 +898,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             )}
             
             {/* ✅ NOVO: Modal de Edição de Agendamento */}
+            {console.log('🎭 [AppointmentsPage] Renderizando modal - isOpen:', isEditModalOpen, 'appointmentData:', editingAppointment)}
             <NewAppointmentModal
                 isOpen={isEditModalOpen}
                 onClose={handleCloseEditModal}
                 selectedLocationId={selectedLocationFilter}
-                isEditing={true}
                 appointmentData={editingAppointment}
                 onSuccess={handleEditSuccess}
             />

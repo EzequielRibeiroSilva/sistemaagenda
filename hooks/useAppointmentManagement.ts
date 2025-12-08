@@ -24,6 +24,7 @@ export interface BackendAgendamento {
   agente_nome: string;
   agente_avatar_url?: string;
   unidade_nome: string;
+  servicos?: Array<{ id: number; nome: string; preco: number; comissao_percentual?: number }>; // ✅ NOVO: Serviços do agendamento
 }
 
 // Interface para filtros
@@ -238,7 +239,13 @@ export const useAppointmentManagement = () => {
       paymentStatus: backendData.status_pagamento || 'Não Pago', // ✅ CORREÇÃO: Mapear status_pagamento do backend
       createdAt,
       paymentMethod: backendData.metodo_pagamento || 'Não definido', // ✅ CORREÇÃO: Mapear metodo_pagamento do backend
-      observacoes: backendData.observacoes || undefined // ✅ NOVO: Mapear observações do backend
+      observacoes: backendData.observacoes || undefined, // ✅ NOVO: Mapear observações do backend
+      // ✅ CRÍTICO: Campos necessários para edição no modal
+      serviceId: backendData.servicos && backendData.servicos.length > 0 ? backendData.servicos[0].id : undefined, // ✅ CORREÇÃO: Usar primeiro serviço do array
+      startTime: backendData.hora_inicio.substring(0, 5), // Remove segundos
+      endTime: backendData.hora_fim.substring(0, 5), // Remove segundos
+      locationId: backendData.unidade_id,
+      clientPhone: backendData.cliente_telefone
     };
   }, []);
 
