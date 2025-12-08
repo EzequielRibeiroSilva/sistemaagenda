@@ -211,49 +211,46 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
     const today = new Date();
 
-    // Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
+    // 🎯 CORREÇÃO CRÍTICA: Calcular horários dinâmicos baseados no DIA DA SEMANA ATUAL
+    // PROBLEMA ANTERIOR: Pegava o horário mais amplo de TODOS os dias (ex: Sábado 20h aplicado em Segunda)
+    // SOLUÇÃO: Calcular horário específico do dia atual (currentDate)
     const { startHour, endHour } = useMemo(() => {
-
-        
         // Se há unidade selecionada, usar seus horários de funcionamento
         if (selectedLocationFilter && selectedLocationFilter !== 'all' && unitSchedules[selectedLocationFilter]) {
             const schedules = unitSchedules[selectedLocationFilter];
             
-
+            // 🎯 NOVO: Obter o dia da semana da data atual (1=Segunda, 7=Domingo)
+            const currentDayOfWeek = currentDate.getDay() === 0 ? 7 : currentDate.getDay();
             
-            // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
+            // 🎯 NOVO: Buscar o horário específico do dia atual
+            const daySchedule = schedules.find(s => s.dia_semana === currentDayOfWeek);
+            
+            // Se o dia está fechado ou não tem horários, usar horário padrão
+            if (!daySchedule || !daySchedule.is_aberto || !Array.isArray(daySchedule.horarios_json) || daySchedule.horarios_json.length === 0) {
+                return { startHour: 8, endHour: 21 };
+            }
+            
+            // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento DO DIA ATUAL
             let minHour = 23;
             let maxHour = 0;
-            let hasValidSchedule = false; // 🚩 NOVO: Flag para rastrear se um horário foi encontrado
             
-            schedules.forEach(schedule => {
-
+            daySchedule.horarios_json.forEach(periodo => {
+                const startH = parseInt(periodo.inicio.split(':')[0]);
+                const endH = parseInt(periodo.fim.split(':')[0]);
                 
-                // ✅ CORREÇÃO CRÍTICA: Validar que é um Array antes de iterar
-                if (schedule.is_aberto && Array.isArray(schedule.horarios_json) && schedule.horarios_json.length > 0) {
-                    schedule.horarios_json.forEach(periodo => {
-                        const startH = parseInt(periodo.inicio.split(':')[0]);
-                        const endH = parseInt(periodo.fim.split(':')[0]);
-                        
-
-                        
-                        if (startH < minHour) minHour = startH;
-                        if (endH > maxHour) maxHour = endH;
-                        
-                        hasValidSchedule = true; // 🎯 ATUALIZAÇÃO CRÍTICA: Marcar que encontrou horário válido
-                    });
-                }
+                if (startH < minHour) minHour = startH;
+                if (endH > maxHour) maxHour = endH;
             });
             
-            // ✅ USANDO: A nova flag de rastreamento (não mais minHour < 23 && maxHour > 0)
-            if (hasValidSchedule) {
-                return { startHour: minHour, endHour: maxHour };
-            }
+            // ✅ RESULTADO: Horário específico do dia atual
+            // Segunda a Sexta: 09:00-17:00 → startHour=9, endHour=17
+            // Sábado: 09:00-20:00 → startHour=9, endHour=20
+            return { startHour: minHour, endHour: maxHour };
         }
         
         // Fallback: usar horários padrão
         return { startHour: 8, endHour: 21 };
-    }, [selectedLocationFilter, unitSchedules]);
+    }, [selectedLocationFilter, unitSchedules, currentDate]); // ✅ CRÍTICO: Adicionar currentDate nas dependências
 
     // ✅ CORREÇÃO CRÍTICA: Todos os grids usam horários dinâmicos do local selecionado
     const START_HOUR_DAY = startHour;
