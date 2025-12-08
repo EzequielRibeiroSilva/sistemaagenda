@@ -4,6 +4,7 @@ import AgentScheduleEditor from './AgentScheduleEditor';
 import { useAgentManagement, AgentDetails } from '../hooks/useAgentManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
+import { useToast } from '../contexts/ToastContext';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -65,6 +66,7 @@ interface EditAgentPageProps {
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
     const { fetchAgentById, updateAgent, loading, error } = useAgentManagement();
     const { user, updateUser } = useAuth();
+    const toast = useToast();
     const [agentData, setAgentData] = useState<AgentDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -165,12 +167,12 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
         const file = event.target.files?.[0];
         if (file) {
             if (!file.type.startsWith('image/')) {
-                alert('Por favor, selecione apenas arquivos de imagem.');
+                toast.warning('Arquivo Inválido', 'Por favor, selecione apenas arquivos de imagem.');
                 return;
             }
 
             if (file.size > 5 * 1024 * 1024) {
-                alert('A imagem deve ter no máximo 5MB.');
+                toast.warning('Arquivo Muito Grande', 'A imagem deve ter no máximo 5MB.');
                 return;
             }
 
@@ -218,7 +220,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             const result = await updateAgent(agentData.id, updateData);
 
             if (result) {
-                alert('Agente atualizado com sucesso!');
+                toast.success('Alterações Salvas!', 'As informações do agente foram atualizadas com sucesso.');
 
                 // Se o usuário logado é o agente que foi editado, atualizar o avatar no contexto
                 if (user.agentId === agentData.id.toString() && result?.avatar_url) {
@@ -231,7 +233,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 throw new Error('Erro ao atualizar agente');
             }
         } catch (error) {
-            alert('Erro ao salvar alterações: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            toast.error('Erro ao Salvar', `Não foi possível salvar as alterações: ${errorMessage}`);
         } finally {
             setIsSaving(false);
         }

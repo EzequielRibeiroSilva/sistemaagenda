@@ -5,6 +5,7 @@ import CalendarExceptionsEditor from './CalendarExceptionsEditor';
 import { useUnitManagement, CalendarException } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
 import { getDefaultSchedule, mergeWithDefaultSchedule, type ScheduleDay } from '../utils/schedule';
+import { useToast } from '../contexts/ToastContext';
 
 // Reusable components (copied from CreateLocationPage)
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
@@ -132,6 +133,7 @@ interface EditLocationPageProps {
 }
 
 const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, locationId }) => {
+    const toast = useToast();
     const {
         fetchUnitById,
         updateUnit,
@@ -296,14 +298,17 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
         if (!formData.nome.trim()) {
             errors.nome = 'Nome do local é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o nome do local.');
         }
 
         if (!formData.endereco.trim()) {
             errors.endereco = 'Endereço é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o endereço do local.');
         }
 
         if (!formData.telefone.trim()) {
             errors.telefone = 'Telefone é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o telefone do local.');
         }
 
         setFormErrors(errors);
@@ -340,10 +345,11 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
         setIsSubmitting(false);
 
         if (success) {
+            toast.success('Local Atualizado!', `O local "${formData.nome}" foi atualizado com sucesso.`);
             // Redirect back to locations list
             setActiveView('locations-list');
         } else {
-            console.error('❌ [EditLocationPage] Falha ao atualizar unidade');
+            toast.error('Erro ao Atualizar Local', 'Não foi possível atualizar o local. Tente novamente.');
         }
     };
 

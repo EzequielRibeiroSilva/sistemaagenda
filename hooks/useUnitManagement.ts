@@ -281,7 +281,8 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
         body: JSON.stringify({ status }),
       });
 
-      // ✅ REMOVIDO fetchUnits() para evitar loops - a lista será atualizada quando necessário
+      // ✅ Recarregar lista para refletir mudança na UI
+      await fetchUnits();
 
       return true;
     } catch (err) {
@@ -292,7 +293,7 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, fetchUnits]);
 
   // Deletar unidade (apenas MASTER)
   const deleteUnit = useCallback(async (id: number): Promise<boolean> => {

@@ -5,6 +5,7 @@ import CalendarExceptionsEditor, { CalendarException } from './CalendarException
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
 import { getDefaultSchedule } from '../utils/schedule';
+import { useToast } from '../contexts/ToastContext';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -124,6 +125,7 @@ interface CreateLocationPageProps {
 }
 
 const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }) => {
+    const toast = useToast();
     const {
         createUnit,
         loading,
@@ -208,14 +210,17 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
 
         if (!formData.nome.trim()) {
             errors.nome = 'Nome do local é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o nome do local.');
         }
 
         if (!formData.endereco.trim()) {
             errors.endereco = 'Endereço é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o endereço do local.');
         }
 
         if (!formData.telefone.trim()) {
             errors.telefone = 'Telefone é obrigatório';
+            toast.warning('Campo Obrigatório', 'Por favor, preencha o telefone do local.');
         }
 
         setFormErrors(errors);
@@ -259,8 +264,11 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
         setIsSubmitting(false);
 
         if (success) {
+            toast.success('Local Criado!', `O local "${formData.nome}" foi adicionado com sucesso.`);
             // Redirect back to locations list
             setActiveView('locations-list');
+        } else {
+            toast.error('Erro ao Criar Local', 'Não foi possível criar o local. Tente novamente.');
         }
     };
 

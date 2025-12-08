@@ -3,6 +3,7 @@ import { Plus, Check, ImagePlaceholder } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
 import { useAgentManagement } from '../hooks/useAgentManagement';
 import { AgentUnitScheduleState } from '../types';
+import { useToast } from '../contexts/ToastContext';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -86,14 +87,14 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     senha: '',
     biografia: '',
     nome_exibicao: '',
-    // unidade_id: 1, // ✅ REMOVIDO: Backend usa unidade_id do token JWT
+    // unidade_id: 1, // REMOVIDO: Backend usa unidade_id do token JWT
     comissao_percentual: 60,
     observacoes: ''
   });
   
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
   
-  // ✅ ETAPA 3: Novo estado para agendas multi-unidade
+  // ETAPA 3: Novo estado para agendas multi-unidade
   const [agentSchedules, setAgentSchedules] = useState<AgentUnitScheduleState[]>([]);
   
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -102,8 +103,9 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // ✅ ETAPA 3: Hook para gerenciamento de agentes (com adminPlan e availableUnits)
+  // ETAPA 3: Hook para gerenciamento de agentes (com adminPlan e availableUnits)
   const { services, createAgent, loading, error, adminPlan, availableUnits } = useAgentManagement();
+  const toast = useToast();
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -161,12 +163,12 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     const file = event.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Por favor, selecione apenas arquivos de imagem.');
+        toast.warning('Arquivo Inválido', 'Por favor, selecione apenas arquivos de imagem.');
         return;
       }
       
       if (file.size > 5 * 1024 * 1024) {
-        alert('A imagem deve ter no máximo 5MB.');
+        toast.warning('Arquivo Muito Grande', 'A imagem deve ter no máximo 5MB.');
         return;
       }
       
@@ -187,12 +189,12 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     }
 
     if (!formData.nome || !formData.email) {
-      alert('Nome e email são obrigatórios.');
+      toast.warning('Campos Obrigatórios', 'Nome e email são obrigatórios.');
       return;
     }
     
     if (selectedServices.length === 0) {
-      alert('Selecione pelo menos um serviço.');
+      toast.warning('Serviço Necessário', 'Selecione pelo menos um serviço.');
       return;
     }
 
@@ -238,14 +240,15 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
       const success = await createAgent(agentData);
       
       if (success) {
-        alert('Agente criado com sucesso!');
+        toast.success('Agente Criado!', 'O agente foi adicionado com sucesso ao sistema.');
         setActiveView('agents-list');
       } else {
-        alert('Erro ao criar agente. Tente novamente.');
+        toast.error('Erro ao Criar Agente', 'Não foi possível criar o agente. Tente novamente.');
       }
     } catch (error) {
       console.error('❌ [CreateAgentPage] Erro ao criar agente:', error);
-      alert('Erro ao criar agente. Tente novamente.');
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error('Erro ao Criar Agente', errorMessage);
     } finally {
       setIsSubmitting(false);
     }

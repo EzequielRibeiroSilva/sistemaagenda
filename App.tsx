@@ -34,6 +34,7 @@ import BookingPage from './components/BookingPage';
 import ManageBookingPage from './components/ManageBookingPage';
 import { useMasterUsers } from './hooks/useMasterUsers';
 import { useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
