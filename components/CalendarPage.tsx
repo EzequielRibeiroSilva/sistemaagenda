@@ -1022,18 +1022,21 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                         // O usuário pode editar/finalizar agendamentos a qualquer momento
                         // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
+                        // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
                         const agentAppointments = appointments.filter(a => {
                             const agentIdMatch = a.agentId === agent.id.toString();
                             const dateMatch = a.date === dateStr;
                             const serviceMatch = selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter;
                             // ✅ CORREÇÃO CRÍTICA: Forçar comparação de strings para compatibilidade de tipos
                             const locationMatch = a.locationId.toString() === selectedLocationFilter;
+                            // ✅ NOVO: Excluir agendamentos cancelados (libera espaço para novos agendamentos)
+                            const notCancelled = a.status !== 'Cancelado';
                             
                             // 🔍 DEBUG: Log de filtro para cada agendamento
                             if (!locationMatch && agentIdMatch && dateMatch) {
                             }
                             
-                            return agentIdMatch && dateMatch && serviceMatch && locationMatch;
+                            return agentIdMatch && dateMatch && serviceMatch && locationMatch && notCancelled;
                         });
                         
                         // 🔍 DEBUG DETALHADO: Log para TODOS os agentes
@@ -1344,11 +1347,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
                                 // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
+                                // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
                                 const agentAppointments = appointments.filter(a =>
                                     a.agentId === selectedAgentId.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
-                                    a.locationId.toString() === selectedLocationFilter // ✅ CORREÇÃO: Forçar string
+                                    a.locationId.toString() === selectedLocationFilter && // ✅ CORREÇÃO: Forçar string
+                                    a.status !== 'Cancelado' // ✅ NOVO: Excluir agendamentos cancelados (libera espaço)
                                 );
 
                                 // 🔍 DEBUG CRÍTICO: Comparar com visão diária
@@ -1587,11 +1592,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                                 // O usuário pode editar/finalizar agendamentos a qualquer momento
                                 // 🛡️ REGRA DE NEGÓCIO: Filtro de local é ESTRITO (nunca 'all' para ADMIN/Multi)
+                                // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
                                 const agentAppointments = appointments.filter(a =>
                                     a.agentId === agent.id.toString() &&
                                     a.date === dateStr &&
                                     (selectedServiceFilter === 'all' || a.serviceId === selectedServiceFilter) &&
-                                    a.locationId.toString() === selectedLocationFilter // ✅ CORREÇÃO: Forçar string
+                                    a.locationId.toString() === selectedLocationFilter && // ✅ CORREÇÃO: Forçar string
+                                    a.status !== 'Cancelado' // ✅ NOVO: Excluir agendamentos cancelados (libera espaço)
                                 );
 
                                 // 🔍 DEBUG: Log dos agendamentos encontrados
