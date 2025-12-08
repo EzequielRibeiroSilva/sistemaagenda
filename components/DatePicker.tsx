@@ -258,11 +258,11 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
             }}
         >
                     <div className="flex justify-between items-center p-3 border-b">
-                        <button onClick={prevMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronLeft className="h-4 w-4 text-gray-600" /></button>
+                        <button type="button" onClick={prevMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronLeft className="h-4 w-4 text-gray-600" /></button>
                         <div className="flex-1 flex justify-around">
                             {/* Month names are now inside renderCalendar */}
                         </div>
-                        <button onClick={nextMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronRight className="h-4 w-4 text-gray-600" /></button>
+                        <button type="button" onClick={nextMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronRight className="h-4 w-4 text-gray-600" /></button>
                     </div>
                     <div className="flex">
                         <div className={mode === 'range' ? 'w-1/2 border-r' : 'w-full'}>{renderCalendar(currentMonth, currentYear)}</div>
@@ -270,8 +270,8 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                     </div>
                     {mode === 'range' && (
                         <div className="flex justify-end p-3 border-t">
-                            <button onClick={handleCancel} className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
-                            <button onClick={handleApply} className="ml-2 px-3 py-1.5 text-xs font-semibold text-white bg-[#2663EB] rounded-lg hover:bg-[#1d4ed8]">Aplicar</button>
+                            <button type="button" onClick={handleCancel} className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
+                            <button type="button" onClick={handleApply} className="ml-2 px-3 py-1.5 text-xs font-semibold text-white bg-[#2663EB] rounded-lg hover:bg-[#1d4ed8]">Aplicar</button>
                         </div>
                     )}
         </div>
@@ -281,6 +281,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         <>
             <button
                 ref={buttonRef}
+                type="button"
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 min-w-[160px] justify-between"
             >

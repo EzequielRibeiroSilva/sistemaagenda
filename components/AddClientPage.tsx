@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useClientManagement } from '../hooks/useClientManagement';
+import DatePicker from './DatePicker';
 
 interface AddClientPageProps {
   setActiveView?: (view: string) => void;
@@ -11,7 +12,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
-  const [subscriptionStartDate, setSubscriptionStartDate] = useState('');
+  const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Hook de gerenciamento de clientes
@@ -21,9 +22,9 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
     const newIsSubscriber = !isSubscriber;
     setIsSubscriber(newIsSubscriber);
     if (newIsSubscriber) {
-      setSubscriptionStartDate(new Date().toISOString().split('T')[0]);
+      setSubscriptionStartDate(new Date());
     } else {
-      setSubscriptionStartDate('');
+      setSubscriptionStartDate(null);
     }
   };
 
@@ -53,7 +54,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
         ultimo_nome: lastName.trim(),
         telefone: phone.trim().startsWith('+55') ? phone.trim() : `+55${phone.trim()}`,
         is_assinante: isSubscriber,
-        data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate : undefined,
+        data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
         status: 'Ativo' as const
       };
 
@@ -196,12 +197,10 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
                   {isSubscriber && (
                       <div className="md:col-span-2">
                           <label className="text-sm font-medium text-gray-600 mb-2 block">Data de Início da Assinatura</label>
-                          <input
-                              type="date"
-                              value={subscriptionStartDate}
-                              onChange={(e) => setSubscriptionStartDate(e.target.value)}
-                              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
-                              disabled={isSubmitting}
+                          <DatePicker
+                              mode="single"
+                              selectedDate={subscriptionStartDate || undefined}
+                              onDateChange={(date) => setSubscriptionStartDate(date as Date)}
                           />
                           <p className="text-xs text-gray-500 mt-1">
                               Esta data será usada para calcular o período da assinatura e enviar notificações.
