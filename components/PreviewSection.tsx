@@ -289,6 +289,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     });
 
     // Processar agendamentos
+    // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
     appointments.forEach(apt => {
       // ✅ CORREÇÃO CRÍTICA: Extrair apenas a data (YYYY-MM-DD) do campo data_agendamento
       // O backend pode retornar 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS'
@@ -298,6 +299,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       
       // Verificar se o agendamento é do dia selecionado
       if (aptDateStr !== dateStr) {
+        return;
+      }
+
+      // ✅ NOVO: Excluir agendamentos cancelados (libera espaço para novos agendamentos)
+      if (apt.status === 'Cancelado') {
         return;
       }
 
@@ -369,7 +375,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
             // ✅ CRÍTICO: Sempre filtrar por locationId (não mais permitir 'all')
             const locationMatch = appointment.details.locationId === selectedLocation;
             const serviceMatch = selectedService === 'all' || appointment.details.serviceId === selectedService;
-            return locationMatch && serviceMatch;
+            // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
+            const notCancelled = appointment.details.status !== 'Cancelado'; // ✅ NOVO: Excluir cancelados
+            return locationMatch && serviceMatch && notCancelled;
         })
     }));
   }, [schedules, selectedLocation, selectedService]);
@@ -622,10 +630,14 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     return displayedAgents.map((agent, agentIndex) => {
       // Buscar agendamentos deste agente no dia selecionado
+      // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
       const dateStr = selectedDate.toISOString().split('T')[0];
       const agentAppointments = appointments.filter(apt => {
         const aptDateStr = apt.data_agendamento.split('T')[0];
-        return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
+        const agentMatch = apt.agente_id === parseInt(agent.id);
+        const dateMatch = aptDateStr === dateStr;
+        const notCancelled = apt.status !== 'Cancelado'; // ✅ NOVO: Excluir cancelados
+        return agentMatch && dateMatch && notCancelled;
       });
 
 
@@ -746,10 +758,14 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 {/* ✅ SLOTS CLICÁVEIS: Implementação idêntica à CalendarPage - SEMPRE RENDERIZADOS */}
                 {(() => {
                   // Filtrar agendamentos deste agente no dia selecionado
+                  // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
                   const dateStr = selectedDate.toISOString().split('T')[0];
                   const agentAppointments = appointments.filter(apt => {
                     const aptDateStr = apt.data_agendamento.split('T')[0];
-                    return apt.agente_id === parseInt(agent.id) && aptDateStr === dateStr;
+                    const agentMatch = apt.agente_id === parseInt(agent.id);
+                    const dateMatch = aptDateStr === dateStr;
+                    const notCancelled = apt.status !== 'Cancelado'; // ✅ NOVO: Excluir cancelados
+                    return agentMatch && dateMatch && notCancelled;
                   });
 
                   // Criar busySlots (igual CalendarPage) - INCLUINDO INTERVALOS
