@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useToast } from '../contexts/ToastContext';
+import { useUnitManagement } from '../hooks/useUnitManagement';
 
 // Helper components for styling consistency
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -253,8 +254,17 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     // ✅ NOVO: Usar dados externos ou carregados internamente
     const appointmentData = externalAppointmentData || loadedAppointmentData;
 
-    // Hook para autenticação
+    // Hook para autenticação e configurações
     const { user } = useAuth();
+    const { settings, loadSettings } = useSettingsManagement();
+    const toast = useToast();
+    const { units, fetchUnits } = useUnitManagement();
+
+    // ✅ NOVO: Estado para seleção manual de local (quando modal aberto sem contexto)
+    const [manualSelectedLocationId, setManualSelectedLocationId] = useState<string | null>(null);
+    
+    // ✅ NOVO: Determinar qual locationId usar (prop ou seleção manual)
+    const effectiveLocationId = selectedLocationId || manualSelectedLocationId;
 
     // Estados para dados reais
     const [allServices, setAllServices] = useState<InternalServico[]>([]);
@@ -296,8 +306,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [valorFinal, setValorFinal] = useState<number>(0);
     const [podeUsarPontos, setPodeUsarPontos] = useState<boolean>(false);
 
-    // ✅ NOVO: Hook para configurações de pontos
-    const { settings, loadSettings } = useSettingsManagement();
+    // ✅ NOVO: Configurações de pontos
     const pontosAtivo = settings?.pontos_ativo || false;
     const reaisPorPontos = settings?.reais_por_pontos || 10;
 
@@ -383,6 +392,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         loadAppointmentFromId();
     }, [isOpen, propAppointmentId, externalAppointmentData, fetchAgendamentoDetalhes, selectedLocationId]);
 
+    // ✅ NOVO: Carregar unidades quando modal abre
+    useEffect(() => {
+        if (isOpen) {
+            fetchUnits();
+        }
+    }, [isOpen, fetchUnits]);
+
     // Carregar dados iniciais
     useEffect(() => {
         const loadInitialData = async () => {
@@ -411,7 +427,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     // ✅ FILTRAR AGENTES POR UNIDADE SELECIONADA
     useEffect(() => {
-        if (!selectedLocationId || allAgents.length === 0) {
+        if (!effectiveLocationId || allAgents.length === 0) {
             setFilteredAgents([]);
             return;
         }
@@ -423,8 +439,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             const agenteUnidades = (agente as any).unidades || [];
             const agenteUnidadeId = (agente as any).unidade_id;
             
-            // ✅ CORREÇÃO CRÍTICA: Converter selectedLocationId para número para comparação
-            const locationIdNumber = parseInt(selectedLocationId);
+            // ✅ CORREÇÃO CRÍTICA: Converter effectiveLocationId para número para comparação
+            const locationIdNumber = parseInt(effectiveLocationId);
             
             // Verificar se o agente trabalha nesta unidade
             return agenteUnidades.includes(locationIdNumber) || 
@@ -453,12 +469,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         if (agentesNaUnidade.length === 1) {
             setSelectedAgentId(agentesNaUnidade[0].id);
         }
-    }, [selectedLocationId, allAgents, user, isEditing, selectedAgentId]);
+    }, [effectiveLocationId, allAgents, user, isEditing, selectedAgentId]);
 
     // ✅ BUSCAR HORÁRIOS DE FUNCIONAMENTO DA UNIDADE SELECIONADA
     useEffect(() => {
         const fetchUnitSchedule = async () => {
-            if (!selectedLocationId || selectedLocationId === 'all') {
+            if (!effectiveLocationId || effectiveLocationId === 'all') {
                 setUnitSchedule([]);
                 return;
             }
@@ -467,7 +483,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 const token = localStorage.getItem('authToken');
                 if (!token) return;
 
-                const response = await fetch(`http://localhost:3000/api/unidades/${selectedLocationId}`, {
+                const response = await fetch(`http://localhost:3000/api/unidades/${effectiveLocationId}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -497,7 +513,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         };
 
         fetchUnitSchedule();
-    }, [selectedLocationId]);
+    }, [effectiveLocationId]);
 
     // Busca dinâmica de clientes
     useEffect(() => {
@@ -1006,22 +1022,22 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         try {
             // Validações básicas
             if (!selectedAgentId) {
-                alert('Por favor, selecione um agente.');
+                toast.warning('Campo Obrigatório', 'Por favor, selecione um agente.');
                 return;
             }
 
             if (selectedServices.length === 0) {
-                alert('Por favor, selecione pelo menos um serviço.');
+                toast.warning('Campo Obrigatório', 'Por favor, selecione pelo menos um serviço.');
                 return;
             }
 
             if (!date || !startTime) {
-                alert('Por favor, preencha a data e horário.');
+                toast.warning('Campos Obrigatórios', 'Por favor, preencha a data e horário.');
                 return;
             }
 
             if (!clientFirstName.trim() || !clientPhone.trim()) {
-                alert('Por favor, preencha o nome e telefone do cliente.');
+                toast.warning('Dados do Cliente', 'Por favor, preencha o nome e telefone do cliente.');
                 return;
             }
 
@@ -1029,15 +1045,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             const [dia, mes, ano] = date.split('/');
             const dataFormatada = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
 
-            // ✅ CORREÇÃO CRÍTICA: Usar selectedLocationId ao invés de user.unidade_id
-            if (!selectedLocationId) {
-                alert('Erro: Nenhum local selecionado. Por favor, selecione um local no calendário.');
+            // ✅ CORREÇÃO CRÍTICA: Usar effectiveLocationId (selectedLocationId OU manualSelectedLocationId)
+            if (!effectiveLocationId) {
+                toast.error('Local Não Selecionado', 'Por favor, selecione um local.');
                 return;
             }
 
             // Validar se endTime foi calculado
             if (!endTime) {
-                alert('Erro: Horário de fim não foi calculado. Verifique os serviços selecionados.');
+                toast.error('Erro de Cálculo', 'Horário de fim não foi calculado. Verifique os serviços selecionados.');
                 return;
             }
 
@@ -1048,7 +1064,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 data_agendamento: dataFormatada,
                 hora_inicio: startTime,
                 hora_fim: endTime,
-                unidade_id: parseInt(selectedLocationId),
+                unidade_id: parseInt(effectiveLocationId),
                 observacoes: observacoes.trim() || '',
                 ...(selectedClient
                     ? { cliente_id: selectedClient.id }
@@ -1087,7 +1103,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     const resultado = await updateAgendamento(appointmentId, updateData);
 
                     if (resultado) {
-                        alert('Agendamento atualizado com sucesso!');
+                        toast.success('Agendamento Atualizado!', 'As alterações foram salvas com sucesso.');
                         onClose();
                         // ✅ NOVO: Chamar callback de sucesso para atualizar dados
                         if (onSuccess) {
@@ -1104,7 +1120,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 const resultado = await createAgendamento(agendamentoData);
 
                 if (resultado && resultado.success) {
-                    alert('Agendamento criado com sucesso!');
+                    toast.success('Agendamento Criado!', 'O agendamento foi criado com sucesso.');
                     onClose();
                     // ✅ NOVO: Chamar callback de sucesso para atualizar dados
                     if (onSuccess) {
@@ -1117,7 +1133,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         } catch (error) {
             console.error('❌ [NewAppointmentModal] Erro ao salvar agendamento:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-            alert(`Erro ao salvar agendamento: ${errorMessage}`);
+            toast.error('Erro ao Salvar', `Não foi possível salvar o agendamento: ${errorMessage}`);
         }
     }
 
@@ -1241,6 +1257,26 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         {/* Service Section */}
                         {!isLoadingAppointment && !isLoadingFromProp && (
                         <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-4">
+                            {/* ✅ NOVO: Seletor de Local (apenas quando modal aberto sem contexto) */}
+                            {!selectedLocationId && units.length > 0 && (
+                                <FormField label="Selecione o Local">
+                                    <Select
+                                        value={manualSelectedLocationId || ''}
+                                        onChange={e => setManualSelectedLocationId(e.target.value || null)}
+                                    >
+                                        <option value="">Escolha um local...</option>
+                                        {units.map(unit => (
+                                            <option key={unit.id} value={unit.id.toString()}>
+                                                {unit.nome}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Selecione o local onde o agendamento será realizado
+                                    </p>
+                                </FormField>
+                            )}
+
                             <ServiceMultiSelectDropdown
                                 label="Escolha Do Serviço"
                                 options={allServices}
@@ -1270,6 +1306,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                     </Select>
                                     {user?.role === 'AGENTE' && (
                                         <p className="text-xs text-gray-500 mt-1">Você só pode criar agendamentos para si mesmo</p>
+                                    )}
+                                    {!effectiveLocationId && (
+                                        <p className="text-xs text-yellow-600 mt-1">⚠️ Selecione um local primeiro para ver os agentes disponíveis</p>
                                     )}
                                 </FormField>
                                 {isEditing && (

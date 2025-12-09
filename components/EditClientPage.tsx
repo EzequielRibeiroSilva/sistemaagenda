@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useClientManagement, type Client } from '../hooks/useClientManagement';
+import { useToast } from '../contexts/ToastContext';
 import DatePicker from './DatePicker';
 
 interface EditClientPageProps {
@@ -8,6 +9,7 @@ interface EditClientPageProps {
 }
 
 const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView }) => {
+  const toast = useToast();
   // Estados do formulário
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -67,12 +69,12 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
 
     // Validações básicas
     if (!firstName.trim()) {
-      alert('Primeiro nome é obrigatório');
+      toast.warning('Campo Obrigatório', 'Primeiro nome é obrigatório.');
       return;
     }
 
     if (!phone.trim()) {
-      alert('Telefone é obrigatório');
+      toast.warning('Campo Obrigatório', 'Telefone é obrigatório.');
       return;
     }
 
@@ -95,11 +97,15 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
 
       if (success) {
         // Sucesso - redirecionar para lista
-        alert('Cliente atualizado com sucesso!');
+        toast.success('Cliente Atualizado!', `As alterações no cliente "${firstName} ${lastName}" foram salvas com sucesso.`);
         setActiveView('clients-list');
+      } else {
+        toast.error('Erro ao Atualizar Cliente', 'Não foi possível atualizar o cliente. Tente novamente.');
       }
     } catch (err) {
       console.error('Erro ao atualizar cliente:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error('Erro ao Atualizar Cliente', errorMessage);
     } finally {
       setIsSubmitting(false);
     }

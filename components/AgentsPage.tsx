@@ -1,17 +1,40 @@
 import React, { useState } from 'react';
-import { Plus, Edit, FaUser, X } from './Icons';
-import { useAgentManagement, Agent } from '../hooks/useAgentManagement';
+import { Plus, Edit, X, CheckCircle, XCircle, FaUser } from './Icons';
+import { useAgentManagement } from '../hooks/useAgentManagement';
+import { useToast } from '../contexts/ToastContext';
 import { getAssetUrl } from '../utils/api';
 
-// Componente removido - usando dados reais do hook
+// Tipo Agent do hook
+interface Agent {
+  id: number;
+  name: string;
+  phone: string;
+  avatar?: string;
+  status: string;
+  todayHours?: string;
+  reservations: number;
+  availability: Array<{ day: string; available: boolean }>;
+}
 
-const AgentCard: React.FC<{ agent: Agent; onEdit: (id: number) => void; onDelete: (id: number) => void; }> = ({ agent, onEdit, onDelete }) => (
+interface AgentCardProps {
+  agent: Agent;
+  onEdit: (id: number) => void;
+  onDelete: (id: number) => void;
+  isConfirmingDelete?: boolean;
+}
+
+const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfirmingDelete = false }) => (
     <div className="relative group bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col transition-all duration-200 hover:border-blue-500 hover:shadow-lg">
         <div className="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <button
                 onClick={() => onDelete(agent.id)}
                 aria-label={`Excluir ${agent.name}`}
-                className="p-2 bg-white/70 backdrop-blur-sm rounded-full text-red-600 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className={`p-2 backdrop-blur-sm rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors ${
+                  isConfirmingDelete
+                    ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                    : 'bg-white/70 text-red-600 hover:bg-red-50 hover:text-red-700'
+                }`}
+                title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir agente'}
             >
                 <X className="w-4 h-4" />
             </button>
@@ -99,7 +122,9 @@ interface AgentsPageProps {
 
 const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) => {
     const { agents, loading, error, deleteAgent } = useAgentManagement();
+    const toast = useToast();
     const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+    const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
     const handleEditAgent = (agentId: number) => {
         onEditAgent(agentId.toString());
@@ -109,16 +134,28 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
         const agent = agents.find(a => a.id === agentId);
         if (!agent) return;
 
-        if (!confirm(`Tem certeza que deseja excluir o agente "${agent.name}"? Esta ação irá remover o agente e seu usuário do sistema permanentemente.`)) {
-            return;
-        }
+        // Se já está confirmando este item, executar a exclusão
+        if (confirmingDelete === agentId) {
+            setDeleteLoading(agentId);
+            setConfirmingDelete(null);
 
-        setDeleteLoading(agentId);
-        const success = await deleteAgent(agentId);
-        setDeleteLoading(null);
+            const success = await deleteAgent(agentId);
+            setDeleteLoading(null);
 
-        if (!success) {
-            alert('Erro ao excluir agente. Tente novamente.');
+            if (success) {
+                toast.success('Agente Excluído!', `O agente "${agent.name}" foi removido com sucesso do sistema.`);
+            } else {
+                toast.error('Erro ao Excluir', 'Não foi possível excluir o agente. Tente novamente.');
+            }
+        } else {
+            // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
+            setConfirmingDelete(agentId);
+            toast.warning('Confirme a Exclusão', `Clique novamente no ícone de lixeira para confirmar a exclusão de "${agent.name}". Esta ação não pode ser desfeita.`);
+
+            // Resetar confirmação após 5 segundos
+            setTimeout(() => {
+                setConfirmingDelete(null);
+            }, 5000);
         }
     };
 
@@ -171,6 +208,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
                             agent={agent}
                             onEdit={handleEditAgent}
                             onDelete={handleDeleteAgent}
+                            isConfirmingDelete={confirmingDelete === agent.id}
                         />
                     </div>
                 ))}

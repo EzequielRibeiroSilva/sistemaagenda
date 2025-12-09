@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Check, ChevronDown, Leaf, ImagePlaceholder, FaUser } from './Icons';
 import { useServiceManagement } from '../hooks/useServiceManagement';
+import { useToast } from '../contexts/ToastContext';
 import { getAssetUrl } from '../utils/api';
 
 // Helper components for UI elements to match the design
@@ -171,6 +172,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
         error,
         createService
     } = useServiceManagement();
+    const toast = useToast();
 
     // Estados do formulário
     const [nome, setNome] = useState('');
@@ -249,17 +251,17 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
 
         // ✅ VALIDAÇÕES COMPLETAS
         if (!nome.trim()) {
-            setSubmitError('Nome do serviço é obrigatório');
+            toast.warning('Campo Obrigatório', 'Nome do serviço é obrigatório.');
             return;
         }
 
         if (duracaoMinutos < 1) {
-            setSubmitError('Duração deve ser maior que zero');
+            toast.warning('Duração Inválida', 'A duração deve ser maior que zero.');
             return;
         }
 
         if (preco < 0) {
-            setSubmitError('Preço deve ser maior ou igual a zero');
+            toast.warning('Preço Inválido', 'O preço deve ser maior ou igual a zero.');
             return;
         }
 
@@ -290,15 +292,16 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
             const result = await createService(serviceData);
 
             if (result.success) {
-                alert('Serviço criado com sucesso!');
+                toast.success('Serviço Criado!', `O serviço "${nome}" foi adicionado com sucesso.`);
                 if (setActiveView) {
                     setActiveView('services-list');
                 }
             } else {
-                setSubmitError(result.error || 'Erro ao criar serviço');
+                toast.error('Erro ao Criar Serviço', result.error || 'Não foi possível criar o serviço. Tente novamente.');
             }
         } catch (error) {
-            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido ao criar serviço');
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            toast.error('Erro ao Criar Serviço', errorMessage);
         } finally {
             setSubmitting(false);
         }
