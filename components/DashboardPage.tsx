@@ -216,7 +216,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         // Buscar agendamentos do dia selecionado
         const dateStr = previewDate.toISOString().split('T')[0];
-        const filters: any = {
+        const filters: {
+            data_inicio: string;
+            data_fim: string;
+            agente_id?: number;
+            unidade_id?: number;
+        } = {
             data_inicio: dateStr,
             data_fim: dateStr
         };
@@ -278,7 +283,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     const handleAppointmentSuccess = () => {
 
         // Recarregar agendamentos da pré-visualização
-        const filters = {
+        const filters: {
+            data_inicio: string;
+            data_fim: string;
+            agente_id?: number;
+            unidade_id?: number;
+        } = {
             data_inicio: previewDate.toISOString().split('T')[0],
             data_fim: previewDate.toISOString().split('T')[0]
         };
@@ -374,7 +384,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         return backendServicos.map(servico => ({
             id: servico.id.toString(),
             name: servico.nome,
-            color: '#3B82F6',
+            color: '#2663EB',
             textColor: '#FFFFFF'
         }));
     }, [backendServicos]);

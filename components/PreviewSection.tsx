@@ -36,7 +36,7 @@ const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['deta
                     onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.onerror = null;
-                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
+                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2663eb&color=fff`;
                     }}
                 />
                 <div className="ml-3">
@@ -866,7 +866,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     backgroundColor = '#FEF9C3'; // Amarelo claro
                     cardClasses = 'text-yellow-800 border border-yellow-300';
                   } else {
-                    backgroundColor = '#3B82F6'; // Azul padrão
+                    backgroundColor = '#2663EB'; // Azul padrão
                     cardClasses = 'text-white';
                   }
 
