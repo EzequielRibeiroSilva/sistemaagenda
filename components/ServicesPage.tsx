@@ -167,8 +167,10 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
   };
 
   return (
-    <div>
-      <div className="flex items-center border-b border-gray-200 mb-6 -mt-2">
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold text-gray-800">Serviços</h1>
+      
+      <div className="flex items-center border-b border-gray-200 mb-6">
         {tabs.map(tab => (
           <button
             key={tab}
