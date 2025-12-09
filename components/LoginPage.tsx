@@ -133,7 +133,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
             <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg border border-gray-200">
                 <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-800">Painel de Agendamento</h1>
+                    <h1 className="font-genty text-5xl font-bold tracking-wide" style={{ color: '#2663EB' }}>Tally</h1>
                     <p className="text-gray-500 mt-2">Faça login na sua conta</p>
                 </div>
 

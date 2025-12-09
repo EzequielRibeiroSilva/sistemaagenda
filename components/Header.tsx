@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Menu, Plus, Cog, LogOut, MessageSquare, Inbox, FaUser } from './Icons';
+import { Search, Plus, Cog, LogOut, MessageSquare, Inbox, FaUser } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
@@ -127,26 +127,34 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
 
         {/* --- MOBILE HEADER (screens smaller than lg) --- */}
         <div className="flex lg:hidden items-center justify-between w-full">
+            {/* Logo Tally - Mobile */}
             <button 
-              className="p-2 text-blue-600 rounded-md"
               onClick={onToggleMobileSidebar}
+              className="focus:outline-none transition-all duration-200 hover:opacity-80"
               aria-label="Abrir menu"
             >
-              <Menu className="h-6 w-6" />
+              <span 
+                className="font-genty text-2xl font-bold tracking-wide"
+                style={{ color: '#2663EB' }}
+              >
+                Tally
+              </span>
             </button>
-            <button
-              onClick={() => setIsMobileSearchOpen(true)}
-              className="p-2 text-blue-600 rounded-md"
-              aria-label="Pesquisar"
-            >
-              <Search className="h-6 w-6" />
-            </button>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="p-2 text-blue-600 rounded-md"
-            >
-              <Plus className="h-6 w-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsMobileSearchOpen(true)}
+                className="p-2 text-blue-600 rounded-md"
+                aria-label="Pesquisar"
+              >
+                <Search className="h-6 w-6" />
+              </button>
+              <button
+                onClick={() => setModalOpen(true)}
+                className="p-2 text-blue-600 rounded-md"
+              >
+                <Plus className="h-6 w-6" />
+              </button>
+            </div>
         </div>
         
         {/* --- AVATAR (for all screen sizes) --- */}
