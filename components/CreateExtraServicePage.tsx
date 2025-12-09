@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ImagePlaceholder, Check, ChevronLeft } from './Icons';
 import { useExtraServiceManagement } from '../hooks/useExtraServiceManagement';
+import { useToast } from '../contexts/ToastContext';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -96,6 +97,7 @@ interface CreateExtraServicePageProps {
 }
 
 const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActiveView }) => {
+    const toast = useToast();
     // Hook para gerenciar serviços extras
     const {
         services,
@@ -179,14 +181,16 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
             const result = await createExtraService(extraServiceData);
 
             if (result.success) {
+                toast.success('Serviço Extra Criado!', `O serviço extra "${nome}" foi adicionado com sucesso.`);
                 setActiveView('services-extra'); // Voltar para a lista
             } else {
-                setSubmitError(result.error || 'Erro ao criar serviço extra');
+                toast.error('Erro ao Criar Serviço Extra', result.error || 'Não foi possível criar o serviço extra. Tente novamente.');
             }
         } catch (error) {
             console.error('❌ [CreateExtraServicePage] Erro ao criar serviço extra:', error);
-            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
-        } finally {
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            toast.error('Erro ao Criar Serviço Extra', errorMessage);
+        } finally{
             setSubmitting(false);
         }
     };

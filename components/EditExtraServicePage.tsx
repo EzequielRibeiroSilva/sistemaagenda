@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { Check } from './Icons';
+import { ImagePlaceholder, Check } from './Icons';
 import { useExtraServiceManagement } from '../hooks/useExtraServiceManagement';
+import { useToast } from '../contexts/ToastContext';
 
 interface ExtraService {
   id: number;
@@ -81,6 +81,7 @@ interface EditExtraServicePageProps {
 }
 
 const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveView, extraServiceId }) => {
+    const toast = useToast();
     // Hook para gerenciar serviços extras
     const {
         services,
@@ -228,13 +229,15 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
             const result = await updateExtraService(Number(extraServiceId), extraServiceData);
 
             if (result.success) {
+                toast.success('Serviço Extra Atualizado!', `As alterações no serviço extra "${nome}" foram salvas com sucesso.`);
                 setActiveView('services-extra'); // Voltar para a lista
             } else {
-                setSubmitError(result.error || 'Erro ao atualizar serviço extra');
+                toast.error('Erro ao Atualizar Serviço Extra', result.error || 'Não foi possível atualizar o serviço extra. Tente novamente.');
             }
         } catch (error) {
             console.error('❌ [EditExtraServicePage] Erro ao atualizar serviço extra:', error);
-            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            toast.error('Erro ao Atualizar Serviço Extra', errorMessage);
         } finally {
             setSubmitting(false);
         }

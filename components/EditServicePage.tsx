@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Check, FaUser } from './Icons';
 import { useServiceManagement } from '../hooks/useServiceManagement';
+import { useToast } from '../contexts/ToastContext';
 import { getAssetUrl } from '../utils/api';
 
 interface Service {
@@ -152,6 +153,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         fetchService,
         updateService
     } = useServiceManagement();
+    const toast = useToast();
 
     // Estados do formulário
     const [nome, setNome] = useState('');
@@ -297,12 +299,17 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         e.preventDefault();
 
         if (!nome.trim()) {
-            setSubmitError('Nome é obrigatório');
+            toast.warning('Campo Obrigatório', 'Nome do serviço é obrigatório.');
+            return;
+        }
+
+        if (duracaoMinutos < 1) {
+            toast.warning('Duração Inválida', 'A duração deve ser maior que zero.');
             return;
         }
 
         if (preco < 0) {
-            setSubmitError('Preço deve ser maior ou igual a zero');
+            toast.warning('Preço Inválido', 'O preço deve ser maior ou igual a zero.');
             return;
         }
 
@@ -333,13 +340,15 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
             const result = await updateService(Number(serviceId), serviceData);
 
             if (result.success) {
+                toast.success('Serviço Atualizado!', `As alterações no serviço "${nome}" foram salvas com sucesso.`);
                 setActiveView('services-list'); // Voltar para a lista de serviços
             } else {
-                setSubmitError(result.error || 'Erro ao atualizar serviço');
+                toast.error('Erro ao Atualizar Serviço', result.error || 'Não foi possível atualizar o serviço. Tente novamente.');
             }
         } catch (error) {
             console.error('❌ [EditServicePage] Erro ao atualizar serviço:', error);
-            setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido');
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            toast.error('Erro ao Atualizar Serviço', errorMessage);
         } finally {
             setSubmitting(false);
         }

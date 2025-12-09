@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCupomManagement } from '../hooks/useCupomManagement';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { useUnitManagement } from '../hooks/useUnitManagement';
+import { useToast } from '../contexts/ToastContext';
 import { ChevronDown, Check } from './Icons';
 
 // Componentes reutilizáveis de formulário
@@ -189,6 +190,7 @@ interface EditCupomPageProps {
 }
 
 const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId }) => {
+  const toast = useToast();
   const { fetchCupomById, updateCupom } = useCupomManagement();
   const { fetchServicesList } = useServiceManagement();
   const { units, fetchUnits } = useUnitManagement();
@@ -291,27 +293,27 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
 
     // Validações
     if (!codigo.trim()) {
-      setSubmitError('Código do cupom é obrigatório');
+      toast.warning('Campo Obrigatório', 'Código do cupom é obrigatório.');
       return;
     }
 
     if (valorDesconto <= 0) {
-      setSubmitError('Valor do desconto deve ser maior que zero');
+      toast.warning('Valor Inválido', 'O valor do desconto deve ser maior que zero.');
       return;
     }
 
     if (valorDesconto > 100) {
-      setSubmitError('Desconto percentual não pode ser maior que 100%');
+      toast.warning('Desconto Inválido', 'O desconto percentual não pode ser maior que 100%.');
       return;
     }
 
     if (temValidade && (!dataInicio || !dataFim)) {
-      setSubmitError('Informe as datas de início e fim do cupom');
+      toast.warning('Datas Incompletas', 'Informe as datas de início e fim do cupom.');
       return;
     }
 
     if (temValidade && dataInicio && dataFim && new Date(dataInicio) > new Date(dataFim)) {
-      setSubmitError('Data de início não pode ser posterior à data de fim');
+      toast.warning('Datas Inválidas', 'A data de início não pode ser posterior à data de fim.');
       return;
     }
 
@@ -335,13 +337,14 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
       const success = await updateCupom(cupomId, cupomData);
 
       if (success) {
-        alert('Cupom atualizado com sucesso!');
+        toast.success('Cupom Atualizado!', `As alterações no cupom "${codigo}" foram salvas com sucesso.`);
         setActiveView('cupons-list');
       } else {
-        setSubmitError('Erro ao atualizar cupom. Verifique os dados e tente novamente.');
+        toast.error('Erro ao Atualizar Cupom', 'Não foi possível atualizar o cupom. Verifique os dados e tente novamente.');
       }
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido ao atualizar cupom');
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error('Erro ao Atualizar Cupom', errorMessage);
     } finally {
       setSubmitting(false);
     }

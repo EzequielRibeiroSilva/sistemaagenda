@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useClientManagement } from '../hooks/useClientManagement';
+import { useToast } from '../contexts/ToastContext';
 import DatePicker from './DatePicker';
 
 interface AddClientPageProps {
@@ -7,6 +8,7 @@ interface AddClientPageProps {
 }
 
 const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
+  const toast = useToast();
   // Estados do formulário
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -33,12 +35,12 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
 
     // Validações básicas
     if (!firstName.trim()) {
-      alert('Primeiro nome é obrigatório');
+      toast.warning('Campo Obrigatório', 'Primeiro nome é obrigatório.');
       return;
     }
 
     if (!phone.trim()) {
-      alert('Telefone é obrigatório');
+      toast.warning('Campo Obrigatório', 'Telefone é obrigatório.');
       return;
     }
 
@@ -62,14 +64,18 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
 
       if (success) {
         // Sucesso - redirecionar para lista
-        alert('Cliente criado com sucesso!');
+        toast.success('Cliente Criado!', `O cliente "${firstName} ${lastName}" foi adicionado com sucesso.`);
         if (setActiveView) {
           setActiveView('clients-list');
         }
+      } else {
+        toast.error('Erro ao Criar Cliente', 'Não foi possível criar o cliente. Tente novamente.');
       }
     } catch (err) {
       console.error('Erro ao criar cliente:', err);
-    } finally {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error('Erro ao Criar Cliente', errorMessage);
+    } finally{
       setIsSubmitting(false);
     }
   };

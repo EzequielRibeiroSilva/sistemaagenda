@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCupomManagement } from '../hooks/useCupomManagement';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { useUnitManagement } from '../hooks/useUnitManagement';
+import { useToast } from '../contexts/ToastContext';
 import { ChevronDown, Check } from './Icons';
 
 // Componentes reutilizáveis de formulário
@@ -186,6 +187,7 @@ interface CreateCupomPageProps {
 }
 
 const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
+  const toast = useToast();
   const { createCupom } = useCupomManagement();
   const { fetchServicesList } = useServiceManagement();
   const { units, fetchUnits } = useUnitManagement();
@@ -228,27 +230,27 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
 
     // Validações
     if (!codigo.trim()) {
-      setSubmitError('Código do cupom é obrigatório');
+      toast.warning('Campo Obrigatório', 'Código do cupom é obrigatório.');
       return;
     }
 
     if (valorDesconto <= 0) {
-      setSubmitError('Valor do desconto deve ser maior que zero');
+      toast.warning('Valor Inválido', 'O valor do desconto deve ser maior que zero.');
       return;
     }
 
     if (valorDesconto > 100) {
-      setSubmitError('Desconto percentual não pode ser maior que 100%');
+      toast.warning('Desconto Inválido', 'O desconto percentual não pode ser maior que 100%.');
       return;
     }
 
     if (temValidade && (!dataInicio || !dataFim)) {
-      setSubmitError('Informe as datas de início e fim do cupom');
+      toast.warning('Datas Incompletas', 'Informe as datas de início e fim do cupom.');
       return;
     }
 
     if (temValidade && dataInicio && dataFim && new Date(dataInicio) > new Date(dataFim)) {
-      setSubmitError('Data de início não pode ser posterior à data de fim');
+      toast.warning('Datas Inválidas', 'A data de início não pode ser posterior à data de fim.');
       return;
     }
 
@@ -272,15 +274,16 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
       const success = await createCupom(cupomData);
 
       if (success) {
-        alert('Cupom criado com sucesso!');
+        toast.success('Cupom Criado!', `O cupom "${codigo}" foi adicionado com sucesso.`);
         if (setActiveView) {
           setActiveView('cupons-list');
         }
       } else {
-        setSubmitError('Erro ao criar cupom. Verifique os dados e tente novamente.');
+        toast.error('Erro ao Criar Cupom', 'Não foi possível criar o cupom. Verifique os dados e tente novamente.');
       }
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Erro desconhecido ao criar cupom');
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error('Erro ao Criar Cupom', errorMessage);
     } finally {
       setSubmitting(false);
     }
