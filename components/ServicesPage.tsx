@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit } from './Icons';
+import { Plus, Edit, X } from './Icons';
 import ServiceExtrasPage from './ServiceExtrasPage';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { getAssetUrl } from '../utils/api';
+import { useToast } from '../contexts/ToastContext';
 
 interface Service {
   id: number;
@@ -17,10 +18,23 @@ interface Service {
   extras_associados?: Array<{ id: number; nome: string }>;
 }
 
-const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void }> = ({ service, onEdit }) => (
+const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void; onDelete: (id: number) => void; isConfirmingDelete?: boolean }> = ({ service, onEdit, onDelete, isConfirmingDelete = false }) => (
   <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
     <div className="p-4 flex-grow">
-      <h3 className="font-bold text-gray-800 text-sm uppercase h-10 flex items-center">{service.nome}</h3>
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-bold text-gray-800 text-sm uppercase flex-1">{service.nome}</h3>
+        <button
+          onClick={() => onDelete(service.id)}
+          className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 ${
+            isConfirmingDelete
+              ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+              : 'text-red-600 hover:bg-red-50'
+          }`}
+          title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir serviço'}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
       <hr className="my-3" />
       <div className="flex items-center space-x-2">
         <span className="text-sm text-gray-500">Agentes:</span>
@@ -99,9 +113,12 @@ interface ServicesPageProps {
 const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, onEditService, onEditExtraService }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
   const tabs = ['Serviços', 'Serviços Extras'];
+  const toast = useToast();
+  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   // Hook para gerenciar serviços
-  const { services, loading, error, fetchServices } = useServiceManagement();
+  const { services, loading, error, fetchServices, deleteService } = useServiceManagement();
 
   // Carregar serviços quando o componente montar
   useEffect(() => {
@@ -119,6 +136,35 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
     if (tabName === 'Serviços') setActiveView('services-list');
     if (tabName === 'Serviços Extras') setActiveView('services-extra');
   }
+
+  const handleDeleteService = async (id: number) => {
+    const service = services.find(s => s.id === id);
+    if (!service) return;
+
+    // Se já está confirmando este item, executar a exclusão
+    if (confirmingDelete === id) {
+      setDeleteLoading(id);
+      setConfirmingDelete(null);
+
+      const success = await deleteService(id);
+      setDeleteLoading(null);
+
+      if (success) {
+        toast.success('Serviço Excluído!', `O serviço "${service.nome}" foi removido com sucesso do sistema.`);
+      } else {
+        toast.error('Erro ao Excluir', 'Não foi possível excluir o serviço. Tente novamente.');
+      }
+    } else {
+      // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
+      setConfirmingDelete(id);
+      toast.warning('Confirme a Exclusão', `Clique novamente no X para confirmar a exclusão de "${service.nome}". Esta ação não pode ser desfeita.`);
+
+      // Resetar confirmação após 5 segundos
+      setTimeout(() => {
+        setConfirmingDelete(null);
+      }, 5000);
+    }
+  };
 
   return (
     <div>
@@ -186,7 +232,14 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
               ) : (
                 <>
                   {services.map((service) => (
-                    <ServiceCard key={service.id} service={service} onEdit={onEditService} />
+                    <div key={service.id} className={deleteLoading === service.id ? 'opacity-50 pointer-events-none' : ''}>
+                      <ServiceCard
+                        service={service}
+                        onEdit={onEditService}
+                        onDelete={handleDeleteService}
+                        isConfirmingDelete={confirmingDelete === service.id}
+                      />
+                    </div>
                   ))}
                   <AddServiceCard onClick={() => setActiveView('services-create')} />
                 </>

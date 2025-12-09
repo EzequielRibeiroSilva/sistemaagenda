@@ -278,6 +278,43 @@ export const useServiceManagement = () => {
     }
   }, [isAuthenticated, token]);
 
+  // Excluir serviço
+  const deleteService = useCallback(async (id: number): Promise<boolean> => {
+    if (!isAuthenticated || !token) {
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(`http://localhost:3000/api/servicos/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok && (data.success !== false)) {
+        // Recarregar lista de serviços
+        await fetchServices();
+        return true;
+      } else {
+        throw new Error(data.message || data.error || 'Erro ao excluir serviço');
+      }
+    } catch (error) {
+      console.error('❌ [useServiceManagement] Erro ao excluir serviço:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      setError(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, token, fetchServices]);
+
   // Effect inicial para carregar dados
   useEffect(() => {
     let isMounted = true;
@@ -321,6 +358,7 @@ export const useServiceManagement = () => {
     fetchExtraServices,
     fetchService,
     createService,
-    updateService
+    updateService,
+    deleteService
   };
 };

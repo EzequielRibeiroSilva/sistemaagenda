@@ -1,7 +1,8 @@
 
-import React, { useEffect } from 'react';
-import { Plus, Edit } from './Icons';
+import React, { useEffect, useState } from 'react';
+import { Plus, Edit, X } from './Icons';
 import { useExtraServiceManagement } from '../hooks/useExtraServiceManagement';
+import { useToast } from '../contexts/ToastContext';
 
 interface ExtraService {
   id: number;
@@ -13,10 +14,23 @@ interface ExtraService {
   servicos_conectados_count?: number;
 }
 
-const ExtraServiceCard: React.FC<{ extra: ExtraService; onEdit: (id: string) => void }> = ({ extra, onEdit }) => (
+const ExtraServiceCard: React.FC<{ extra: ExtraService; onEdit: (id: string) => void; onDelete: (id: number) => void; isConfirmingDelete?: boolean }> = ({ extra, onEdit, onDelete, isConfirmingDelete = false }) => (
   <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
     <div className="p-4 flex-grow">
-      <h3 className="font-bold text-gray-800 text-sm uppercase h-10 flex items-center">{extra.nome}</h3>
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-bold text-gray-800 text-sm uppercase flex-1">{extra.nome}</h3>
+        <button
+          onClick={() => onDelete(extra.id)}
+          className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 ${
+            isConfirmingDelete
+              ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+              : 'text-red-600 hover:bg-red-50'
+          }`}
+          title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir serviço extra'}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
       <hr className="my-3" />
 
       {/* Seção de informações principais */}
@@ -69,11 +83,45 @@ interface ServiceExtrasPageProps {
 }
 
 const ServiceExtrasPage: React.FC<ServiceExtrasPageProps> = ({ setActiveView, onEditExtraService }) => {
-  const { extraServices, loading, error, fetchExtraServices } = useExtraServiceManagement();
+  const { extraServices, loading, error, fetchExtraServices, deleteExtraService } = useExtraServiceManagement();
+  const toast = useToast();
+  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   useEffect(() => {
     fetchExtraServices();
   }, [fetchExtraServices]);
+
+  const handleDeleteExtraService = async (id: number) => {
+    const extraService = extraServices.find(e => e.id === id);
+    if (!extraService) return;
+
+    // Se já está confirmando este item, executar a exclusão
+    if (confirmingDelete === id) {
+      setDeleteLoading(id);
+      setConfirmingDelete(null);
+
+      const result = await deleteExtraService(id);
+      setDeleteLoading(null);
+
+      if (result.success) {
+        toast.success('Serviço Extra Excluído!', `O serviço extra "${extraService.nome}" foi removido com sucesso do sistema.`);
+        // Recarregar lista
+        await fetchExtraServices();
+      } else {
+        toast.error('Erro ao Excluir', result.error || 'Não foi possível excluir o serviço extra. Tente novamente.');
+      }
+    } else {
+      // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
+      setConfirmingDelete(id);
+      toast.warning('Confirme a Exclusão', `Clique novamente no X para confirmar a exclusão de "${extraService.nome}". Esta ação não pode ser desfeita.`);
+
+      // Resetar confirmação após 5 segundos
+      setTimeout(() => {
+        setConfirmingDelete(null);
+      }, 5000);
+    }
+  };
 
   if (loading) {
     return (
@@ -94,7 +142,14 @@ const ServiceExtrasPage: React.FC<ServiceExtrasPageProps> = ({ setActiveView, on
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
       {extraServices.map((extra) => (
-        <ExtraServiceCard key={extra.id} extra={extra} onEdit={onEditExtraService} />
+        <div key={extra.id} className={deleteLoading === extra.id ? 'opacity-50 pointer-events-none' : ''}>
+          <ExtraServiceCard
+            extra={extra}
+            onEdit={onEditExtraService}
+            onDelete={handleDeleteExtraService}
+            isConfirmingDelete={confirmingDelete === extra.id}
+          />
+        </div>
       ))}
       <AddExtraCard onClick={() => setActiveView('services-extra-create')} />
     </div>
