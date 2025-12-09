@@ -219,39 +219,37 @@ const NotificationsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-800">Lembretes</h1>
-          </div>
-          
-          {/* Selector de Local (apenas para plano Multi) */}
-          {isMultiPlan && (
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Local:</label>
-              <select
-                value={selectedLocationFilter}
-                onChange={(e) => {
-                  setSelectedLocationFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {locations.map(location => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Lembretes</h1>
         </div>
+        
+        {/* Selector de Local (apenas para plano Multi) */}
+        {isMultiPlan && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Local:</label>
+            <select
+              value={selectedLocationFilter}
+              onChange={(e) => {
+                setSelectedLocationFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {locations.map(location => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Filtros */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-6 py-4">
         <div className="flex items-center gap-4 flex-wrap">
           {/* Filtro por Tipo */}
           <select
@@ -307,7 +305,7 @@ const NotificationsPage: React.FC = () => {
       </div>
 
       {/* Conteúdo Principal */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div>
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
             <AlertCircle className="w-5 h-5" />

@@ -102,7 +102,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             {/* Cabeçalho */}
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Clientes</h1>
+                    <h1 className="text-3xl font-bold text-gray-800">Clientes</h1>
                     <p className="text-sm text-gray-500">
                         {displayText}
                     </p>

@@ -590,7 +590,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Compromissos</h1>
+                    <h1 className="text-3xl font-bold text-gray-800">Compromissos</h1>
                     <p className="text-sm text-gray-500">
                         Mostrando {filteredAppointments.length} de {pagination.total} agendamentos
                         {isLoading && ' (Carregando...)'}
