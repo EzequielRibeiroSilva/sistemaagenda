@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Ticket } from './Icons';
+import { Plus, Edit, Ticket, X } from './Icons';
 import { useCupomManagement, Cupom } from '../hooks/useCupomManagement';
 import { useUnitManagement } from '../hooks/useUnitManagement';
+import { useToast } from '../contexts/ToastContext';
 
 interface CupomCardProps {
   cupom: Cupom;
   onEdit: (id: number) => void;
+  onDelete: (id: number) => void;
+  isConfirmingDelete?: boolean;
 }
 
-const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit }) => {
+const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit, onDelete, isConfirmingDelete = false }) => {
   const formatarData = (data: string | undefined) => {
     if (!data) return 'Sem validade';
     try {
@@ -23,9 +26,22 @@ const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit }) => {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
       <div className="p-4 flex-grow">
         {/* Título do Cupom */}
-        <h3 className="font-bold text-gray-800 text-sm uppercase h-10 flex items-center">
-          {cupom.codigo}
-        </h3>
+        <div className="flex justify-between items-start mb-2">
+          <h3 className="font-bold text-gray-800 text-sm uppercase flex-1">
+            {cupom.codigo}
+          </h3>
+          <button
+            onClick={() => onDelete(cupom.id)}
+            className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 ${
+              isConfirmingDelete
+                ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                : 'text-red-600 hover:bg-red-50'
+            }`}
+            title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir cupom'}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
         <hr className="my-3" />
 
         {/* Desconto em destaque */}
@@ -119,11 +135,14 @@ interface CuponsPageProps {
 }
 
 const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) => {
-  const { cupons, loading, error, pagination, fetchCupons } = useCupomManagement();
+  const { cupons, loading, error, pagination, fetchCupons, deleteCupom } = useCupomManagement();
   const { units, fetchUnits } = useUnitManagement();
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [localFilter, setLocalFilter] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   // Carregar unidades quando o componente montar
   useEffect(() => {
@@ -144,6 +163,41 @@ const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) =
       onEditCupom(cupomId);
     } else {
       setActiveView('cupons-edit');
+    }
+  };
+
+  const handleDeleteCupom = async (id: number) => {
+    const cupom = cupons.find(c => c.id === id);
+    if (!cupom) return;
+
+    // Se já está confirmando este item, executar a exclusão
+    if (confirmingDelete === id) {
+      setDeleteLoading(id);
+      setConfirmingDelete(null);
+
+      const success = await deleteCupom(id);
+      setDeleteLoading(null);
+
+      if (success) {
+        toast.success('Cupom Excluído!', `O cupom "${cupom.codigo}" foi removido com sucesso do sistema.`);
+        // Recarregar lista
+        await fetchCupons(pagination.page, pagination.limit, {
+          search: searchTerm,
+          status: statusFilter,
+          unidade_id: localFilter
+        });
+      } else {
+        toast.error('Erro ao Excluir', 'Não foi possível excluir o cupom. Tente novamente.');
+      }
+    } else {
+      // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
+      setConfirmingDelete(id);
+      toast.warning('Confirme a Exclusão', `Clique novamente no X para confirmar a exclusão de "${cupom.codigo}". Esta ação não pode ser desfeita.`);
+
+      // Resetar confirmação após 5 segundos
+      setTimeout(() => {
+        setConfirmingDelete(null);
+      }, 5000);
     }
   };
 
@@ -234,7 +288,14 @@ const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) =
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {/* Cards dos cupons existentes aparecem primeiro */}
           {cupons.map((cupom) => (
-            <CupomCard key={cupom.id} cupom={cupom} onEdit={handleEditCupom} />
+            <div key={cupom.id} className={deleteLoading === cupom.id ? 'opacity-50 pointer-events-none' : ''}>
+              <CupomCard
+                cupom={cupom}
+                onEdit={handleEditCupom}
+                onDelete={handleDeleteCupom}
+                isConfirmingDelete={confirmingDelete === cupom.id}
+              />
+            </div>
           ))}
           
           {/* Card "Adicionar Cupom" aparece por último */}
