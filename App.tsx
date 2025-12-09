@@ -39,7 +39,11 @@ import { ToastProvider } from './contexts/ToastContext';
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState('dashboard');
+  // ✅ PERSISTÊNCIA: Ler activeView do localStorage na inicialização
+  const [activeView, setActiveView] = useState(() => {
+    const savedView = localStorage.getItem('activeView');
+    return savedView || 'dashboard';
+  });
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
@@ -50,6 +54,11 @@ const App: React.FC = () => {
 
   // Usar AuthContext
   const { user, isAuthenticated, isLoading, login, logout: authLogout } = useAuth();
+
+  // ✅ PERSISTÊNCIA: Salvar activeView no localStorage toda vez que mudar
+  useEffect(() => {
+    localStorage.setItem('activeView', activeView);
+  }, [activeView]);
 
   // Limpar estados de edição quando muda de view (mas não quando entra na página de edição)
   useEffect(() => {
