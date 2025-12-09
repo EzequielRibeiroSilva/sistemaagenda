@@ -815,7 +815,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.onerror = null;
-                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
+                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2663eb&color=fff`;
                         }}
                     />
                     <div className="ml-3">
