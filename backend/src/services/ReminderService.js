@@ -338,6 +338,39 @@ class ReminderService {
         return { success: false, reason: 'duplicate' };
       }
 
+      // ✅ NOVO: Calcular informações de pontos do cliente
+      let pontosInfo = null;
+      try {
+        const ClienteModel = require('../models/Cliente');
+        const clienteModel = new ClienteModel(this.db);
+        
+        // Calcular saldo atual de pontos
+        const saldoPontos = await clienteModel.calcularPontosDisponiveis(appointment.cliente_id, unidade_id);
+        
+        // Verificar se é o primeiro agendamento (para saber se pode usar pontos)
+        const isPrimeiro = await clienteModel.isPrimeiroAgendamento(appointment.cliente_id, unidade_id);
+        
+        // Buscar pontos ganhos neste agendamento específico
+        const pontosGanhos = await this.db('pontos_historico')
+          .where('agendamento_id', agendamento_id)
+          .where('tipo', 'CREDITO')
+          .sum('pontos as total')
+          .first();
+        
+        const ganhos = parseInt(pontosGanhos?.total || 0);
+        
+        pontosInfo = {
+          saldo: saldoPontos,
+          ganhos: ganhos,
+          podeUsar: !isPrimeiro // Pode usar se NÃO for o primeiro
+        };
+        
+        console.log(`💎 [ReminderService] Pontos calculados para cliente #${appointment.cliente_id}:`, pontosInfo);
+      } catch (pontosError) {
+        console.error('❌ [ReminderService] Erro ao calcular pontos:', pontosError);
+        // Continuar sem informação de pontos
+      }
+
       // Preparar dados para geração da mensagem
       const agendamentoData = {
         cliente: {
@@ -358,7 +391,8 @@ class ReminderService {
         cliente_telefone: appointment.cliente_telefone,
         agente_telefone: appointment.agente_telefone,
         unidade_telefone: appointment.unidade_telefone,
-        unidade_endereco: appointment.unidade_endereco
+        unidade_endereco: appointment.unidade_endereco,
+        pontos: pontosInfo // ✅ NOVO: Incluir informações de pontos
       };
 
       // Tentar enviar com retry
