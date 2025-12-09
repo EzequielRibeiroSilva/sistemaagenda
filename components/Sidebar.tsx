@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 // FIX: Removed unused 'BarChart3' import as it is not an exported member of './Icons'.
 import {
   Box, Briefcase, Calendar, ChevronDown, Cog, LayoutDashboard,
-  Users, Menu, ChevronRight, MapPin, Ticket, Bell
+  Users, ChevronRight, MapPin, Ticket, Bell
 } from './Icons';
 
 interface NavItemProps {
@@ -166,11 +166,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
   const sidebarContent = (
     <>
       <div className="flex items-center h-16 border-b border-gray-200 px-4 flex-shrink-0">
-        <button onClick={() => setCollapsed(!isCollapsed)} className="p-2 -ml-2 rounded-md hover:bg-gray-100 focus:outline-none hidden lg:block">
-            <Menu className="h-6 w-6 text-gray-600" />
+        {/* Logo Tally - Desktop (lg+) */}
+        <button 
+          onClick={() => setCollapsed(!isCollapsed)} 
+          className={`hidden lg:block focus:outline-none transition-all duration-200 hover:opacity-80 ${isCollapsed ? 'mx-auto' : ''}`}
+          aria-label="Toggle sidebar"
+        >
+          <span 
+            className="font-genty text-3xl font-bold tracking-wide"
+            style={{ color: '#2663EB' }}
+          >
+            {isCollapsed ? 'T' : 'Tally'}
+          </span>
         </button>
-         <div className="w-full text-center lg:hidden">
-            <span className="font-bold text-lg text-gray-800">Menu</span>
+        
+        {/* Logo Tally - Mobile */}
+        <div className="lg:hidden">
+          <span 
+            className="font-genty text-3xl font-bold tracking-wide"
+            style={{ color: '#2663EB' }}
+          >
+            Tally
+          </span>
         </div>
       </div>
 

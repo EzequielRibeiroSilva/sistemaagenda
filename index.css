@@ -1,5 +1,19 @@
 /* 🎨 Estilos Customizados para o Painel de Agendamento */
 
+/* ✨ Fonte Genty para o Logo Tally */
+@font-face {
+  font-family: 'Genty';
+  src: url('/fonts/Genty-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Classe utilitária para aplicar a fonte Genty */
+.font-genty {
+  font-family: 'Genty', sans-serif;
+}
+
 /* Esconder scrollbar mantendo funcionalidade de scroll */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
