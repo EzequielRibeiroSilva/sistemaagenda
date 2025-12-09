@@ -14,12 +14,6 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric }) => (
         <p className="text-gray-500 text-xs sm:text-sm font-medium">{metric.title}</p>
         <div className="flex items-baseline mt-2">
           <p className="text-2xl sm:text-3xl font-bold text-gray-900">{metric.value}</p>
-          {/* ✅ Só exibe variação se houver conteúdo */}
-          {metric.change && (
-            <span className={`ml-2 text-xs sm:text-sm font-semibold ${metric.isPositive ? 'text-green-500' : 'text-red-500'}`}>
-              {metric.change}
-            </span>
-          )}
         </div>
         {metric.subtitle && (
           <p className="text-xs text-gray-400 mt-2">{metric.subtitle}</p>
