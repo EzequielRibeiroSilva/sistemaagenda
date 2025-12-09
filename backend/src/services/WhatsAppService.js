@@ -227,16 +227,52 @@ class WhatsAppService {
   }
 
   /**
+   * Gerar mensagem de pontos do cliente
+   * @param {Object} pontosInfo - Informações sobre pontos do cliente
+   * @param {number} pontosInfo.saldo - Saldo atual de pontos
+   * @param {number} pontosInfo.ganhos - Pontos ganhos neste agendamento
+   * @param {boolean} pontosInfo.podeUsar - Se o cliente pode usar pontos
+   * @returns {string} Mensagem formatada sobre pontos
+   */
+  formatPontosMessage(pontosInfo) {
+    if (!pontosInfo || pontosInfo.saldo === undefined) {
+      return ''; // Sem informação de pontos
+    }
+
+    const { saldo, ganhos, podeUsar } = pontosInfo;
+    
+    // Se ganhou pontos neste agendamento
+    if (ganhos && ganhos > 0) {
+      const mensagemBase = `\n💎 *Você acumulou ${ganhos} ponto${ganhos !== 1 ? 's' : ''}!*\nSaldo total: *${saldo} ponto${saldo !== 1 ? 's' : ''}*`;
+      
+      // Se não pode usar (primeiro agendamento)
+      if (!podeUsar) {
+        return `${mensagemBase}\n_Pontos disponíveis para uso a partir do 2º agendamento_`;
+      }
+      
+      return mensagemBase;
+    }
+    
+    // Se não ganhou pontos mas tem saldo
+    if (saldo > 0) {
+      return `\n💎 Seu saldo de pontos: *${saldo} ponto${saldo !== 1 ? 's' : ''}*`;
+    }
+    
+    return '';
+  }
+
+  /**
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
    */
   generateAppointmentConfirmationClient(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone, pontos } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
     const linkGestao = this.generateManagementLink(agendamento_id);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
+    const pontosMensagem = this.formatPontosMessage(pontos);
 
     return `👋 Olá, *${cliente.nome}*! Ficamos muito felizes com seu agendamento na *${unidade.nome}*.
 
@@ -244,7 +280,7 @@ Seu horário está confirmadíssimo:
 ✂️ ${servicoTexto} com *${agente.nome}*
 🗓 ${dataHora}
 
-🎫 ID do Agendamento: *#${agendamento_id}*
+🎫 ID do Agendamento: *#${agendamento_id}*${pontosMensagem}
 
 Precisa alterar algo? Gerencie seu horário através deste link:
 
@@ -351,17 +387,18 @@ _Mensagem automática do Tally_`;
    * 4. LEMBRETE 24 HORAS ANTES - CLIENTE
    */
   generateReminder24hMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, pontos } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
     const linkGestao = this.generateManagementLink(agendamento_id);
+    const pontosMensagem = this.formatPontosMessage(pontos);
 
     return `⏰ Oi, *${cliente.nome}*! A equipe da *${unidade.nome}* está ansiosa para te receber.
 
 Passando para lembrar do seu horário amanhã:
 🗓 ${dataHora}
-✂️ ${servicoTexto}
+✂️ ${servicoTexto}${pontosMensagem}
 
 Teve algum imprevisto? Por favor, use o link abaixo para nos avisar ou reagendar:
 🔗 ${linkGestao}
@@ -373,16 +410,17 @@ _Mensagem automática do Tally_`;
    * 4. LEMBRETE 1 HORA ANTES - CLIENTE
    */
   generateReminder2hMessage(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, agente_telefone, unidade_telefone, unidade_endereco, agendamento_id } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, agente_telefone, unidade_telefone, unidade_endereco, agendamento_id, pontos } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
     const linkGestao = this.generateManagementLink(agendamento_id);
+    const pontosMensagem = this.formatPontosMessage(pontos);
 
     return `⏳ É quase hora, *${cliente.nome}*! Tudo pronto aqui na *${unidade.nome}* para te atender.
 
-Te esperamos às ${hora_inicio} com o(a) *${agente.nome}*.
+Te esperamos às ${hora_inicio} com o(a) *${agente.nome}*.${pontosMensagem}
 
 Como chegar / Contato:
 🏠 ${unidade.nome}: ${unidade_endereco || 'Endereço não informado'}

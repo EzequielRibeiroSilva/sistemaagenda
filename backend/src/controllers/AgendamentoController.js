@@ -1048,6 +1048,39 @@ class AgendamentoController extends BaseController {
       // ✅ CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
       const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
+      // ✅ NOVO: Calcular informações de pontos do cliente
+      let pontosInfo = null;
+      try {
+        const ClienteModel = require('../models/Cliente');
+        const clienteModel = new ClienteModel(this.model.db);
+        
+        // Calcular saldo atual de pontos
+        const saldoPontos = await clienteModel.calcularPontosDisponiveis(agendamento.cliente_id, agendamento.unidade_id);
+        
+        // Verificar se é o primeiro agendamento (para saber se pode usar pontos)
+        const isPrimeiro = await clienteModel.isPrimeiroAgendamento(agendamento.cliente_id, agendamento.unidade_id);
+        
+        // Buscar pontos ganhos neste agendamento específico
+        const pontosGanhos = await this.model.db('pontos_historico')
+          .where('agendamento_id', agendamentoId)
+          .where('tipo', 'CREDITO')
+          .sum('pontos as total')
+          .first();
+        
+        const ganhos = parseInt(pontosGanhos?.total || 0);
+        
+        pontosInfo = {
+          saldo: saldoPontos,
+          ganhos: ganhos,
+          podeUsar: !isPrimeiro // Pode usar se NÃO for o primeiro
+        };
+        
+        console.log(`💎 [AgendamentoController] Pontos calculados para cliente #${agendamento.cliente_id}:`, pontosInfo);
+      } catch (pontosError) {
+        console.error('❌ [AgendamentoController] Erro ao calcular pontos:', pontosError);
+        // Continuar sem informação de pontos
+      }
+
       // ✅ NOVO: Formatar dados para as novas mensagens do Tally
       return {
         // Dados do cliente
@@ -1069,6 +1102,7 @@ class AgendamentoController extends BaseController {
           endereco: unidade.endereco,
           slug_url: unidade.slug_url
         },
+        unidade_id: unidade.id,
         unidade_telefone: unidade.telefone,
         unidade_endereco: unidade.endereco,
         unidade_slug: unidade.slug_url,
@@ -1084,7 +1118,10 @@ class AgendamentoController extends BaseController {
         servicos: servicos.map(s => ({
           nome: s.nome,
           preco: s.preco
-        }))
+        })),
+        
+        // ✅ NOVO: Informações de pontos
+        pontos: pontosInfo
       };
 
     } catch (error) {
