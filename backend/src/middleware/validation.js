@@ -68,11 +68,13 @@ const validateLogin = (req, res, next) => {
   }
 
   // Verificar caracteres suspeitos na senha (possível injeção)
+  // ✅ CORREÇÃO 1.9: Permitir caracteres especiais válidos em senhas ($, %, etc.)
+  // Bloquear apenas padrões de injeção reais, não caracteres especiais isolados
   const suspiciousPatterns = [
     /(<script|<\/script>)/i,
     /(javascript:|vbscript:|onload=|onerror=)/i,
     /(union\s+select|drop\s+table|insert\s+into|delete\s+from)/i,
-    /(\$\{|\#\{|<%=|<\?php)/i
+    /(\$\{[^}]*\}|\#\{[^}]*\}|<%=|<\?php)/i // ✅ Apenas template literals completos, não $ isolado
   ];
 
   for (const pattern of suspiciousPatterns) {
@@ -154,19 +156,23 @@ const sanitizeInput = (req, res, next) => {
 
 /**
  * Middleware para detectar tentativas de injeção SQL
+ * ✅ CORREÇÃO 1.9: Não bloquear caracteres especiais válidos em senhas
  */
 const detectSQLInjection = (req, res, next) => {
   const sqlInjectionPatterns = [
     /(\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b)/i,
-    /((\%27)|(\')|(--)|(\%23)|(\#))/i,
-    /((\%3D)|(=))[^\n]*((\%27)|(\')|(--)|(\%23)|(\#))/i,
+    /((\%27)|(\')|(--)|(\%23))/i, // ✅ Removido \# isolado - permitir em senhas
+    /((\%3D)|(=))[^\n]*((\%27)|(\')|(--)|(\%23))/i, // ✅ Removido \# isolado
     /\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))/i,
     /((\%27)|(\'))union/i
   ];
 
-  const checkForSQLInjection = (obj, path = '') => {
+  const checkForSQLInjection = (obj, path = '', parentKey = '') => {
     for (const [key, value] of Object.entries(obj)) {
-      if (typeof value === 'string') {
+      // ✅ CORREÇÃO 1.9: Não validar SQL injection em campos de senha
+      const isPasswordField = ['senha', 'password', 'novaSenha', 'nova_senha', 'senhaAtual'].includes(key);
+      
+      if (typeof value === 'string' && !isPasswordField) {
         for (const pattern of sqlInjectionPatterns) {
           if (pattern.test(value)) {
             console.error(`🚨 Possível tentativa de SQL Injection detectada - IP: ${req.ip}, Path: ${path}.${key}, Value: ${value}`);
@@ -174,7 +180,7 @@ const detectSQLInjection = (req, res, next) => {
           }
         }
       } else if (typeof value === 'object' && value !== null) {
-        if (checkForSQLInjection(value, `${path}.${key}`)) {
+        if (checkForSQLInjection(value, `${path}.${key}`, key)) {
           return true;
         }
       }

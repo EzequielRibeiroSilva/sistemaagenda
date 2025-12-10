@@ -92,8 +92,12 @@ class SettingsService {
         throw new Error('Nova senha e confirmação não coincidem');
       }
 
-      if (novaSenha.length < 6) {
-        throw new Error('Nova senha deve ter pelo menos 6 caracteres');
+      // ✅ CORREÇÃO 1.9: Validação robusta de senha
+      const { validatePasswordStrength } = require('../middleware/passwordValidation');
+      const validation = validatePasswordStrength(novaSenha);
+      
+      if (!validation.valid) {
+        throw new Error(`Senha não atende aos requisitos: ${validation.errors.join(', ')}`);
       }
 
       // Busca usuário atual

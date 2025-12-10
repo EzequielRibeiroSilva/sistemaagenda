@@ -21,10 +21,11 @@ const config = {
   },
 
   // Configurações JWT
+  // ✅ CORREÇÃO 1.6: Reduzir expiração para 2h (segurança)
   jwt: {
     secret: process.env.JWT_SECRET || 'fallback_secret_key_not_secure',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret_key_not_secure',
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    expiresIn: process.env.JWT_EXPIRES_IN || '2h', // ✅ Reduzido de 24h para 2h
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   },
 
@@ -58,7 +59,8 @@ const config = {
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutos
     rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 2000, // Valor otimizado após correções
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12,
-    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'file://']
+    // ✅ CORREÇÃO 1.7: Removido file:// (inseguro e desnecessário)
+    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001']
   },
 
   // Configurações de log

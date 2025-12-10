@@ -43,7 +43,10 @@ const App: React.FC = () => {
     const savedView = localStorage.getItem('activeView');
     return savedView || 'dashboard';
   });
-  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  // ✅ PERSISTÊNCIA: Ler editingAgentId do localStorage
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(() => {
+    return localStorage.getItem('editingAgentId');
+  });
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
@@ -58,6 +61,15 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('activeView', activeView);
   }, [activeView]);
+
+  // ✅ PERSISTÊNCIA: Salvar editingAgentId no localStorage toda vez que mudar
+  useEffect(() => {
+    if (editingAgentId) {
+      localStorage.setItem('editingAgentId', editingAgentId);
+    } else {
+      localStorage.removeItem('editingAgentId');
+    }
+  }, [editingAgentId]);
 
   // Limpar estados de edição quando muda de view (mas não quando entra na página de edição)
   useEffect(() => {

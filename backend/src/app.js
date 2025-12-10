@@ -55,8 +55,26 @@ app.use((req, res, next) => {
 });
 
 // Configuração CORS
+// ✅ CORREÇÃO 1.7: Filtrar origens inseguras (file://, null, etc.)
+const sanitizedOrigins = config.security.corsOrigins.filter(origin => {
+  // Bloquear file://, null, undefined, e strings vazias
+  if (!origin || origin === 'null' || origin.startsWith('file://')) {
+    console.warn(`⚠️  Origem CORS bloqueada por segurança: ${origin}`);
+    return false;
+  }
+  // Permitir apenas HTTP/HTTPS
+  if (!origin.startsWith('http://') && !origin.startsWith('https://')) {
+    console.warn(`⚠️  Origem CORS inválida (não HTTP/HTTPS): ${origin}`);
+    return false;
+  }
+  return true;
+});
+
+// Log de origens CORS permitidas
+console.log('✅ Origens CORS permitidas:', sanitizedOrigins);
+
 app.use(cors({
-  origin: config.security.corsOrigins,
+  origin: sanitizedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']

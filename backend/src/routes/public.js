@@ -12,6 +12,8 @@ const {
   clientSearchRateLimit, 
   createBookingRateLimit, 
   couponValidationRateLimit,
+  cancelBookingRateLimit,
+  rescheduleBookingRateLimit,
   generalPublicRateLimit 
 } = require('../middleware/publicBookingRateLimit');
 
@@ -92,16 +94,18 @@ router.get('/agendamento/:id', async (req, res) => {
 /**
  * PUT /api/public/agendamento/:id/reagendar
  * Reagendar um agendamento (alterar data e hora)
+ * ✅ CORREÇÃO 1.8: Rate limiting (5 tentativas / 15 min)
  */
-router.put('/agendamento/:id/reagendar', async (req, res) => {
+router.put('/agendamento/:id/reagendar', rescheduleBookingRateLimit, async (req, res) => {
   await publicBookingController.reagendarAgendamento(req, res);
 });
 
 /**
  * PATCH /api/public/agendamento/:id/cancelar
  * Cancelar um agendamento
+ * ✅ CORREÇÃO 1.8: Rate limiting (3 tentativas / 15 min)
  */
-router.patch('/agendamento/:id/cancelar', async (req, res) => {
+router.patch('/agendamento/:id/cancelar', cancelBookingRateLimit, async (req, res) => {
   await publicBookingController.cancelarAgendamento(req, res);
 });
 

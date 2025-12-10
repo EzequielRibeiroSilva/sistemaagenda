@@ -124,6 +124,9 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 if (isMounted) {
                     setIsLoading(false);
                 }
+            } else if (!agentId && isMounted) {
+                // Se não há agentId, parar loading
+                setIsLoading(false);
             }
         };
 

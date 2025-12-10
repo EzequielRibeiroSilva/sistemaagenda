@@ -94,6 +94,60 @@ const couponValidationRateLimit = rateLimit({
 });
 
 /**
+ * Rate limit para cancelamento de agendamento
+ * ✅ CORREÇÃO 1.8: 3 tentativas a cada 15 minutos por IP
+ */
+const cancelBookingRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 3, // 3 tentativas
+  message: {
+    error: 'Muitas tentativas de cancelamento',
+    message: 'Você excedeu o limite de cancelamentos. Tente novamente em 15 minutos.',
+    retryAfter: '15 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  },
+  handler: (req, res) => {
+    console.warn(`🚨 [SECURITY] Rate limit excedido para cancelamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
+    res.status(429).json({
+      error: 'Muitas tentativas de cancelamento',
+      message: 'Você excedeu o limite de cancelamentos. Tente novamente em 15 minutos.',
+      retryAfter: '15 minutos'
+    });
+  }
+});
+
+/**
+ * Rate limit para reagendamento
+ * ✅ CORREÇÃO 1.8: 5 tentativas a cada 15 minutos por IP
+ */
+const rescheduleBookingRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // 5 tentativas
+  message: {
+    error: 'Muitas tentativas de reagendamento',
+    message: 'Você excedeu o limite de reagendamentos. Tente novamente em 15 minutos.',
+    retryAfter: '15 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  },
+  handler: (req, res) => {
+    console.warn(`🚨 [SECURITY] Rate limit excedido para reagendamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
+    res.status(429).json({
+      error: 'Muitas tentativas de reagendamento',
+      message: 'Você excedeu o limite de reagendamentos. Tente novamente em 15 minutos.',
+      retryAfter: '15 minutos'
+    });
+  }
+});
+
+/**
  * Rate limit geral para rotas públicas
  * 100 requisições a cada 15 minutos por IP
  */
@@ -116,9 +170,11 @@ const generalPublicRateLimit = rateLimit({
     const specificRateLimitPaths = [
       '/api/public/cliente/buscar',
       '/api/public/agendamento',
-      '/api/public/cupons/validar'
+      '/api/public/cupons/validar',
+      '/api/public/agendamento/:id/cancelar',
+      '/api/public/agendamento/:id/reagendar'
     ];
-    return specificRateLimitPaths.some(path => req.path.includes(path));
+    return specificRateLimitPaths.some(path => req.path.includes(path.split(':')[0]));
   }
 });
 
@@ -126,5 +182,7 @@ module.exports = {
   clientSearchRateLimit,
   createBookingRateLimit,
   couponValidationRateLimit,
+  cancelBookingRateLimit,
+  rescheduleBookingRateLimit,
   generalPublicRateLimit
 };

@@ -92,6 +92,14 @@ class MasterUserService {
         throw new Error('Todos os campos obrigatórios devem ser preenchidos');
       }
 
+      // ✅ CORREÇÃO 1.9: Validação robusta de senha
+      const { validatePasswordStrength } = require('../middleware/passwordValidation');
+      const validation = validatePasswordStrength(senha);
+      
+      if (!validation.valid) {
+        throw new Error(`Senha não atende aos requisitos: ${validation.errors.join(', ')}`);
+      }
+
       // Verificar se email já existe
       const existingUser = await trx('usuarios').where('email', email).first();
       if (existingUser) {

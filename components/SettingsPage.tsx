@@ -164,8 +164,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 if (newPassword !== confirmPassword) {
                     throw new Error('As senhas não coincidem');
                 }
-                if (newPassword.length < 6) {
-                    throw new Error('A nova senha deve ter pelo menos 6 caracteres');
+                // ✅ CORREÇÃO 1.9: Validação robusta de senha
+                if (newPassword.length < 8) {
+                    throw new Error('A nova senha deve ter pelo menos 8 caracteres');
+                }
+                if (!/[A-Z]/.test(newPassword)) {
+                    throw new Error('A senha deve conter pelo menos uma letra maiúscula');
+                }
+                if (!/[a-z]/.test(newPassword)) {
+                    throw new Error('A senha deve conter pelo menos uma letra minúscula');
+                }
+                if (!/[0-9]/.test(newPassword)) {
+                    throw new Error('A senha deve conter pelo menos um número');
+                }
+                if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)) {
+                    throw new Error('A senha deve conter pelo menos um caractere especial');
                 }
             }
 
