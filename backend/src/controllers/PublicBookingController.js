@@ -323,6 +323,15 @@ class PublicBookingController {
       const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
       console.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
+      // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
+      const configuracoes = await db('configuracoes')
+        .where('unidade_id', unidadeIdParaUsar)
+        .select('tempo_limite_agendar_horas')
+        .first();
+
+      const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
+      console.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
+
       // Calcular dia da semana (0 = Domingo, 6 = Sábado)
       const dataObj = new Date(data + 'T00:00:00');
       const diaSemana = dataObj.getDay();
@@ -422,11 +431,13 @@ class PublicBookingController {
 
       // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
       // ✅ CRÍTICO: Passar data para bloquear horários passados
+      // ✅ NOVO: Passar tempo_limite_agendar_horas para filtrar horários
       const slotsDisponiveis = this.generateAvailableSlots(
         horariosParaUsar,
         agendamentosExistentes,
         duracaoMinutos,
-        data // ✅ Passa a data para verificar se é dia atual e bloquear horários passados
+        data, // ✅ Passa a data para verificar se é dia atual e bloquear horários passados
+        tempoLimiteHoras // ✅ Passa tempo limite para agendar
       );
 
       // Retornar slots completos com hora_inicio, hora_fim e disponivel
@@ -460,19 +471,28 @@ class PublicBookingController {
    * Algoritmo: Para cada período de funcionamento, gerar slots de 15 em 15 minutos
    * e verificar se há espaço suficiente para a duração solicitada
    * ✅ NOVO: Bloqueia horários que já passaram (para o dia atual)
+   * ✅ NOVO: Bloqueia horários fora do prazo mínimo (tempo_limite_agendar_horas)
    */
-  generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos, dataAgendamento) {
+  generateAvailableSlots(horariosJson, agendamentosExistentes, duracaoMinutos, dataAgendamento, tempoLimiteHoras = 0) {
     const slots = [];
     // CORREÇÃO CRÍTICA: Usar a duração do serviço como intervalo dos slots
     const intervaloSlot = duracaoMinutos; // Slots baseados na duração real do serviço
 
-    // ✅ CRÍTICO: Obter horário atual para bloquear slots passados
+    // ✅ CRÍTICO: Obter horário atual para bloquear slots passados e aplicar tempo limite
     const agora = new Date();
     const dataAgendamentoObj = new Date(dataAgendamento + 'T00:00:00');
     const isDiaAtual = dataAgendamentoObj.toDateString() === agora.toDateString();
     const horarioAtualEmMinutos = isDiaAtual ? (agora.getHours() * 60 + agora.getMinutes()) : 0;
 
-    console.log(`[PublicBooking] Gerando slots para ${dataAgendamento} (dia atual: ${isDiaAtual}, horário atual: ${this.minutesToTime(horarioAtualEmMinutos)})`);
+    // ✅ NOVO: Calcular horário mínimo baseado em tempo_limite_agendar_horas
+    const horarioMinimoPermitido = new Date(agora.getTime() + (tempoLimiteHoras * 60 * 60 * 1000));
+    
+    console.log(`[PublicBooking] Gerando slots para ${dataAgendamento}:`, {
+      isDiaAtual,
+      horarioAtual: this.minutesToTime(horarioAtualEmMinutos),
+      tempoLimiteHoras,
+      horarioMinimoPermitido: horarioMinimoPermitido.toISOString()
+    });
 
     for (const periodo of horariosJson) {
       const inicio = this.timeToMinutes(periodo.inicio);
@@ -492,6 +512,17 @@ class PublicBookingController {
         if (isDiaAtual && minuto < horarioAtualEmMinutos) {
           console.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (já passou)`);
           continue; // Horário já passou, não disponibilizar
+        }
+
+        // ✅ NOVO: Bloquear horários fora do prazo mínimo (tempo_limite_agendar_horas)
+        if (tempoLimiteHoras > 0) {
+          // Criar data/hora do slot para comparação
+          const dataHoraSlot = new Date(`${dataAgendamento}T${horarioSlot}`);
+          
+          if (dataHoraSlot < horarioMinimoPermitido) {
+            console.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (fora do prazo mínimo de ${tempoLimiteHoras}h)`);
+            continue; // Fora do prazo mínimo, não disponibilizar
+          }
         }
 
         // Verificar se não conflita com agendamentos existentes
@@ -684,6 +715,68 @@ class PublicBookingController {
           message: 'Este agente não está disponível'
         });
       }
+
+      // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
+      const configuracoes = await trx('configuracoes')
+        .where('unidade_id', unidade_id)
+        .select('tempo_limite_agendar_horas')
+        .first();
+
+      if (!configuracoes) {
+        console.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${unidade_id}`);
+        await trx.rollback();
+        return res.status(500).json({
+          success: false,
+          error: 'Configuração não encontrada',
+          message: 'Não foi possível verificar as políticas de agendamento'
+        });
+      }
+
+      console.log(`[PublicBooking] 🔍 Configurações de agendamento:`, {
+        tempo_limite_agendar_horas: configuracoes.tempo_limite_agendar_horas
+      });
+
+      // ✅ VALIDAÇÃO 2: Verificar se está dentro do prazo mínimo para agendar
+      const agora = new Date();
+      const dataHoraAgendamento = new Date(`${data_agendamento}T${hora_inicio}`);
+      const diferencaMs = dataHoraAgendamento - agora;
+      const diferencaHoras = diferencaMs / (1000 * 60 * 60);
+
+      console.log(`[PublicBooking] 🔍 Cálculo de prazo para agendamento:`, {
+        agora: agora.toISOString(),
+        agendamento: dataHoraAgendamento.toISOString(),
+        diferencaHoras: diferencaHoras.toFixed(2),
+        limiteHoras: configuracoes.tempo_limite_agendar_horas
+      });
+
+      // ✅ VALIDAÇÃO 3: Bloquear agendamentos no passado
+      if (diferencaHoras < 0) {
+        const horasPassadas = Math.abs(diferencaHoras).toFixed(1);
+        console.log(`[PublicBooking] ❌ Tentativa de agendar para horário que já passou há ${horasPassadas} hora(s)`);
+        await trx.rollback();
+        return res.status(400).json({
+          success: false,
+          error: 'Horário inválido',
+          message: 'Não é possível agendar para um horário que já passou'
+        });
+      }
+
+      // ✅ VALIDAÇÃO 4: Verificar se está dentro do prazo mínimo
+      if (diferencaHoras < configuracoes.tempo_limite_agendar_horas) {
+        const horasRestantes = diferencaHoras.toFixed(1);
+        const horasNecessarias = configuracoes.tempo_limite_agendar_horas;
+        
+        console.log(`[PublicBooking] ❌ Agendamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
+        
+        await trx.rollback();
+        return res.status(403).json({
+          success: false,
+          error: 'Fora do prazo mínimo',
+          message: `Agendamento não permitido. É necessário agendar com pelo menos ${horasNecessarias} hora(s) de antecedência. O horário selecionado está a apenas ${horasRestantes} hora(s) de acontecer.`
+        });
+      }
+
+      console.log(`✅ [PublicBooking] Agendamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_agendar_horas}h`);
 
       // Buscar serviços e calcular duração total e valor total
       const servicos = await trx('servicos')

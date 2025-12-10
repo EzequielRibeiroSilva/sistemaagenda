@@ -105,7 +105,6 @@ const NotificationsPage: React.FC = () => {
         const id = parseInt(filters.agendamentoId);
         if (!isNaN(id)) {
           apiFilters.agendamento_id = id;
-          console.log('🔍 [NotificationsPage] Filtro de ID aplicado:', id);
         }
       }
 
@@ -114,7 +113,6 @@ const NotificationsPage: React.FC = () => {
         apiFilters.unidade_id = parseInt(selectedLocationFilter);
       }
 
-      console.log('📤 [NotificationsPage] Buscando notificações com filtros:', apiFilters);
       fetchNotifications(apiFilters);
     }, 300);
 
