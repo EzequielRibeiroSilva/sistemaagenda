@@ -107,16 +107,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         return `Mostrando ${clients.length} de ${totalCount}`;
     }, [loading, clients.length, totalCount]);
 
-    // 🔍 DEBUG: Log de paginação
-    useEffect(() => {
-        console.log('🔍 [ClientsPage] Estado da paginação:', {
-            currentPage,
-            itemsPerPage,
-            paginationFromHook: pagination,
-            clientsCount: clients.length
-        });
-    }, [pagination, currentPage, itemsPerPage, clients.length]);
-
     // ✅ NOVO: Definir colunas da tabela dinamicamente
     const tableColumns: TableColumn[] = useMemo(() => {
         const columns: TableColumn[] = [
