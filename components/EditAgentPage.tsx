@@ -141,10 +141,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     useEffect(() => {
         if (availableUnits.length === 0 || !agentData) return;
 
-        console.log('🔄 [EditAgentPage] Inicializando agendas multi-unidade');
-        console.log('📦 [EditAgentPage] availableUnits:', availableUnits);
-        console.log('📦 [EditAgentPage] agentData.horarios_funcionamento:', agentData.horarios_funcionamento);
-
         // Mapear nomes de dias para números
         const dayNameToNumber: Record<string, number> = {
             'Domingo': 0,
@@ -178,17 +174,10 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             });
         }
 
-        console.log('📋 [EditAgentPage] Horários agrupados por unidade:', horariosPorUnidade);
-
         // Criar estrutura de agendas para cada unidade
         const initialSchedules: AgentUnitScheduleState[] = availableUnits.map(unit => {
             const unitHorarios = horariosPorUnidade[unit.id] || [];
             const hasCustomSchedule = unitHorarios.length > 0;
-
-            console.log(`🏢 [EditAgentPage] Processando Unidade ${unit.id} (${unit.nome}):`, {
-                hasCustomSchedule,
-                horariosCount: unitHorarios.length
-            });
 
             // Inicializar schedule vazio
             const schedule: Record<string, { isActive: boolean; periods: { id: number; start: string; end: string }[] }> = {
@@ -216,8 +205,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 }
             });
 
-            console.log(`📅 [EditAgentPage] Schedule para Unidade ${unit.id}:`, schedule);
-
             return {
                 unidade_id: unit.id,
                 unidade_nome: unit.nome,
@@ -226,7 +213,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             };
         });
 
-        console.log('✅ [EditAgentPage] initialSchedules final:', initialSchedules);
         setAgentSchedules(initialSchedules);
     }, [availableUnits, agentData]);
 
@@ -327,8 +313,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                             }))
                         }));
                 });
-
-            console.log('📤 [EditAgentPage] Enviando agendas_multi_unidade:', schedulesToSubmit);
 
             const updateData = {
                 nome: firstName,

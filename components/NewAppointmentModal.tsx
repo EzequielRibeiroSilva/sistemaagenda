@@ -991,7 +991,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 setCupomAplicado(null);
             }
         } catch (error) {
-            console.error('[NewAppointmentModal] Erro ao validar cupom:', error);
             setCupomErro('Erro ao validar cupom. Tente novamente.');
             setCupomAplicado(null);
         } finally {

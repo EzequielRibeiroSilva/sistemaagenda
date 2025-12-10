@@ -793,27 +793,19 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         observacoes: ''
       };
 
-      console.log('[BookingPage] Criando agendamento:', agendamentoData);
-
       const agendamentoCriado = await createAgendamento(agendamentoData);
 
       if (agendamentoCriado) {
-        console.log('[BookingPage] Agendamento criado com sucesso:', agendamentoCriado.agendamento_id);
-        console.log('[BookingPage] Cliente processado e WhatsApp enviado automaticamente');
-        
         // ✅ Atualizar nome do cliente com o nome completo retornado do backend
         // Isso garante que se o cliente já existia, o nome completo será exibido
         if (agendamentoCriado.cliente?.nome) {
           setClientName(agendamentoCriado.cliente.nome);
-          console.log('[BookingPage] Nome do cliente atualizado para:', agendamentoCriado.cliente.nome);
         }
         
         setCurrentStep(8); // Ir para tela de sucesso
       }
 
     } catch (error) {
-      console.error('[BookingPage] Erro ao criar agendamento:', error);
-
       // Mensagens de erro mais específicas
       let errorMessage = 'Erro ao criar agendamento';
       if (error.message.includes('Horário indisponível')) {
@@ -846,12 +838,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
           if (nomeCompleto && nomeCompleto !== clientName) {
             setClientName(nomeCompleto);
-            console.log('[BookingPage] Cliente existente encontrado:', nomeCompleto);
           }
         }
       }
     } catch (error) {
-      console.error('[BookingPage] Erro ao buscar cliente:', error);
       // Não bloquear o fluxo se houver erro
     }
   };
@@ -907,7 +897,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         setCupomAplicado(null);
       }
     } catch (error) {
-      console.error('[BookingPage] Erro ao validar cupom:', error);
       setCupomErro('Erro ao validar cupom. Tente novamente.');
       setCupomAplicado(null);
     } finally {
