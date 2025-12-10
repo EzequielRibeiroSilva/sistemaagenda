@@ -131,7 +131,7 @@ export const useDashboardData = () => {
         // Formato 3: [...] (array direto)
         unidadesData = response;
       } else {
-        console.error('❌ [useDashboardData] Formato de resposta não reconhecido:', response);
+        // Formato de resposta não reconhecido
       }
       
       setUnidades(unidadesData);
@@ -146,13 +146,12 @@ export const useDashboardData = () => {
             schedulesMap[unidade.id.toString()] = scheduleResponse.data.horarios_funcionamento;
           }
         } catch (err) {
-          console.error(`❌ [useDashboardData] Erro ao buscar horários da unidade ${unidade.id}:`, err);
+          // Erro ao buscar horários da unidade
         }
       }
       setUnitSchedules(schedulesMap);
       
     } catch (err) {
-      console.error('❌ [useDashboardData] Erro ao buscar unidades:', err);
       throw err;
     }
   }, [makeAuthenticatedRequest]);
@@ -167,11 +166,9 @@ export const useDashboardData = () => {
       } else if (Array.isArray(response)) {
         // ✅ CORREÇÃO: API pode retornar array direto
         setAgentes(response);
-      } else {
-        console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
       }
     } catch (err) {
-      console.error('❌ [useDashboardData] Erro ao buscar agentes:', err);
+      // Erro ao buscar agentes
       throw err;
     }
   }, [makeAuthenticatedRequest]);
@@ -186,11 +183,9 @@ export const useDashboardData = () => {
       } else if (Array.isArray(response)) {
         // ✅ CORREÇÃO: API pode retornar array direto
         setServicos(response);
-      } else {
-        console.warn('⚠️ [useDashboardData] Resposta inesperada do backend:', response);
       }
     } catch (err) {
-      console.error('❌ [useDashboardData] Erro ao buscar serviços:', err);
+      // Erro ao buscar serviços
       throw err;
     }
   }, [makeAuthenticatedRequest]);
@@ -228,11 +223,10 @@ export const useDashboardData = () => {
         // Formato 3: [...] (array direto)
         return response;
       } else {
-        console.warn('⚠️ [useDashboardData] Resposta sem dados válidos:', response);
         return [];
       }
     } catch (err) {
-      console.error('❌ [useDashboardData] Erro ao buscar agendamentos:', err);
+      // Erro ao buscar agendamentos
       throw err;
     }
   }, [makeAuthenticatedRequest]);
@@ -310,13 +304,9 @@ export const useDashboardData = () => {
       ? receitaBruta - comissoesTotal
       : 0;
 
-    // 🔍 VALIDAÇÃO CRÍTICA: Comissão nunca pode ser maior que receita bruta
+    // Validação: Comissão nunca pode ser maior que receita bruta
     if (comissoesTotal > receitaBruta && receitaBruta > 0) {
-      console.error('🚨 ERRO CRÍTICO: Comissão maior que receita bruta!', {
-        receitaBruta: receitaBruta.toFixed(2),
-        comissoesTotal: comissoesTotal.toFixed(2),
-        diferenca: (comissoesTotal - receitaBruta).toFixed(2)
-      });
+      // Erro crítico detectado
     }
 
 
@@ -530,7 +520,6 @@ export const useDashboardData = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar dados';
       setError(errorMessage);
-      console.error('❌ [useDashboardData] Erro ao carregar dados iniciais:', errorMessage);
     } finally {
       setIsLoading(false);
     }

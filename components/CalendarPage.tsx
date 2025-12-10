@@ -102,16 +102,13 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         const navigationDate = localStorage.getItem('calendarNavigationDate');
         if (navigationDate) {
             try {
-                console.log('📅 [CalendarPage] Data recebida do localStorage:', navigationDate);
                 // Adicionar 'T00:00:00' para garantir parsing correto no timezone local
                 const parsedDate = new Date(navigationDate + 'T00:00:00');
-                console.log('📅 [CalendarPage] Data parseada:', parsedDate);
                 if (!isNaN(parsedDate.getTime())) {
                     setCurrentDate(parsedDate);
-                    console.log('📅 [CalendarPage] Navegando para data:', navigationDate, '→', parsedDate.toLocaleDateString('pt-BR'));
                 }
             } catch (error) {
-                console.error('❌ [CalendarPage] Erro ao parsear data de navegação:', error);
+                // Erro ao parsear data de navegação
             } finally {
                 // Limpar o localStorage após usar
                 localStorage.removeItem('calendarNavigationDate');
@@ -520,10 +517,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         }
         
         if (!agent) {
-            console.error('❌ [handleAppointmentClick] Agente não encontrado:', app.agentId);
+            // Agente não encontrado
         }
         if (!service) {
-            console.error('❌ [handleAppointmentClick] Serviço não encontrado:', app.serviceId);
+            // Serviço não encontrado
         }
         
         // Formatar data e horário (similar ao popover)
@@ -656,11 +653,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             const startTime = `${START_HOUR_DAY.toString().padStart(2, '0')}:00`;
             const endTime = `${(END_HOUR_DAY + 1).toString().padStart(2, '0')}:00`;
 
-            console.log(`🚫 [CalendarPage] EXCEÇÃO DE CALENDÁRIO detectada para ${date.toISOString().split('T')[0]}:`, {
-                tipo: exception.tipo,
-                descricao: exception.descricao,
-                bloqueio: `${startTime} - ${endTime}`
-            });
+            // Exceção de calendário detectada
 
             return [{
                 start: startTime,
@@ -962,7 +955,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const selectedLoc = locations.find(l => l.name === locationName);
         if (!selectedLoc) {
-            console.error('❌ [CalendarPage] Local não encontrado:', locationName);
             return;
         }
 
@@ -1676,7 +1668,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                             }
 
                                             if (!service) {
-                                                console.error('❌ [renderMonthView] Serviço não encontrado para agendamento:', app.id);
                                                 return null;
                                             }
 

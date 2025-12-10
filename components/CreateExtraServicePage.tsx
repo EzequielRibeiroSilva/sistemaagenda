@@ -187,7 +187,6 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
                 toast.error('Erro ao Criar Serviço Extra', result.error || 'Não foi possível criar o serviço extra. Tente novamente.');
             }
         } catch (error) {
-            console.error('❌ [CreateExtraServicePage] Erro ao criar serviço extra:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Criar Serviço Extra', errorMessage);
         } finally{

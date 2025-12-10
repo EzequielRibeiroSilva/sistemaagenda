@@ -313,31 +313,25 @@ export const useCalendarData = () => {
 
               if (exceptionsResponse.success && Array.isArray(exceptionsResponse.data)) {
                 exceptionsMap[location.id.toString()] = exceptionsResponse.data;
-                console.log(`✅ [useCalendarData] ${exceptionsResponse.data.length} exceções carregadas para unidade ${location.id} (${location.nome})`);
               } else {
-                console.warn(`⚠️ [useCalendarData] Resposta inválida para exceções da unidade ${location.id}:`, exceptionsResponse);
                 exceptionsMap[location.id.toString()] = [];
               }
             } catch (excErr) {
-              console.error(`❌ [useCalendarData] Erro ao buscar exceções da unidade ${location.id}:`, excErr);
               exceptionsMap[location.id.toString()] = [];
             }
           } catch (err) {
-            console.error(`❌ [useCalendarData] Erro ao buscar horários da unidade ${location.id}:`, err);
+            // Erro ao buscar horários da unidade
           }
         }
         setUnitSchedules(schedulesMap);
         setCalendarExceptions(exceptionsMap);
-
-        const totalExceptions = Object.values(exceptionsMap).reduce((sum, exceptions) => sum + exceptions.length, 0);
-        console.log(`📊 [useCalendarData] ${totalExceptions} exceções de calendário carregadas para ${Object.keys(exceptionsMap).length} unidades`);
 
         return transformedLocations;
       }
       
       return [];
     } catch (err) {
-      console.error('❌ [useCalendarData] Erro ao buscar unidades:', err);
+      // Erro ao buscar unidades
       throw err;
     }
   }, [makeAuthenticatedRequest, transformLocation]);
@@ -475,10 +469,6 @@ export const useCalendarData = () => {
       const isInRange = dateStr >= startDate && dateStr <= endDate;
       return isInRange;
     }) || null;
-
-    if (foundException) {
-      console.log(`🚫 [isDateBlockedByException] Data ${dateStr} BLOQUEADA por exceção:`, foundException.tipo, '-', foundException.descricao);
-    }
 
     return foundException;
   }, [calendarExceptions]);

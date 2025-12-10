@@ -108,7 +108,6 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: 
                     alt={name}
                     className="w-8 h-8 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ [EditServicePage] Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -212,7 +211,6 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                 }
             } catch (error) {
                 if (isMounted) {
-                    console.error('❌ [EditServicePage] Erro ao carregar serviço:', error);
                     setSubmitError('Erro ao carregar dados do serviço');
                 }
             } finally {
@@ -346,7 +344,6 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                 toast.error('Erro ao Atualizar Serviço', result.error || 'Não foi possível atualizar o serviço. Tente novamente.');
             }
         } catch (error) {
-            console.error('❌ [EditServicePage] Erro ao atualizar serviço:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Atualizar Serviço', errorMessage);
         } finally {

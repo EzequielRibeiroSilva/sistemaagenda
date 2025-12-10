@@ -43,7 +43,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
           setSubscriptionStartDate(client.subscriptionStartDate ? new Date(client.subscriptionStartDate) : null);
         }
       } catch (err) {
-        console.error('Erro ao carregar cliente:', err);
+        // Erro silencioso - não expor detalhes no console
       } finally {
         setIsLoading(false);
       }
@@ -103,7 +103,6 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
         toast.error('Erro ao Atualizar Cliente', 'Não foi possível atualizar o cliente. Tente novamente.');
       }
     } catch (err) {
-      console.error('Erro ao atualizar cliente:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error('Erro ao Atualizar Cliente', errorMessage);
     } finally {

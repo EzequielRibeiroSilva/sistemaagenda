@@ -121,7 +121,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         }
       } catch (error) {
-        console.error('Erro na inicialização da autenticação:', error);
+        // Erro na inicialização da autenticação
       } finally {
         setIsLoading(false);
       }

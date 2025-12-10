@@ -192,7 +192,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('❌ [useAgentManagement] Erro ao buscar agentes:', err);
     } finally {
       setLoading(false);
     }
@@ -220,7 +219,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(`Erro ao buscar serviços: ${errorMessage}`);
-      console.error('❌ [useAgentManagement] Erro ao buscar serviços:', err);
     } finally {
       setLoading(false);
     }
@@ -251,7 +249,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('❌ [useAgentManagement] Erro ao buscar unidades:', err);
       // Não definir erro global para não bloquear outras operações
     }
   }, [authenticatedFetch, isAuthenticated, token]);
@@ -276,7 +273,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('❌ [useAgentManagement] Erro ao buscar agente:', err);
       return null;
     } finally {
       setLoading(false);
@@ -334,7 +330,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('❌ [useAgentManagement] Erro ao criar agente:', err);
       return false;
     } finally {
       setLoading(false);
@@ -419,7 +414,6 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('❌ [useAgentManagement] Erro ao excluir agente:', err);
       return false;
     } finally {
       setLoading(false);
@@ -446,9 +440,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
           // Depois buscar agentes
           if (isMounted) await fetchAgents();
         } catch (error) {
-          if (isMounted) {
-            console.error('❌ [useAgentManagement] Erro ao carregar dados iniciais:', error);
-          }
+          // Erro silencioso - não expor detalhes no console
         }
       };
 

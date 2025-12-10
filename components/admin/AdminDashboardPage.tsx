@@ -72,8 +72,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
             const newStatus = user.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
             await updateUserStatus(id, newStatus);
         } catch (error) {
-            console.error('Erro ao alterar status:', error);
-            // Aqui você pode adicionar uma notificação de erro
+            // Erro ao alterar status
         }
     };
     
@@ -119,8 +118,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
             }
             handleCloseUserModal();
         } catch (error) {
-            console.error('Erro ao salvar usuário:', error);
-            // Aqui você pode adicionar uma notificação de erro
+            // Erro ao salvar usuário
         }
     };
 
@@ -139,8 +137,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
                 )
             );
         } catch (error) {
-            console.error('Erro ao alterar status da unidade:', error);
-            // Aqui você pode adicionar uma notificação de erro
+            // Erro ao alterar status da unidade
         }
     };
 
@@ -150,8 +147,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ searchQuery }) 
             setManagingUnitsData(units);
             setManagingUnitsUser(user);
         } catch (error) {
-            console.error('Erro ao carregar unidades:', error);
-            // Aqui você pode adicionar uma notificação de erro
+            // Erro ao carregar unidades
         }
     };
 

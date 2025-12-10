@@ -17,7 +17,6 @@ import EditExtraServicePage from './components/EditExtraServicePage';
 import AgentsPage from './components/AgentsPage';
 import CreateAgentPage from './components/CreateAgentPage';
 import EditAgentPage from './components/EditAgentPage';
-import TestAgentsPage from './components/TestAgentsPage';
 import LocationsPage from './components/LocationsPage';
 import CreateLocationPage from './components/CreateLocationPage';
 import EditLocationPage from './components/EditLocationPage';
@@ -257,7 +256,6 @@ const App: React.FC = () => {
       case 'agents-list': return <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />;
       case 'agents-create': return <CreateAgentPage setActiveView={setActiveView} />;
       case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'AGENTE' ? user.agentId : editingAgentId} />;
-      case 'test-agents': return <TestAgentsPage />;
       case 'locations-list': return <LocationsPage setActiveView={setActiveView} onEditLocation={handleEditLocation} />;
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
       case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;

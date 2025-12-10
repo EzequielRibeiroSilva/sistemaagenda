@@ -62,7 +62,6 @@ const AgentSelectItem: React.FC<{
                     alt={name}
                     className="w-10 h-10 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ [EditLocationPage] Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;
@@ -215,12 +214,11 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
                         const exceptions = await fetchUnitExceptions(locationId);
                         setCalendarExceptions(exceptions || []);
                     } catch (excError) {
-                        console.warn('⚠️ [EditLocationPage] Erro ao carregar exceções, continuando sem elas:', excError);
-                        // Não quebra o fluxo, apenas deixa array vazio
+                        // Erro silencioso - não quebra o fluxo, apenas deixa array vazio
                         setCalendarExceptions([]);
                     }
                 } else {
-                    console.error('❌ [EditLocationPage] Unidade não encontrada ou erro ao carregar');
+                    // Unidade não encontrada
                 }
                 setIsLoading(false);
             }

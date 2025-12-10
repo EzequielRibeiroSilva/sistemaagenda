@@ -69,7 +69,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviços extras');
       }
     } catch (error) {
-      console.error('❌ [useExtraServiceManagement] Erro ao buscar serviços extras:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
       setExtraServices([]);
     } finally {
@@ -102,7 +101,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
     } catch (error) {
-      console.error('❌ [useExtraServiceManagement] Erro ao buscar serviços:', error);
       setServices([]);
     }
   }, [isAuthenticated, token]);
@@ -133,7 +131,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviço extra');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar serviço extra:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
       return null;
     } finally {
@@ -168,7 +165,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao criar serviço extra');
       }
     } catch (error) {
-      console.error('❌ [useExtraServiceManagement] Erro ao criar serviço extra:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -204,7 +200,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao atualizar serviço extra');
       }
     } catch (error) {
-      console.error('❌ [useExtraServiceManagement] Erro ao atualizar serviço extra:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -239,7 +234,6 @@ export const useExtraServiceManagement = () => {
         throw new Error(data.message || 'Erro ao deletar serviço extra');
       }
     } catch (error) {
-      console.error('❌ Erro ao deletar serviço extra:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -258,9 +252,7 @@ export const useExtraServiceManagement = () => {
           if (isMounted) await fetchServices();
           if (isMounted) await fetchExtraServices();
         } catch (error) {
-          if (isMounted) {
-            console.error('❌ [useExtraServiceManagement] Erro ao carregar dados iniciais:', error);
-          }
+          // Erro ao carregar dados iniciais
         }
       };
       loadData();

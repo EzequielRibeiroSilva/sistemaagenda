@@ -72,7 +72,6 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
         toast.error('Erro ao Criar Cliente', 'Não foi possível criar o cliente. Tente novamente.');
       }
     } catch (err) {
-      console.error('Erro ao criar cliente:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error('Erro ao Criar Cliente', errorMessage);
     } finally{

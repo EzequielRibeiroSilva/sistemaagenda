@@ -246,7 +246,6 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         toast.error('Erro ao Criar Agente', 'Não foi possível criar o agente. Tente novamente.');
       }
     } catch (error) {
-      console.error('❌ [CreateAgentPage] Erro ao criar agente:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       toast.error('Erro ao Criar Agente', errorMessage);
     } finally {

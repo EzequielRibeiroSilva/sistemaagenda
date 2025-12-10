@@ -312,14 +312,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     const isEditing = !!appointmentData;
     
-    // 🔍 DEBUG: Log para rastrear o que o modal está recebendo
+    // Verificar dados recebidos ao abrir modal
     useEffect(() => {
         if (isOpen) {
-            console.log('🔍 [NewAppointmentModal] Modal aberto com:');
-            console.log('🔍 [NewAppointmentModal] isEditing:', isEditing);
-            console.log('🔍 [NewAppointmentModal] appointmentData:', appointmentData);
-            console.log('🔍 [NewAppointmentModal] newSlotData:', newSlotData);
-            console.log('🔍 [NewAppointmentModal] propAppointmentId:', propAppointmentId);
+            // Modal aberto - dados carregados
         }
     }, [isOpen, isEditing, appointmentData, newSlotData, propAppointmentId]);
 
@@ -330,15 +326,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 return; // Não buscar se já temos dados externos
             }
 
-            console.log('🔄 [NewAppointmentModal] Buscando dados do agendamento ID:', propAppointmentId);
             setIsLoadingFromProp(true);
 
             try {
                 const detalhes = await fetchAgendamentoDetalhes(propAppointmentId);
 
                 if (detalhes) {
-                    console.log('✅ [NewAppointmentModal] Dados do agendamento carregados:', detalhes);
-                    console.log('📅 [NewAppointmentModal] data_agendamento raw:', detalhes.data_agendamento);
 
                     // ✅ CORREÇÃO: Extrair apenas a data (YYYY-MM-DD) do formato ISO
                     // Backend pode retornar: "2025-12-06" ou "2025-12-06T03:00:00.000Z"
@@ -346,7 +339,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     if (dateISOClean && dateISOClean.includes('T')) {
                         dateISOClean = dateISOClean.split('T')[0]; // Pega apenas "2025-12-06"
                     }
-                    console.log('📅 [NewAppointmentModal] dateISO limpo:', dateISOClean);
 
                     // Converter dados do backend para formato ScheduleSlot['details']
                     const formattedDate = new Date(dateISOClean + 'T12:00:00').toLocaleDateString('pt-BR', {
@@ -377,13 +369,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         observacoes: detalhes.observacoes
                     };
 
-                    console.log('📤 [NewAppointmentModal] Dados convertidos:', convertedData);
                     setLoadedAppointmentData(convertedData);
-                } else {
-                    console.error('❌ [NewAppointmentModal] Agendamento não encontrado');
                 }
             } catch (err) {
-                console.error('❌ [NewAppointmentModal] Erro ao buscar agendamento:', err);
+                // Erro ao buscar agendamento
             } finally {
                 setIsLoadingFromProp(false);
             }
@@ -491,7 +480,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 });
 
                 if (!response.ok) {
-                    console.error('❌ [NewAppointmentModal] Erro ao buscar horários da unidade:', response.status);
                     return;
                 }
 
@@ -508,7 +496,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setUnitSchedule(todosHorarios);
                 }
             } catch (error) {
-                console.error('❌ [NewAppointmentModal] Erro ao buscar horários da unidade:', error);
+                // Erro ao buscar horários da unidade
             }
         };
 
@@ -835,7 +823,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     }
                 }
             } catch (error) {
-                console.error('❌ [NewAppointmentModal] Erro ao preencher formulário:', error);
+                // Erro ao preencher formulário
             } finally {
                 setIsLoadingAppointment(false);
             }
@@ -888,11 +876,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             const unidadeId = appointmentData?.locationId || selectedLocationId;
 
             if (!unidadeId) {
-                console.log('⚠️ [Pontos] unidadeId não disponível');
                 return;
             }
-
-            console.log('🔍 [Pontos] Buscando pontos do cliente:', clienteId, 'unidade:', unidadeId);
 
             try {
                 const token = localStorage.getItem('authToken');
@@ -908,14 +893,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('✅ [Pontos] Dados recebidos:', data);
                     setPontosDisponiveis(data.pontos_disponiveis || 0);
                     setPodeUsarPontos(data.pode_usar_pontos || false);
-                } else {
-                    console.error('❌ [Pontos] Erro na resposta:', response.status);
                 }
             } catch (error) {
-                console.error('❌ [Pontos] Erro ao buscar pontos do cliente:', error);
+                // Erro ao buscar pontos do cliente
             }
         };
 
@@ -998,7 +980,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setPodeUsarPontos(data.pode_usar_pontos || false);
                 }
             } catch (error) {
-                console.error('❌ Erro ao buscar pontos do cliente:', error);
+                // Erro ao buscar pontos do cliente
             }
         }
     }
@@ -1113,7 +1095,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         throw new Error('Resposta vazia do servidor');
                     }
                 } catch (updateError) {
-                    console.error('❌ [NewAppointmentModal] Erro ao atualizar:', updateError);
                     throw updateError;
                 }
             } else {
@@ -1131,7 +1112,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 }
             }
         } catch (error) {
-            console.error('❌ [NewAppointmentModal] Erro ao salvar agendamento:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Salvar', `Não foi possível salvar o agendamento: ${errorMessage}`);
         }

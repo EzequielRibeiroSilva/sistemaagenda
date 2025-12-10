@@ -71,7 +71,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar lista de serviços');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar lista de serviços:', error);
       return [];
     }
   }, [isAuthenticated, token]);
@@ -104,7 +103,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviços');
       }
     } catch (error) {
-      console.error('❌ [useServiceManagement] Erro ao buscar serviços:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
       setServices([]);
     } finally {
@@ -137,7 +135,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar agentes');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar agentes:', error);
       setAgents([]);
     }
   }, [isAuthenticated, token]);
@@ -167,7 +164,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviços extras');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar serviços extras:', error);
       setExtraServices([]);
     }
   }, [isAuthenticated, token]);
@@ -198,7 +194,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao carregar serviço');
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar serviço:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
       return null;
     } finally {
@@ -233,7 +228,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao criar serviço');
       }
     } catch (error) {
-      console.error('❌ [useServiceManagement] Erro ao criar serviço:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -269,7 +263,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || 'Erro ao atualizar serviço');
       }
     } catch (error) {
-      console.error('❌ [useServiceManagement] Erro ao atualizar serviço:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -306,7 +299,6 @@ export const useServiceManagement = () => {
         throw new Error(data.message || data.error || 'Erro ao excluir serviço');
       }
     } catch (error) {
-      console.error('❌ [useServiceManagement] Erro ao excluir serviço:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       setError(errorMessage);
       return false;
@@ -326,9 +318,7 @@ export const useServiceManagement = () => {
           if (isMounted) await fetchExtraServices();
           if (isMounted) await fetchServices();
         } catch (error) {
-          if (isMounted) {
-            console.error('❌ [useServiceManagement] Erro ao carregar dados iniciais:', error);
-          }
+          // Erro silencioso - não expor detalhes no console
         }
       };
       loadData();
