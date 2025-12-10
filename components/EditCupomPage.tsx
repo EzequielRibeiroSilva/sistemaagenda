@@ -5,6 +5,7 @@ import { useUnitManagement } from '../hooks/useUnitManagement';
 import { useToast } from '../contexts/ToastContext';
 import { ChevronDown, Check } from './Icons';
 import WeekdaySelector from './WeekdaySelector';
+import DatePicker from './DatePicker';
 
 // Componentes reutilizáveis de formulário
 const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -203,8 +204,8 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
 
   // Estados do formulário - Validade Temporal
   const [temValidade, setTemValidade] = useState(false);
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+  const [dataInicio, setDataInicio] = useState<Date | null>(null);
+  const [dataFim, setDataFim] = useState<Date | null>(null);
 
   // Estados do formulário - Limites de Uso
   const [limiteUsoPorCliente, setLimiteUsoPorCliente] = useState<number | ''>('');
@@ -257,12 +258,10 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
           if (cupom.data_inicio || cupom.data_fim) {
             setTemValidade(true);
             if (cupom.data_inicio) {
-              const dataInicioFormatted = new Date(cupom.data_inicio).toISOString().slice(0, 10);
-              setDataInicio(dataInicioFormatted);
+              setDataInicio(new Date(cupom.data_inicio));
             }
             if (cupom.data_fim) {
-              const dataFimFormatted = new Date(cupom.data_fim).toISOString().slice(0, 10);
-              setDataFim(dataFimFormatted);
+              setDataFim(new Date(cupom.data_fim));
             }
           }
 
@@ -331,8 +330,8 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
         codigo: codigo.trim().toUpperCase(),
         tipo_desconto: 'percentual',
         valor_desconto: parseFloat(String(valorDesconto)),
-        data_inicio: temValidade && dataInicio ? new Date(dataInicio).toISOString() : undefined,
-        data_fim: temValidade && dataFim ? new Date(dataFim).toISOString() : undefined,
+        data_inicio: temValidade && dataInicio ? dataInicio.toISOString() : undefined,
+        data_fim: temValidade && dataFim ? dataFim.toISOString() : undefined,
         limite_uso_por_cliente: limiteUsoPorCliente ? parseInt(String(limiteUsoPorCliente)) : undefined,
         limite_uso_total: limiteUsoTotal ? parseInt(String(limiteUsoTotal)) : undefined,
         servico_ids: servicosSelecionados.length > 0 ? servicosSelecionados : undefined,
@@ -437,20 +436,26 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
 
             {temValidade && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <TextInput
-                  label="Data de Início"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                  type="date"
-                  required={temValidade}
-                />
-                <TextInput
-                  label="Data de Fim"
-                  value={dataFim}
-                  onChange={(e) => setDataFim(e.target.value)}
-                  type="date"
-                  required={temValidade}
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data de Início <span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    mode="single"
+                    selectedDate={dataInicio || undefined}
+                    onDateChange={(date) => setDataInicio(date as Date)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data de Fim <span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    mode="single"
+                    selectedDate={dataFim || undefined}
+                    onDateChange={(date) => setDataFim(date as Date)}
+                  />
+                </div>
               </div>
             )}
           </FormCard>
