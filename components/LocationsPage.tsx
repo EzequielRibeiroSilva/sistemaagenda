@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { Plus, Edit, MapPin, Phone, AlertCircle, CheckCircle, XCircle, X, Lock, Unlock } from './Icons';
+import { MapPin, Phone, AlertCircle, Lock, Unlock } from './Icons';
 import { useUnitManagement, Unit } from '../hooks/useUnitManagement';
 import { useToast } from '../contexts/ToastContext';
+import { BaseCard, AddCard, CardInfoRow, CardStatusBadge } from './BaseCard';
 
 interface LocationCardProps {
   id: number;
@@ -16,46 +17,54 @@ interface LocationCardProps {
   isConfirmingDelete?: boolean;
 }
 
-const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus, onDelete, isConfirmingDelete = false }) => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-    <div className="h-40 bg-gradient-to-br from-blue-500 to-blue-600 rounded-t-lg flex items-center justify-center">
-      <MapPin className="w-12 h-12 text-white opacity-80" />
+const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefone, status, onEdit, onToggleStatus, onDelete, isConfirmingDelete = false }) => {
+  // Ícone de localização para o header
+  const locationIcon = (
+    <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#2663EB] to-blue-600 rounded-full shadow-md">
+      <MapPin className="w-7 h-7 text-white" />
     </div>
-    <div className="p-4">
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <h3 className="font-bold text-gray-800 text-lg mb-1">{name}</h3>
-          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-            status === 'Ativo'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
-          }`}>
-            {status === 'Ativo' ? (
-              <CheckCircle className="w-3 h-3 mr-1" />
-            ) : (
-              <XCircle className="w-3 h-3 mr-1" />
-            )}
-            {status}
-          </div>
+  );
+
+  return (
+    <BaseCard
+      title={name}
+      onEdit={() => onEdit(id)}
+      onDelete={() => onDelete(id)}
+      isConfirmingDelete={isConfirmingDelete}
+      editLabel="Editar Local"
+      showTopBar={true}
+      headerContent={locationIcon}
+    >
+      {/* Endereço */}
+      {endereco && (
+        <div className="flex items-start space-x-2 mb-2">
+          <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+          <span className="text-sm text-gray-600 break-words">{endereco}</span>
         </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => onDelete(id)}
-            className={`p-2 rounded-lg transition-colors ${
-              isConfirmingDelete
-                ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
-                : 'text-red-600 hover:bg-red-50'
-            }`}
-            title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir'}
-          >
-            <X className="w-4 h-4" />
-          </button>
+      )}
+
+      {/* Telefone */}
+      {telefone && (
+        <div className="flex items-center space-x-2 mb-2">
+          <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <span className="text-sm text-gray-600">{telefone}</span>
+        </div>
+      )}
+
+      {/* Divisor */}
+      <div className="border-t border-gray-100 my-2"></div>
+
+      {/* Status com botão de toggle */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-gray-500">Status</span>
+        <div className="flex items-center space-x-2">
+          <CardStatusBadge status={status} />
           <button
             onClick={() => onToggleStatus(id, status)}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-1.5 rounded-md transition-all duration-200 ${
               status === 'Ativo'
-                ? 'text-blue-600 hover:bg-blue-50'
-                : 'text-red-600 hover:bg-red-50'
+                ? 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
+                : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
             }`}
             title={status === 'Ativo' ? 'Bloquear' : 'Desbloquear'}
           >
@@ -65,65 +74,38 @@ const LocationCard: React.FC<LocationCardProps> = ({ id, name, endereco, telefon
               <Unlock className="w-4 h-4" />
             )}
           </button>
-          <button
-            onClick={() => onEdit(id)}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Editar"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
         </div>
       </div>
-      <div className="space-y-2">
-        {endereco && (
-          <div className="flex items-center text-sm text-gray-600">
-            <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-            <span className="truncate">{endereco}</span>
-          </div>
-        )}
-        {telefone && (
-          <div className="flex items-center text-sm text-gray-600">
-            <Phone className="w-4 h-4 mr-2 text-gray-400" />
-            <span>{telefone}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-);
+    </BaseCard>
+  );
+};
 
-const AddLocationCard: React.FC<{ onClick: () => void; disabled?: boolean; limitInfo?: any }> = ({ onClick, disabled = false, limitInfo }) => (
-  <div
-    onClick={disabled ? undefined : onClick}
-    className={`bg-white rounded-lg border-2 border-dashed flex flex-col items-center justify-center p-4 min-h-[300px] text-center transition-colors group ${
-      disabled
-        ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-        : 'border-gray-300 hover:border-blue-500 hover:text-blue-600 cursor-pointer'
-    }`}
-  >
-    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-transform ${
-      disabled
-        ? 'bg-gray-300'
-        : 'bg-blue-600 group-hover:scale-110'
-    }`}>
-      <Plus className={`w-6 h-6 ${disabled ? 'text-gray-500' : 'text-white'}`} />
-    </div>
-    <p className={`font-semibold text-lg mb-2 ${disabled ? 'text-gray-400' : 'text-blue-600'}`}>
-      {disabled ? 'Limite Atingido' : 'Adicionar Local'}
-    </p>
-    {limitInfo && (
-      <p className="text-sm text-gray-500">
-        {limitInfo.currentCount} de {limitInfo.limit || '∞'} unidades utilizadas
-      </p>
-    )}
-    {disabled && (
-      <div className="flex items-center mt-2 text-xs text-gray-500">
-        <AlertCircle className="w-4 h-4 mr-1" />
-        Upgrade seu plano para criar mais unidades
+const AddLocationCard: React.FC<{ onClick: () => void; disabled?: boolean; limitInfo?: any }> = ({ onClick, disabled = false, limitInfo }) => {
+  if (disabled) {
+    return (
+      <div className="bg-white rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-6 min-h-[280px] text-center cursor-not-allowed">
+        <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="w-6 h-6 text-gray-500" />
+        </div>
+        <p className="font-semibold text-gray-400 text-base mb-2">Limite Atingido</p>
+        {limitInfo && (
+          <p className="text-sm text-gray-500 mb-2">
+            {limitInfo.currentCount} de {limitInfo.limit || '∞'} unidades utilizadas
+          </p>
+        )}
+        <p className="text-xs text-gray-500">Upgrade seu plano para criar mais unidades</p>
       </div>
-    )}
-  </div>
-);
+    );
+  }
+
+  return (
+    <AddCard 
+      onClick={onClick} 
+      label="Adicionar Local"
+      sublabel={limitInfo ? `${limitInfo.currentCount} de ${limitInfo.limit || '∞'} unidades` : undefined}
+    />
+  );
+};
 
 interface LocationsPageProps {
   setActiveView: (view: string) => void;
@@ -237,8 +219,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
       )}
 
       <div>
-        <h2 className="text-gray-500 mb-4 text-lg">Suas Unidades</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {units.map((unit) => (
             <LocationCard
               key={unit.id}
