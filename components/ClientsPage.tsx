@@ -270,7 +270,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                         {pontosAtivo && (
                                             <td className="p-3 text-center">
                                                 <div className="flex items-center justify-center gap-1">
-                                                    <span className="text-lg font-bold text-yellow-600">
+                                                    <span className="text-lg font-bold" style={{ color: '#2663EB' }}>
                                                         {client.pontosDisponiveis || 0}
                                                     </span>
                                                     <span className="text-xs text-gray-500">pts</span>
@@ -280,8 +280,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                         <td className="p-3 text-center">
                                             {client.isSubscriber && (
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <CheckCircle className="w-5 h-5 text-green-500" />
-                                                    <span className="text-xs text-green-600 font-medium">
+                                                    <CheckCircle className="w-5 h-5" style={{ color: '#2663EB' }} />
+                                                    <span className="text-xs font-medium" style={{ color: '#2663EB' }}>
                                                         Assinante
                                                         {client.subscriptionStartDate && (
                                                             <span className="text-gray-500 ml-1">

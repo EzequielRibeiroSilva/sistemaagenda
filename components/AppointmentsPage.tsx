@@ -96,19 +96,27 @@ const FilterSelect: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({
 );
 
 const StatusBadge: React.FC<{ status: AppointmentStatus }> = ({ status }) => {
-    const statusStyles: { [key in AppointmentStatus]: { icon: React.ReactNode; text: string; className: string } } = {
-        'Aprovado': { icon: <CheckCircle className="w-3 h-3" />, text: 'Aprovado', className: 'bg-green-100 text-green-800' },
+    const statusStyles: { [key in AppointmentStatus]: { icon: React.ReactNode; text: string; className: string; style?: React.CSSProperties } } = {
+        'Aprovado': { 
+            icon: <CheckCircle className="w-3 h-3" />, 
+            text: 'Aprovado', 
+            className: '', 
+            style: { backgroundColor: '#2663EB', color: '#FFFFFF' } 
+        },
         'Concluído': { icon: <Check className="w-3 h-3" />, text: 'Concluído', className: 'bg-blue-100 text-blue-800' },
         'Cancelado': { icon: <X className="w-3 h-3" />, text: 'Cancelado', className: 'bg-red-100 text-red-800' },
         'Não Compareceu': { icon: <UserX className="w-3 h-3" />, text: 'Não Compareceu', className: 'bg-gray-200 text-gray-700' },
     };
 
-    const style = statusStyles[status];
+    const styleConfig = statusStyles[status];
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${style.className}`}>
-            {style.icon}
-            {style.text}
+        <span 
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${styleConfig.className}`}
+            style={styleConfig.style}
+        >
+            {styleConfig.icon}
+            {styleConfig.text}
         </span>
     );
 };
