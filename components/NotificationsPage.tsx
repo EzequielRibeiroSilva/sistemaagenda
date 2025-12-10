@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotificationManagement, TipoNotificacao, StatusNotificacao, NotificationFilters } from '../hooks/useNotificationManagement';
 import { useCalendarData } from '../hooks/useCalendarData';
-import { Bell, ChevronLeft, ChevronRight, X, AlertCircle, CheckCircle, Clock, XCircle } from './Icons';
+import { Bell, X, AlertCircle, CheckCircle, Clock, XCircle } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
+import { BaseTable, TableColumn } from './BaseTable';
 
 interface Location {
   id: string;
@@ -27,13 +28,9 @@ const NotificationsPage: React.FC = () => {
 
   // Estados
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(12); // ✅ NOVO: 12 itens por página
   const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
-  const [filters, setFilters] = useState<{
-    tipo: TipoNotificacao | 'all';
-    status: StatusNotificacao | 'all';
-    agendamentoId: string;
-  }>({
+  const [filters, setFilters] = useState<Record<string, string>>({
     tipo: 'all',
     status: 'all',
     agendamentoId: ''
@@ -94,11 +91,11 @@ const NotificationsPage: React.FC = () => {
     };
 
     if (filters.tipo !== 'all') {
-      apiFilters.tipo_notificacao = filters.tipo;
+      apiFilters.tipo_notificacao = filters.tipo as TipoNotificacao;
     }
 
     if (filters.status !== 'all') {
-      apiFilters.status = filters.status;
+      apiFilters.status = filters.status as StatusNotificacao;
     }
 
     if (filters.agendamentoId) {
@@ -114,9 +111,8 @@ const NotificationsPage: React.FC = () => {
   }, [currentPage, itemsPerPage, filters, selectedLocationFilter, fetchNotifications]);
 
   // Handlers
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
+  const handleFilterChange = (filterKey: string, value: string) => {
+    setFilters(prev => ({ ...prev, [filterKey]: value }));
     setCurrentPage(1); // Reset para primeira página ao filtrar
   };
 
@@ -168,20 +164,87 @@ const NotificationsPage: React.FC = () => {
     });
   };
 
-  // Função para obter ícone do status
-  const getStatusIcon = (status: StatusNotificacao) => {
-    switch (status) {
-      case 'enviado':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'pendente':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'falha':
-      case 'falha_permanente':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      default:
-        return <AlertCircle className="w-4 h-4 text-gray-500" />;
-    }
-  };
+  // ✅ NOVO: Definir colunas da tabela (com larguras otimizadas)
+  const tableColumns: TableColumn[] = useMemo(() => [
+    {
+      key: 'tipo',
+      label: 'MENSAGEM',
+      width: 'w-1/5', // ✅ 20% da largura
+      filterType: 'select',
+      filterOptions: [
+        { value: 'confirmacao', label: 'Agendamento' },
+        { value: 'cancelamento', label: 'Cancelamento' },
+        { value: 'reagendamento', label: 'Reagendamento' },
+        { value: 'lembrete_24h', label: 'Lembrete 24h' },
+        { value: 'lembrete_1h', label: 'Lembrete 1h' },
+      ],
+      render: (notification: any) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTipoBadgeColor(notification.tipo)}`}>
+          {notification.tipoLabel}
+        </span>
+      ),
+    },
+    {
+      key: 'agendamentoId',
+      label: 'ID',
+      width: 'w-24', // ✅ Mantém estreito (apenas números)
+      filterType: 'text',
+      filterPlaceholder: 'ID...',
+      render: (notification: any) => (
+        <button
+          onClick={() => handleAgendamentoClick(notification.agendamentoId)}
+          className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+        >
+          #{notification.agendamentoId}
+        </button>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'ESTADO',
+      width: 'w-1/6', // ✅ ~16% da largura
+      filterType: 'select',
+      filterOptions: [
+        { value: 'programado', label: 'Programado' },
+        { value: 'enviado', label: 'Enviado' },
+        { value: 'pendente', label: 'Pendente' },
+        { value: 'falha', label: 'Falhou' },
+        { value: 'falha_permanente', label: 'Falha Permanente' },
+      ],
+      render: (notification: any) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(notification.status)}`}>
+          {notification.statusLabel}
+        </span>
+      ),
+    },
+    {
+      key: 'momento',
+      label: 'MOMENTO',
+      width: 'w-1/5', // ✅ 20% da largura
+      filterType: 'none',
+      render: (notification: any) => (
+        <span className="text-sm text-gray-900">
+          {notification.status === 'programado' && notification.enviarEm
+            ? formatDateTime(notification.enviarEm)
+            : notification.enviadoEm
+              ? formatDateTime(notification.enviadoEm)
+              : formatDateTime(notification.criadoEm)
+          }
+        </span>
+      ),
+    },
+    {
+      key: 'destinatario',
+      label: 'DESTINATÁRIO',
+      width: 'w-1/4', // ✅ 25% da largura (maior espaço)
+      filterType: 'none',
+      render: (notification: any) => (
+        <span className="text-sm text-gray-900">
+          {notification.destinatarioNome || notification.clienteNome || '-'}
+        </span>
+      ),
+    },
+  ], []);
 
   // Função para obter cor do badge do status
   const getStatusBadgeColor = (status: StatusNotificacao): string => {
@@ -248,189 +311,28 @@ const NotificationsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-6 py-4">
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Filtro por Tipo */}
-          <select
-            name="tipo"
-            value={filters.tipo}
-            onChange={handleFilterChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">Todos os Tipos</option>
-            <option value="confirmacao">Agendamento</option>
-            <option value="cancelamento">Cancelamento</option>
-            <option value="reagendamento">Reagendamento</option>
-            <option value="lembrete_24h">Lembrete 24h</option>
-            <option value="lembrete_1h">Lembrete 1h</option>
-          </select>
-
-          {/* Filtro por Estado */}
-          <select
-            name="status"
-            value={filters.status}
-            onChange={handleFilterChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">Todos os Estados</option>
-            <option value="programado">Programado</option>
-            <option value="enviado">Enviado</option>
-            <option value="pendente">Pendente</option>
-            <option value="falha">Falhou</option>
-            <option value="falha_permanente">Falha Permanente</option>
-          </select>
-
-          {/* Filtro por ID do Agendamento */}
-          <input
-            type="text"
-            name="agendamentoId"
-            value={filters.agendamentoId}
-            onChange={handleFilterChange}
-            placeholder="ID do Agendamento"
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-40"
-          />
-
-          {/* Botão Limpar Filtros */}
-          {(filters.tipo !== 'all' || filters.status !== 'all' || filters.agendamentoId) && (
-            <button
-              onClick={handleClearFilters}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4" />
-              Limpar
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Conteúdo Principal */}
-      <div>
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
-            <AlertCircle className="w-5 h-5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {isLoading || isLoadingLocations ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <Bell className="w-16 h-16 mb-4 text-gray-300" />
-            <p className="text-lg font-medium">Nenhuma notificação encontrada</p>
-            <p className="text-sm">Tente ajustar os filtros ou aguarde novas notificações</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Mensagem
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Estado
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Momento
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Destinatário
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {notifications.map((notification) => (
-                    <tr key={notification.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Coluna Mensagem (Tipo) */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTipoBadgeColor(notification.tipo)}`}>
-                          {notification.tipoLabel}
-                        </span>
-                      </td>
-
-                      {/* Coluna ID (Clicável) */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleAgendamentoClick(notification.agendamentoId)}
-                          className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
-                        >
-                          #{notification.agendamentoId}
-                        </button>
-                      </td>
-
-                      {/* Coluna Estado (Status) */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(notification.status)}`}>
-                          {notification.statusLabel}
-                        </span>
-                      </td>
-
-                      {/* Coluna Momento */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {notification.status === 'programado' && notification.enviarEm
-                          ? formatDateTime(notification.enviarEm) // ✅ NOVO: Exibir horário programado
-                          : notification.enviadoEm 
-                            ? formatDateTime(notification.enviadoEm)
-                            : formatDateTime(notification.criadoEm)
-                        }
-                      </td>
-
-                      {/* Coluna Destinatário */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {notification.destinatarioNome || notification.clienteNome || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Paginação */}
-            {pagination.pages > 1 && (
-              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Mostrando <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> a{' '}
-                  <span className="font-medium">
-                    {Math.min(currentPage * itemsPerPage, pagination.total)}
-                  </span>{' '}
-                  de <span className="font-medium">{pagination.total}</span> notificações
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <span className="text-sm text-gray-700">
-                    Página <span className="font-medium">{currentPage}</span> de{' '}
-                    <span className="font-medium">{pagination.pages}</span>
-                  </span>
-
-                  <button
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === pagination.pages}
-                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* ✅ NOVO: Tabela Padronizada com BaseTable */}
+      <BaseTable
+        data={notifications}
+        columns={tableColumns}
+        isLoading={isLoading || isLoadingLocations}
+        loadingMessage="Carregando lembretes..."
+        emptyMessage="Nenhuma notificação encontrada"
+        emptyIcon={<Bell className="w-16 h-16 mb-4 text-gray-300" />}
+        error={error}
+        pagination={{
+          currentPage,
+          totalPages: pagination.pages,
+          totalItems: pagination.total,
+          itemsPerPage,
+          onPageChange: handlePageChange,
+        }}
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClearFilters={handleClearFilters}
+        minWidth="min-w-[900px]"
+        enableRowHover={true}
+      />
 
       {/* Modal de Edição de Agendamento */}
       {isEditModalOpen && selectedAgendamentoId && (
