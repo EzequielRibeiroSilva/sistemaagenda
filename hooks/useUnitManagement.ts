@@ -162,7 +162,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar unidades';
       setError(errorMessage);
-      console.error('Erro ao buscar unidades:', err);
     } finally {
       setLoading(false);
     }
@@ -179,7 +178,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar unidade';
       setError(errorMessage);
-      console.error('Erro ao buscar unidade:', err);
       return null;
     }
   }, [authenticatedFetch]);
@@ -199,7 +197,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar agentes';
       setError(errorMessage);
-      console.error('Erro ao buscar agentes:', err);
     }
   }, [authenticatedFetch]);
 
@@ -218,7 +215,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar serviços';
       setError(errorMessage);
-      console.error('Erro ao buscar serviços:', err);
     }
   }, [authenticatedFetch]);
 
@@ -239,7 +235,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar unidade';
       setError(errorMessage);
-      console.error('Erro ao criar unidade:', err);
       return false;
     } finally {
       setLoading(false);
@@ -263,7 +258,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar unidade';
       setError(errorMessage);
-      console.error('❌ [useUnitManagement] Erro ao atualizar unidade:', err);
       return false;
     } finally {
       setLoading(false);
@@ -288,7 +282,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao alterar status da unidade';
       setError(errorMessage);
-      console.error('Erro ao alterar status da unidade:', err);
       return false;
     } finally {
       setLoading(false);
@@ -310,7 +303,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar unidade';
       setError(errorMessage);
-      console.error('Erro ao deletar unidade:', err);
       return false;
     } finally {
       setLoading(false);
@@ -347,7 +339,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar exceções';
       setError(errorMessage);
-      console.error('❌ [useUnitManagement] Erro ao buscar exceções:', err);
       return [];
     }
   }, [authenticatedFetch]);
@@ -374,7 +365,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar exceção';
       setError(errorMessage);
-      console.error('❌ [useUnitManagement] Erro ao criar exceção:', err);
       return false;
     } finally {
       setLoading(false);
@@ -404,7 +394,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar exceção';
       setError(errorMessage);
-      console.error('❌ [useUnitManagement] Erro ao atualizar exceção:', err);
       return false;
     } finally {
       setLoading(false);
@@ -429,7 +418,6 @@ export const useUnitManagement = (): UseUnitManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar exceção';
       setError(errorMessage);
-      console.error('❌ [useUnitManagement] Erro ao deletar exceção:', err);
       return false;
     } finally {
       setLoading(false);

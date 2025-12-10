@@ -67,7 +67,6 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ onLogout, searchQuery, setSea
               onClick={(e) => {
                 e.preventDefault();
                 // Placeholder for settings
-                console.log('Settings clicked');
                 setDropdownOpen(false);
               }}
               className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

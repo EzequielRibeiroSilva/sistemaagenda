@@ -227,12 +227,9 @@ export const useNotificationManagement = () => {
       
       setNotifications(transformedNotifications);
       setPagination(response.pagination);
-
-      console.log(`✅ [useNotificationManagement] ${transformedNotifications.length} notificações carregadas`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar notificações';
       setError(errorMessage);
-      console.error('❌ [useNotificationManagement] Erro ao buscar notificações:', err);
     } finally {
       setIsLoading(false);
     }
@@ -249,9 +246,8 @@ export const useNotificationManagement = () => {
       const response: NotificationStats = await makeAuthenticatedRequest(url);
       
       setStats(response);
-      console.log('✅ [useNotificationManagement] Estatísticas carregadas:', response);
     } catch (err) {
-      console.error('❌ [useNotificationManagement] Erro ao buscar estatísticas:', err);
+      // Erro silencioso - não expor detalhes no console
     }
   }, [makeAuthenticatedRequest]);
 
@@ -263,7 +259,6 @@ export const useNotificationManagement = () => {
       
       return transformBackendToFrontend(response);
     } catch (err) {
-      console.error(`❌ [useNotificationManagement] Erro ao buscar notificação ${id}:`, err);
       return null;
     }
   }, [makeAuthenticatedRequest, transformBackendToFrontend]);

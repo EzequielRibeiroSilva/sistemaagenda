@@ -93,7 +93,6 @@ export const useCupomManagement = () => {
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao buscar cupons';
       setError(errorMessage);
-      console.error('[useCupomManagement] Erro ao buscar cupons:', err);
     } finally {
       setLoading(false);
     }
@@ -129,7 +128,6 @@ export const useCupomManagement = () => {
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao buscar cupom';
       setError(errorMessage);
-      console.error('[useCupomManagement] Erro ao buscar cupom:', err);
       return null;
     } finally {
       setLoading(false);
@@ -167,7 +165,6 @@ export const useCupomManagement = () => {
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao criar cupom';
       setError(errorMessage);
-      console.error('[useCupomManagement] Erro ao criar cupom:', err);
       return false;
     } finally {
       setLoading(false);
@@ -205,7 +202,6 @@ export const useCupomManagement = () => {
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao atualizar cupom';
       setError(errorMessage);
-      console.error('[useCupomManagement] Erro ao atualizar cupom:', err);
       return false;
     } finally {
       setLoading(false);
@@ -244,7 +240,6 @@ export const useCupomManagement = () => {
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao deletar cupom';
       setError(errorMessage);
-      console.error('[useCupomManagement] Erro ao deletar cupom:', err);
       return false;
     } finally {
       setLoading(false);

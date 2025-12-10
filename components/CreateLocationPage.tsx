@@ -57,7 +57,6 @@ const AgentSelectItem: React.FC<{ name: string; avatar: string | null; checked: 
                     alt={name}
                     className="w-10 h-10 rounded-full object-cover"
                     onError={(e) => {
-                        console.error('❌ [CreateLocationPage] Erro ao carregar avatar do agente:', name, avatar);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const fallbackDiv = target.nextElementSibling as HTMLElement;

@@ -173,8 +173,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   alt="User Avatar"
                   className="h-9 w-9 rounded-full object-cover"
                   onError={(e) => {
-                    // ✅ CORREÇÃO: Fallback melhorado com logs
-                    console.error('❌ Erro ao carregar avatar do usuário:', user.email, user.avatarUrl);
+                    // Fallback para avatar
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
                     const fallbackDiv = target.nextElementSibling as HTMLElement;

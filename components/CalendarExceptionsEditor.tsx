@@ -80,7 +80,6 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
 
         // Verificar se a data é válida
         if (isNaN(date.getTime())) {
-            console.warn('Data inválida recebida:', dateStr);
             return 'Data inválida';
         }
 

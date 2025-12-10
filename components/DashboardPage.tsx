@@ -201,7 +201,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         fetchAgendamentosRaw(prevFilters).then((prevData) => {
             setPreviousPeriodAgendamentos(prevData);
         }).catch(err => {
-            console.error('❌ [DashboardPage] Erro ao buscar período anterior:', err);
             setPreviousPeriodAgendamentos([]);
         });
     }, [performanceLocation, performanceAgent, performanceService, dateRange, isMultiPlan, fetchAgendamentos, fetchAgendamentosRaw]);
@@ -258,7 +257,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
             setPreviewAppointments(transformedAppointments);
         }).catch(err => {
-            console.error('❌ [DashboardPage] Erro ao buscar agendamentos da pré-visualização:', err);
             setPreviewAppointments([]);
         });
     }, [previewDate, previewLocation, isMultiPlan, fetchAgendamentosRaw]);
@@ -322,7 +320,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
             setPreviewAppointments(transformedAppointments);
         }).catch(err => {
-            console.error('❌ [DashboardPage] Erro ao recarregar agendamentos da pré-visualização:', err);
+            // Erro ao recarregar agendamentos
         });
     };
 

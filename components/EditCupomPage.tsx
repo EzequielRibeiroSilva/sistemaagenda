@@ -273,7 +273,6 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
           setSubmitError('Cupom não encontrado');
         }
       } catch (error) {
-        console.error('❌ [EditCupomPage] Erro ao carregar cupom:', error);
         setSubmitError('Erro ao carregar dados do cupom');
       } finally {
         setLoading(false);

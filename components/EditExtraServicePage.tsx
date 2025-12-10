@@ -145,7 +145,6 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                 }
             } catch (error) {
                 if (isMounted) {
-                    console.error('❌ [EditExtraServicePage] Erro ao carregar serviço extra:', error);
                     setSubmitError('Erro ao carregar dados do serviço extra');
                 }
             } finally {
@@ -235,7 +234,6 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                 toast.error('Erro ao Atualizar Serviço Extra', result.error || 'Não foi possível atualizar o serviço extra. Tente novamente.');
             }
         } catch (error) {
-            console.error('❌ [EditExtraServicePage] Erro ao atualizar serviço extra:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Atualizar Serviço Extra', errorMessage);
         } finally {

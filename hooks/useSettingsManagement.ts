@@ -101,7 +101,6 @@ export const useSettingsManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('❌ [useSettingsManagement] Erro ao carregar configurações:', err);
     } finally {
       setLoading(false);
     }
@@ -244,7 +243,6 @@ export const useSettingsManagement = () => {
         await navigator.clipboard.writeText(link);
         return true;
       } catch (err) {
-        console.error('❌ [useSettingsManagement] Erro ao copiar link:', err);
         return false;
       }
     }

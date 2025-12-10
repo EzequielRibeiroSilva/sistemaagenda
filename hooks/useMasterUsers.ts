@@ -106,7 +106,6 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('Erro ao buscar usuários:', err);
     } finally {
       setLoading(false);
     }
@@ -247,7 +246,7 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
         method: 'POST',
       });
     } catch (err) {
-      console.error('Erro no logout:', err);
+      // Erro no logout
     } finally {
       // Usar logout do AuthContext
       authLogout();

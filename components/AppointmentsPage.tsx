@@ -330,18 +330,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
     
     const filteredAppointments = useMemo(() => {
-        // 🔍 DEBUG: Log para rastrear observações
-        const app94 = appointments.find(app => app.id === 94);
-        if (app94) {
-            console.log('🔍 [AppointmentsPage] Agendamento #94 encontrado:', {
-                id: app94.id,
-                observacoes: app94.observacoes,
-                hasObservacoes: !!app94.observacoes,
-                observacoesTrimmed: app94.observacoes?.trim(),
-                shouldShowIcon: !!(app94.observacoes && app94.observacoes.trim())
-            });
-        }
-
         // Aplicar filtros locais (os filtros do servidor já foram aplicados)
         const filtered = appointments.filter(app => {
             const { id, service, dateTime, timeRemainingStatus, agent, client, paymentStatus, createdAt, paymentMethod } = filters;
@@ -484,14 +472,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     // ✅ NOVO: Handler para abrir modal de edição ao clicar na linha
     const handleRowClick = (app: AppointmentDetail) => {
-        console.log('🎯 [AppointmentsPage] ===== CLIQUE NA LINHA DETECTADO =====');
-        console.log('🎯 [AppointmentsPage] VOCÊ CLICOU NO ID #' + app.id);
-        console.log('🔍 [AppointmentsPage] handleRowClick - Dados BRUTOS do agendamento:', app);
-        console.log('🔍 [AppointmentsPage] serviceId:', app.serviceId);
-        console.log('🔍 [AppointmentsPage] startTime:', app.startTime);
-        console.log('🔍 [AppointmentsPage] endTime:', app.endTime);
-        console.log('🔍 [AppointmentsPage] locationId:', app.locationId);
-        console.log('🔍 [AppointmentsPage] agent.id:', app.agent.id);
 
         // ✅ CORREÇÃO: Formatar data e horário similar ao CalendarPage
         const formattedDate = new Date(app.date + 'T00:00:00').toLocaleDateString('pt-BR', {
@@ -524,17 +504,8 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             observacoes: app.observacoes
         };
 
-        console.log('📤 [AppointmentsPage] Dados CONVERTIDOS enviados ao modal:', appointmentData);
-        console.log('📤 [AppointmentsPage] appointmentData.serviceId:', appointmentData.serviceId);
-        console.log('📤 [AppointmentsPage] appointmentData.agentId:', appointmentData.agentId);
-        console.log('📤 [AppointmentsPage] appointmentData.startTime:', appointmentData.startTime);
-        console.log('📤 [AppointmentsPage] appointmentData.endTime:', appointmentData.endTime);
-        console.log('📤 [AppointmentsPage] appointmentData.dateISO:', appointmentData.dateISO);
-
-        console.log('🔄 [AppointmentsPage] Atualizando estados do modal...');
         setEditingAppointment(appointmentData);
         setIsEditModalOpen(true);
-        console.log('✅ [AppointmentsPage] Estados atualizados - Modal deve abrir agora!');
     };
 
     // ✅ NOVO: Handler para fechar modal e recarregar dados
@@ -703,7 +674,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                             <td className="p-3 w-28 whitespace-nowrap">
                                                 <button
                                                     onClick={(e) => {
-                                                        console.log('🔥 [AppointmentsPage] BOTÃO CLICADO! ID:', app.id);
                                                         e.preventDefault();
                                                         e.stopPropagation(); // Evitar duplo clique
                                                         handleRowClick(app);
@@ -753,14 +723,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                                         {/* ✅ NOVO: Ícone de observações (apenas se existirem) */}
                                                         {(() => {
                                                             const hasObservacoes = app.observacoes && app.observacoes.trim();
-                                                            if (app.id === 94) {
-                                                                console.log('🔍 [AppointmentsPage] Renderizando linha #94:', {
-                                                                    hasObservacoes,
-                                                                    observacoes: app.observacoes,
-                                                                    shouldRenderIcon: !!hasObservacoes,
-                                                                    visibleColumns_cliente: visibleColumns.cliente
-                                                                });
-                                                            }
                                                             return hasObservacoes ? (
                                                                 <button
                                                                     className="text-blue-600 hover:text-blue-800 p-2 transition-colors bg-blue-50 rounded-md border-2 border-blue-300"
@@ -898,7 +860,6 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             )}
             
             {/* ✅ NOVO: Modal de Edição de Agendamento */}
-            {console.log('🎭 [AppointmentsPage] Renderizando modal - isOpen:', isEditModalOpen, 'appointmentData:', editingAppointment)}
             <NewAppointmentModal
                 isOpen={isEditModalOpen}
                 onClose={handleCloseEditModal}

@@ -105,19 +105,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 }
 
                 setError(errorMessage);
-
-                // Log para auditoria (apenas em desenvolvimento)
-                if (import.meta.env.DEV) {
-                    console.error('❌ Erro de login:', {
-                        status: response.status,
-                        message: data.message || data.error,
-                        email: email.trim().toLowerCase()
-                    });
-                }
             }
         } catch (error) {
-            console.error('❌ Erro na requisição de login:', error);
-
             // Verificar se é erro de rede
             if (error instanceof TypeError && error.message.includes('fetch')) {
                 setError('Erro de conexão. Verifique sua internet e tente novamente');

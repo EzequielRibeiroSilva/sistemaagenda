@@ -214,10 +214,7 @@ export const useAppointmentManagement = () => {
     }
 
 
-    // 🔍 DEBUG: Log para rastrear observações
-    if (backendData.id === 94) {
-      console.log('🔍 [useAppointmentManagement] Agendamento #94 - observacoes do backend:', backendData.observacoes);
-    }
+    // Observações mapeadas do backend
 
     return {
       id: backendData.id,
@@ -370,7 +367,6 @@ export const useAppointmentManagement = () => {
       }
       return null;
     } catch (err) {
-      console.error('Erro ao buscar agendamento por ID:', err);
       return null;
     }
   }, [isAuthenticated, token, makeAuthenticatedRequest, transformBackendToFrontend]);

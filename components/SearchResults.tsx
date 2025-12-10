@@ -75,7 +75,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
                     await fetchClients({ nome: query });
                 }
             } catch (error) {
-                console.error('Erro ao buscar clientes:', error);
+                // Erro ao buscar clientes
             } finally {
                 setIsSearchingClients(false);
             }
@@ -100,7 +100,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
                         setFoundAppointment(null);
                     }
                 } catch (error) {
-                    console.error('Erro ao buscar agendamento:', error);
+                    // Erro ao buscar agendamento
                     setFoundAppointment(null);
                 } finally {
                     setIsSearchingAppointment(false);

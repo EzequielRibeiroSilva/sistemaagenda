@@ -164,7 +164,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar clientes';
       setError(errorMessage);
-      console.error('Erro ao buscar clientes:', err);
     } finally {
       setLoading(false);
     }
@@ -187,7 +186,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar cliente';
       setError(errorMessage);
-      console.error('Erro ao buscar cliente:', err);
       return null;
     }
   }, [authenticatedFetch]);
@@ -217,7 +215,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente';
       setError(errorMessage);
-      console.error('❌ [useClientManagement] Erro ao criar cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
@@ -247,7 +244,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar cliente';
       setError(errorMessage);
-      console.error('❌ [useClientManagement] Erro ao atualizar cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
@@ -273,7 +269,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir cliente';
       setError(errorMessage);
-      console.error('❌ [useClientManagement] Erro ao excluir cliente:', err);
       return false;
     }
   }, [authenticatedFetch, fetchClients]);
@@ -330,7 +325,6 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar cliente para agendamento';
       setError(errorMessage);
-      console.error('Erro ao criar cliente para agendamento:', err);
       return null;
     }
   }, [authenticatedFetch]);
