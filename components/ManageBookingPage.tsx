@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, X, CheckCircle, AlertCircle } from './Icons';
-import { useManageBooking, AgendamentoDetalhes } from '../hooks/useManageBooking';
+import { useManageBooking, AgendamentoDetalhes, HorarioFuncionamentoUnidade } from '../hooks/useManageBooking';
 import { usePublicBooking, SalonData } from '../hooks/usePublicBooking';
 import { getAssetUrl, API_BASE_URL } from '../utils/api';
 import { StepHeader, ActionButton, InfoCard, LoadingSpinner, ErrorMessage } from './booking/SharedComponents';
@@ -23,21 +23,23 @@ const ManageBookingPage: React.FC = () => {
   const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
+  // ✅ NOVO: Horários de funcionamento da unidade
+  const [horariosUnidade, setHorariosUnidade] = useState<HorarioFuncionamentoUnidade[]>([]);
   
   // Estados para cancelamento
   const [cancelReason, setCancelReason] = useState('');
   
+  // ✅ CORREÇÃO CRÍTICA: Estado para contagem regressiva (movido para o topo do componente)
+  const [countdown, setCountdown] = useState(60);
+  
   // Hooks
-  const { isLoading, error, fetchAgendamento, reagendarAgendamento, cancelarAgendamento } = useManageBooking();
+  const { isLoading, error, fetchAgendamento, reagendarAgendamento, cancelarAgendamento, fetchHorariosUnidade } = useManageBooking();
   const { salonData, getAgenteDisponibilidade, loadSalonData } = usePublicBooking();
 
   // ✅ CRÍTICO: Preservar configurações da empresa na primeira carga
   // Logo e nome do negócio não devem mudar
   useEffect(() => {
     if (salonData && !businessConfig) {
-      console.log('[ManageBookingPage] 🏪 Salvando configurações iniciais da empresa');
-      console.log('[ManageBookingPage] Logo URL:', salonData.configuracoes.logo_url);
-      console.log('[ManageBookingPage] Nome Negócio:', salonData.configuracoes.nome_negocio);
       setBusinessConfig({
         logo_url: salonData.configuracoes.logo_url,
         nome_negocio: salonData.configuracoes.nome_negocio
@@ -53,7 +55,6 @@ const ManageBookingPage: React.FC = () => {
         const id = parseInt(pathParts[1]);
         if (!isNaN(id)) {
           setAgendamentoId(id);
-          console.log('[ManageBookingPage] ID do agendamento:', id);
           
           // Buscar dados básicos do agendamento sem validação de telefone
           // para carregar o logo da unidade
@@ -64,10 +65,9 @@ const ManageBookingPage: React.FC = () => {
             if (data.success && data.data.unidade_id) {
               // Carregar dados da unidade para exibir logo
               await loadSalonData(data.data.unidade_id);
-              console.log('[ManageBookingPage] Dados da unidade carregados para o header');
             }
           } catch (error) {
-            console.error('[ManageBookingPage] Erro ao carregar preview:', error);
+            // Erro silencioso - não expor detalhes no console
           }
         }
       }
@@ -86,6 +86,11 @@ const ManageBookingPage: React.FC = () => {
     const data = await fetchAgendamento(agendamentoId, clientPhone);
     if (data) {
       setAgendamento(data);
+      
+      // Buscar horários de funcionamento da unidade
+      const horarios = await fetchHorariosUnidade(data.unidade.id);
+      setHorariosUnidade(horarios);
+      
       setCurrentStep(2); // Ir para escolha de ação
     } else {
       alert(error || 'Não foi possível validar o agendamento');
@@ -107,15 +112,16 @@ const ManageBookingPage: React.FC = () => {
 
       // Verificar se temos o ID do agente
       if (!agendamento.agente.id) {
-        console.error('[ManageBookingPage] ID do agente não disponível');
         return;
       }
 
+      // Passar agendamentoId para excluir da verificação de conflitos
       const disponibilidade = await getAgenteDisponibilidade(
         agendamento.agente.id,
         dateStr,
         totalDuration,
-        agendamento.unidade.id
+        agendamento.unidade.id,
+        agendamentoId || undefined // ✅ Excluir agendamento atual
       );
 
       if (disponibilidade && disponibilidade.slots_disponiveis) {
@@ -124,11 +130,18 @@ const ManageBookingPage: React.FC = () => {
         setAvailableTimeSlots([]);
       }
     } catch (error) {
-      console.error('[ManageBookingPage] Erro ao buscar horários:', error);
+      // Erro silencioso - não expor detalhes no console
       setAvailableTimeSlots([]);
     } finally {
       setIsLoadingSlots(false);
     }
+  };
+
+  // ✅ NOVO: Verificar se a unidade está aberta em um dia específico
+  const isUnidadeAberta = (date: Date): boolean => {
+    const diaSemana = date.getDay(); // 0 = Domingo, 6 = Sábado
+    const horario = horariosUnidade.find(h => h.dia_semana === diaSemana);
+    return horario?.is_aberto && horario.horarios_json && horario.horarios_json.length > 0;
   };
 
   // Confirmar reagendamento
@@ -352,7 +365,9 @@ const ManageBookingPage: React.FC = () => {
               const day = i + 1;
               const date = new Date(year, month, day);
               const isPastDate = date < today;
-              const isAvailable = date >= today;
+              // ✅ CORREÇÃO CRÍTICA: Validar se a unidade está aberta neste dia
+              const isUnidadeOpen = isUnidadeAberta(date);
+              const isAvailable = date >= today && isUnidadeOpen;
               const isSelected = selectedDate?.toDateString() === date.toDateString();
 
               let buttonStyle = '';
@@ -364,7 +379,12 @@ const ManageBookingPage: React.FC = () => {
               } else if (isAvailable) {
                 buttonStyle = 'bg-lime-100/60 hover:bg-lime-200';
                 textStyle = 'text-gray-800';
+              } else if (!isUnidadeOpen && date >= today) {
+                // ✅ FEEDBACK VISUAL: Dia fechado (cinza #F3F4F6 - padronizado com BookingPage)
+                buttonStyle = 'cursor-not-allowed bg-[#F3F4F6]';
+                textStyle = 'text-gray-400';
               } else {
+                // Dia passado (cinza)
                 buttonStyle = 'cursor-not-allowed bg-gray-100';
                 textStyle = 'text-gray-400';
               }
@@ -375,6 +395,7 @@ const ManageBookingPage: React.FC = () => {
                   disabled={!isAvailable}
                   onClick={() => isAvailable ? handleDateSelect(date) : undefined}
                   className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${buttonStyle}`}
+                  title={!isUnidadeOpen && date >= today ? 'Local fechado neste dia' : ''}
                 >
                   <span className={`font-semibold ${textStyle}`}>{day}</span>
                 </button>
@@ -504,30 +525,35 @@ const ManageBookingPage: React.FC = () => {
     );
   };
 
+  // ✅ CORREÇÃO CRÍTICA: useEffect para contagem regressiva (movido para o topo)
+  useEffect(() => {
+    // Iniciar contagem regressiva apenas quando estiver no step 5 (sucesso)
+    if (currentStep !== 5) {
+      setCountdown(60); // Resetar contador quando não estiver no step 5
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          // Fechar página automaticamente
+          window.close();
+          // Se window.close() não funcionar (página não foi aberta via script), 
+          // tentar redirecionar para about:blank
+          setTimeout(() => {
+            window.location.href = 'about:blank';
+          }, 100);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentStep]);
+
   // Renderizar Step 5: Sucesso
   const renderSuccess = () => {
-    const [countdown, setCountdown] = useState(60);
-
-    useEffect(() => {
-      // Iniciar contagem regressiva
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            // Fechar página automaticamente
-            window.close();
-            // Se window.close() não funcionar (página não foi aberta via script), 
-            // tentar redirecionar para about:blank
-            setTimeout(() => {
-              window.location.href = 'about:blank';
-            }, 100);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(timer);
-    }, []);
 
     const handleClosePage = () => {
       window.close();

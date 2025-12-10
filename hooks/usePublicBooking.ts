@@ -131,8 +131,6 @@ export const usePublicBooking = () => {
     setError(null);
     
     try {
-      console.log(`[usePublicBooking] Carregando dados da unidade ${unidadeId}`);
-      
       const response = await fetch(`${API_BASE_URL}/public/salao/${unidadeId}`);
       const data = await response.json();
       
@@ -145,11 +143,9 @@ export const usePublicBooking = () => {
       }
       
       setSalonData(data.data);
-      console.log(`[usePublicBooking] Dados carregados: ${data.data.agentes.length} agentes, ${data.data.servicos.length} serviços`);
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[usePublicBooking] Erro ao carregar dados:', errorMessage);
       setError(errorMessage);
       setSalonData(null);
     } finally {
@@ -160,8 +156,6 @@ export const usePublicBooking = () => {
   // Buscar unidade por slug
   const findUnidadeBySlug = useCallback(async (slug: string): Promise<{ unidade_id: number; nome: string } | null> => {
     try {
-      console.log(`[usePublicBooking] Buscando unidade por slug: ${slug}`);
-      
       const response = await fetch(`${API_BASE_URL}/public/salao/slug/${slug}`);
       const data = await response.json();
       
@@ -175,40 +169,40 @@ export const usePublicBooking = () => {
       };
       
     } catch (err) {
-      console.error('[usePublicBooking] Erro ao buscar por slug:', err);
       return null;
     }
   }, []);
 
   // Buscar disponibilidade de um agente com duração dinâmica
   // ✅ CRÍTICO: Adicionado parâmetro unidadeId para suportar agentes multi-unidade
-  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number, unidadeId?: number): Promise<DisponibilidadeData | null> => {
+  // ✅ CRÍTICO: Adicionado parâmetro excludeAgendamentoId para excluir agendamento atual (reagendamento)
+  const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number, unidadeId?: number, excludeAgendamentoId?: number): Promise<DisponibilidadeData | null> => {
     try {
-      console.log(`[usePublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos || 60}min, unidade: ${unidadeId || 'não especificada'})`);
-
       // Construir URL com parâmetro de duração
       const url = new URL(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade`);
       url.searchParams.set('data', data);
       if (duracaoMinutos) {
         url.searchParams.set('duration', duracaoMinutos.toString());
       }
-      // ✅ CORREÇÃO CRÍTICA: Enviar unidade_id para backend filtrar horários corretamente
+      // Enviar unidade_id para backend filtrar horários corretamente
       if (unidadeId) {
         url.searchParams.set('unidade_id', unidadeId.toString());
+      }
+      // Enviar exclude_agendamento_id para excluir agendamento atual (reagendamento)
+      if (excludeAgendamentoId) {
+        url.searchParams.set('exclude_agendamento_id', excludeAgendamentoId.toString());
       }
 
       const response = await fetch(url.toString());
       const responseData = await response.json();
 
       if (!response.ok || !responseData.success) {
-        console.warn('[usePublicBooking] Erro na disponibilidade:', responseData.message);
         return null;
       }
 
       return responseData.data;
 
     } catch (err) {
-      console.error('[usePublicBooking] Erro ao buscar disponibilidade:', err);
       return null;
     }
   }, []);
@@ -216,8 +210,6 @@ export const usePublicBooking = () => {
   // Criar agendamento
   const createAgendamento = useCallback(async (agendamentoData: AgendamentoData): Promise<AgendamentoCriado | null> => {
     try {
-      console.log('[usePublicBooking] Criando agendamento:', agendamentoData);
-      
       const response = await fetch(`${API_BASE_URL}/public/agendamento`, {
         method: 'POST',
         headers: {
@@ -236,12 +228,10 @@ export const usePublicBooking = () => {
         throw new Error(data.message || 'Falha ao criar agendamento');
       }
       
-      console.log('[usePublicBooking] Agendamento criado com sucesso:', data.data.agendamento_id);
       return data.data;
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[usePublicBooking] Erro ao criar agendamento:', errorMessage);
       throw new Error(errorMessage);
     }
   }, []);
@@ -249,8 +239,6 @@ export const usePublicBooking = () => {
   // Buscar extras filtrados por serviços selecionados
   const getExtrasByServices = useCallback(async (unidadeId: number, servicoIds: number[]): Promise<PublicExtra[]> => {
     try {
-      console.log('[usePublicBooking] Buscando extras para serviços:', servicoIds);
-
       const servicoIdsStr = servicoIds.join(',');
       const response = await fetch(`${API_BASE_URL}/public/salao/${unidadeId}/extras?servico_ids=${servicoIdsStr}`);
 
@@ -264,21 +252,16 @@ export const usePublicBooking = () => {
         throw new Error(data.message || 'Falha ao buscar extras');
       }
 
-      console.log(`[usePublicBooking] Encontrados ${data.data.length} extras para os serviços selecionados`);
       return data.data;
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[usePublicBooking] Erro ao buscar extras:', errorMessage);
-      return []; // Retorna array vazio em caso de erro
+      return [];
     }
   }, []);
 
   // Buscar todos os locais disponíveis por usuario_id (extraído da primeira unidade)
   const loadAvailableLocations = useCallback(async (usuarioId: number) => {
     try {
-      console.log(`[usePublicBooking] Carregando locais disponíveis para usuario_id ${usuarioId}`);
-      
       const response = await fetch(`${API_BASE_URL}/public/usuario/${usuarioId}/unidades`);
       const data = await response.json();
       
@@ -287,16 +270,13 @@ export const usePublicBooking = () => {
       }
       
       if (!data.success) {
-        throw new Error(data.message || 'Locais não encontrados');
+        throw new Error(data.message || 'Falha ao carregar locais');
       }
       
       setAvailableLocations(data.data);
-      console.log(`[usePublicBooking] ${data.data.length} locais carregados`);
       return data.data;
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[usePublicBooking] Erro ao carregar locais:', errorMessage);
       setAvailableLocations([]);
       return [];
     }

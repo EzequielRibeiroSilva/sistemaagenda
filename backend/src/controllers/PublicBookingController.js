@@ -285,15 +285,16 @@ class PublicBookingController {
   }
 
   /**
-   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD&duration=90&unidade_id=1
+   * GET /api/public/agentes/:id/disponibilidade?data=YYYY-MM-DD&duration=90&unidade_id=1&exclude_agendamento_id=123
    * Buscar disponibilidade de um agente em uma data específica
    * Hierarquia: Horário Agente ∩ Horário Unidade ∩ Agendamentos Existentes
    * ✅ NOVO: Aceita unidade_id para filtrar horários quando agente trabalha em múltiplas unidades
+   * ✅ NOVO: Aceita exclude_agendamento_id para excluir agendamento atual da verificação de conflitos (reagendamento)
    */
   async getAgenteDisponibilidade(req, res) {
     try {
       const { id: agenteId } = req.params;
-      const { data, duration, unidade_id } = req.query;
+      const { data, duration, unidade_id, exclude_agendamento_id } = req.query;
 
       if (!data) {
         return res.status(400).json({
@@ -306,7 +307,7 @@ class PublicBookingController {
       // Duração em minutos (padrão: 60 min)
       const duracaoMinutos = parseInt(duration) || 60;
 
-      console.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min)`);
+      console.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min, exclude: ${exclude_agendamento_id || 'nenhum'})`);
 
       // Verificar se agente existe e está ativo
       const agente = await this.agenteModel.findById(agenteId);
@@ -403,11 +404,19 @@ class PublicBookingController {
       }
 
       // 3. HIERARQUIA: Buscar agendamentos existentes do agente nesta data
-      const agendamentosExistentes = await db('agendamentos')
+      // ✅ CORREÇÃO CRÍTICA: Excluir agendamento atual da verificação (reagendamento)
+      let queryAgendamentos = db('agendamentos')
         .where('agente_id', agenteId)
         .where('data_agendamento', data)
-        .whereIn('status', ['Aprovado', 'Confirmado'])
-        .select('hora_inicio', 'hora_fim');
+        .whereIn('status', ['Aprovado', 'Confirmado']);
+
+      // Se exclude_agendamento_id foi fornecido, excluir da verificação
+      if (exclude_agendamento_id) {
+        queryAgendamentos = queryAgendamentos.whereNot('id', parseInt(exclude_agendamento_id));
+        console.log(`[PublicBooking] ✅ Excluindo agendamento #${exclude_agendamento_id} da verificação de conflitos`);
+      }
+
+      const agendamentosExistentes = await queryAgendamentos.select('hora_inicio', 'hora_fim');
 
       console.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
 
@@ -1197,6 +1206,29 @@ class PublicBookingController {
           message: 'Não é possível reagendar um agendamento já concluído'
         });
       }
+
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se a unidade está aberta no dia da nova data
+      const dataObj = new Date(data_agendamento + 'T00:00:00');
+      const diaSemana = dataObj.getDay(); // 0 = Domingo, 6 = Sábado
+
+      console.log(`[PublicBooking] Validando dia de funcionamento: ${data_agendamento} (dia_semana: ${diaSemana})`);
+
+      const horarioUnidade = await db('horarios_funcionamento_unidade')
+        .where('unidade_id', agendamento.unidade_id)
+        .where('dia_semana', diaSemana)
+        .where('is_aberto', true)
+        .first();
+
+      if (!horarioUnidade || !horarioUnidade.horarios_json || horarioUnidade.horarios_json.length === 0) {
+        console.log(`[PublicBooking] ❌ Local fechado no dia ${diaSemana} (${data_agendamento})`);
+        return res.status(400).json({
+          success: false,
+          error: 'Local fechado',
+          message: 'O local não funciona neste dia da semana. Por favor, escolha outra data.'
+        });
+      }
+
+      console.log(`[PublicBooking] ✅ Local aberto no dia ${diaSemana}:`, horarioUnidade.horarios_json);
 
       // Buscar serviços para calcular duração total
       const servicos = await this.agendamentoModel.db('agendamento_servicos')
