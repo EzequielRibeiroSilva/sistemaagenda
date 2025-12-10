@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Ticket, X } from './Icons';
+import { Ticket } from './Icons';
 import { useCupomManagement, Cupom } from '../hooks/useCupomManagement';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { useToast } from '../contexts/ToastContext';
+import { BaseCard, AddCard, CardInfoRow, CardStatusBadge } from './BaseCard';
 
 interface CupomCardProps {
   cupom: Cupom;
@@ -22,111 +23,81 @@ const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit, onDelete, isConfir
     }
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
-      <div className="p-4 flex-grow">
-        {/* Título do Cupom */}
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-bold text-gray-800 text-sm uppercase flex-1">
-            {cupom.codigo}
-          </h3>
-          <button
-            onClick={() => onDelete(cupom.id)}
-            className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 ${
-              isConfirmingDelete
-                ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
-                : 'text-red-600 hover:bg-red-50'
-            }`}
-            title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir cupom'}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <hr className="my-3" />
+  // Ícone de ticket para o header
+  const ticketIcon = (
+    <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#2663EB] to-blue-600 rounded-full shadow-md">
+      <Ticket className="w-7 h-7 text-white" />
+    </div>
+  );
 
-        {/* Desconto em destaque */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 text-center">
-          <p className="text-2xl font-bold text-blue-600">
-            {cupom.valor_desconto}% OFF
+  return (
+    <BaseCard
+      title={cupom.codigo}
+      onEdit={() => onEdit(cupom.id)}
+      onDelete={() => onDelete(cupom.id)}
+      isConfirmingDelete={isConfirmingDelete}
+      editLabel="Editar Cupom"
+      showTopBar={true}
+      headerContent={ticketIcon}
+    >
+      {/* Desconto em destaque */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 text-center">
+        <p className="text-2xl font-bold text-blue-600">
+          {cupom.valor_desconto}% OFF
+        </p>
+      </div>
+
+      {/* Informações do cupom */}
+      {cupom.data_fim && (
+        <CardInfoRow 
+          label="Validade" 
+          value={formatarData(cupom.data_fim)}
+        />
+      )}
+      
+      <CardInfoRow 
+        label="Usos" 
+        value={`${cupom.uso_atual}${cupom.limite_uso_total ? ` / ${cupom.limite_uso_total}` : ''}`}
+      />
+
+      {cupom.limite_uso_por_cliente && (
+        <CardInfoRow 
+          label="Por cliente" 
+          value={`${cupom.limite_uso_por_cliente}x`}
+        />
+      )}
+
+      <CardInfoRow 
+        label="Status" 
+        value={<CardStatusBadge status={cupom.status} activeLabel="Disponível" inactiveLabel={cupom.status} />}
+      />
+
+      {/* Divisor */}
+      <div className="border-t border-gray-100 my-2"></div>
+
+      {/* Serviços aplicáveis */}
+      {cupom.servico_ids && cupom.servico_ids.length > 0 ? (
+        <div className="text-xs">
+          <p className="text-gray-500 mb-1">Aplicável em:</p>
+          <p className="text-blue-600 font-medium">
+            {cupom.servico_ids.length} serviço{cupom.servico_ids.length > 1 ? 's' : ''} específico{cupom.servico_ids.length > 1 ? 's' : ''}
           </p>
         </div>
-
-        {/* Informações do cupom */}
-        <div className="space-y-2">
-          {cupom.data_fim && (
-            <div className="flex justify-between text-sm text-gray-500">
-              <p>Validade:</p>
-              <p className="text-gray-700 font-medium">{formatarData(cupom.data_fim)}</p>
-            </div>
-          )}
-          
-          <div className="flex justify-between text-sm text-gray-500">
-            <p>Usos:</p>
-            <p className="text-gray-700 font-medium">
-              {cupom.uso_atual}{cupom.limite_uso_total ? ` / ${cupom.limite_uso_total}` : ''}
-            </p>
-          </div>
-
-          {cupom.limite_uso_por_cliente && (
-            <div className="flex justify-between text-sm text-gray-500">
-              <p>Por cliente:</p>
-              <p className="text-gray-700 font-medium">{cupom.limite_uso_por_cliente}x</p>
-            </div>
-          )}
-
-          <div className="flex justify-between text-sm text-gray-500">
-            <p>Status:</p>
-            <p className={`font-medium ${
-              cupom.status === 'Ativo' ? 'text-green-600' : 
-              cupom.status === 'Expirado' ? 'text-red-600' : 'text-gray-600'
-            }`}>
-              {cupom.status === 'Ativo' ? 'Disponível' : cupom.status}
-            </p>
-          </div>
-
-          {/* Serviços aplicáveis */}
-          {cupom.servico_ids && cupom.servico_ids.length > 0 && (
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs text-gray-500 mb-1">Aplicável em:</p>
-              <p className="text-xs text-blue-600 font-medium">
-                {cupom.servico_ids.length} serviço{cupom.servico_ids.length > 1 ? 's' : ''} específico{cupom.servico_ids.length > 1 ? 's' : ''}
-              </p>
-            </div>
-          )}
-          {(!cupom.servico_ids || cupom.servico_ids.length === 0) && (
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs text-gray-500">Aplicável em:</p>
-              <p className="text-xs text-green-600 font-medium">Todos os serviços</p>
-            </div>
-          )}
+      ) : (
+        <div className="text-xs">
+          <p className="text-gray-500 mb-1">Aplicável em:</p>
+          <p className="text-green-600 font-medium">Todos os serviços</p>
         </div>
-      </div>
-
-      {/* Botão Editar */}
-      <div className="p-4 bg-white rounded-b-lg mt-auto">
-        <button
-          onClick={() => onEdit(cupom.id)}
-          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
-        >
-          <Edit className="w-4 h-4" />
-          <span>Editar Cupom</span>
-        </button>
-      </div>
-    </div>
+      )}
+    </BaseCard>
   );
 };
 
 const AddCupomCard: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <div
-    onClick={onClick}
-    className="bg-white rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center p-4 min-h-[300px] text-center hover:border-blue-500 hover:text-blue-600 cursor-pointer transition-colors group"
-  >
-    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center mb-4 transition-transform group-hover:scale-110">
-      <Plus className="w-6 h-6 text-white" />
-    </div>
-    <p className="font-semibold text-blue-600">Adicionar</p>
-    <p className="font-semibold text-blue-600">Cupom</p>
-  </div>
+  <AddCard 
+    onClick={onClick} 
+    label="Adicionar Cupom" 
+  />
 );
 
 interface CuponsPageProps {
