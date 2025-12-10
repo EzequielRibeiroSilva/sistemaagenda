@@ -5,6 +5,7 @@ import { useAgentManagement, AgentDetails } from '../hooks/useAgentManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
+import { AgentUnitScheduleState } from '../types';
 
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -64,7 +65,7 @@ interface EditAgentPageProps {
 }
 
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
-    const { fetchAgentById, updateAgent, loading, error } = useAgentManagement();
+    const { fetchAgentById, updateAgent, loading, error, availableUnits } = useAgentManagement();
     const { user, updateUser } = useAuth();
     const toast = useToast();
     const [agentData, setAgentData] = useState<AgentDetails | null>(null);
@@ -79,8 +80,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
 
     // Estados que são usados no useEffect devem ser declarados ANTES
     const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
-    const [isCustomSchedule, setIsCustomSchedule] = useState(true);
-    const [scheduleData, setScheduleData] = useState<any[]>([]);
+    // ✅ NOVO: Estado para agendas multi-unidade (substituindo isCustomSchedule e scheduleData)
+    const [agentSchedules, setAgentSchedules] = useState<AgentUnitScheduleState[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string>('');
@@ -113,21 +114,6 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         setCheckedServices(initialCheckedServices);
                     }
 
-                    // Implementar pré-seleção da agenda personalizada
-                    setIsCustomSchedule(agent.agenda_personalizada);
-
-                    // Inicializar agenda personalizada
-                    if (agent.agenda_personalizada && agent.horarios_funcionamento) {
-                        setScheduleData(agent.horarios_funcionamento);
-                    } else {
-                        // Se não tem agenda personalizada, inicializar com padrão vazio
-                        setScheduleData(Array.from({ length: 7 }, (_, index) => ({
-                            dia_semana: index,
-                            is_aberto: false,
-                            periodos: []
-                        })));
-                    }
-
                     // ✅ CORREÇÃO: Definir preview da imagem atual com fallback robusto
                     const avatarUrl = agent.avatar_url || agent.avatar;
                     if (avatarUrl) {
@@ -148,6 +134,99 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
         };
     }, [agentId]); // Removido fetchAgentById das dependências
 
+    // ✅ NOVO: useEffect para inicializar agendas multi-unidade quando availableUnits e agentData estiverem prontos
+    useEffect(() => {
+        if (availableUnits.length === 0 || !agentData) return;
+
+        console.log('🔄 [EditAgentPage] Inicializando agendas multi-unidade');
+        console.log('📦 [EditAgentPage] availableUnits:', availableUnits);
+        console.log('📦 [EditAgentPage] agentData.horarios_funcionamento:', agentData.horarios_funcionamento);
+
+        // Mapear nomes de dias para números
+        const dayNameToNumber: Record<string, number> = {
+            'Domingo': 0,
+            'Segunda-feira': 1,
+            'Terça': 2,
+            'Quarta-feira': 3,
+            'Quinta': 4,
+            'Sexta-feira': 5,
+            'Sábado': 6
+        };
+
+        const dayNumberToName: Record<number, string> = {
+            0: 'Domingo',
+            1: 'Segunda-feira',
+            2: 'Terça',
+            3: 'Quarta-feira',
+            4: 'Quinta',
+            5: 'Sexta-feira',
+            6: 'Sábado'
+        };
+
+        // Agrupar horários do backend por unidade_id
+        const horariosPorUnidade: Record<number, any[]> = {};
+        if (agentData.horarios_funcionamento && agentData.horarios_funcionamento.length > 0) {
+            agentData.horarios_funcionamento.forEach((horario: any) => {
+                const unidadeId = horario.unidade_id;
+                if (!horariosPorUnidade[unidadeId]) {
+                    horariosPorUnidade[unidadeId] = [];
+                }
+                horariosPorUnidade[unidadeId].push(horario);
+            });
+        }
+
+        console.log('📋 [EditAgentPage] Horários agrupados por unidade:', horariosPorUnidade);
+
+        // Criar estrutura de agendas para cada unidade
+        const initialSchedules: AgentUnitScheduleState[] = availableUnits.map(unit => {
+            const unitHorarios = horariosPorUnidade[unit.id] || [];
+            const hasCustomSchedule = unitHorarios.length > 0;
+
+            console.log(`🏢 [EditAgentPage] Processando Unidade ${unit.id} (${unit.nome}):`, {
+                hasCustomSchedule,
+                horariosCount: unitHorarios.length
+            });
+
+            // Inicializar schedule vazio
+            const schedule: Record<string, { isActive: boolean; periods: { id: number; start: string; end: string }[] }> = {
+                'Domingo': { isActive: false, periods: [] },
+                'Segunda-feira': { isActive: false, periods: [] },
+                'Terça': { isActive: false, periods: [] },
+                'Quarta-feira': { isActive: false, periods: [] },
+                'Quinta': { isActive: false, periods: [] },
+                'Sexta-feira': { isActive: false, periods: [] },
+                'Sábado': { isActive: false, periods: [] }
+            };
+
+            // Preencher com dados do backend
+            unitHorarios.forEach((horario: any) => {
+                const dayName = dayNumberToName[horario.dia_semana];
+                if (dayName) {
+                    schedule[dayName] = {
+                        isActive: true,
+                        periods: horario.periodos.map((p: any, index: number) => ({
+                            id: Date.now() + index, // ✅ Gerar ID único para cada período
+                            start: p.inicio || p.start || '09:00',
+                            end: p.fim || p.end || '17:00'
+                        }))
+                    };
+                }
+            });
+
+            console.log(`📅 [EditAgentPage] Schedule para Unidade ${unit.id}:`, schedule);
+
+            return {
+                unidade_id: unit.id,
+                unidade_nome: unit.nome,
+                agenda_personalizada: hasCustomSchedule,
+                schedule
+            };
+        });
+
+        console.log('✅ [EditAgentPage] initialSchedules final:', initialSchedules);
+        setAgentSchedules(initialSchedules);
+    }, [availableUnits, agentData]);
+
     const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
         if (agentData?.servicos_disponiveis) {
@@ -161,6 +240,23 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
 
     const handleServiceCheck = (servicoId: number) => {
         setCheckedServices(prev => ({ ...prev, [servicoId]: !prev[servicoId] }));
+    };
+
+    // ✅ NOVO: Handlers para agendas multi-unidade
+    const handleScheduleChange = (unidadeId: number, newSchedule: any) => {
+        setAgentSchedules(prev => prev.map(item => 
+            item.unidade_id === unidadeId 
+                ? { ...item, schedule: newSchedule }
+                : item
+        ));
+    };
+
+    const handleToggleCustomSchedule = (unidadeId: number, checked: boolean) => {
+        setAgentSchedules(prev => prev.map(item => 
+            item.unidade_id === unidadeId 
+                ? { ...item, agenda_personalizada: checked }
+                : item
+        ));
     };
 
     const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,18 +299,48 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 .filter(([_, isChecked]) => isChecked)
                 .map(([servicoId, _]) => parseInt(servicoId));
 
+            // ✅ NOVO: Mapear agentSchedules para formato do backend
+            const dayNameToNumber: Record<string, number> = {
+                'Domingo': 0,
+                'Segunda-feira': 1,
+                'Terça': 2,
+                'Quarta-feira': 3,
+                'Quinta': 4,
+                'Sexta-feira': 5,
+                'Sábado': 6
+            };
+
+            const schedulesToSubmit = agentSchedules
+                .filter(item => item.agenda_personalizada)
+                .flatMap(item => {
+                    return Object.entries(item.schedule)
+                        .filter(([_, dayData]: [string, any]) => dayData.isActive && dayData.periods.length > 0)
+                        .map(([dayName, dayData]: [string, any]) => ({
+                            dia_semana: dayNameToNumber[dayName],
+                            unidade_id: item.unidade_id, // ✅ CHAVE: Incluir unidade_id
+                            periodos: dayData.periods.map((period: any) => ({
+                                inicio: period.start,
+                                fim: period.end
+                            }))
+                        }));
+                });
+
+            console.log('📤 [EditAgentPage] Enviando agendas_multi_unidade:', schedulesToSubmit);
+
             const updateData = {
                 nome: firstName,
                 sobrenome: lastName,
                 email: email,
                 telefone: phone,
-                status: status, // ✅ CORREÇÃO: Incluir campo status
+                status: status,
                 unidade_id: agentData.unidade_id, // Incluir unidade_id obrigatório
-                agenda_personalizada: isCustomSchedule,
                 servicos_oferecidos: servicosSelecionados,
-                horarios_funcionamento: isCustomSchedule ? scheduleData : [],
+                // ✅ NOVO: Enviar agendas multi-unidade
+                agendas_multi_unidade: schedulesToSubmit,
+                // ✅ CORREÇÃO CRÍTICA: Definir agenda_personalizada quando há agendas customizadas
+                agenda_personalizada: schedulesToSubmit.length > 0,
                 avatar: avatarFile,
-                ...(password.trim() !== '' && { senha: password }) // ✅ CORREÇÃO CRÍTICA: Incluir senha apenas se preenchida
+                ...(password.trim() !== '' && { senha: password })
             };
 
             const result = await updateAgent(agentData.id, updateData);
@@ -375,37 +501,54 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 </div>
             </FormCard>
             
-            <FormCard
-                title="Agenda Semanal"
-                rightContent={
-                     <label className="flex items-center text-sm font-medium text-blue-600 cursor-pointer">
-                        <div className="relative flex items-center">
-                            <input
-                                type="checkbox"
-                                checked={isCustomSchedule}
-                                onChange={() => setIsCustomSchedule(!isCustomSchedule)}
-                                className="sr-only"
-                            />
-                            <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${isCustomSchedule ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {isCustomSchedule && <Check className="w-3 h-3 text-white" />}
-                            </div>
-                        </div>
-                        <span className="ml-2 font-semibold">Agenda personalizada</span>
-                    </label>
-                }
-            >
-                {isCustomSchedule ? (
-                    <AgentScheduleEditor
-                        scheduleData={scheduleData}
-                        onScheduleChange={setScheduleData}
-                    />
-                ) : (
+            {/* ✅ NOVO: Renderizar uma seção de agenda para cada unidade */}
+            {agentSchedules.length > 0 ? (
+                agentSchedules.map((agentUnitSchedule) => {
+                    const unitData = availableUnits.find(u => u.id === agentUnitSchedule.unidade_id);
+                    const unitLimits = unitData?.horarios_funcionamento;
+
+                    return (
+                        <FormCard 
+                            key={agentUnitSchedule.unidade_id}
+                            title={`Agenda - ${unitData?.nome || 'Unidade'}`}
+                            rightContent={
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={agentUnitSchedule.agenda_personalizada}
+                                        onChange={(e) => handleToggleCustomSchedule(agentUnitSchedule.unidade_id, e.target.checked)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${agentUnitSchedule.agenda_personalizada ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                        {agentUnitSchedule.agenda_personalizada && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                    <span className="ml-2 text-sm text-gray-600">Agenda personalizada</span>
+                                </label>
+                            }
+                        >
+                            {agentUnitSchedule.agenda_personalizada ? (
+                                <AgentScheduleEditor
+                                    schedule={agentUnitSchedule.schedule}
+                                    onChange={(newSchedule) => handleScheduleChange(agentUnitSchedule.unidade_id, newSchedule)}
+                                    unitScheduleLimits={unitLimits}
+                                />
+                            ) : (
+                                <div className="text-center py-8 text-gray-500">
+                                    <p>Usando agenda padrão da unidade</p>
+                                    <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
+                                </div>
+                            )}
+                        </FormCard>
+                    );
+                })
+            ) : (
+                <FormCard title="Agenda Semanal">
                     <div className="text-center py-8 text-gray-500">
-                        <p>Usando agenda padrão da unidade</p>
-                        <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p>Carregando informações de locais...</p>
                     </div>
-                )}
-            </FormCard>
+                </FormCard>
+            )}
 
             <div className="pt-2">
                 <button
