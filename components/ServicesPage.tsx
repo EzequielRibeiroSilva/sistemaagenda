@@ -155,8 +155,6 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
 
       {activeTab === 'Serviços' && (
         <div>
-          <h2 className="text-gray-500 mb-4">Sem categoria</h2>
-
           {/* Loading state */}
           {loading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
