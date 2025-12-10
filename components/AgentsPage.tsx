@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Edit, X, CheckCircle, XCircle, FaUser } from './Icons';
+import { FaUser } from './Icons';
 import { useAgentManagement } from '../hooks/useAgentManagement';
 import { useToast } from '../contexts/ToastContext';
 import { getAssetUrl } from '../utils/api';
+import { BaseCard, AddCard, CardInfoRow, CardStatusBadge } from './BaseCard';
 
 // Tipo Agent do hook
 interface Agent {
@@ -23,96 +24,94 @@ interface AgentCardProps {
   isConfirmingDelete?: boolean;
 }
 
-const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfirmingDelete = false }) => (
-    <div className="relative group bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col transition-all duration-200 hover:border-blue-500 hover:shadow-lg">
-        <div className="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button
-                onClick={() => onDelete(agent.id)}
-                aria-label={`Excluir ${agent.name}`}
-                className={`p-2 backdrop-blur-sm rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors ${
-                  isConfirmingDelete
-                    ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
-                    : 'bg-white/70 text-red-600 hover:bg-red-50 hover:text-red-700'
-                }`}
-                title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir agente'}
-            >
-                <X className="w-4 h-4" />
-            </button>
-            <button
-                onClick={() => onEdit(agent.id)}
-                aria-label={`Editar ${agent.name}`}
-                className="p-2 bg-white/70 backdrop-blur-sm rounded-full text-gray-600 hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-                <Edit className="w-5 h-5" />
-            </button>
+const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfirmingDelete = false }) => {
+  // Avatar do agente para o header
+  const avatarContent = (
+    <div className="flex items-center">
+      <div className="relative w-14 h-14">
+        {agent.avatar ? (
+          <img
+            src={getAssetUrl(agent.avatar)}
+            alt={agent.name}
+            className="w-14 h-14 rounded-full object-cover border-2 border-[#2663EB] shadow-sm"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const fallbackDiv = target.nextElementSibling as HTMLElement;
+              if (fallbackDiv) {
+                fallbackDiv.classList.remove('hidden');
+              }
+            }}
+          />
+        ) : null}
+        <div className={`w-14 h-14 rounded-full bg-gray-300 flex items-center justify-center border-2 border-[#2663EB] ${agent.avatar ? 'hidden' : ''}`}>
+          <FaUser className="w-7 h-7 text-gray-600" />
         </div>
-        <div className="flex items-center">
-            <div className="relative w-12 h-12">
-                {agent.avatar ? (
-                    <img
-                        src={getAssetUrl(agent.avatar)}
-                        alt={agent.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                        onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const fallbackDiv = target.nextElementSibling as HTMLElement;
-                            if (fallbackDiv) {
-                                fallbackDiv.classList.remove('hidden');
-                            }
-                        }}
-                    />
-                ) : null}
-                <div className={`w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center ${agent.avatar ? 'hidden' : ''}`}>
-                    <FaUser className="w-6 h-6 text-gray-600" />
-                </div>
-            </div>
-            <div className="ml-4">
-                <h3 className="font-bold text-gray-800">{agent.name}</h3>
-                <p className="text-sm text-gray-500">{agent.phone}</p>
-            </div>
-        </div>
-        <div className="my-4 border-t border-gray-200"></div>
-        <div className="flex justify-between items-center text-xs text-center text-gray-500">
-            {agent.availability.map(day => (
-                <div key={day.day}>
-                    <div className={`w-1.5 h-1.5 rounded-full mx-auto mb-1 ${day.available ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                    {day.day}
-                </div>
-            ))}
-        </div>
-        <div className="my-4 border-t border-gray-200"></div>
-        {agent.todayHours && agent.todayHours.trim() !== '' && (
-            <div className="flex items-center justify-between text-sm mb-2">
-                <div className="flex items-center">
-                    <span className="text-gray-500 mr-2">Horários</span>
-                    <span className="font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded text-xs">{agent.status}</span>
-                </div>
-                <p className="text-gray-600 text-xs">{agent.todayHours}</p>
-            </div>
-        )}
-        {!agent.todayHours || agent.todayHours.trim() === '' && (
-            <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-gray-500">Status</span>
-                <span className="font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded text-xs">{agent.status}</span>
-            </div>
-        )}
-        <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">Reservas</span>
-            <span className="font-bold text-gray-800 text-lg">{agent.reservations}</span>
-        </div>
+      </div>
+      <div className="ml-3">
+        <p className="text-sm text-gray-500">{agent.phone}</p>
+      </div>
     </div>
-);
+  );
+
+  return (
+    <BaseCard
+      title={agent.name}
+      onEdit={() => onEdit(agent.id)}
+      onDelete={() => onDelete(agent.id)}
+      isConfirmingDelete={isConfirmingDelete}
+      editLabel="Editar Agente"
+      showTopBar={true}
+      headerContent={avatarContent}
+    >
+      {/* Indicadores de disponibilidade por dia */}
+      <div className="flex justify-between items-center text-xs text-center text-gray-500 mb-3">
+        {agent.availability.map(day => (
+          <div key={day.day}>
+            <div className={`w-2 h-2 rounded-full mx-auto mb-1 ${day.available ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+            {day.day}
+          </div>
+        ))}
+      </div>
+
+      {/* Divisor */}
+      <div className="border-t border-gray-100 my-2"></div>
+
+      {/* Horários de hoje (se disponível) */}
+      {agent.todayHours && agent.todayHours.trim() !== '' && (
+        <CardInfoRow 
+          label="Horários Hoje" 
+          value={agent.todayHours}
+          valueClassName="text-xs"
+        />
+      )}
+
+      {/* Status */}
+      <CardInfoRow 
+        label="Status" 
+        value={
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+            <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-green-500"></span>
+            {agent.status}
+          </span>
+        }
+      />
+
+      {/* Reservas */}
+      <CardInfoRow 
+        label="Reservas" 
+        value={agent.reservations.toString()}
+        valueClassName="text-lg font-bold"
+      />
+    </BaseCard>
+  );
+};
 
 const AddAgentCard: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <div 
+  <AddCard 
     onClick={onClick} 
-    className="bg-white rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center p-4 min-h-[250px] text-center hover:border-blue-500 hover:bg-gray-50/50 cursor-pointer transition-colors group">
-    <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4 transition-transform group-hover:scale-110">
-      <Plus className="w-8 h-8 text-white" />
-    </div>
-    <p className="font-semibold text-blue-600 text-lg">Adicionar Agente</p>
-  </div>
+    label="Adicionar Agente" 
+  />
 );
 
 interface AgentsPageProps {
@@ -201,7 +200,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {agents.map(agent => (
                     <div key={agent.id} className={deleteLoading === agent.id ? 'opacity-50 pointer-events-none' : ''}>
                         <AgentCard
