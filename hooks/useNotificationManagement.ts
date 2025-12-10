@@ -220,13 +220,8 @@ export const useNotificationManagement = () => {
       if (filters.unidade_id) queryParams.append('unidade_id', filters.unidade_id.toString());
 
       const url = `${API_BASE_URL}/notificacoes?${queryParams.toString()}`;
-      console.log('🌐 [useNotificationManagement] URL da requisição:', url);
       
       const response: NotificationResponse = await makeAuthenticatedRequest(url);
-      console.log('✅ [useNotificationManagement] Resposta do backend:', {
-        total: response.data.length,
-        pagination: response.pagination
-      });
 
       // Transformar dados do backend para o formato do frontend
       const transformedNotifications = response.data.map(transformBackendToFrontend);

@@ -559,7 +559,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         }
 
         const timeSlots: string[] = [];
-        const intervalMinutes = 30; // Intervalos de 30 minutos
+        
+        // ✅ CORREÇÃO CRÍTICA: Usar duracao_servico_horas das configurações ao invés de hardcoded
+        // Converter horas para minutos (ex: 1 hora = 60 minutos, 0.5 horas = 30 minutos)
+        const intervalMinutes = settings?.duracao_servico_horas 
+            ? Math.round(settings.duracao_servico_horas * 60) 
+            : 30; // Fallback para 30 minutos se configuração não estiver disponível
 
         // Gerar slots baseados nos horários reais da unidade
         for (const periodo of unitSchedule) {
@@ -580,8 +585,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 }
             }
         }
-
-
 
         // TODO: Filtrar horários já ocupados consultando agendamentos existentes
         return timeSlots.sort();
