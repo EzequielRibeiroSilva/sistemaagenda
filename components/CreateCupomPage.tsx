@@ -4,6 +4,7 @@ import { useServiceManagement } from '../hooks/useServiceManagement';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { useToast } from '../contexts/ToastContext';
 import { ChevronDown, Check } from './Icons';
+import WeekdaySelector from './WeekdaySelector';
 
 // Componentes reutilizáveis de formulário
 const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -211,6 +212,9 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
   const [servicosSelecionados, setServicosSelecionados] = useState<number[]>([]);
   const [locaisSelecionados, setLocaisSelecionados] = useState<number[]>([]);
 
+  // ✅ NOVO: Estado para dias da semana permitidos
+  const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState<number[]>([]);
+
   // Estados de controle
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -268,6 +272,8 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
         limite_uso_total: limiteUsoTotal ? parseInt(String(limiteUsoTotal)) : undefined,
         servico_ids: servicosSelecionados.length > 0 ? servicosSelecionados : undefined,
         unidade_ids: locaisSelecionados.length > 0 ? locaisSelecionados : undefined,
+        // ✅ NOVO: Dias da semana permitidos (enviar null se vazio para permitir todos os dias)
+        dias_semana_permitidos: diasSemanaSelecionados.length > 0 ? diasSemanaSelecionados : null,
         status
       };
 
@@ -399,6 +405,18 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
               onChange={setLocaisSelecionados}
               placeholder="Selecione um ou mais locais..."
               showAddress={true}
+            />
+          </FormCard>
+
+          {/* ✅ NOVO: Dias da Semana Permitidos */}
+          <FormCard title="Dias da Semana Permitidos">
+            <p className="text-sm text-gray-600 mb-4">
+              Defina em quais dias da semana este cupom poderá ser utilizado. Útil para promoções em dias específicos (ex: Segunda a Quarta).
+            </p>
+            <WeekdaySelector
+              selectedDays={diasSemanaSelecionados}
+              onChange={setDiasSemanaSelecionados}
+              disabled={submitting}
             />
           </FormCard>
 

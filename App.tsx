@@ -76,7 +76,22 @@ const App: React.FC = () => {
         setEditingAgentId(null);
       }
     }
-  }, [activeView, editingExtraServiceId, editingServiceId, editingAgentId]);
+    if (activeView !== 'cupons-edit' && activeView !== 'cupons-list') {
+      if (editingCupomId) {
+        setEditingCupomId(null);
+      }
+    }
+    if (activeView !== 'clients-edit' && activeView !== 'clients') {
+      if (editingClientId) {
+        setEditingClientId(null);
+      }
+    }
+    if (activeView !== 'locations-edit' && activeView !== 'locations-list') {
+      if (editingLocationId) {
+        setEditingLocationId(null);
+      }
+    }
+  }, [activeView, editingExtraServiceId, editingServiceId, editingAgentId, editingCupomId, editingClientId, editingLocationId]);
 
   // Hook para usuários master (sempre chamado, mas só usado se for MASTER)
   const masterUsersHook = useMasterUsers();

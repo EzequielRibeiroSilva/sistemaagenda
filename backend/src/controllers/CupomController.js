@@ -181,6 +181,13 @@ class CupomController {
     try {
       const usuarioId = req.user?.id;
       
+      console.log('🔍 [CupomController.store] Recebendo requisição:', {
+        usuarioId,
+        body: req.body,
+        dias_semana_permitidos: req.body.dias_semana_permitidos,
+        tipo_dias: typeof req.body.dias_semana_permitidos
+      });
+      
       if (!usuarioId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
@@ -189,13 +196,18 @@ class CupomController {
 
       const cupom = await this.cupomService.criarCupom(req.body, usuarioId);
 
+      console.log('✅ [CupomController.store] Cupom criado com sucesso:', cupom.id);
+
       return res.status(201).json({
         success: true,
         data: cupom,
         message: 'Cupom criado com sucesso'
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao criar cupom:', error);
+      console.error('❌ [CupomController.store] Erro ao criar cupom:', {
+        message: error.message,
+        stack: error.stack
+      });
       
       // Erros de validação retornam 400
       if (error.message.startsWith('Dados inválidos:')) {
@@ -221,6 +233,14 @@ class CupomController {
       const { id } = req.params;
       const usuarioId = req.user?.id;
       
+      console.log('🔍 [CupomController.update] Recebendo requisição:', {
+        cupomId: id,
+        usuarioId,
+        body: req.body,
+        dias_semana_permitidos: req.body.dias_semana_permitidos,
+        tipo_dias: typeof req.body.dias_semana_permitidos
+      });
+      
       if (!usuarioId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
@@ -233,13 +253,18 @@ class CupomController {
         usuarioId
       );
 
+      console.log('✅ [CupomController.update] Cupom atualizado com sucesso:', cupom.id);
+
       return res.json({
         success: true,
         data: cupom,
         message: 'Cupom atualizado com sucesso'
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao atualizar cupom:', error);
+      console.error('❌ [CupomController.update] Erro ao atualizar cupom:', {
+        message: error.message,
+        stack: error.stack
+      });
       
       // Erros de validação e permissão retornam 400/403
       if (error.message === 'Cupom não encontrado') {
@@ -397,7 +422,7 @@ class CupomController {
    */
   async validar(req, res) {
     try {
-      const { codigo, cliente_id, valor_pedido, unidade_id, servico_ids } = req.body;
+      const { codigo, cliente_id, valor_pedido, unidade_id, servico_ids, data_agendamento } = req.body;
 
       // Validar parâmetros obrigatórios
       if (!codigo || valor_pedido === undefined || !unidade_id) {
@@ -416,13 +441,14 @@ class CupomController {
         });
       }
 
-      // Validar uso do cupom com contexto completo
+      // ✅ NOVO: Validar uso do cupom com contexto completo incluindo data do agendamento
       const validacao = await this.cupomService.validarUsoCupom(
         codigo,
         cliente_id ? parseInt(cliente_id) : null,
         parseFloat(valor_pedido),
         parseInt(unidade_id),
-        servico_ids || []
+        servico_ids || [],
+        data_agendamento || null // ✅ Passar data do agendamento para validar dia da semana
       );
 
       if (!validacao.valido) {
@@ -431,7 +457,8 @@ class CupomController {
           valido: false,
           error: validacao.erro,
           codigo_erro: validacao.codigo_erro,
-          valor_minimo: validacao.valor_minimo
+          valor_minimo: validacao.valor_minimo,
+          dias_permitidos: validacao.dias_permitidos // ✅ Retornar dias permitidos se erro for de dia da semana
         });
       }
 

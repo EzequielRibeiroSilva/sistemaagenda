@@ -59,9 +59,11 @@ class Cupom extends BaseModel {
       });
     }
     
-    // Buscar dados - usar distinct para evitar duplicatas do JOIN
+    // Buscar dados - usar distinct ON (id) para evitar duplicatas do JOIN
+    // ✅ CORREÇÃO: DISTINCT ON (id) funciona com colunas JSON
     const data = await query
-      .distinct(`${this.tableName}.*`)
+      .distinctOn(`${this.tableName}.id`)
+      .orderBy(`${this.tableName}.id`)
       .orderBy(`${this.tableName}.created_at`, 'desc')
       .limit(limit)
       .offset(offset);
