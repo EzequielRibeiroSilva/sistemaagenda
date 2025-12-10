@@ -102,37 +102,51 @@ const validateLogin = (req, res, next) => {
 };
 
 /**
+ * Função auxiliar para sanitizar recursivamente objetos e arrays
+ */
+const sanitizeValue = (value) => {
+  if (typeof value === 'string') {
+    // Sanitizar XSS
+    const sanitized = xss(value, {
+      whiteList: {}, // Não permitir nenhuma tag HTML
+      stripIgnoreTag: true,
+      stripIgnoreTagBody: ['script']
+    });
+    // Trim whitespace
+    return sanitized.trim();
+  } else if (Array.isArray(value)) {
+    // Sanitizar cada elemento do array recursivamente
+    return value.map(item => sanitizeValue(item));
+  } else if (value !== null && typeof value === 'object') {
+    // Sanitizar cada propriedade do objeto recursivamente
+    const sanitizedObj = {};
+    for (const [key, val] of Object.entries(value)) {
+      sanitizedObj[key] = sanitizeValue(val);
+    }
+    return sanitizedObj;
+  }
+  // Retornar valores não-string sem modificação (números, booleanos, null)
+  return value;
+};
+
+/**
  * Middleware de validação genérica para outros endpoints
+ * ✅ CORREÇÃO 1.4: Sanitização recursiva de objetos aninhados e arrays
  */
 const sanitizeInput = (req, res, next) => {
-  // Sanitizar todos os campos de string no body
+  // Sanitizar todos os campos no body (incluindo objetos aninhados e arrays)
   if (req.body && typeof req.body === 'object') {
-    for (const [key, value] of Object.entries(req.body)) {
-      if (typeof value === 'string') {
-        // Sanitizar XSS
-        req.body[key] = xss(value, {
-          whiteList: {}, // Não permitir nenhuma tag HTML
-          stripIgnoreTag: true,
-          stripIgnoreTagBody: ['script']
-        });
-
-        // Trim whitespace
-        req.body[key] = req.body[key].trim();
-      }
-    }
+    req.body = sanitizeValue(req.body);
   }
 
-  // Sanitizar query parameters
+  // Sanitizar query parameters (incluindo arrays)
   if (req.query && typeof req.query === 'object') {
-    for (const [key, value] of Object.entries(req.query)) {
-      if (typeof value === 'string') {
-        req.query[key] = xss(value, {
-          whiteList: {},
-          stripIgnoreTag: true,
-          stripIgnoreTagBody: ['script']
-        }).trim();
-      }
-    }
+    req.query = sanitizeValue(req.query);
+  }
+
+  // Sanitizar params
+  if (req.params && typeof req.params === 'object') {
+    req.params = sanitizeValue(req.params);
   }
 
   next();

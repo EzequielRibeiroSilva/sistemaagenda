@@ -8,10 +8,28 @@ const express = require('express');
 const router = express.Router();
 const PublicBookingController = require('../controllers/PublicBookingController');
 const CupomController = require('../controllers/CupomController');
+const { 
+  clientSearchRateLimit, 
+  createBookingRateLimit, 
+  couponValidationRateLimit,
+  generalPublicRateLimit 
+} = require('../middleware/publicBookingRateLimit');
 
 // Inicializar controllers
 const publicBookingController = new PublicBookingController();
 const cupomController = new CupomController();
+
+// ✅ CORREÇÃO 1.2: Aplicar rate limiting geral em todas as rotas públicas
+router.use(generalPublicRateLimit);
+
+/**
+ * POST /api/public/session/create
+ * Criar sessão temporária para booking público
+ * ✅ CORREÇÃO 1.2: Gerar token de sessão para validar operações sensíveis
+ */
+router.post('/session/create', async (req, res) => {
+  await publicBookingController.createPublicSession(req, res);
+});
 
 /**
  * GET /api/public/salao/:unidadeId
@@ -38,18 +56,20 @@ router.get('/agentes/:id/disponibilidade', async (req, res) => {
 });
 
 /**
- * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y
+ * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y&session_token=ZZZ
  * Buscar cliente por telefone (para pré-preencher dados)
+ * ✅ CORREÇÃO 1.2: Rate limiting agressivo (3 tentativas / 5 min) + validação de sessão
  */
-router.get('/cliente/buscar', async (req, res) => {
+router.get('/cliente/buscar', clientSearchRateLimit, async (req, res) => {
   await publicBookingController.buscarCliente(req, res);
 });
 
 /**
  * POST /api/public/agendamento
  * Criar novo agendamento público
+ * ✅ CORREÇÃO 1.2: Rate limiting (5 tentativas / 15 min)
  */
-router.post('/agendamento', async (req, res) => {
+router.post('/agendamento', createBookingRateLimit, async (req, res) => {
   await publicBookingController.createAgendamento(req, res);
 });
 
@@ -88,9 +108,9 @@ router.patch('/agendamento/:id/cancelar', async (req, res) => {
 /**
  * POST /api/public/cupons/validar
  * Validar cupom de desconto para uso na página de booking
- * Sem autenticação - público
+ * ✅ CORREÇÃO 1.2: Rate limiting (10 tentativas / 15 min)
  */
-router.post('/cupons/validar', async (req, res) => {
+router.post('/cupons/validar', couponValidationRateLimit, async (req, res) => {
   await cupomController.validar(req, res);
 });
 

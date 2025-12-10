@@ -79,6 +79,11 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// ✅ CORREÇÃO 1.4: Sanitização global de inputs (XSS + SQL Injection)
+const { sanitizeInput, detectSQLInjection } = require('./middleware/validation');
+app.use('/api', detectSQLInjection); // Detectar SQL Injection em todas as rotas da API
+app.use('/api', sanitizeInput); // Sanitizar XSS em todas as rotas da API
+
 // Middleware específico para arquivos estáticos com headers CORS
 app.use('/uploads', (req, res, next) => {
   // Headers para resolver ERR_BLOCKED_BY_RESPONSE.NotSameOrigin

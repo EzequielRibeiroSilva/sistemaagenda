@@ -1299,6 +1299,70 @@ class AgendamentoController extends BaseController {
       });
     }
   }
+
+  // DELETE /api/agendamentos/:id - Deletar agendamento (hard delete)
+  // ✅ CORREÇÃO 1.3: Apenas ADMIN pode deletar (validação de propriedade por unidade)
+  async destroy(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // ✅ CORREÇÃO 1.3: Apenas ADMIN pode deletar (hard delete)
+      if (userRole !== 'ADMIN') {
+        return res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Apenas ADMIN pode deletar agendamentos'
+        });
+      }
+
+      // Buscar agendamento com filtro de escopo (apenas da unidade do ADMIN)
+      const agendamento = await this.model.db(this.model.tableName)
+        .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+        .where('agendamentos.id', id)
+        .where('unidades.usuario_id', usuarioId)
+        .select('agendamentos.*')
+        .first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado ou você não tem permissão para deletá-lo'
+        });
+      }
+
+      // Deletar agendamento (hard delete)
+      await this.model.db(this.model.tableName)
+        .where('id', id)
+        .del();
+
+      console.log(`✅ [AgendamentoController] Agendamento #${id} deletado por ADMIN (usuario_id: ${usuarioId})`);
+
+      return res.json({
+        success: true,
+        message: 'Agendamento deletado com sucesso',
+        data: {
+          id: parseInt(id)
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ [AgendamentoController.destroy] Erro ao deletar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
 }
 
 module.exports = AgendamentoController;

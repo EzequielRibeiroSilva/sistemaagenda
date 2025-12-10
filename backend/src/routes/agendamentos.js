@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const AgendamentoController = require('../controllers/AgendamentoController');
+const rbacMiddleware = require('../middleware/rbacMiddleware');
 
 const agendamentoController = new AgendamentoController();
 
@@ -15,28 +16,57 @@ router.use((req, res, next) => {
 });
 
 // GET /api/agendamentos - Listar agendamentos
-router.get('/', (req, res) => agendamentoController.index(req, res));
+// ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem listar agendamentos
+router.get('/', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.index(req, res)
+);
 
 // GET /api/agendamentos/:id - Buscar agendamento por ID
-router.get('/:id', (req, res) => agendamentoController.show(req, res));
+// ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem visualizar agendamentos
+router.get('/:id', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.show(req, res)
+);
 
 // POST /api/agendamentos - Criar novo agendamento
-router.post('/', (req, res) => {
-  agendamentoController.store(req, res);
-});
+// ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem criar agendamentos
+router.post('/', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.store(req, res)
+);
 
 // PUT /api/agendamentos/:id - Atualizar agendamento
-router.put('/:id', (req, res) => {
-  agendamentoController.update(req, res);
-});
+// ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem atualizar agendamentos
+// Validação de propriedade feita no controller
+router.put('/:id', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.update(req, res)
+);
 
 // DELETE /api/agendamentos/:id - Deletar agendamento
-router.delete('/:id', (req, res) => agendamentoController.destroy(req, res));
+// ✅ CORREÇÃO 1.3: Apenas ADMIN pode deletar agendamentos (hard delete)
+router.delete('/:id', 
+  rbacMiddleware.requireRole('ADMIN'),
+  (req, res) => agendamentoController.destroy(req, res)
+);
 
 // PATCH /api/agendamentos/:id/cancel - Cancelar agendamento
-router.patch('/:id/cancel', (req, res) => agendamentoController.cancel(req, res));
+// ✅ CORREÇÃO 1.3: ADMIN e AGENTE podem cancelar
+// AGENTE: apenas seus próprios agendamentos
+// ADMIN: qualquer agendamento da sua unidade
+router.patch('/:id/cancel', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.cancel(req, res)
+);
 
 // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
-router.patch('/:id/finalize', (req, res) => agendamentoController.finalize(req, res));
+// ✅ CORREÇÃO 1.3: ADMIN e AGENTE podem finalizar
+// AGENTE: apenas seus próprios agendamentos
+// ADMIN: qualquer agendamento da sua unidade
+router.patch('/:id/finalize', 
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.finalize(req, res)
+);
 
 module.exports = router;

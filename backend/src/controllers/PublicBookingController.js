@@ -13,6 +13,7 @@ const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
+const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
 const { db } = require('../config/knex');
 
 class PublicBookingController {
@@ -25,6 +26,7 @@ class PublicBookingController {
     this.configuracaoModel = new ConfiguracaoSistema(db);
     this.whatsAppService = new WhatsAppService();
     this.scheduledReminderService = new ScheduledReminderService(); // ✅ NOVO
+    this.publicSessionService = getPublicSessionService(); // ✅ CORREÇÃO 1.2
   }
 
   /**
@@ -607,12 +609,49 @@ class PublicBookingController {
   }
 
   /**
-   * GET /api/public/cliente/buscar
+   * POST /api/public/session/create
+   * Criar sessão temporária para booking público
+   * ✅ CORREÇÃO 1.2: Gerar token de sessão para validar operações sensíveis
+   */
+  async createPublicSession(req, res) {
+    try {
+      const { unidade_id } = req.body;
+      const ip = req.ip || req.connection.remoteAddress;
+
+      if (!unidade_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetro inválido',
+          message: 'unidade_id é obrigatório'
+        });
+      }
+
+      // Criar sessão
+      const sessionToken = await this.publicSessionService.createSession(unidade_id, ip);
+
+      return res.json({
+        success: true,
+        session_token: sessionToken,
+        expires_in: '30 minutos'
+      });
+    } catch (error) {
+      console.error('[PublicBooking] Erro ao criar sessão:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao criar sessão'
+      });
+    }
+  }
+
+  /**
+   * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y&session_token=ZZZ
    * Buscar cliente por telefone (para pré-preencher dados)
+   * ✅ CORREÇÃO 1.2: Validar sessão antes de retornar dados pessoais (LGPD)
    */
   async buscarCliente(req, res) {
     try {
-      const { telefone, unidade_id } = req.query;
+      const { telefone, unidade_id, session_token } = req.query;
 
       if (!telefone || !unidade_id) {
         return res.status(400).json({
@@ -620,6 +659,49 @@ class PublicBookingController {
           error: 'Parâmetros inválidos',
           message: 'Telefone e unidade_id são obrigatórios'
         });
+      }
+
+      // ✅ CORREÇÃO 1.2: Validar sessão (OPCIONAL - pode ser desabilitado em desenvolvimento)
+      if (process.env.NODE_ENV === 'production' && !session_token) {
+        console.warn(`🚨 [SECURITY] Tentativa de busca de cliente sem sessão - IP: ${req.ip}, Telefone: ${telefone}`);
+        return res.status(401).json({
+          success: false,
+          error: 'Sessão inválida',
+          message: 'Token de sessão é obrigatório'
+        });
+      }
+
+      // Validar e incrementar contador de buscas
+      if (session_token) {
+        const sessionData = await this.publicSessionService.validateAndIncrementSession(session_token, 'client_search');
+        if (!sessionData) {
+          console.warn(`🚨 [SECURITY] Sessão inválida ou expirada - IP: ${req.ip}, Token: ${session_token.substring(0, 8)}...`);
+          return res.status(401).json({
+            success: false,
+            error: 'Sessão inválida',
+            message: 'Sessão expirada ou inválida. Recarregue a página.'
+          });
+        }
+
+        // Verificar se a sessão pertence à mesma unidade
+        if (sessionData.unidade_id !== parseInt(unidade_id)) {
+          console.warn(`🚨 [SECURITY] Tentativa de busca em unidade diferente - IP: ${req.ip}, Sessão Unidade: ${sessionData.unidade_id}, Busca Unidade: ${unidade_id}`);
+          return res.status(403).json({
+            success: false,
+            error: 'Acesso negado',
+            message: 'Sessão não autorizada para esta unidade'
+          });
+        }
+
+        // Limite de buscas por sessão (proteção adicional)
+        if (sessionData.client_searches > 10) {
+          console.warn(`🚨 [SECURITY] Limite de buscas excedido - IP: ${req.ip}, Buscas: ${sessionData.client_searches}`);
+          return res.status(429).json({
+            success: false,
+            error: 'Limite excedido',
+            message: 'Você excedeu o limite de buscas. Recarregue a página.'
+          });
+        }
       }
 
       // Limpar telefone (remover caracteres não numéricos)
@@ -637,6 +719,9 @@ class PublicBookingController {
         .first();
 
       if (cliente) {
+        // ✅ CORREÇÃO 1.2: Log de acesso a dados pessoais (LGPD)
+        console.log(`🔍 [LGPD] Busca de cliente - IP: ${req.ip}, Cliente ID: ${cliente.id}, Unidade: ${unidade_id}`);
+        
         return res.json({
           success: true,
           cliente: {

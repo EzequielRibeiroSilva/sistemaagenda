@@ -4,6 +4,7 @@ const AgenteController = require('../controllers/AgenteController');
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
 const { handleFormDataWithUpload } = require('../middleware/formDataMiddleware');
+const { validateBusboyFiles } = require('../middleware/fileValidation');
 
 // Instanciar controller
 const agenteController = new AgenteController();
@@ -58,13 +59,15 @@ router.get('/:id',
  * @desc Atualizar agente (com upload de avatar)
  * @access Private (ADMIN ou AGENTE editando seu próprio perfil)
  * ✅ CORREÇÃO: AGENTE pode editar seus próprios dados, incluindo senha
+ * ✅ CORREÇÃO 1.5: Validação de magic bytes após upload
  * @param {string} id - ID do agente
  * @body {object} agenteData - Dados do agente
  * @returns { success: boolean, data: Agent, message: string }
  */
 router.put('/:id', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
-  handleFormDataWithUpload, 
+  handleFormDataWithUpload,
+  validateBusboyFiles,
   async (req, res) => {
     await agenteController.update(req, res);
   }
@@ -77,12 +80,17 @@ router.use(rbacMiddleware.requireRole('ADMIN'));
  * @route POST /agentes
  * @desc Criar novo agente
  * @access Private (ADMIN)
+ * ✅ CORREÇÃO 1.5: Validação de magic bytes após upload
  * @body {object} agenteData - Dados do agente
  * @returns { success: boolean, data: Agent, message: string }
  */
-router.post('/', handleFormDataWithUpload, async (req, res) => {
-  await agenteController.store(req, res);
-});
+router.post('/', 
+  handleFormDataWithUpload,
+  validateBusboyFiles,
+  async (req, res) => {
+    await agenteController.store(req, res);
+  }
+);
 
 /**
  * @route DELETE /agentes/:id

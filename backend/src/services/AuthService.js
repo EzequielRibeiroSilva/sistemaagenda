@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const Usuario = require('../models/Usuario');
 const config = require('../config/config');
+const { getInstance: getRedisService } = require('./RedisService');
 
 class AuthService {
   constructor() {
@@ -20,7 +21,10 @@ class AuthService {
     this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || this.generateSecureSecret();
     this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h'; // Reduzido para 1h por segurança
     this.jwtRefreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-    this.blacklistedTokens = new Set(); // Em produção, usar Redis
+    
+    // ✅ CORREÇÃO 1.1: Redis para blacklist (com fallback para memória em dev)
+    this.redisService = getRedisService();
+    this.blacklistedTokens = new Set(); // Mantido como fallback legacy
 
     // Log de aviso se usando secrets gerados automaticamente
     if (!process.env.JWT_SECRET) {
@@ -183,11 +187,21 @@ class AuthService {
   }
 
   // Fazer logout (adicionar token à blacklist)
-  logout(token) {
+  async logout(token) {
     try {
       // Verificar se o token é válido antes de adicionar à blacklist
-      this.verifyToken(token);
+      const decoded = this.verifyToken(token);
+      
+      // Calcular TTL baseado na expiração do token
+      const now = Math.floor(Date.now() / 1000);
+      const ttl = decoded.exp ? Math.max(decoded.exp - now, 60) : 3600;
+      
+      // ✅ CORREÇÃO 1.1: Adicionar ao Redis
+      await this.redisService.addToBlacklist(token, ttl);
+      
+      // Fallback legacy (manter por compatibilidade)
       this.blacklistedTokens.add(token);
+      
       return true;
     } catch (error) {
       // Token já inválido, não precisa fazer nada
@@ -196,8 +210,18 @@ class AuthService {
   }
 
   // Verificar se token está na blacklist
-  isTokenBlacklisted(token) {
-    return this.blacklistedTokens.has(token);
+  async isTokenBlacklisted(token) {
+    try {
+      // ✅ CORREÇÃO 1.1: Verificar no Redis primeiro
+      const isBlacklisted = await this.redisService.isBlacklisted(token);
+      
+      // Fallback: verificar memória também (compatibilidade)
+      return isBlacklisted || this.blacklistedTokens.has(token);
+    } catch (error) {
+      console.error('❌ Erro ao verificar blacklist:', error.message);
+      // Fallback para memória em caso de erro
+      return this.blacklistedTokens.has(token);
+    }
   }
 
   // Refresh token (gerar novo token baseado no atual)
@@ -216,7 +240,12 @@ class AuthService {
       // Gerar novo token
       const novoToken = this.generateToken(usuario);
 
-      // Adicionar token antigo à blacklist
+      // ✅ CORREÇÃO 1.1: Adicionar token antigo à blacklist (Redis)
+      const now = Math.floor(Date.now() / 1000);
+      const ttl = decoded.exp ? Math.max(decoded.exp - now, 60) : 3600;
+      await this.redisService.addToBlacklist(token, ttl);
+      
+      // Fallback legacy
       this.blacklistedTokens.add(token);
 
       // Remover senha do objeto de retorno
