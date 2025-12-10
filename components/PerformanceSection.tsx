@@ -8,8 +8,11 @@ interface PerformanceCardProps {
 }
 
 const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric }) => (
-  <div className="bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-100 hover:shadow-md transition-shadow">
-    <div className="flex justify-between items-start mb-2">
+  <div className="bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-200 hover:border-[#2663EB] transition-all duration-200 hover:shadow-md overflow-hidden">
+    {/* Barra superior azul - identidade visual do sistema */}
+    <div className="absolute top-0 left-0 right-0 h-1 bg-[#2663EB]"></div>
+    
+    <div className="flex justify-between items-start mb-2 mt-1">
       <div className="flex-1">
         <p className="text-gray-500 text-xs sm:text-sm font-medium">{metric.title}</p>
         <div className="flex items-baseline mt-2">
@@ -207,7 +210,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {metrics.map((metric, index) => (
           <PerformanceCard key={index} metric={metric} />
         ))}
