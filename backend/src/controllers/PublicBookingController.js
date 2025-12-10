@@ -1364,14 +1364,54 @@ class PublicBookingController {
         });
       }
 
-      // ✅ VALIDAÇÃO DE DATA: Bloquear cancelamento de agendamentos passados
-      const dataAgendamentoAtual = new Date(agendamento.data_agendamento);
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      
-      if (dataAgendamentoAtual < hoje) {
-        const diasPassados = Math.floor((hoje - dataAgendamentoAtual) / (1000 * 60 * 60 * 24));
-        console.log(`[PublicBooking] ❌ Tentativa de cancelar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
+      // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
+      const configuracoes = await this.agendamentoModel.db('configuracoes')
+        .join('unidades', 'configuracoes.unidade_id', 'unidades.id')
+        .where('unidades.id', agendamento.unidade_id)
+        .select('configuracoes.permitir_cancelamento', 'configuracoes.tempo_limite_cancelar_horas')
+        .first();
+
+      if (!configuracoes) {
+        console.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${agendamento.unidade_id}`);
+        return res.status(500).json({
+          success: false,
+          error: 'Configuração não encontrada',
+          message: 'Não foi possível verificar as políticas de cancelamento'
+        });
+      }
+
+      console.log(`[PublicBooking] 🔍 Configurações de cancelamento:`, {
+        permitir_cancelamento: configuracoes.permitir_cancelamento,
+        tempo_limite_cancelar_horas: configuracoes.tempo_limite_cancelar_horas
+      });
+
+      // ✅ VALIDAÇÃO 2: Verificar se cancelamento está permitido
+      if (!configuracoes.permitir_cancelamento) {
+        console.log(`[PublicBooking] ❌ Cancelamento não permitido pela política da empresa`);
+        return res.status(403).json({
+          success: false,
+          error: 'Cancelamento não permitido',
+          message: 'A política da empresa não permite cancelamento de agendamentos pelos clientes'
+        });
+      }
+
+      // ✅ VALIDAÇÃO 3: Calcular diferença em horas entre agora e o agendamento
+      const agora = new Date();
+      const dataHoraAgendamento = new Date(`${agendamento.data_agendamento}T${agendamento.hora_inicio}`);
+      const diferencaMs = dataHoraAgendamento - agora;
+      const diferencaHoras = diferencaMs / (1000 * 60 * 60);
+
+      console.log(`[PublicBooking] 🔍 Cálculo de prazo:`, {
+        agora: agora.toISOString(),
+        agendamento: dataHoraAgendamento.toISOString(),
+        diferencaHoras: diferencaHoras.toFixed(2),
+        limiteHoras: configuracoes.tempo_limite_cancelar_horas
+      });
+
+      // ✅ VALIDAÇÃO 4: Bloquear cancelamento de agendamentos passados
+      if (diferencaHoras < 0) {
+        const horasPassadas = Math.abs(diferencaHoras).toFixed(1);
+        console.log(`[PublicBooking] ❌ Tentativa de cancelar agendamento #${id} que já passou há ${horasPassadas} hora(s)`);
         return res.status(410).json({
           success: false,
           error: 'Agendamento expirado',
@@ -1379,7 +1419,23 @@ class PublicBookingController {
         });
       }
 
-      // Verificar se já está cancelado
+      // ✅ VALIDAÇÃO 5: Verificar se está dentro do prazo limite de cancelamento
+      if (diferencaHoras < configuracoes.tempo_limite_cancelar_horas) {
+        const horasRestantes = diferencaHoras.toFixed(1);
+        const horasNecessarias = configuracoes.tempo_limite_cancelar_horas;
+        
+        console.log(`[PublicBooking] ❌ Cancelamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
+        
+        return res.status(403).json({
+          success: false,
+          error: 'Fora do prazo de cancelamento',
+          message: `Cancelamento não permitido. É necessário cancelar com pelo menos ${horasNecessarias} hora(s) de antecedência. Seu agendamento está a ${horasRestantes} hora(s) de acontecer.`
+        });
+      }
+
+      console.log(`✅ [PublicBooking] Cancelamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_cancelar_horas}h`);
+
+      // ✅ VALIDAÇÃO 6: Verificar se já está cancelado
       if (agendamento.status === 'Cancelado') {
         return res.status(400).json({
           success: false,
@@ -1388,7 +1444,7 @@ class PublicBookingController {
         });
       }
 
-      // Verificar se já foi concluído
+      // ✅ VALIDAÇÃO 7: Verificar se já foi concluído
       if (agendamento.status === 'Concluído') {
         return res.status(400).json({
           success: false,
