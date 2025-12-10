@@ -66,8 +66,13 @@ class NotificacaoModel {
         query = query.where(`${this.tableName}.status`, filters.status);
       }
 
+      // ✅ CORREÇÃO: Busca parcial por ID (LIKE) ao invés de busca exata (=)
       if (filters.agendamento_id) {
-        query = query.where(`${this.tableName}.agendamento_id`, filters.agendamento_id);
+        // Converter para string para usar LIKE
+        const idSearch = filters.agendamento_id.toString();
+        // ✅ CRÍTICO: Usar CAST para converter INTEGER para TEXT antes do LIKE
+        query = query.whereRaw(`CAST(${this.tableName}.agendamento_id AS TEXT) LIKE ?`, [`${idSearch}%`]);
+        console.log(`🔍 [NotificacaoModel] Busca parcial por agendamento_id iniciando com: ${idSearch}`);
       }
 
       if (filters.data_inicio && filters.data_fim) {
