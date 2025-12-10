@@ -22,12 +22,23 @@ export interface Client {
   socialAlert: boolean;
 }
 
+// Interface para filtros de clientes
 export interface ClientFilters {
   nome?: string;
   telefone?: string;
   id?: number;
   is_assinante?: boolean;
   status?: 'Ativo' | 'Bloqueado';
+  page?: number; // ✅ NOVO: Página atual
+  limit?: number; // ✅ NOVO: Itens por página
+}
+
+// ✅ NOVO: Interface para paginação
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
 
 export interface ClientStats {
@@ -68,6 +79,12 @@ export const useClientManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ClientFilters>({});
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1,
+    limit: 12,
+    total: 0,
+    pages: 0
+  }); // ✅ NOVO: Estado de paginação
 
   // Hook de autenticação
   const { token, isAuthenticated } = useAuth();
@@ -116,6 +133,10 @@ export const useClientManagement = () => {
       // Construir query string
       const queryParams = new URLSearchParams();
 
+      // ✅ NOVO: Adicionar parâmetros de paginação
+      queryParams.append('page', (currentFilters.page || 1).toString());
+      queryParams.append('limit', (currentFilters.limit || 12).toString());
+
       if (currentFilters.nome) {
         queryParams.append('nome', currentFilters.nome);
       }
@@ -141,6 +162,15 @@ export const useClientManagement = () => {
 
       const response = await authenticatedFetch(url);
 
+      // 🔍 DEBUG: Verificar resposta do backend
+      console.log('🔍 [useClientManagement] Resposta do backend:', {
+        url,
+        clientsCount: response.data?.length,
+        hasPagination: !!response.pagination,
+        pagination: response.pagination,
+        meta: response.meta
+      });
+
       if (response.success) {
         setClients(response.data || []);
 
@@ -151,6 +181,14 @@ export const useClientManagement = () => {
             subscribers: response.meta.subscribers || 0,
             nonSubscribers: response.meta.nonSubscribers || 0
           });
+        }
+
+        // ✅ NOVO: Atualizar paginação se fornecida
+        if (response.pagination) {
+          console.log('✅ [useClientManagement] Paginação recebida:', response.pagination);
+          setPagination(response.pagination);
+        } else {
+          console.warn('⚠️ [useClientManagement] Backend NÃO retornou paginação!');
         }
 
         // ✅ CORREÇÃO: Atualizar filtros APENAS se novos foram fornecidos
@@ -340,6 +378,7 @@ export const useClientManagement = () => {
     loading,
     error,
     filters,
+    pagination, // ✅ NOVO: Exportar paginação
 
     // Ações
     fetchClients,

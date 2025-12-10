@@ -70,8 +70,9 @@ class ClienteController {
   }
 
   /**
-   * GET /api/clientes - Listagem de clientes com filtros
+   * GET /api/clientes - Listagem de clientes com filtros e paginação
    * Suporta filtros por nome, telefone, ID, status de assinante
+   * Suporta paginação via query params: page e limit
    */
   async list(req, res) {
     try {
@@ -86,6 +87,11 @@ class ClienteController {
         });
       }
 
+      // ✅ NOVO: Extrair parâmetros de paginação
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 12;
+      const offset = (page - 1) * limit;
+
       // Extrair filtros da query string
       const filtros = {
         nome: req.query.nome || req.query.name,
@@ -93,7 +99,10 @@ class ClienteController {
         id: req.query.id ? parseInt(req.query.id) : null,
         is_assinante: req.query.is_assinante === 'true' ? true :
                      req.query.is_assinante === 'false' ? false : null,
-        status: req.query.status
+        status: req.query.status,
+        // ✅ NOVO: Adicionar limit e offset aos filtros
+        limit,
+        offset
       };
 
       // Buscar clientes e contadores
@@ -131,6 +140,9 @@ class ClienteController {
         socialAlert: cliente.is_assinante
       }));
 
+      // ✅ NOVO: Calcular informações de paginação
+      const totalPages = Math.ceil(contadores.total / limit);
+
       res.status(200).json({
         success: true,
         data: clientesFormatados,
@@ -139,6 +151,13 @@ class ClienteController {
           subscribers: contadores.assinantes,
           nonSubscribers: contadores.naoAssinantes,
           filters: filtros
+        },
+        // ✅ NOVO: Adicionar objeto pagination
+        pagination: {
+          page: page,
+          limit: limit,
+          total: contadores.total,
+          pages: totalPages
         },
         message: `${contadores.total} cliente(s) encontrado(s)`
       });

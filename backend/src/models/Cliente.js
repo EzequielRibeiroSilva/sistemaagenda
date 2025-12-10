@@ -96,6 +96,15 @@ class Cliente extends BaseModel {
       query = query.where('status', filtros.status);
     }
 
+    // ✅ NOVO: Aplicar paginação (LIMIT e OFFSET)
+    if (filtros.limit) {
+      query = query.limit(filtros.limit);
+    }
+
+    if (filtros.offset) {
+      query = query.offset(filtros.offset);
+    }
+
     return await query;
   }
 
