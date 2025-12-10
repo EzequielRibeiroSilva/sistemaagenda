@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, X } from './Icons';
 import ServiceExtrasPage from './ServiceExtrasPage';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
+import { BaseCard, AddCard, CardInfoRow, CardAvatarGroup, CardStatusBadge } from './BaseCard';
 
 interface Service {
   id: number;
@@ -18,89 +18,55 @@ interface Service {
   extras_associados?: Array<{ id: number; nome: string }>;
 }
 
-const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void; onDelete: (id: number) => void; isConfirmingDelete?: boolean }> = ({ service, onEdit, onDelete, isConfirmingDelete = false }) => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
-    <div className="p-4 flex-grow">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-bold text-gray-800 text-sm uppercase flex-1">{service.nome}</h3>
-        <button
-          onClick={() => onDelete(service.id)}
-          className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 ${
-            isConfirmingDelete
-              ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
-              : 'text-red-600 hover:bg-red-50'
-          }`}
-          title={isConfirmingDelete ? 'Clique novamente para confirmar' : 'Excluir serviço'}
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <hr className="my-3" />
-      <div className="flex items-center space-x-2">
-        <span className="text-sm text-gray-500">Agentes:</span>
-        {service.agentes_associados && service.agentes_associados.length > 0 ? (
-          <>
-            <div className="flex -space-x-2">
-              {service.agentes_associados.slice(0, 3).map((agent, index) => (
-                <img
-                  key={agent.id}
-                  src={agent.avatar_url ? getAssetUrl(agent.avatar_url) : `https://i.pravatar.cc/150?img=${index + 1}`}
-                  alt={`${agent.nome} ${agent.sobrenome}`}
-                  className="w-6 h-6 rounded-full border-2 border-white object-cover"
-                />
-              ))}
-            </div>
-            {service.agentes_associados.length > 3 && (
-              <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full font-medium text-gray-600">
-                +{service.agentes_associados.length - 3} mais
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-xs text-gray-400">Nenhum agente</span>
-        )}
-      </div>
-      <hr className="my-3" />
-      <div>
-        <div className="flex justify-between text-sm text-gray-500">
-          <p>Duração:</p>
-          <p className="text-gray-700 font-medium">{service.duracao_minutos} min</p>
-        </div>
-        <div className="flex justify-between text-sm text-gray-500">
-          <p>Preço:</p>
-          <p className="text-gray-700 font-medium">R$ {(Number(service.preco) || 0).toFixed(2)}</p>
-        </div>
-        <div className="flex justify-between text-sm text-gray-500">
-          <p>Comissão:</p>
-          <p className="text-gray-700 font-medium">{Number(service.comissao_percentual) || 0}%</p>
-        </div>
-        <div className="flex justify-between text-sm text-gray-500">
-          <p>Status:</p>
-          <p className={`font-medium ${service.status === 'Ativo' ? 'text-green-600' : 'text-red-600'}`}>
-            {service.status === 'Ativo' ? 'Disponível' : 'Indisponível'}
-          </p>
-        </div>
-      </div>
-    </div>
-    <div className="p-4 bg-white rounded-b-lg mt-auto">
-      <button
-        onClick={() => onEdit(service.id)}
-        className="w-full flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm transition-colors">
-        <Edit className="w-4 h-4 mr-2" />
-        Editar Serviço
-      </button>
-    </div>
-  </div>
-);
+const ServiceCard: React.FC<{ service: Service; onEdit: (id: number) => void; onDelete: (id: number) => void; isConfirmingDelete?: boolean }> = ({ service, onEdit, onDelete, isConfirmingDelete = false }) => {
+  // Preparar avatares dos agentes para o CardAvatarGroup
+  const agentAvatars = service.agentes_associados?.map((agent, index) => ({
+    id: agent.id,
+    url: agent.avatar_url ? getAssetUrl(agent.avatar_url) : `https://i.pravatar.cc/150?img=${index + 1}`,
+    alt: `${agent.nome} ${agent.sobrenome}`
+  })) || [];
+
+  return (
+    <BaseCard
+      title={service.nome}
+      onEdit={() => onEdit(service.id)}
+      onDelete={() => onDelete(service.id)}
+      isConfirmingDelete={isConfirmingDelete}
+      editLabel="Editar Serviço"
+      showTopBar={true}
+    >
+      {/* Avatares dos agentes */}
+      <CardAvatarGroup avatars={agentAvatars} label="Agentes" maxVisible={3} />
+
+      {/* Divisor */}
+      <div className="border-t border-gray-100 my-2"></div>
+
+      {/* Informações do serviço */}
+      <CardInfoRow 
+        label="Duração" 
+        value={`${service.duracao_minutos} min`} 
+      />
+      <CardInfoRow 
+        label="Preço" 
+        value={`R$ ${(Number(service.preco) || 0).toFixed(2)}`} 
+      />
+      <CardInfoRow 
+        label="Comissão" 
+        value={`${Number(service.comissao_percentual) || 0}%`} 
+      />
+      <CardInfoRow 
+        label="Status" 
+        value={<CardStatusBadge status={service.status} />} 
+      />
+    </BaseCard>
+  );
+};
 
 const AddServiceCard: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <div onClick={onClick} className="bg-white rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center p-4 min-h-[300px] text-center hover:border-blue-500 hover:text-blue-600 cursor-pointer transition-colors group">
-    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center mb-4 transition-transform group-hover:scale-110">
-      <Plus className="w-6 h-6 text-white" />
-    </div>
-    <p className="font-semibold text-blue-600">Adicionar</p>
-    <p className="font-semibold text-blue-600">Serviço</p>
-  </div>
+  <AddCard 
+    onClick={onClick} 
+    label="Adicionar Serviço" 
+  />
 );
 
 interface ServicesPageProps {
