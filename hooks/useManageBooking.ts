@@ -49,6 +49,13 @@ export interface CancelarData {
   motivo?: string;
 }
 
+// Interface para horários de funcionamento da unidade
+export interface HorarioFuncionamentoUnidade {
+  dia_semana: number;
+  is_aberto: boolean;
+  horarios_json: { inicio: string; fim: string }[];
+}
+
 export const useManageBooking = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +66,6 @@ export const useManageBooking = () => {
     setError(null);
 
     try {
-      console.log(`[useManageBooking] Buscando agendamento #${id}`);
-
       const response = await fetch(`${API_BASE_URL}/public/agendamento/${id}?telefone=${encodeURIComponent(telefone)}`);
       const data = await response.json();
 
@@ -72,12 +77,10 @@ export const useManageBooking = () => {
         throw new Error(data.message || 'Agendamento não encontrado');
       }
 
-      console.log('[useManageBooking] Agendamento carregado:', data.data);
       return data.data;
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[useManageBooking] Erro ao buscar agendamento:', errorMessage);
       setError(errorMessage);
       return null;
     } finally {
@@ -91,8 +94,6 @@ export const useManageBooking = () => {
     setError(null);
 
     try {
-      console.log(`[useManageBooking] Reagendando agendamento #${id}`, data);
-
       const response = await fetch(`${API_BASE_URL}/public/agendamento/${id}/reagendar`, {
         method: 'PUT',
         headers: {
@@ -111,12 +112,10 @@ export const useManageBooking = () => {
         throw new Error(responseData.message || 'Falha ao reagendar agendamento');
       }
 
-      console.log('[useManageBooking] Agendamento reagendado com sucesso');
       return true;
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[useManageBooking] Erro ao reagendar agendamento:', errorMessage);
       setError(errorMessage);
       return false;
     } finally {
@@ -130,8 +129,6 @@ export const useManageBooking = () => {
     setError(null);
 
     try {
-      console.log(`[useManageBooking] Cancelando agendamento #${id}`);
-
       const response = await fetch(`${API_BASE_URL}/public/agendamento/${id}/cancelar`, {
         method: 'PATCH',
         headers: {
@@ -150,16 +147,33 @@ export const useManageBooking = () => {
         throw new Error(responseData.message || 'Falha ao cancelar agendamento');
       }
 
-      console.log('[useManageBooking] Agendamento cancelado com sucesso');
       return true;
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('[useManageBooking] Erro ao cancelar agendamento:', errorMessage);
       setError(errorMessage);
       return false;
     } finally {
       setIsLoading(false);
+    }
+  }, []);
+
+  // ✅ NOVO: Buscar horários de funcionamento da unidade
+  const fetchHorariosUnidade = useCallback(async (unidadeId: number): Promise<HorarioFuncionamentoUnidade[]> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/public/salao/${unidadeId}`);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        return [];
+      }
+
+      // Retornar horários de funcionamento da unidade
+      const horarios = data.data?.horarios_unidade || [];
+      return horarios;
+
+    } catch (err) {
+      return [];
     }
   }, []);
 
@@ -169,5 +183,6 @@ export const useManageBooking = () => {
     fetchAgendamento,
     reagendarAgendamento,
     cancelarAgendamento,
+    fetchHorariosUnidade, // ✅ NOVO: Exportar função
   };
 };
