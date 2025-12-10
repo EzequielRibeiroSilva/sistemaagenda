@@ -23,6 +23,16 @@ const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit, onDelete, isConfir
     }
   };
 
+  // ✅ NOVO: Formatar dias da semana permitidos
+  const formatarDiasSemana = (dias: number[] | null | undefined) => {
+    if (!dias || dias.length === 0) {
+      return 'Todos os dias';
+    }
+    
+    const diasAbrev = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return dias.map(d => diasAbrev[d]).join(', ');
+  };
+
   // Ícone de ticket para o header
   const ticketIcon = (
     <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#2663EB] to-blue-600 rounded-full shadow-md">
@@ -89,6 +99,14 @@ const CupomCard: React.FC<CupomCardProps> = ({ cupom, onEdit, onDelete, isConfir
           <p className="text-green-600 font-medium">Todos os serviços</p>
         </div>
       )}
+
+      {/* ✅ NOVO: Dias da semana permitidos */}
+      <div className="text-xs mt-2">
+        <p className="text-gray-500 mb-1">Dias permitidos:</p>
+        <p className={`font-medium ${cupom.dias_semana_permitidos && cupom.dias_semana_permitidos.length > 0 && cupom.dias_semana_permitidos.length < 7 ? 'text-[#2663EB]' : 'text-green-600'}`}>
+          {formatarDiasSemana(cupom.dias_semana_permitidos)}
+        </p>
+      </div>
     </BaseCard>
   );
 };

@@ -123,6 +123,13 @@ class CupomService {
    * @returns {Object} Dados limpos
    */
   limparDadosCupom(dadosCupom) {
+    // ✅ CORREÇÃO: Serializar dias_semana_permitidos para JSON string
+    // O PostgreSQL precisa receber uma string JSON para campos do tipo JSON
+    let diasSemanaPermitidos = null;
+    if (dadosCupom.dias_semana_permitidos && Array.isArray(dadosCupom.dias_semana_permitidos) && dadosCupom.dias_semana_permitidos.length > 0) {
+      diasSemanaPermitidos = JSON.stringify(dadosCupom.dias_semana_permitidos);
+    }
+
     const dadosLimpos = {
       codigo: dadosCupom.codigo.trim().toUpperCase(),
       descricao: dadosCupom.descricao?.trim() || null,
@@ -134,7 +141,9 @@ class CupomService {
       data_fim: dadosCupom.data_fim || null,
       limite_uso_total: dadosCupom.limite_uso_total ? parseInt(dadosCupom.limite_uso_total) : null,
       limite_uso_por_cliente: dadosCupom.limite_uso_por_cliente ? parseInt(dadosCupom.limite_uso_por_cliente) : null,
-      status: dadosCupom.status || 'Ativo'
+      status: dadosCupom.status || 'Ativo',
+      // ✅ CORREÇÃO: Dias da semana já serializado como JSON string
+      dias_semana_permitidos: diasSemanaPermitidos
     };
 
     return dadosLimpos;
@@ -147,9 +156,10 @@ class CupomService {
    * @param {number} valorPedido - Valor total do pedido
    * @param {number} unidadeId - ID da unidade onde o agendamento está sendo feito
    * @param {Array<number>} servicoIds - IDs dos serviços selecionados
+   * @param {string} dataAgendamento - Data do agendamento (formato ISO ou Date string)
    * @returns {Promise<Object>} Resultado da validação
    */
-  async validarUsoCupom(codigo, clienteId, valorPedido, unidadeId, servicoIds = []) {
+  async validarUsoCupom(codigo, clienteId, valorPedido, unidadeId, servicoIds = [], dataAgendamento = null) {
     // 1. Buscar cupom ativo e válido
     const cupom = await this.cupomModel.buscarCupomValidoParaUso(codigo);
     
@@ -211,7 +221,27 @@ class CupomService {
       }
     }
 
-    // 5. Verificar valor mínimo do pedido
+    // 5. ✅ NOVO: Verificar se o cupom é válido para o dia da semana do agendamento
+    if (cupom.dias_semana_permitidos && Array.isArray(cupom.dias_semana_permitidos) && cupom.dias_semana_permitidos.length > 0) {
+      // Se dataAgendamento não foi fornecida, usar a data atual
+      const dataParaValidar = dataAgendamento ? new Date(dataAgendamento) : new Date();
+      const diaSemana = dataParaValidar.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+      
+      if (!cupom.dias_semana_permitidos.includes(diaSemana)) {
+        // Mapear número do dia para nome em português
+        const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+        const diasPermitidos = cupom.dias_semana_permitidos.map(d => diasSemana[d]).join(', ');
+        
+        return {
+          valido: false,
+          erro: `Este cupom só pode ser usado nos seguintes dias: ${diasPermitidos}`,
+          codigo_erro: 'CUPOM_DIA_SEMANA_INVALIDO',
+          dias_permitidos: cupom.dias_semana_permitidos
+        };
+      }
+    }
+
+    // 6. Verificar valor mínimo do pedido
     if (cupom.valor_minimo_pedido && valorPedido < cupom.valor_minimo_pedido) {
       return {
         valido: false,
@@ -221,7 +251,7 @@ class CupomService {
       };
     }
 
-    // 6. Verificar limite de uso total
+    // 7. Verificar limite de uso total
     if (cupom.limite_uso_total && cupom.uso_atual >= cupom.limite_uso_total) {
       return {
         valido: false,
@@ -230,7 +260,7 @@ class CupomService {
       };
     }
 
-    // 7. Verificar limite de uso por cliente (somente se clienteId for fornecido)
+    // 8. Verificar limite de uso por cliente (somente se clienteId for fornecido)
     if (cupom.limite_uso_por_cliente && clienteId) {
       const usosCliente = await this.cupomModel.contarUsosPorCliente(cupom.id, clienteId);
       
@@ -243,7 +273,7 @@ class CupomService {
       }
     }
 
-    // 8. Calcular desconto
+    // 9. Calcular desconto
     const desconto = this.calcularDesconto(cupom, valorPedido);
 
     return {

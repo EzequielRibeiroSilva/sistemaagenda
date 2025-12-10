@@ -18,8 +18,11 @@ export interface Cupom {
   status: 'Ativo' | 'Inativo' | 'Expirado';
   servico_ids?: number[];
   unidade_ids?: number[];
+  usuario_id: number;
   created_at: string;
   updated_at: string;
+  // ✅ NOVO: Dias da semana permitidos (0=Dom, 1=Seg, ..., 6=Sáb)
+  dias_semana_permitidos?: number[] | null;
 }
 
 export interface CupomFilters {
