@@ -78,36 +78,47 @@ const NotificationsPage: React.FC = () => {
     }
   }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
 
-  // Buscar notificações quando filtros, página ou LOCAL mudarem
+  // Buscar notificações quando filtros ou paginação mudarem
   useEffect(() => {
-    // Não buscar se selectedLocationFilter === 'all' (aguardando auto-seleção)
-    if (selectedLocationFilter === 'all') {
-      return;
-    }
+    // ✅ NOVO: Debounce de 300ms para resposta mais rápida (igual COMPROMISSOS)
+    const timeoutId = setTimeout(() => {
+      // Não buscar se selectedLocationFilter === 'all' (aguardando auto-seleção)
+      if (selectedLocationFilter === 'all') {
+        return;
+      }
 
-    const apiFilters: NotificationFilters = {
-      page: currentPage,
-      limit: itemsPerPage,
-    };
+      const apiFilters: NotificationFilters = {
+        page: currentPage,
+        limit: itemsPerPage,
+      };
 
-    if (filters.tipo !== 'all') {
-      apiFilters.tipo_notificacao = filters.tipo as TipoNotificacao;
-    }
+      if (filters.tipo !== 'all') {
+        apiFilters.tipo_notificacao = filters.tipo as TipoNotificacao;
+      }
 
-    if (filters.status !== 'all') {
-      apiFilters.status = filters.status as StatusNotificacao;
-    }
+      if (filters.status !== 'all') {
+        apiFilters.status = filters.status as StatusNotificacao;
+      }
 
-    if (filters.agendamentoId) {
-      apiFilters.agendamento_id = parseInt(filters.agendamentoId);
-    }
+      // ✅ CORREÇÃO: Verificar se agendamentoId tem valor antes de converter
+      if (filters.agendamentoId && filters.agendamentoId.trim() !== '') {
+        const id = parseInt(filters.agendamentoId);
+        if (!isNaN(id)) {
+          apiFilters.agendamento_id = id;
+          console.log('🔍 [NotificationsPage] Filtro de ID aplicado:', id);
+        }
+      }
 
-    // Sempre aplicar filtro de unidade_id quando local específico estiver selecionado
-    if (selectedLocationFilter !== 'all') {
-      apiFilters.unidade_id = parseInt(selectedLocationFilter);
-    }
+      // Sempre aplicar filtro de unidade_id quando local específico estiver selecionado
+      if (selectedLocationFilter !== 'all') {
+        apiFilters.unidade_id = parseInt(selectedLocationFilter);
+      }
 
-    fetchNotifications(apiFilters);
+      console.log('📤 [NotificationsPage] Buscando notificações com filtros:', apiFilters);
+      fetchNotifications(apiFilters);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [currentPage, itemsPerPage, filters, selectedLocationFilter, fetchNotifications]);
 
   // Handlers

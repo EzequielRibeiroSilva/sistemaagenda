@@ -48,11 +48,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
 
     // ✅ Aplicar filtros com debounce otimizado
     useEffect(() => {
-        // Não aplicar filtros se todos estiverem vazios (já carregado no mount)
-        if (!filters.id && !filters.name && !filters.phone) {
-            return;
-        }
-
         const timeoutId = setTimeout(() => {
             const apiFilters: ClientFilters = {
                 page: currentPage,
@@ -72,11 +67,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             }
 
             applyFilters(apiFilters);
-        }, 500); // Debounce de 500ms
+        }, 300); // ✅ Debounce de 300ms para resposta mais rápida (igual COMPROMISSOS)
 
         return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters, currentPage]); // ✅ NOVO: Incluir currentPage
+    }, [filters, currentPage]); // ✅ Incluir currentPage
 
     // ✅ Handlers compatíveis com BaseTable
     const handleFilterChange = useCallback((filterKey: string, value: string) => {
