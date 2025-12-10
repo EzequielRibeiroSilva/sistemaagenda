@@ -23,8 +23,9 @@ class AuthMiddleware {
         // Extrair token
         const token = authHeader.substring(7); // Remove 'Bearer '
 
-        // Verificar se token está na blacklist
-        if (this.authService.isTokenBlacklisted(token)) {
+        // Verificar se token está na blacklist (✅ CORREÇÃO 1.1: async)
+        const isBlacklisted = await this.authService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
           return res.status(401).json({
             error: 'Token inválido',
             message: 'Token foi invalidado'

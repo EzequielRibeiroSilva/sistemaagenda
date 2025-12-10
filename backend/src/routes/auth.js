@@ -16,10 +16,9 @@ const authController = new AuthController();
  * @returns { success: boolean, message: string, data: { token: string, user: object, expiresIn: string } }
  * @security Rate limited: 5 tentativas por IP em 15min, 3 tentativas por email em 30min
  * @security Input validation, XSS protection, SQL injection detection
+ * @note detectSQLInjection e sanitizeInput já aplicados globalmente no app.js
  */
 router.post('/login',
-  detectSQLInjection,
-  sanitizeInput,
   validateLogin,
   loginRateLimit,
   userSpecificRateLimit,
