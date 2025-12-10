@@ -165,7 +165,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         preco: false,
     });
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage] = useState(10);
+    const [itemsPerPage] = useState(12); // ✅ AJUSTADO: 12 itens por página (padrão do sistema)
     
     // ✅ NOVO: Estado para seleção de Local
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');

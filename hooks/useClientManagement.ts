@@ -162,15 +162,6 @@ export const useClientManagement = () => {
 
       const response = await authenticatedFetch(url);
 
-      // 🔍 DEBUG: Verificar resposta do backend
-      console.log('🔍 [useClientManagement] Resposta do backend:', {
-        url,
-        clientsCount: response.data?.length,
-        hasPagination: !!response.pagination,
-        pagination: response.pagination,
-        meta: response.meta
-      });
-
       if (response.success) {
         setClients(response.data || []);
 
@@ -185,10 +176,7 @@ export const useClientManagement = () => {
 
         // ✅ NOVO: Atualizar paginação se fornecida
         if (response.pagination) {
-          console.log('✅ [useClientManagement] Paginação recebida:', response.pagination);
           setPagination(response.pagination);
-        } else {
-          console.warn('⚠️ [useClientManagement] Backend NÃO retornou paginação!');
         }
 
         // ✅ CORREÇÃO: Atualizar filtros APENAS se novos foram fornecidos

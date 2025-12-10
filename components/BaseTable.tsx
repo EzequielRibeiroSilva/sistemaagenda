@@ -115,7 +115,7 @@ export function BaseTable<T = any>({
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`p-3 ${column.width || ''} text-${column.align || 'left'} font-semibold text-gray-600 whitespace-nowrap`}
+                  className={`p-4 ${column.width || ''} text-${column.align || 'left'} font-semibold text-gray-600 whitespace-nowrap`}
                 >
                   {column.label}
                 </th>
@@ -128,7 +128,7 @@ export function BaseTable<T = any>({
                 {columns.map((column) => (
                   <td
                     key={`filter-${column.key}`}
-                    className={`p-3 ${column.width || ''} border-t border-gray-200`}
+                    className={`p-4 ${column.width || ''} border-t border-gray-200`}
                   >
                     {column.filterType === 'text' && (
                       <FilterInput
@@ -230,7 +230,7 @@ export function BaseTable<T = any>({
                     {columns.map((column) => (
                       <td
                         key={`${rowIndex}-${column.key}`}
-                        className={`p-3 ${column.width || ''} text-${column.align || 'left'} whitespace-nowrap`}
+                        className={`p-4 ${column.width || ''} text-${column.align || 'left'} whitespace-nowrap`}
                       >
                         {column.render 
                           ? column.render(row) 
