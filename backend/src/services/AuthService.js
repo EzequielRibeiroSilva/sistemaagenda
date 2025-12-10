@@ -19,7 +19,8 @@ class AuthService {
 
     this.jwtSecret = process.env.JWT_SECRET || this.generateSecureSecret();
     this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || this.generateSecureSecret();
-    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h'; // Reduzido para 1h por segurança
+    // ✅ CORREÇÃO 1.6: Reduzir expiração para 2h (balanceamento segurança vs UX)
+    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '2h';
     this.jwtRefreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
     
     // ✅ CORREÇÃO 1.1: Redis para blacklist (com fallback para memória em dev)

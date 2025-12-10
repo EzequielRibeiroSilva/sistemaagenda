@@ -386,6 +386,19 @@ class AgenteController {
       // Hash da senha se fornecida
       let senhaHash = null;
       if (senha) {
+        // ✅ CORREÇÃO 1.9: Validação robusta de senha
+        const { validatePasswordStrength } = require('../middleware/passwordValidation');
+        const validation = validatePasswordStrength(senha);
+        
+        if (!validation.valid) {
+          return res.status(400).json({
+            success: false,
+            error: 'Senha não atende aos requisitos de segurança',
+            message: 'A senha deve atender aos seguintes requisitos:',
+            details: validation.errors
+          });
+        }
+        
         senhaHash = await bcrypt.hash(senha, 12);
       }
 
@@ -463,6 +476,10 @@ class AgenteController {
    */
   async update(req, res) {
     try {
+      console.log('🔍 [AgenteController] ===== INÍCIO UPDATE AGENTE =====');
+      console.log('🔍 [AgenteController] req.body:', JSON.stringify(req.body, null, 2));
+      console.log('🔍 [AgenteController] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
+      
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
       const userRole = req.user.role;
@@ -618,6 +635,25 @@ class AgenteController {
       // Hash da senha apenas se fornecida
       let senhaHash = agenteExistente.senha_hash; // Manter existente por padrão
       if (senha && senha.trim() !== '') {
+        console.log(`🔐 [AgenteController] Senha fornecida para atualização - Comprimento: ${senha.length}`);
+        
+        // ✅ CORREÇÃO 1.9: Validação robusta de senha
+        const { validatePasswordStrength } = require('../middleware/passwordValidation');
+        const validation = validatePasswordStrength(senha);
+        
+        console.log(`🔐 [AgenteController] Validação de senha - Válida: ${validation.valid}, Erros: ${validation.errors.length}`);
+        
+        if (!validation.valid) {
+          console.warn(`🚨 [AgenteController] Senha rejeitada:`, validation.errors);
+          return res.status(400).json({
+            success: false,
+            error: 'Senha não atende aos requisitos de segurança',
+            message: 'A senha deve atender aos seguintes requisitos:',
+            details: validation.errors
+          });
+        }
+        
+        console.log(`✅ [AgenteController] Senha validada com sucesso - Força: ${validation.strength}`);
         senhaHash = await bcrypt.hash(senha, 12);
       }
 

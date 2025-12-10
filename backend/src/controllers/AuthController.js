@@ -216,10 +216,15 @@ class AuthController {
         });
       }
 
-      if (novaSenha.length < 6) {
+      // ✅ CORREÇÃO 1.9: Validação robusta de senha
+      const { validatePasswordStrength } = require('../middleware/passwordValidation');
+      const validation = validatePasswordStrength(novaSenha);
+      
+      if (!validation.valid) {
         return res.status(400).json({
-          error: 'Senha inválida',
-          message: 'Nova senha deve ter pelo menos 6 caracteres'
+          error: 'Senha não atende aos requisitos de segurança',
+          message: 'A senha deve atender aos seguintes requisitos:',
+          details: validation.errors
         });
       }
 

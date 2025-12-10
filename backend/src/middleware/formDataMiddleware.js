@@ -62,6 +62,7 @@ const handleFormDataWithUpload = (req, res, next) => {
     let fileProcessing = false;
 
     bb.on('field', (fieldname, val) => {
+      console.log(`📝 [FormData] Campo recebido: ${fieldname} = ${fieldname === 'senha' ? '[SENHA - ' + val.length + ' chars]' : val}`);
       fields[fieldname] = val;
     });
 
@@ -132,7 +133,8 @@ const handleFormDataWithUpload = (req, res, next) => {
         req.body = fields;
         req.files = files;
 
-
+        console.log('✅ [FormData] Processamento concluído');
+        console.log('✅ [FormData] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
 
         next();
       };
