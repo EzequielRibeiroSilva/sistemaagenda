@@ -9,6 +9,7 @@
  */
 
 const rateLimit = require('express-rate-limit');
+const logger = require('./../utils/logger');
 
 /**
  * Rate limit para busca de cliente (CRÍTICO - LGPD)
@@ -30,7 +31,7 @@ const clientSearchRateLimit = rateLimit({
   },
   // Log de tentativas bloqueadas
   handler: (req, res) => {
-    console.warn(`🚨 [SECURITY] Rate limit excedido para busca de cliente - IP: ${req.ip}, Telefone: ${req.query.telefone}`);
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para busca de cliente - IP: ${req.ip}, Telefone: ${req.query.telefone}`);
     res.status(429).json({
       error: 'Muitas tentativas de busca',
       message: 'Você excedeu o limite de buscas. Tente novamente em 5 minutos.',
@@ -57,7 +58,7 @@ const createBookingRateLimit = rateLimit({
     return req.ip || req.connection.remoteAddress;
   },
   handler: (req, res) => {
-    console.warn(`🚨 [SECURITY] Rate limit excedido para criação de agendamento - IP: ${req.ip}`);
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para criação de agendamento - IP: ${req.ip}`);
     res.status(429).json({
       error: 'Muitas tentativas de agendamento',
       message: 'Você excedeu o limite de agendamentos. Tente novamente em 15 minutos.',
@@ -84,7 +85,7 @@ const couponValidationRateLimit = rateLimit({
     return req.ip || req.connection.remoteAddress;
   },
   handler: (req, res) => {
-    console.warn(`🚨 [SECURITY] Rate limit excedido para validação de cupom - IP: ${req.ip}`);
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para validação de cupom - IP: ${req.ip}`);
     res.status(429).json({
       error: 'Muitas tentativas de validação',
       message: 'Você excedeu o limite de validações de cupom. Tente novamente em 15 minutos.',
@@ -111,7 +112,7 @@ const cancelBookingRateLimit = rateLimit({
     return req.ip || req.connection.remoteAddress;
   },
   handler: (req, res) => {
-    console.warn(`🚨 [SECURITY] Rate limit excedido para cancelamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para cancelamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
     res.status(429).json({
       error: 'Muitas tentativas de cancelamento',
       message: 'Você excedeu o limite de cancelamentos. Tente novamente em 15 minutos.',
@@ -138,7 +139,7 @@ const rescheduleBookingRateLimit = rateLimit({
     return req.ip || req.connection.remoteAddress;
   },
   handler: (req, res) => {
-    console.warn(`🚨 [SECURITY] Rate limit excedido para reagendamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para reagendamento - IP: ${req.ip}, Agendamento: ${req.params.id}`);
     res.status(429).json({
       error: 'Muitas tentativas de reagendamento',
       message: 'Você excedeu o limite de reagendamentos. Tente novamente em 15 minutos.',

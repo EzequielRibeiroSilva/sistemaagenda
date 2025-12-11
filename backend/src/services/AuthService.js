@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const Usuario = require('../models/Usuario');
 const config = require('../config/config');
 const { getInstance: getRedisService } = require('./RedisService');
+const logger = require('../utils/logger');
 
 class AuthService {
   constructor() {
@@ -29,7 +30,7 @@ class AuthService {
 
     // Log de aviso se usando secrets gerados automaticamente
     if (!process.env.JWT_SECRET) {
-      console.warn('⚠️  JWT_SECRET não definido, usando secret gerado automaticamente');
+      logger.warn('⚠️  JWT_SECRET não definido, usando secret gerado automaticamente');
     }
   }
 
@@ -101,7 +102,7 @@ class AuthService {
       const usuario = await usuarioModel.findByEmail(email);
 
       // DEBUG: Log dos dados do usuário encontrado
-      console.log('🔍 [DEBUG] Usuário encontrado no banco:', {
+      logger.log('🔍 [DEBUG] Usuário encontrado no banco:', {
         id: usuario?.id,
         nome: usuario?.nome,
         email: usuario?.email,
@@ -145,7 +146,7 @@ class AuthService {
           // Removemos o 'if (agente.unidade_id)' que causava a falha quando era null.
           usuario.unidade_id = agente.unidade_id;
           
-          console.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}, unidade_id=${agente.unidade_id}`);
+          logger.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}, unidade_id=${agente.unidade_id}`);
         }
       } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
         // Para admins e masters: buscar logo_url das configurações da unidade
@@ -219,7 +220,7 @@ class AuthService {
       // Fallback: verificar memória também (compatibilidade)
       return isBlacklisted || this.blacklistedTokens.has(token);
     } catch (error) {
-      console.error('❌ Erro ao verificar blacklist:', error.message);
+      logger.error('❌ Erro ao verificar blacklist:', error.message);
       // Fallback para memória em caso de erro
       return this.blacklistedTokens.has(token);
     }

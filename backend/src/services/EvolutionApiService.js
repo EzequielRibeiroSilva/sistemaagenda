@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('./../utils/logger');
 
 class EvolutionApiService {
   constructor() {
@@ -57,12 +58,12 @@ class EvolutionApiService {
       }
 
     } catch (error) {
-      console.error('❌ [EvolutionApiService] Erro ao enviar mensagem WhatsApp:', error.message);
+      logger.error('❌ [EvolutionApiService] Erro ao enviar mensagem WhatsApp:', error.message);
 
       // Log detalhado do erro
       if (error.response) {
-        console.error('❌ [EvolutionApiService] Status:', error.response.status);
-        console.error('❌ [EvolutionApiService] Data:', error.response.data);
+        logger.error('❌ [EvolutionApiService] Status:', error.response.status);
+        logger.error('❌ [EvolutionApiService] Data:', error.response.data);
       }
 
       return {
@@ -103,7 +104,7 @@ class EvolutionApiService {
       }
 
     } catch (error) {
-      console.error('❌ [EvolutionApiService] Erro ao enviar mensagem com mídia:', error.message);
+      logger.error('❌ [EvolutionApiService] Erro ao enviar mensagem com mídia:', error.message);
       return {
         success: false,
         error: error.message,
@@ -131,7 +132,7 @@ class EvolutionApiService {
       };
 
     } catch (error) {
-      console.error('❌ [EvolutionApiService] Erro ao verificar status:', error.message);
+      logger.error('❌ [EvolutionApiService] Erro ao verificar status:', error.message);
       return {
         success: false,
         error: error.message,
@@ -189,7 +190,7 @@ class EvolutionApiService {
       };
 
     } catch (error) {
-      console.error('❌ [EvolutionApiService] Erro no teste de conectividade:', error.message);
+      logger.error('❌ [EvolutionApiService] Erro no teste de conectividade:', error.message);
       return {
         success: false,
         message: 'Erro no teste de conectividade',

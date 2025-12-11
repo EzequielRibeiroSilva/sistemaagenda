@@ -5,6 +5,7 @@
  */
 
 const NotificacaoModel = require('../models/NotificacaoModel');
+const logger = require('./../utils/logger');
 
 class WhatsAppService {
   constructor() {
@@ -102,9 +103,9 @@ class WhatsAppService {
 
         return { success: true, data };
       } else {
-        console.error('❌ [WhatsApp] Erro ao enviar mensagem:');
-        console.error('❌ [WhatsApp] Status:', response.status);
-        console.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
+        logger.error('❌ [WhatsApp] Erro ao enviar mensagem:');
+        logger.error('❌ [WhatsApp] Status:', response.status);
+        logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
         return {
           success: false,
           error: {
@@ -116,7 +117,7 @@ class WhatsAppService {
       }
 
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro na requisição:', error);
+      logger.error('❌ [WhatsApp] Erro na requisição:', error);
       return { success: false, error: error.message };
     }
   }
@@ -172,7 +173,7 @@ class WhatsAppService {
       
       // Verificar se a data é válida
       if (isNaN(dataObj.getTime())) {
-        console.error('[WhatsApp] Data inválida recebida:', data_agendamento);
+        logger.error('[WhatsApp] Data inválida recebida:', data_agendamento);
         return `Data não disponível às ${hora_inicio}`;
       }
       
@@ -184,7 +185,7 @@ class WhatsAppService {
       
       return `${dataFormatada} às ${hora_inicio}`;
     } catch (error) {
-      console.error('[WhatsApp] Erro ao formatar data:', error);
+      logger.error('[WhatsApp] Erro ao formatar data:', error);
       return `Data não disponível às ${hora_inicio}`;
     }
   }
@@ -218,10 +219,10 @@ class WhatsAppService {
         enviado_em: data.status === 'enviado' ? new Date() : null
       });
 
-      console.log(`✅ [WhatsAppService] Notificação ${data.tipo_notificacao} registrada: ID ${notificacaoId}`);
+      logger.log(`✅ [WhatsAppService] Notificação ${data.tipo_notificacao} registrada: ID ${notificacaoId}`);
       return notificacaoId;
     } catch (error) {
-      console.error(`❌ [WhatsAppService] Erro ao registrar notificação:`, error);
+      logger.error(`❌ [WhatsAppService] Erro ao registrar notificação:`, error);
       return null;
     }
   }
@@ -322,7 +323,7 @@ _Mensagem automática do Tally_`;
   async sendAppointmentConfirmation(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
@@ -346,9 +347,9 @@ _Mensagem automática do Tally_`;
       });
 
       if (!results.cliente.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+        logger.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
-        console.log(`✅ [WhatsApp] Confirmação enviada para cliente ${agendamentoData.cliente.nome}`);
+        logger.log(`✅ [WhatsApp] Confirmação enviada para cliente ${agendamentoData.cliente.nome}`);
       }
 
       // Enviar para o agente
@@ -370,15 +371,15 @@ _Mensagem automática do Tally_`;
         });
 
         if (!results.agente.success) {
-          console.error(`❌ [WhatsApp] Falha ao enviar confirmação para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+          logger.error(`❌ [WhatsApp] Falha ao enviar confirmação para agente ${agendamentoData.agente.nome}:`, results.agente.error);
         } else {
-          console.log(`✅ [WhatsApp] Confirmação enviada para agente ${agendamentoData.agente.nome}`);
+          logger.log(`✅ [WhatsApp] Confirmação enviada para agente ${agendamentoData.agente.nome}`);
         }
       }
 
       return results;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar confirmação:', error);
+      logger.error('❌ [WhatsApp] Erro ao enviar confirmação:', error);
       return { success: false, error: error.message };
     }
   }
@@ -524,7 +525,7 @@ _Mensagem automática do Tally_`;
   async sendCancellationNotification(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
@@ -548,9 +549,9 @@ _Mensagem automática do Tally_`;
       });
 
       if (!results.cliente.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+        logger.error(`❌ [WhatsApp] Falha ao enviar cancelamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
-        console.log(`✅ [WhatsApp] Cancelamento enviado para cliente ${agendamentoData.cliente.nome}`);
+        logger.log(`✅ [WhatsApp] Cancelamento enviado para cliente ${agendamentoData.cliente.nome}`);
       }
 
       // Enviar para o agente
@@ -572,15 +573,15 @@ _Mensagem automática do Tally_`;
         });
 
         if (!results.agente.success) {
-          console.error(`❌ [WhatsApp] Falha ao enviar cancelamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+          logger.error(`❌ [WhatsApp] Falha ao enviar cancelamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
         } else {
-          console.log(`✅ [WhatsApp] Cancelamento enviado para agente ${agendamentoData.agente.nome}`);
+          logger.log(`✅ [WhatsApp] Cancelamento enviado para agente ${agendamentoData.agente.nome}`);
         }
       }
 
       return results;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar cancelamento:', error);
+      logger.error('❌ [WhatsApp] Erro ao enviar cancelamento:', error);
       return { success: false, error: error.message };
     }
   }
@@ -591,7 +592,7 @@ _Mensagem automática do Tally_`;
   async sendRescheduleNotification(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
@@ -615,9 +616,9 @@ _Mensagem automática do Tally_`;
       });
 
       if (!results.cliente.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+        logger.error(`❌ [WhatsApp] Falha ao enviar reagendamento para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
       } else {
-        console.log(`✅ [WhatsApp] Reagendamento enviado para cliente ${agendamentoData.cliente.nome}`);
+        logger.log(`✅ [WhatsApp] Reagendamento enviado para cliente ${agendamentoData.cliente.nome}`);
       }
 
       // Enviar para o agente
@@ -639,15 +640,15 @@ _Mensagem automática do Tally_`;
         });
 
         if (!results.agente.success) {
-          console.error(`❌ [WhatsApp] Falha ao enviar reagendamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
+          logger.error(`❌ [WhatsApp] Falha ao enviar reagendamento para agente ${agendamentoData.agente.nome}:`, results.agente.error);
         } else {
-          console.log(`✅ [WhatsApp] Reagendamento enviado para agente ${agendamentoData.agente.nome}`);
+          logger.log(`✅ [WhatsApp] Reagendamento enviado para agente ${agendamentoData.agente.nome}`);
         }
       }
 
       return results;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar reagendamento:', error);
+      logger.error('❌ [WhatsApp] Erro ao enviar reagendamento:', error);
       return { success: false, error: error.message };
     }
   }
@@ -658,7 +659,7 @@ _Mensagem automática do Tally_`;
   async sendReminder24h(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
@@ -666,14 +667,14 @@ _Mensagem automática do Tally_`;
       const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
       
       if (!result.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 24h para ${agendamentoData.cliente.nome}:`, result.error);
+        logger.error(`❌ [WhatsApp] Falha ao enviar lembrete 24h para ${agendamentoData.cliente.nome}:`, result.error);
       } else {
-        console.log(`✅ [WhatsApp] Lembrete 24h enviado para ${agendamentoData.cliente.nome}`);
+        logger.log(`✅ [WhatsApp] Lembrete 24h enviado para ${agendamentoData.cliente.nome}`);
       }
       
       return result;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar lembrete 24h:', error);
+      logger.error('❌ [WhatsApp] Erro ao enviar lembrete 24h:', error);
       return { success: false, error: error.message };
     }
   }
@@ -684,7 +685,7 @@ _Mensagem automática do Tally_`;
   async sendReminder2h(agendamentoData) {
     try {
       if (!this.isEnabled()) {
-        console.log('⚠️ [WhatsApp] Serviço desabilitado');
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
@@ -692,14 +693,14 @@ _Mensagem automática do Tally_`;
       const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
       
       if (!result.success) {
-        console.error(`❌ [WhatsApp] Falha ao enviar lembrete 1h para ${agendamentoData.cliente.nome}:`, result.error);
+        logger.error(`❌ [WhatsApp] Falha ao enviar lembrete 1h para ${agendamentoData.cliente.nome}:`, result.error);
       } else {
-        console.log(`✅ [WhatsApp] Lembrete 1h enviado para ${agendamentoData.cliente.nome}`);
+        logger.log(`✅ [WhatsApp] Lembrete 1h enviado para ${agendamentoData.cliente.nome}`);
       }
       
       return result;
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao enviar lembrete 1h:', error);
+      logger.error('❌ [WhatsApp] Erro ao enviar lembrete 1h:', error);
       return { success: false, error: error.message };
     }
   }
@@ -725,12 +726,12 @@ _Mensagem automática do Tally_`;
       if (response.ok) {
         return { success: true, data };
       } else {
-        console.error('❌ [WhatsApp] Erro na conexão:', data);
+        logger.error('❌ [WhatsApp] Erro na conexão:', data);
         return { success: false, error: data };
       }
 
     } catch (error) {
-      console.error('❌ [WhatsApp] Erro ao testar conexão:', error);
+      logger.error('❌ [WhatsApp] Erro ao testar conexão:', error);
       return { success: false, error: error.message };
     }
   }

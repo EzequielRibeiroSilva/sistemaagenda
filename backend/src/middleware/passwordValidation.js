@@ -3,6 +3,8 @@
  * Descrição: Validação robusta de senhas com requisitos de complexidade
  * ✅ CORREÇÃO 1.9: Aumentar requisitos de senha para prevenir ataques de força bruta
  */
+const logger = require('./../utils/logger');
+
 
 /**
  * Valida força da senha
@@ -101,7 +103,7 @@ const validatePassword = (req, res, next) => {
   const validation = validatePasswordStrength(password);
 
   if (!validation.valid) {
-    console.warn(`🚨 [SECURITY] Senha fraca rejeitada - IP: ${req.ip}, Erros: ${validation.errors.length}`);
+    logger.warn(`🚨 [SECURITY] Senha fraca rejeitada - IP: ${req.ip}, Erros: ${validation.errors.length}`);
     
     return res.status(400).json({
       success: false,
@@ -112,7 +114,7 @@ const validatePassword = (req, res, next) => {
   }
 
   // Log de senha forte aceita
-  console.log(`✅ [SECURITY] Senha forte aceita - IP: ${req.ip}, Força: ${validation.strength}`);
+  logger.log(`✅ [SECURITY] Senha forte aceita - IP: ${req.ip}, Força: ${validation.strength}`);
 
   // Adicionar informações de validação ao request
   req.passwordValidation = validation;

@@ -5,6 +5,7 @@
  */
 
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 class ScheduledReminderService {
   constructor() {
@@ -39,7 +40,7 @@ class ScheduledReminderService {
         cliente_telefone
       } = agendamentoData;
 
-      console.log(`📅 [ScheduledReminderService] Criando lembretes programados para agendamento #${agendamento_id}`);
+      logger.log(`📅 [ScheduledReminderService] Criando lembretes programados para agendamento #${agendamento_id}`);
 
       // Calcular horários de envio
       const horarioLembrete24h = this.calcularHorarioEnvio(data_agendamento, hora_inicio, 24);
@@ -64,9 +65,9 @@ class ScheduledReminderService {
           created_at: db.fn.now(),
           updated_at: db.fn.now()
         });
-        console.log(`  ✅ Lembrete 24h programado para: ${horarioLembrete24h.toLocaleString('pt-BR')}`);
+        logger.log(`  ✅ Lembrete 24h programado para: ${horarioLembrete24h.toLocaleString('pt-BR')}`);
       } else {
-        console.log(`  ⏭️ Lembrete 24h pulado (horário já passou)`);
+        logger.log(`  ⏭️ Lembrete 24h pulado (horário já passou)`);
       }
 
       // Lembrete 1h (apenas se ainda não passou do horário)
@@ -83,9 +84,9 @@ class ScheduledReminderService {
           created_at: db.fn.now(),
           updated_at: db.fn.now()
         });
-        console.log(`  ✅ Lembrete 1h programado para: ${horarioLembrete1h.toLocaleString('pt-BR')}`);
+        logger.log(`  ✅ Lembrete 1h programado para: ${horarioLembrete1h.toLocaleString('pt-BR')}`);
       } else {
-        console.log(`  ⏭️ Lembrete 1h pulado (horário já passou)`);
+        logger.log(`  ⏭️ Lembrete 1h pulado (horário já passou)`);
       }
 
       // Inserir lembretes no banco
@@ -94,7 +95,7 @@ class ScheduledReminderService {
           .insert(lembretes)
           .returning('id');
 
-        console.log(`✅ [ScheduledReminderService] ${lembretes.length} lembrete(s) programado(s) criado(s) para agendamento #${agendamento_id}`);
+        logger.log(`✅ [ScheduledReminderService] ${lembretes.length} lembrete(s) programado(s) criado(s) para agendamento #${agendamento_id}`);
 
         return {
           success: true,
@@ -102,7 +103,7 @@ class ScheduledReminderService {
           ids: ids.map(id => typeof id === 'object' ? id.id : id)
         };
       } else {
-        console.log(`⚠️ [ScheduledReminderService] Nenhum lembrete programado (horários já passaram)`);
+        logger.log(`⚠️ [ScheduledReminderService] Nenhum lembrete programado (horários já passaram)`);
         return {
           success: true,
           count: 0,
@@ -113,7 +114,7 @@ class ScheduledReminderService {
     } catch (error) {
       // Se erro de constraint única, significa que já existem lembretes
       if (error.code === '23505') {
-        console.log(`⚠️ [ScheduledReminderService] Lembretes já existem para agendamento #${agendamentoData.agendamento_id}`);
+        logger.log(`⚠️ [ScheduledReminderService] Lembretes já existem para agendamento #${agendamentoData.agendamento_id}`);
         return {
           success: false,
           error: 'Lembretes já existem',
@@ -121,7 +122,7 @@ class ScheduledReminderService {
         };
       }
 
-      console.error(`❌ [ScheduledReminderService] Erro ao criar lembretes programados:`, error);
+      logger.error(`❌ [ScheduledReminderService] Erro ao criar lembretes programados:`, error);
       throw error;
     }
   }
@@ -133,18 +134,18 @@ class ScheduledReminderService {
    */
   async cancelarLembretesProgramados(agendamentoId) {
     try {
-      console.log(`🚫 [ScheduledReminderService] Cancelando lembretes programados do agendamento #${agendamentoId}`);
+      logger.log(`🚫 [ScheduledReminderService] Cancelando lembretes programados do agendamento #${agendamentoId}`);
 
       const deleted = await db(this.tableName)
         .where('agendamento_id', agendamentoId)
         .where('status', 'programado')
         .del();
 
-      console.log(`✅ [ScheduledReminderService] ${deleted} lembrete(s) cancelado(s)`);
+      logger.log(`✅ [ScheduledReminderService] ${deleted} lembrete(s) cancelado(s)`);
       return deleted;
 
     } catch (error) {
-      console.error(`❌ [ScheduledReminderService] Erro ao cancelar lembretes:`, error);
+      logger.error(`❌ [ScheduledReminderService] Erro ao cancelar lembretes:`, error);
       throw error;
     }
   }
@@ -156,7 +157,7 @@ class ScheduledReminderService {
    */
   async atualizarLembretesProgramados(agendamentoData) {
     try {
-      console.log(`🔄 [ScheduledReminderService] Atualizando lembretes do agendamento #${agendamentoData.agendamento_id}`);
+      logger.log(`🔄 [ScheduledReminderService] Atualizando lembretes do agendamento #${agendamentoData.agendamento_id}`);
 
       // 1. Cancelar lembretes antigos
       await this.cancelarLembretesProgramados(agendamentoData.agendamento_id);
@@ -164,11 +165,11 @@ class ScheduledReminderService {
       // 2. Criar novos lembretes
       const result = await this.criarLembretesProgramados(agendamentoData);
 
-      console.log(`✅ [ScheduledReminderService] Lembretes atualizados com sucesso`);
+      logger.log(`✅ [ScheduledReminderService] Lembretes atualizados com sucesso`);
       return result;
 
     } catch (error) {
-      console.error(`❌ [ScheduledReminderService] Erro ao atualizar lembretes:`, error);
+      logger.error(`❌ [ScheduledReminderService] Erro ao atualizar lembretes:`, error);
       throw error;
     }
   }

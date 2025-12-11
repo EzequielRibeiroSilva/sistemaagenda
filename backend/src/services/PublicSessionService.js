@@ -10,6 +10,7 @@
 
 const crypto = require('crypto');
 const { getInstance: getRedisService } = require('./RedisService');
+const logger = require('./../utils/logger');
 
 class PublicSessionService {
   constructor() {
@@ -45,14 +46,14 @@ class PublicSessionService {
           this.sessionTTL,
           JSON.stringify(sessionData)
         );
-        console.log(`✅ [PublicSession] Sessão criada (Redis): ${sessionToken.substring(0, 8)}...`);
+        logger.log(`✅ [PublicSession] Sessão criada (Redis): ${sessionToken.substring(0, 8)}...`);
       } else {
         // Fallback: Memória
         this.memoryStore.set(key, {
           ...sessionData,
           expiresAt: Date.now() + (this.sessionTTL * 1000)
         });
-        console.log(`⚠️  [PublicSession] Sessão criada (Memória): ${sessionToken.substring(0, 8)}...`);
+        logger.log(`⚠️  [PublicSession] Sessão criada (Memória): ${sessionToken.substring(0, 8)}...`);
         
         // Agendar limpeza
         setTimeout(() => {
@@ -62,7 +63,7 @@ class PublicSessionService {
 
       return sessionToken;
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao criar sessão:', error.message);
+      logger.error('❌ [PublicSession] Erro ao criar sessão:', error.message);
       throw error;
     }
   }
@@ -76,7 +77,7 @@ class PublicSessionService {
   async validateAndIncrementSession(sessionToken, action = 'client_search') {
     try {
       if (!sessionToken) {
-        console.warn('⚠️  [PublicSession] Token de sessão não fornecido');
+        logger.warn('⚠️  [PublicSession] Token de sessão não fornecido');
         return null;
       }
 
@@ -103,7 +104,7 @@ class PublicSessionService {
             JSON.stringify(sessionData)
           );
           
-          console.log(`✅ [PublicSession] Sessão validada (Redis): ${sessionToken.substring(0, 8)}... - ${action}`);
+          logger.log(`✅ [PublicSession] Sessão validada (Redis): ${sessionToken.substring(0, 8)}... - ${action}`);
         }
       } else {
         // Fallback: Memória
@@ -112,7 +113,7 @@ class PublicSessionService {
           // Verificar expiração
           if (Date.now() > entry.expiresAt) {
             this.memoryStore.delete(key);
-            console.warn('⚠️  [PublicSession] Sessão expirada (Memória)');
+            logger.warn('⚠️  [PublicSession] Sessão expirada (Memória)');
             return null;
           }
           
@@ -128,13 +129,13 @@ class PublicSessionService {
           // Atualizar na memória
           this.memoryStore.set(key, sessionData);
           
-          console.log(`✅ [PublicSession] Sessão validada (Memória): ${sessionToken.substring(0, 8)}... - ${action}`);
+          logger.log(`✅ [PublicSession] Sessão validada (Memória): ${sessionToken.substring(0, 8)}... - ${action}`);
         }
       }
 
       return sessionData;
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao validar sessão:', error.message);
+      logger.error('❌ [PublicSession] Erro ao validar sessão:', error.message);
       return null;
     }
   }
@@ -152,7 +153,7 @@ class PublicSessionService {
         const data = await this.redisService.redis.get(key);
         if (data) {
           await this.redisService.redis.expire(key, this.sessionTTL);
-          console.log(`✅ [PublicSession] Sessão renovada (Redis): ${sessionToken.substring(0, 8)}...`);
+          logger.log(`✅ [PublicSession] Sessão renovada (Redis): ${sessionToken.substring(0, 8)}...`);
           return true;
         }
       } else {
@@ -160,14 +161,14 @@ class PublicSessionService {
         if (entry) {
           entry.expiresAt = Date.now() + (this.sessionTTL * 1000);
           this.memoryStore.set(key, entry);
-          console.log(`✅ [PublicSession] Sessão renovada (Memória): ${sessionToken.substring(0, 8)}...`);
+          logger.log(`✅ [PublicSession] Sessão renovada (Memória): ${sessionToken.substring(0, 8)}...`);
           return true;
         }
       }
 
       return false;
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao renovar sessão:', error.message);
+      logger.error('❌ [PublicSession] Erro ao renovar sessão:', error.message);
       return false;
     }
   }
@@ -187,10 +188,10 @@ class PublicSessionService {
         this.memoryStore.delete(key);
       }
 
-      console.log(`✅ [PublicSession] Sessão removida: ${sessionToken.substring(0, 8)}...`);
+      logger.log(`✅ [PublicSession] Sessão removida: ${sessionToken.substring(0, 8)}...`);
       return true;
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao remover sessão:', error.message);
+      logger.error('❌ [PublicSession] Erro ao remover sessão:', error.message);
       return false;
     }
   }
@@ -205,16 +206,16 @@ class PublicSessionService {
         if (keys.length > 0) {
           await this.redisService.redis.del(keys);
         }
-        console.log(`✅ [PublicSession] ${keys.length} sessões limpas (Redis)`);
+        logger.log(`✅ [PublicSession] ${keys.length} sessões limpas (Redis)`);
       } else {
         const count = this.memoryStore.size;
         this.memoryStore.clear();
-        console.log(`✅ [PublicSession] ${count} sessões limpas (Memória)`);
+        logger.log(`✅ [PublicSession] ${count} sessões limpas (Memória)`);
       }
 
       return true;
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao limpar sessões:', error.message);
+      logger.error('❌ [PublicSession] Erro ao limpar sessões:', error.message);
       return false;
     }
   }
@@ -240,7 +241,7 @@ class PublicSessionService {
         };
       }
     } catch (error) {
-      console.error('❌ [PublicSession] Erro ao obter estatísticas:', error.message);
+      logger.error('❌ [PublicSession] Erro ao obter estatísticas:', error.message);
       return {
         storage: 'unknown',
         activeSessions: 0,

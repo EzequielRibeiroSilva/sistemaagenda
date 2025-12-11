@@ -1,5 +1,6 @@
 const validator = require('validator');
 const xss = require('xss');
+const logger = require('./../utils/logger');
 
 /**
  * Middleware de validação e sanitização para login
@@ -87,7 +88,7 @@ const validateLogin = (req, res, next) => {
   // Se há erros de validação, retornar
   if (errors.length > 0) {
     // Log de tentativa suspeita
-    console.warn(`🚨 Tentativa de login com dados inválidos - IP: ${req.ip}, Email: ${sanitizedEmail}, Errors: ${errors.join(', ')}`);
+    logger.warn(`🚨 Tentativa de login com dados inválidos - IP: ${req.ip}, Email: ${sanitizedEmail}, Errors: ${errors.join(', ')}`);
     
     return res.status(400).json({
       error: 'Dados inválidos',
@@ -175,7 +176,7 @@ const detectSQLInjection = (req, res, next) => {
       if (typeof value === 'string' && !isPasswordField) {
         for (const pattern of sqlInjectionPatterns) {
           if (pattern.test(value)) {
-            console.error(`🚨 Possível tentativa de SQL Injection detectada - IP: ${req.ip}, Path: ${path}.${key}, Value: ${value}`);
+            logger.error(`🚨 Possível tentativa de SQL Injection detectada - IP: ${req.ip}, Path: ${path}.${key}, Value: ${value}`);
             return true;
           }
         }

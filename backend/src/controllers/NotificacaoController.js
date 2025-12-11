@@ -5,6 +5,7 @@
  */
 
 const NotificacaoModel = require('../models/NotificacaoModel');
+const logger = require('./../utils/logger');
 
 class NotificacaoController {
   constructor() {
@@ -32,7 +33,7 @@ class NotificacaoController {
       const userRole = req.user.role;
       const userUnidadeId = req.user.unidade_id;
 
-      console.log(`🔍 [NotificacaoController] index - Role: ${userRole}, UserUnidadeId: ${userUnidadeId}, RequestedUnidadeId: ${unidade_id}`);
+      logger.log(`🔍 [NotificacaoController] index - Role: ${userRole}, UserUnidadeId: ${userUnidadeId}, RequestedUnidadeId: ${unidade_id}`);
 
       // Construir filtros
       const filters = {};
@@ -42,15 +43,15 @@ class NotificacaoController {
       // Senão, usar a unidade do usuário (fallback para compatibilidade)
       if (unidade_id) {
         filters.unidade_id = parseInt(unidade_id);
-        console.log(`🎯 [NotificacaoController] Filtrando por unidade especificada: ${unidade_id}`);
+        logger.log(`🎯 [NotificacaoController] Filtrando por unidade especificada: ${unidade_id}`);
       } else if (userUnidadeId) {
         filters.unidade_id = userUnidadeId;
-        console.log(`🎯 [NotificacaoController] Filtrando por unidade do usuário: ${userUnidadeId}`);
+        logger.log(`🎯 [NotificacaoController] Filtrando por unidade do usuário: ${userUnidadeId}`);
       }
 
       if (tipo_notificacao) {
         filters.tipo_notificacao = tipo_notificacao;
-        console.log(`🎯 [NotificacaoController] Filtro de tipo recebido: ${tipo_notificacao}`);
+        logger.log(`🎯 [NotificacaoController] Filtro de tipo recebido: ${tipo_notificacao}`);
       }
 
       if (status) {
@@ -69,11 +70,11 @@ class NotificacaoController {
       // Buscar notificações
       const result = await this.model.findAll(filters, parseInt(page), parseInt(limit));
 
-      console.log(`✅ [NotificacaoController] Encontradas ${result.data.length} notificações (página ${page}) para unidade ${filters.unidade_id}`);
+      logger.log(`✅ [NotificacaoController] Encontradas ${result.data.length} notificações (página ${page}) para unidade ${filters.unidade_id}`);
 
       return res.json(result);
     } catch (error) {
-      console.error('❌ [NotificacaoController] Erro ao listar notificações:', error);
+      logger.error('❌ [NotificacaoController] Erro ao listar notificações:', error);
       return res.status(500).json({
         error: 'Erro ao buscar notificações',
         details: error.message
@@ -91,7 +92,7 @@ class NotificacaoController {
       const userRole = req.user.role;
       const unidadeId = req.user.unidade_id;
 
-      console.log(`🔍 [NotificacaoController] show - ID: ${id}, Role: ${userRole}`);
+      logger.log(`🔍 [NotificacaoController] show - ID: ${id}, Role: ${userRole}`);
 
       const notificacao = await this.model.findById(parseInt(id));
 
@@ -103,17 +104,17 @@ class NotificacaoController {
 
       // Verificar permissão (multi-tenancy)
       if (unidadeId && notificacao.unidade_id !== unidadeId) {
-        console.log(`⚠️ [NotificacaoController] Acesso negado: notificação pertence a outra unidade`);
+        logger.log(`⚠️ [NotificacaoController] Acesso negado: notificação pertence a outra unidade`);
         return res.status(403).json({
           error: 'Acesso negado'
         });
       }
 
-      console.log(`✅ [NotificacaoController] Notificação ${id} encontrada`);
+      logger.log(`✅ [NotificacaoController] Notificação ${id} encontrada`);
 
       return res.json(notificacao);
     } catch (error) {
-      console.error(`❌ [NotificacaoController] Erro ao buscar notificação ${req.params.id}:`, error);
+      logger.error(`❌ [NotificacaoController] Erro ao buscar notificação ${req.params.id}:`, error);
       return res.status(500).json({
         error: 'Erro ao buscar notificação',
         details: error.message
@@ -132,7 +133,7 @@ class NotificacaoController {
       const userRole = req.user.role;
       const userUnidadeId = req.user.unidade_id;
 
-      console.log(`📊 [NotificacaoController] stats - Role: ${userRole}, UserUnidadeId: ${userUnidadeId}, RequestedUnidadeId: ${unidade_id}`);
+      logger.log(`📊 [NotificacaoController] stats - Role: ${userRole}, UserUnidadeId: ${userUnidadeId}, RequestedUnidadeId: ${unidade_id}`);
 
       // Construir filtros
       const filters = {};
@@ -142,10 +143,10 @@ class NotificacaoController {
       // Senão, usar a unidade do usuário (fallback para compatibilidade)
       if (unidade_id) {
         filters.unidade_id = parseInt(unidade_id);
-        console.log(`🎯 [NotificacaoController] Stats para unidade especificada: ${unidade_id}`);
+        logger.log(`🎯 [NotificacaoController] Stats para unidade especificada: ${unidade_id}`);
       } else if (userUnidadeId) {
         filters.unidade_id = userUnidadeId;
-        console.log(`🎯 [NotificacaoController] Stats para unidade do usuário: ${userUnidadeId}`);
+        logger.log(`🎯 [NotificacaoController] Stats para unidade do usuário: ${userUnidadeId}`);
       }
 
       if (data_inicio && data_fim) {
@@ -165,14 +166,14 @@ class NotificacaoController {
         return acc;
       }, { total: 0, enviados: 0, falhas: 0, pendentes: 0 });
 
-      console.log(`✅ [NotificacaoController] Estatísticas calculadas: ${totais.total} notificações para unidade ${filters.unidade_id}`);
+      logger.log(`✅ [NotificacaoController] Estatísticas calculadas: ${totais.total} notificações para unidade ${filters.unidade_id}`);
 
       return res.json({
         por_tipo: stats,
         totais
       });
     } catch (error) {
-      console.error('❌ [NotificacaoController] Erro ao buscar estatísticas:', error);
+      logger.error('❌ [NotificacaoController] Erro ao buscar estatísticas:', error);
       return res.status(500).json({
         error: 'Erro ao buscar estatísticas',
         details: error.message

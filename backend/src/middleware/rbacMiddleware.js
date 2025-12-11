@@ -1,8 +1,11 @@
 const AuthService = require('../services/AuthService');
+const AuditLog = require('../models/AuditLog');
+const logger = require('./../utils/logger');
 
 class RBACMiddleware {
   constructor() {
     this.authService = new AuthService();
+    this.auditLogModel = new AuditLog();
   }
 
   // Middleware para verificar roles específicos
@@ -28,7 +31,7 @@ class RBACMiddleware {
 
         next();
       } catch (error) {
-        console.error('Erro no middleware RBAC:', error);
+        logger.error('Erro no middleware RBAC:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de permissões'
@@ -63,7 +66,7 @@ class RBACMiddleware {
 
         next();
       } catch (error) {
-        console.error('Erro no middleware de permissão:', error);
+        logger.error('Erro no middleware de permissão:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de permissões'
@@ -104,7 +107,7 @@ class RBACMiddleware {
 
         next();
       } catch (error) {
-        console.error('Erro no middleware de gerenciamento de unidade:', error);
+        logger.error('Erro no middleware de gerenciamento de unidade:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de permissões de unidade'
@@ -129,7 +132,7 @@ class RBACMiddleware {
         
         next();
       } catch (error) {
-        console.error('Erro no middleware de filtros de dados:', error);
+        logger.error('Erro no middleware de filtros de dados:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na aplicação de filtros de dados'
@@ -170,7 +173,7 @@ class RBACMiddleware {
 
         next();
       } catch (error) {
-        console.error('Erro no middleware de propriedade de recurso:', error);
+        logger.error('Erro no middleware de propriedade de recurso:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de propriedade de recurso'
@@ -179,16 +182,144 @@ class RBACMiddleware {
     };
   }
 
-  // Middleware para logs de auditoria
+  /**
+   * Sanitizar dados sensíveis antes de logar
+   * Remove senhas, tokens e outros dados confidenciais
+   */
+  sanitizeLogData(data) {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+
+    const sensitiveFields = [
+      'senha', 'password', 'senha_hash', 'senha_atual', 'nova_senha', 'novaSenha',
+      'token', 'accessToken', 'refreshToken', 'authorization',
+      'cpf', 'rg', 'cartao_credito', 'cvv',
+      'api_key', 'apiKey', 'secret'
+    ];
+
+    const sanitized = Array.isArray(data) ? [...data] : { ...data };
+
+    for (const key in sanitized) {
+      if (sensitiveFields.some(field => key.toLowerCase().includes(field.toLowerCase()))) {
+        sanitized[key] = '***REDACTED***';
+      } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
+        sanitized[key] = this.sanitizeLogData(sanitized[key]);
+      }
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Extrair informações do recurso da requisição
+   */
+  extractResourceInfo(req, action) {
+    let resourceType = null;
+    let resourceId = null;
+
+    // Tentar extrair do path
+    const pathParts = req.path.split('/').filter(p => p);
+    
+    if (pathParts.length >= 2) {
+      resourceType = pathParts[1]; // Ex: /api/agendamentos -> agendamentos
+      
+      // Se tem ID no path
+      if (pathParts.length >= 3 && !isNaN(pathParts[2])) {
+        resourceId = parseInt(pathParts[2]);
+      }
+    }
+
+    // Tentar extrair do body
+    if (!resourceId && req.body) {
+      resourceId = req.body.id || req.body.agendamento_id || req.body.cliente_id || 
+                   req.body.agente_id || req.body.servico_id || req.body.unidade_id;
+    }
+
+    // Tentar extrair do params
+    if (!resourceId && req.params) {
+      resourceId = req.params.id || req.params.agendamento_id || req.params.cliente_id;
+    }
+
+    return { resourceType, resourceId };
+  }
+
+  /**
+   * Middleware para logs de auditoria
+   * FASE 2.1 - Sistema de Auditoria Completo
+   * 
+   * Captura e persiste logs de ações críticas no sistema
+   */
   auditLog(action) {
     return (req, res, next) => {
+      const startTime = Date.now();
       const originalSend = res.send;
+      const self = this; // Salvar referência ao RBACMiddleware
       
+      // Capturar informações da requisição
+      const usuario = req.user || {};
+      const { resourceType, resourceId } = this.extractResourceInfo(req, action);
+      
+      // Sobrescrever res.send para capturar a resposta
       res.send = function(data) {
-        // Log da ação realizada
-
+        const duration = Date.now() - startTime;
         
-        originalSend.call(this, data);
+        // Processar log de forma assíncrona (não bloquear resposta)
+        setImmediate(() => {
+          try {
+            // Parsear resposta se for string
+            let responseData = data;
+            if (typeof data === 'string') {
+              try {
+                responseData = JSON.parse(data);
+              } catch (e) {
+                responseData = { raw: data };
+              }
+            }
+
+            // Preparar dados do log
+            const logData = {
+              // Usuário
+              usuario_id: usuario.id || null,
+              usuario_email: usuario.email || null,
+              usuario_nome: usuario.nome || null,
+              usuario_role: usuario.role || null,
+              
+              // Ação
+              action: action,
+              resource_type: resourceType,
+              resource_id: resourceId,
+              method: req.method,
+              endpoint: req.originalUrl || req.url,
+              
+              // Requisição
+              ip_address: req.ip || req.connection?.remoteAddress,
+              user_agent: req.get ? req.get('user-agent') : null,
+              status_code: res.statusCode,
+              
+              // Dados (sanitizados)
+              request_data: req.body ? self.sanitizeLogData(req.body) : null,
+              response_data: responseData ? self.sanitizeLogData(responseData) : null,
+              error_message: res.statusCode >= 400 ? (responseData?.error || responseData?.message) : null,
+              
+              // Metadados
+              unidade_id: usuario.unidade_id || req.body?.unidade_id || null,
+              duration_ms: duration
+            };
+
+            // Persistir log de forma assíncrona (não bloquear resposta)
+            self.auditLogModel.createLog(logData).catch(err => {
+              logger.error('❌ [AuditLog] Erro ao persistir log:', err.message);
+            });
+
+          } catch (error) {
+            // Não quebrar a aplicação se auditoria falhar
+            logger.error('❌ [AuditLog] Erro ao processar log de auditoria:', error.message);
+          }
+        });
+        
+        // Enviar resposta original IMEDIATAMENTE (não esperar log)
+        return originalSend.call(this, data);
       };
       
       next();

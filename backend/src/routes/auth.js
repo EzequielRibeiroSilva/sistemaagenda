@@ -4,6 +4,7 @@ const AuthController = require('../controllers/AuthController');
 const { authenticate } = require('../middleware/authMiddleware');
 const { loginRateLimit, userSpecificRateLimit } = require('../middleware/loginRateLimit');
 const { validateLogin, sanitizeInput, detectSQLInjection } = require('../middleware/validation');
+const rbacMiddleware = require('../middleware/rbacMiddleware');
 
 // Instanciar controlador
 const authController = new AuthController();
@@ -22,6 +23,7 @@ router.post('/login',
   validateLogin,
   loginRateLimit,
   userSpecificRateLimit,
+  rbacMiddleware.auditLog('LOGIN'),
   async (req, res) => {
     await authController.login(req, res);
   }
@@ -34,9 +36,13 @@ router.post('/login',
  * @headers Authorization: Bearer <token>
  * @returns { success: boolean, message: string }
  */
-router.post('/logout', authenticate(), async (req, res) => {
-  await authController.logout(req, res);
-});
+router.post('/logout', 
+  authenticate(), 
+  rbacMiddleware.auditLog('LOGOUT'),
+  async (req, res) => {
+    await authController.logout(req, res);
+  }
+);
 
 /**
  * @route GET /auth/validate
@@ -56,9 +62,12 @@ router.get('/validate', authenticate(), async (req, res) => {
  * @headers Authorization: Bearer <token>
  * @returns { success: boolean, message: string, data: { token: string, user: object, expiresIn: string } }
  */
-router.post('/refresh', async (req, res) => {
-  await authController.refreshToken(req, res);
-});
+router.post('/refresh', 
+  rbacMiddleware.auditLog('REFRESH_TOKEN'),
+  async (req, res) => {
+    await authController.refreshToken(req, res);
+  }
+);
 
 /**
  * @route GET /auth/me
@@ -79,9 +88,13 @@ router.get('/me', authenticate(), async (req, res) => {
  * @body { senhaAtual: string, novaSenha: string }
  * @returns { success: boolean, message: string }
  */
-router.post('/change-password', authenticate(), async (req, res) => {
-  await authController.changePassword(req, res);
-});
+router.post('/change-password', 
+  authenticate(), 
+  rbacMiddleware.auditLog('ALTERAR_SENHA'),
+  async (req, res) => {
+    await authController.changePassword(req, res);
+  }
+);
 
 /**
  * @route GET /auth/validate

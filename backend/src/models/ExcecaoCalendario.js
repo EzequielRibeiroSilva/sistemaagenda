@@ -1,5 +1,6 @@
 const BaseModel = require('./BaseModel');
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 /**
  * Modelo para gerenciar exceções de calendário das unidades
@@ -51,7 +52,7 @@ class ExcecaoCalendario extends BaseModel {
       const excecoes = await query;
       return excecoes;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao buscar exceções da unidade:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao buscar exceções da unidade:', error);
       throw error;
     }
   }
@@ -69,7 +70,7 @@ class ExcecaoCalendario extends BaseModel {
 
       return excecao || null;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao buscar exceção por ID:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao buscar exceção por ID:', error);
       throw error;
     }
   }
@@ -92,7 +93,7 @@ class ExcecaoCalendario extends BaseModel {
 
       return excecao || null;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao verificar se data está bloqueada:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao verificar se data está bloqueada:', error);
       throw error;
     }
   }
@@ -145,7 +146,7 @@ class ExcecaoCalendario extends BaseModel {
       const [excecaoCriada] = await query.insert(dadosParaInserir).returning('*');
       return excecaoCriada;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao criar exceção:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao criar exceção:', error);
       throw error;
     }
   }
@@ -213,7 +214,7 @@ class ExcecaoCalendario extends BaseModel {
 
       return excecaoAtualizada;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao atualizar exceção:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao atualizar exceção:', error);
       throw error;
     }
   }
@@ -231,7 +232,7 @@ class ExcecaoCalendario extends BaseModel {
       const deletedCount = await query.where('id', id).del();
       return deletedCount > 0;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao deletar exceção:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao deletar exceção:', error);
       throw error;
     }
   }
@@ -249,7 +250,7 @@ class ExcecaoCalendario extends BaseModel {
       const deletedCount = await query.where('unidade_id', unidadeId).del();
       return deletedCount;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao deletar exceções da unidade:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao deletar exceções da unidade:', error);
       throw error;
     }
   }
@@ -296,7 +297,7 @@ class ExcecaoCalendario extends BaseModel {
       const sobreposicao = await sobreposicaoQuery.first();
       return sobreposicao || null;
     } catch (error) {
-      console.error('❌ [ExcecaoCalendario] Erro ao verificar sobreposição:', error);
+      logger.error('❌ [ExcecaoCalendario] Erro ao verificar sobreposição:', error);
       throw error;
     }
   }

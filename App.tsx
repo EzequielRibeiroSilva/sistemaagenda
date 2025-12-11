@@ -34,6 +34,7 @@ import ManageBookingPage from './components/ManageBookingPage';
 import { useMasterUsers } from './hooks/useMasterUsers';
 import { useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { useSessionTimeout } from './hooks/useSessionTimeout';
 
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -56,6 +57,15 @@ const App: React.FC = () => {
 
   // Usar AuthContext
   const { user, isAuthenticated, isLoading, login, logout: authLogout } = useAuth();
+
+  // ✅ FASE 2.7: Timeout de Sessão
+  // Configuração: 25min de aviso, 30min de logout, renovar token 10min antes de expirar
+  useSessionTimeout({
+    warningTime: 25,
+    logoutTime: 30,
+    renewBeforeExpiry: 10,
+    debug: false // Mudar para true para ver logs de debug
+  });
 
   // ✅ PERSISTÊNCIA: Salvar activeView no localStorage toda vez que mudar
   useEffect(() => {

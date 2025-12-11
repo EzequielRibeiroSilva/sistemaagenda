@@ -30,6 +30,7 @@ interface AuthContextType {
   }) => void;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
+  updateToken: (newToken: string) => void; // ✅ FASE 2.7: Renovar token
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -200,6 +201,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(prev => ({ ...prev, ...userData }));
   };
 
+  // ✅ FASE 2.7: Atualizar token (para renovação automática)
+  const updateToken = (newToken: string) => {
+    localStorage.setItem('authToken', newToken);
+    setToken(newToken);
+  };
+
   const value: AuthContextType = {
     user,
     token,
@@ -208,7 +215,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     login,
     logout,
-    updateUser
+    updateUser,
+    updateToken
   };
 
   return (

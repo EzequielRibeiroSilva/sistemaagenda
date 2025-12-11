@@ -8,6 +8,7 @@ const SettingsService = require('../services/SettingsService');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
+const logger = require('./../utils/logger');
 
 class SettingsController {
   constructor(db) {
@@ -72,7 +73,7 @@ class SettingsController {
         message: 'Configurações carregadas com sucesso'
       });
     } catch (error) {
-      console.error('[SettingsController] Erro ao buscar configurações:', error);
+      logger.error('[SettingsController] Erro ao buscar configurações:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -129,7 +130,7 @@ class SettingsController {
         message: 'Configurações atualizadas com sucesso'
       });
     } catch (error) {
-      console.error('[SettingsController] Erro ao atualizar configurações:', error);
+      logger.error('[SettingsController] Erro ao atualizar configurações:', error);
 
       // Remove arquivo se houve erro
       if (req.file) {
@@ -137,7 +138,7 @@ class SettingsController {
           await fs.unlink(req.file.path);
 
         } catch (unlinkError) {
-          console.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
+          logger.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
         }
       }
 
@@ -182,14 +183,14 @@ class SettingsController {
         message: 'Logo atualizado com sucesso'
       });
     } catch (error) {
-      console.error('[SettingsController] Erro no upload do logo:', error);
+      logger.error('[SettingsController] Erro no upload do logo:', error);
       
       // Remove arquivo se houve erro
       if (req.file) {
         try {
           await fs.unlink(req.file.path);
         } catch (unlinkError) {
-          console.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
+          logger.error('[SettingsController] Erro ao remover arquivo:', unlinkError);
         }
       }
       

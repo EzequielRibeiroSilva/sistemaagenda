@@ -1,4 +1,5 @@
 const BaseModel = require('./BaseModel');
+const logger = require('./../utils/logger');
 
 /**
  * Modelo Cliente - Gerenciamento de clientes com suporte a Multi-Tenant e Assinantes
@@ -411,7 +412,7 @@ class Cliente extends BaseModel {
 
       return totalCreditos - totalDebitos;
     } catch (error) {
-      console.error('[Cliente] Erro ao calcular pontos disponíveis:', error);
+      logger.error('[Cliente] Erro ao calcular pontos disponíveis:', error);
       return 0;
     }
   }
@@ -432,7 +433,7 @@ class Cliente extends BaseModel {
 
       return parseInt(count?.total || 0) === 0;
     } catch (error) {
-      console.error('[Cliente] Erro ao verificar primeiro agendamento:', error);
+      logger.error('[Cliente] Erro ao verificar primeiro agendamento:', error);
       return true; // Em caso de erro, considerar como primeiro para segurança
     }
   }

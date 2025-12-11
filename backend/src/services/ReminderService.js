@@ -26,7 +26,7 @@ class ReminderService {
     const isAllowed = currentHour >= this.allowedStartHour && currentHour < this.allowedEndHour;
     
     if (!isAllowed) {
-      console.log(`⏰ [ReminderService] Fora do horário permitido (${currentHour}h). Permitido: ${this.allowedStartHour}h-${this.allowedEndHour}h`);
+      logger.log(`⏰ [ReminderService] Fora do horário permitido (${currentHour}h). Permitido: ${this.allowedStartHour}h-${this.allowedEndHour}h`);
     }
     
     return isAllowed;
@@ -41,7 +41,7 @@ class ReminderService {
    */
   async getAppointmentsFor24hReminder() {
     try {
-      console.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 24h...');
+      logger.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 24h...');
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -86,11 +86,11 @@ class ReminderService {
         appointment.servicos = servicos;
       }
 
-      console.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 24h`);
+      logger.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 24h`);
       
       return appointments;
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao buscar agendamentos para 24h:', error);
+      logger.error('❌ [ReminderService] Erro ao buscar agendamentos para 24h:', error);
       throw error;
     }
   }
@@ -105,7 +105,7 @@ class ReminderService {
    */
   async getAppointmentsFor2hReminder() {
     try {
-      console.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 1h...');
+      logger.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 1h...');
 
       // Obter horário atual em São Paulo
       const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
@@ -130,8 +130,8 @@ class ReminderService {
         hour12: false 
       });
 
-      console.log(`🕐 [ReminderService] Horário atual SP: ${nowDate.toLocaleString('pt-BR')}`);
-      console.log(`🕐 [ReminderService] Buscando agendamentos entre ${startTime} e ${endTime}`);
+      logger.log(`🕐 [ReminderService] Horário atual SP: ${nowDate.toLocaleString('pt-BR')}`);
+      logger.log(`🕐 [ReminderService] Buscando agendamentos entre ${startTime} e ${endTime}`);
 
       const appointments = await db('agendamentos as a')
         .leftJoin('lembretes_enviados as le', function() {
@@ -173,11 +173,11 @@ class ReminderService {
         appointment.servicos = servicos;
       }
 
-      console.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 1h`);
+      logger.log(`✅ [ReminderService] Encontrados ${appointments.length} agendamentos para lembrete de 1h`);
       
       return appointments;
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao buscar agendamentos para 1h:', error);
+      logger.error('❌ [ReminderService] Erro ao buscar agendamentos para 1h:', error);
       throw error;
     }
   }
@@ -190,7 +190,7 @@ class ReminderService {
    */
   async getScheduledRemindersReadyToSend() {
     try {
-      console.log('🔍 [ReminderService] Buscando lembretes programados prontos para envio...');
+      logger.log('🔍 [ReminderService] Buscando lembretes programados prontos para envio...');
 
       const now = new Date();
 
@@ -236,11 +236,11 @@ class ReminderService {
         reminder.servicos = servicos;
       }
 
-      console.log(`✅ [ReminderService] Encontrados ${reminders.length} lembretes programados prontos para envio`);
+      logger.log(`✅ [ReminderService] Encontrados ${reminders.length} lembretes programados prontos para envio`);
       
       return reminders;
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao buscar lembretes programados:', error);
+      logger.error('❌ [ReminderService] Erro ao buscar lembretes programados:', error);
       throw error;
     }
   }
@@ -267,7 +267,7 @@ class ReminderService {
     } catch (error) {
       // Se erro de constraint única, significa que já existe registro
       if (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo') {
-        console.log(`⚠️ [ReminderService] Lembrete ${tipoLembrete} já existe para agendamento ${agendamentoId}`);
+        logger.log(`⚠️ [ReminderService] Lembrete ${tipoLembrete} já existe para agendamento ${agendamentoId}`);
         return null;
       }
       throw error;
@@ -309,9 +309,9 @@ class ReminderService {
         .where('id', lembreteId)
         .update(updateData);
 
-      console.log(`✅ [ReminderService] Status do lembrete ${lembreteId} atualizado para: ${status}`);
+      logger.log(`✅ [ReminderService] Status do lembrete ${lembreteId} atualizado para: ${status}`);
     } catch (error) {
-      console.error(`❌ [ReminderService] Erro ao atualizar status do lembrete ${lembreteId}:`, error);
+      logger.error(`❌ [ReminderService] Erro ao atualizar status do lembrete ${lembreteId}:`, error);
       throw error;
     }
   }
@@ -323,7 +323,7 @@ class ReminderService {
     const { agendamento_id, unidade_id, cliente_telefone } = appointment;
 
     try {
-      console.log(`📤 [ReminderService] Enviando lembrete ${tipoLembrete} para agendamento ${agendamento_id}...`);
+      logger.log(`📤 [ReminderService] Enviando lembrete ${tipoLembrete} para agendamento ${agendamento_id}...`);
 
       // Criar registro do lembrete
       const lembreteId = await this.createReminderRecord(
@@ -342,6 +342,7 @@ class ReminderService {
       let pontosInfo = null;
       try {
         const ClienteModel = require('../models/Cliente');
+const logger = require('./../utils/logger');
         const clienteModel = new ClienteModel(this.db);
         
         // Calcular saldo atual de pontos
@@ -365,9 +366,9 @@ class ReminderService {
           podeUsar: !isPrimeiro // Pode usar se NÃO for o primeiro
         };
         
-        console.log(`💎 [ReminderService] Pontos calculados para cliente #${appointment.cliente_id}:`, pontosInfo);
+        logger.log(`💎 [ReminderService] Pontos calculados para cliente #${appointment.cliente_id}:`, pontosInfo);
       } catch (pontosError) {
-        console.error('❌ [ReminderService] Erro ao calcular pontos:', pontosError);
+        logger.error('❌ [ReminderService] Erro ao calcular pontos:', pontosError);
         // Continuar sem informação de pontos
       }
 
@@ -403,7 +404,7 @@ class ReminderService {
         tentativa++;
         
         try {
-          console.log(`🔄 [ReminderService] Tentativa ${tentativa}/${this.maxRetries} para lembrete ${lembreteId}`);
+          logger.log(`🔄 [ReminderService] Tentativa ${tentativa}/${this.maxRetries} para lembrete ${lembreteId}`);
 
           // Enviar via WhatsApp usando métodos específicos
           let result;
@@ -419,23 +420,23 @@ class ReminderService {
               whatsappMessageId: result.data?.messageId || result.data?.key?.id
             });
 
-            console.log(`✅ [ReminderService] Lembrete ${tipoLembrete} enviado com sucesso para agendamento ${agendamento_id}`);
+            logger.log(`✅ [ReminderService] Lembrete ${tipoLembrete} enviado com sucesso para agendamento ${agendamento_id}`);
             
             return { success: true, lembreteId, tentativas: tentativa };
           } else {
             lastError = result.error;
-            console.error(`⚠️ [ReminderService] Tentativa ${tentativa} falhou:`, result.error);
+            logger.error(`⚠️ [ReminderService] Tentativa ${tentativa} falhou:`, result.error);
             
             // Aguardar antes de tentar novamente (backoff exponencial)
             if (tentativa < this.maxRetries) {
               const waitTime = Math.pow(2, tentativa) * 1000; // 2s, 4s, 8s
-              console.log(`⏳ [ReminderService] Aguardando ${waitTime/1000}s antes da próxima tentativa...`);
+              logger.log(`⏳ [ReminderService] Aguardando ${waitTime/1000}s antes da próxima tentativa...`);
               await new Promise(resolve => setTimeout(resolve, waitTime));
             }
           }
         } catch (error) {
           lastError = error;
-          console.error(`❌ [ReminderService] Erro na tentativa ${tentativa}:`, error);
+          logger.error(`❌ [ReminderService] Erro na tentativa ${tentativa}:`, error);
         }
       }
 
@@ -444,12 +445,12 @@ class ReminderService {
         erro: lastError
       });
 
-      console.error(`❌ [ReminderService] Falha permanente após ${this.maxRetries} tentativas para agendamento ${agendamento_id}`);
+      logger.error(`❌ [ReminderService] Falha permanente após ${this.maxRetries} tentativas para agendamento ${agendamento_id}`);
       
       return { success: false, reason: 'max_retries_exceeded', tentativas: this.maxRetries, erro: lastError };
 
     } catch (error) {
-      console.error(`❌ [ReminderService] Erro ao enviar lembrete para agendamento ${agendamento_id}:`, error);
+      logger.error(`❌ [ReminderService] Erro ao enviar lembrete para agendamento ${agendamento_id}:`, error);
       return { success: false, reason: 'exception', erro: error.message };
     }
   }
@@ -459,11 +460,11 @@ class ReminderService {
    */
   async process24hReminders() {
     try {
-      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 24H =====');
+      logger.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 24H =====');
 
       // Verificar horário permitido
       if (!this.isWithinAllowedHours()) {
-        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 24h.');
+        logger.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 24h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 1 };
       }
 
@@ -471,7 +472,7 @@ class ReminderService {
       const appointments = await this.getAppointmentsFor24hReminder();
 
       if (appointments.length === 0) {
-        console.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 24h.');
+        logger.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 24h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 0 };
       }
 
@@ -492,13 +493,13 @@ class ReminderService {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 24H CONCLUÍDO =====`);
-      console.log(`📊 Total: ${appointments.length} | Enviados: ${sent} | Falhas: ${failed}`);
+      logger.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 24H CONCLUÍDO =====`);
+      logger.log(`📊 Total: ${appointments.length} | Enviados: ${sent} | Falhas: ${failed}`);
 
       return { processed: appointments.length, sent, failed, skipped: 0 };
 
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao processar lembretes de 24h:', error);
+      logger.error('❌ [ReminderService] Erro ao processar lembretes de 24h:', error);
       throw error;
     }
   }
@@ -508,11 +509,11 @@ class ReminderService {
    */
   async process2hReminders() {
     try {
-      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 1H =====');
+      logger.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES 1H =====');
 
       // Verificar horário permitido
       if (!this.isWithinAllowedHours()) {
-        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 1h.');
+        logger.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de 1h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 1 };
       }
 
@@ -520,7 +521,7 @@ class ReminderService {
       const appointments = await this.getAppointmentsFor2hReminder();
 
       if (appointments.length === 0) {
-        console.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 1h.');
+        logger.log('✅ [ReminderService] Nenhum agendamento encontrado para lembrete de 1h.');
         return { processed: 0, sent: 0, failed: 0, skipped: 0 };
       }
 
@@ -541,13 +542,13 @@ class ReminderService {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 1H CONCLUÍDO =====`);
-      console.log(`📊 Total: ${appointments.length} | Enviados: ${sent} | Falhas: ${failed}`);
+      logger.log(`\n✅ [ReminderService] ===== PROCESSAMENTO 1H CONCLUÍDO =====`);
+      logger.log(`📊 Total: ${appointments.length} | Enviados: ${sent} | Falhas: ${failed}`);
 
       return { processed: appointments.length, sent, failed, skipped: 0 };
 
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao processar lembretes de 1h:', error);
+      logger.error('❌ [ReminderService] Erro ao processar lembretes de 1h:', error);
       throw error;
     }
   }
@@ -557,11 +558,11 @@ class ReminderService {
    */
   async processScheduledReminders() {
     try {
-      console.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES PROGRAMADOS =====');
+      logger.log('\n🚀 [ReminderService] ===== INICIANDO PROCESSAMENTO DE LEMBRETES PROGRAMADOS =====');
 
       // Verificar horário permitido
       if (!this.isWithinAllowedHours()) {
-        console.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de lembretes programados.');
+        logger.log('⏰ [ReminderService] Fora do horário permitido. Pulando processamento de lembretes programados.');
         return { processed: 0, sent: 0, failed: 0, skipped: 1 };
       }
 
@@ -569,7 +570,7 @@ class ReminderService {
       const reminders = await this.getScheduledRemindersReadyToSend();
 
       if (reminders.length === 0) {
-        console.log('✅ [ReminderService] Nenhum lembrete programado pronto para envio.');
+        logger.log('✅ [ReminderService] Nenhum lembrete programado pronto para envio.');
         return { processed: 0, sent: 0, failed: 0, skipped: 0 };
       }
 
@@ -581,7 +582,7 @@ class ReminderService {
         const { lembrete_id, tipo_lembrete } = reminder;
 
         try {
-          console.log(`📤 [ReminderService] Enviando lembrete programado #${lembrete_id} (${tipo_lembrete})...`);
+          logger.log(`📤 [ReminderService] Enviando lembrete programado #${lembrete_id} (${tipo_lembrete})...`);
 
           // Preparar dados para geração da mensagem
           const agendamentoData = {
@@ -620,7 +621,7 @@ class ReminderService {
               whatsappMessageId: result.data?.messageId || result.data?.key?.id
             });
 
-            console.log(`✅ [ReminderService] Lembrete programado #${lembrete_id} enviado com sucesso`);
+            logger.log(`✅ [ReminderService] Lembrete programado #${lembrete_id} enviado com sucesso`);
             sent++;
           } else {
             // Falha - atualizar status
@@ -628,12 +629,12 @@ class ReminderService {
               erro: result.error
             });
 
-            console.error(`❌ [ReminderService] Falha ao enviar lembrete programado #${lembrete_id}:`, result.error);
+            logger.error(`❌ [ReminderService] Falha ao enviar lembrete programado #${lembrete_id}:`, result.error);
             failed++;
           }
 
         } catch (error) {
-          console.error(`❌ [ReminderService] Erro ao processar lembrete programado #${lembrete_id}:`, error);
+          logger.error(`❌ [ReminderService] Erro ao processar lembrete programado #${lembrete_id}:`, error);
           
           // Atualizar status para falha
           await this.updateReminderStatus(lembrete_id, 'falha', {
@@ -647,13 +648,13 @@ class ReminderService {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      console.log(`\n✅ [ReminderService] ===== PROCESSAMENTO DE LEMBRETES PROGRAMADOS CONCLUÍDO =====`);
-      console.log(`📊 Total: ${reminders.length} | Enviados: ${sent} | Falhas: ${failed}`);
+      logger.log(`\n✅ [ReminderService] ===== PROCESSAMENTO DE LEMBRETES PROGRAMADOS CONCLUÍDO =====`);
+      logger.log(`📊 Total: ${reminders.length} | Enviados: ${sent} | Falhas: ${failed}`);
 
       return { processed: reminders.length, sent, failed, skipped: 0 };
 
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao processar lembretes programados:', error);
+      logger.error('❌ [ReminderService] Erro ao processar lembretes programados:', error);
       throw error;
     }
   }
@@ -663,8 +664,8 @@ class ReminderService {
    */
   async processAllReminders() {
     try {
-      console.log('\n🎯 [ReminderService] ========== INICIANDO CRON JOB DE LEMBRETES ==========');
-      console.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}`);
+      logger.log('\n🎯 [ReminderService] ========== INICIANDO CRON JOB DE LEMBRETES ==========');
+      logger.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}`);
 
       const results = {
         timestamp: new Date().toISOString(),
@@ -673,11 +674,11 @@ class ReminderService {
         reminders2h: await this.process2hReminders()
       };
 
-      console.log('\n🎯 [ReminderService] ========== CRON JOB CONCLUÍDO ==========\n');
+      logger.log('\n🎯 [ReminderService] ========== CRON JOB CONCLUÍDO ==========\n');
 
       return results;
     } catch (error) {
-      console.error('❌ [ReminderService] Erro ao processar lembretes:', error);
+      logger.error('❌ [ReminderService] Erro ao processar lembretes:', error);
       throw error;
     }
   }

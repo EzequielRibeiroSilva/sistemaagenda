@@ -1,4 +1,5 @@
 const EvolutionApiService = require('../services/EvolutionApiService');
+const logger = require('./../utils/logger');
 
 class EvolutionApiController {
   constructor() {
@@ -17,7 +18,7 @@ class EvolutionApiController {
       });
 
     } catch (error) {
-      console.error('Erro ao verificar status Evolution API:', error);
+      logger.error('Erro ao verificar status Evolution API:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -38,7 +39,7 @@ class EvolutionApiController {
       });
 
     } catch (error) {
-      console.error('Erro no teste de conectividade:', error);
+      logger.error('Erro no teste de conectividade:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -69,7 +70,7 @@ class EvolutionApiController {
       });
 
     } catch (error) {
-      console.error('Erro ao enviar mensagem de teste:', error);
+      logger.error('Erro ao enviar mensagem de teste:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -100,7 +101,7 @@ class EvolutionApiController {
       });
 
     } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
+      logger.error('Erro ao enviar mensagem:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -126,7 +127,7 @@ class EvolutionApiController {
       });
 
     } catch (error) {
-      console.error('Erro ao obter configuração:', error);
+      logger.error('Erro ao obter configuração:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

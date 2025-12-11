@@ -7,6 +7,7 @@
 
 const cron = require('node-cron');
 const ReminderService = require('../services/ReminderService');
+const logger = require('./../utils/logger');
 
 class ReminderJob {
   constructor() {
@@ -29,7 +30,7 @@ class ReminderJob {
   async execute() {
     // Prevenir execuções simultâneas
     if (this.isRunning) {
-      console.log('⚠️ [ReminderJob] Job já está em execução. Pulando esta iteração.');
+      logger.log('⚠️ [ReminderJob] Job já está em execução. Pulando esta iteração.');
       return;
     }
 
@@ -38,10 +39,10 @@ class ReminderJob {
     const startTime = Date.now();
 
     try {
-      console.log('\n' + '='.repeat(80));
-      console.log(`🎯 [ReminderJob] EXECUÇÃO #${this.executionCount} INICIADA`);
-      console.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}`);
-      console.log('='.repeat(80) + '\n');
+      logger.log('\n' + '='.repeat(80));
+      logger.log(`🎯 [ReminderJob] EXECUÇÃO #${this.executionCount} INICIADA`);
+      logger.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}`);
+      logger.log('='.repeat(80) + '\n');
 
       // Processar todos os lembretes (24h e 2h)
       const results = await this.reminderService.processAllReminders();
@@ -55,18 +56,18 @@ class ReminderJob {
       this.lastExecution = new Date();
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-      console.log('\n' + '='.repeat(80));
-      console.log(`✅ [ReminderJob] EXECUÇÃO #${this.executionCount} CONCLUÍDA`);
-      console.log(`⏱️ Duração: ${duration}s`);
-      console.log(`📊 Lembretes 24h: ${results.reminders24h.sent}/${results.reminders24h.processed} enviados`);
-      console.log(`📊 Lembretes 1h: ${results.reminders2h.sent}/${results.reminders2h.processed} enviados`);
-      console.log('='.repeat(80) + '\n');
+      logger.log('\n' + '='.repeat(80));
+      logger.log(`✅ [ReminderJob] EXECUÇÃO #${this.executionCount} CONCLUÍDA`);
+      logger.log(`⏱️ Duração: ${duration}s`);
+      logger.log(`📊 Lembretes 24h: ${results.reminders24h.sent}/${results.reminders24h.processed} enviados`);
+      logger.log(`📊 Lembretes 1h: ${results.reminders2h.sent}/${results.reminders2h.processed} enviados`);
+      logger.log('='.repeat(80) + '\n');
 
     } catch (error) {
-      console.error('\n' + '='.repeat(80));
-      console.error(`❌ [ReminderJob] ERRO NA EXECUÇÃO #${this.executionCount}`);
-      console.error('❌ Erro:', error);
-      console.error('='.repeat(80) + '\n');
+      logger.error('\n' + '='.repeat(80));
+      logger.error(`❌ [ReminderJob] ERRO NA EXECUÇÃO #${this.executionCount}`);
+      logger.error('❌ Erro:', error);
+      logger.error('='.repeat(80) + '\n');
     } finally {
       this.isRunning = false;
     }
@@ -76,13 +77,13 @@ class ReminderJob {
    * Iniciar o cron job
    */
   start() {
-    console.log('\n' + '='.repeat(80));
-    console.log('🚀 [ReminderJob] INICIANDO CRON JOB DE LEMBRETES');
-    console.log(`📅 Expressão Cron: ${this.cronExpression} (a cada 30 minutos)`);
-    console.log(`⏰ Horário permitido: 06:00 - 23:00`);
-    console.log(`🔄 Retry: 3 tentativas por lembrete`);
-    console.log(`📱 Canal: WhatsApp via Evolution API`);
-    console.log('='.repeat(80) + '\n');
+    logger.log('\n' + '='.repeat(80));
+    logger.log('🚀 [ReminderJob] INICIANDO CRON JOB DE LEMBRETES');
+    logger.log(`📅 Expressão Cron: ${this.cronExpression} (a cada 30 minutos)`);
+    logger.log(`⏰ Horário permitido: 06:00 - 23:00`);
+    logger.log(`🔄 Retry: 3 tentativas por lembrete`);
+    logger.log(`📱 Canal: WhatsApp via Evolution API`);
+    logger.log('='.repeat(80) + '\n');
 
     // Criar o cron job
     this.job = cron.schedule(this.cronExpression, async () => {
@@ -92,8 +93,8 @@ class ReminderJob {
       timezone: 'America/Sao_Paulo'
     });
 
-    console.log('✅ [ReminderJob] Cron job iniciado com sucesso!');
-    console.log(`⏰ Próxima execução: ${this.getNextExecutionTime()}\n`);
+    logger.log('✅ [ReminderJob] Cron job iniciado com sucesso!');
+    logger.log(`⏰ Próxima execução: ${this.getNextExecutionTime()}\n`);
 
     // Executar imediatamente na inicialização (opcional - comentar se não quiser)
     // this.execute();
@@ -105,7 +106,7 @@ class ReminderJob {
   stop() {
     if (this.job) {
       this.job.stop();
-      console.log('\n🛑 [ReminderJob] Cron job parado.');
+      logger.log('\n🛑 [ReminderJob] Cron job parado.');
       this.printStats();
     }
   }
@@ -130,18 +131,18 @@ class ReminderJob {
    * Imprimir estatísticas do job
    */
   printStats() {
-    console.log('\n' + '='.repeat(80));
-    console.log('📊 [ReminderJob] ESTATÍSTICAS GERAIS');
-    console.log('='.repeat(80));
-    console.log(`🔢 Total de execuções: ${this.executionCount}`);
-    console.log(`📤 Total de lembretes processados: ${this.stats.totalProcessed}`);
-    console.log(`✅ Total de lembretes enviados: ${this.stats.totalSent}`);
-    console.log(`❌ Total de falhas: ${this.stats.totalFailed}`);
-    console.log(`⏭️ Total de execuções puladas: ${this.stats.totalSkipped}`);
+    logger.log('\n' + '='.repeat(80));
+    logger.log('📊 [ReminderJob] ESTATÍSTICAS GERAIS');
+    logger.log('='.repeat(80));
+    logger.log(`🔢 Total de execuções: ${this.executionCount}`);
+    logger.log(`📤 Total de lembretes processados: ${this.stats.totalProcessed}`);
+    logger.log(`✅ Total de lembretes enviados: ${this.stats.totalSent}`);
+    logger.log(`❌ Total de falhas: ${this.stats.totalFailed}`);
+    logger.log(`⏭️ Total de execuções puladas: ${this.stats.totalSkipped}`);
     if (this.lastExecution) {
-      console.log(`⏰ Última execução: ${this.lastExecution.toLocaleString('pt-BR')}`);
+      logger.log(`⏰ Última execução: ${this.lastExecution.toLocaleString('pt-BR')}`);
     }
-    console.log('='.repeat(80) + '\n');
+    logger.log('='.repeat(80) + '\n');
   }
 
   /**

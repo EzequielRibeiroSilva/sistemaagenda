@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const logger = require('./../utils/logger');
 
 // Criar diretório de uploads se não existir
 const uploadsDir = path.join(__dirname, '../../uploads/avatars');
@@ -65,7 +66,7 @@ const uploadAvatar = upload.fields([
 
 // Middleware wrapper com tratamento de erro
 const handleAvatarUpload = (req, res, next) => {
-  console.log('[uploadMiddleware] Processando FormData...');
+  logger.log('[uploadMiddleware] Processando FormData...');
   uploadAvatar(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -96,8 +97,8 @@ const handleAvatarUpload = (req, res, next) => {
     }
 
     // Debug: verificar o que foi processado
-    console.log('[uploadMiddleware] req.body keys:', Object.keys(req.body));
-    console.log('[uploadMiddleware] req.files:', req.files ? Object.keys(req.files) : 'nenhum');
+    logger.log('[uploadMiddleware] req.body keys:', Object.keys(req.body));
+    logger.log('[uploadMiddleware] req.files:', req.files ? Object.keys(req.files) : 'nenhum');
 
     // Se há arquivo de avatar, adicionar URL ao req
     if (req.files && req.files.avatar && req.files.avatar[0]) {
@@ -121,10 +122,10 @@ const deleteOldAvatar = (avatarUrl) => {
     
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      console.log(`Avatar antigo deletado: ${filename}`);
+      logger.log(`Avatar antigo deletado: ${filename}`);
     }
   } catch (error) {
-    console.error('Erro ao deletar avatar antigo:', error);
+    logger.error('Erro ao deletar avatar antigo:', error);
   }
 };
 

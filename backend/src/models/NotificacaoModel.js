@@ -5,6 +5,7 @@
  */
 
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 class NotificacaoModel {
   constructor() {
@@ -37,7 +38,7 @@ class NotificacaoModel {
 
       // ✅ CORREÇÃO: Filtro por tipo considerando ambos os campos (tipo_notificacao e tipo_lembrete)
       if (filters.tipo_notificacao) {
-        console.log(`🔍 [NotificacaoModel] Aplicando filtro de tipo: ${filters.tipo_notificacao}`);
+        logger.log(`🔍 [NotificacaoModel] Aplicando filtro de tipo: ${filters.tipo_notificacao}`);
         
         // Mapear valores do frontend para os valores do banco
         // Frontend: 'lembrete_24h' → Backend: tipo_lembrete='24h' OU tipo_notificacao='lembrete_24h'
@@ -59,7 +60,7 @@ class NotificacaoModel {
           }
         });
         
-        console.log(`✅ [NotificacaoModel] Filtro aplicado com mapeamento: ${filters.tipo_notificacao} → tipo_lembrete=${tipoLembreteMap[filters.tipo_notificacao] || 'N/A'}`);
+        logger.log(`✅ [NotificacaoModel] Filtro aplicado com mapeamento: ${filters.tipo_notificacao} → tipo_lembrete=${tipoLembreteMap[filters.tipo_notificacao] || 'N/A'}`);
       }
 
       if (filters.status) {
@@ -72,7 +73,7 @@ class NotificacaoModel {
         const idSearch = filters.agendamento_id.toString();
         // ✅ CRÍTICO: Usar CAST para converter INTEGER para TEXT antes do LIKE
         query = query.whereRaw(`CAST(${this.tableName}.agendamento_id AS TEXT) LIKE ?`, [`${idSearch}%`]);
-        console.log(`🔍 [NotificacaoModel] Busca parcial por agendamento_id iniciando com: ${idSearch}`);
+        logger.log(`🔍 [NotificacaoModel] Busca parcial por agendamento_id iniciando com: ${idSearch}`);
       }
 
       if (filters.data_inicio && filters.data_fim) {
@@ -140,7 +141,7 @@ class NotificacaoModel {
         }
       };
     } catch (error) {
-      console.error('❌ [NotificacaoModel] Erro ao buscar notificações:', error);
+      logger.error('❌ [NotificacaoModel] Erro ao buscar notificações:', error);
       throw error;
     }
   }
@@ -173,7 +174,7 @@ class NotificacaoModel {
 
       return notificacao || null;
     } catch (error) {
-      console.error(`❌ [NotificacaoModel] Erro ao buscar notificação ${id}:`, error);
+      logger.error(`❌ [NotificacaoModel] Erro ao buscar notificação ${id}:`, error);
       throw error;
     }
   }
@@ -206,7 +207,7 @@ class NotificacaoModel {
 
       return typeof id === 'object' ? id.id : id;
     } catch (error) {
-      console.error('❌ [NotificacaoModel] Erro ao criar notificação:', error);
+      logger.error('❌ [NotificacaoModel] Erro ao criar notificação:', error);
       throw error;
     }
   }
@@ -234,7 +235,7 @@ class NotificacaoModel {
 
       return updated > 0;
     } catch (error) {
-      console.error(`❌ [NotificacaoModel] Erro ao atualizar notificação ${id}:`, error);
+      logger.error(`❌ [NotificacaoModel] Erro ao atualizar notificação ${id}:`, error);
       throw error;
     }
   }
@@ -268,7 +269,7 @@ class NotificacaoModel {
 
       return stats;
     } catch (error) {
-      console.error('❌ [NotificacaoModel] Erro ao buscar estatísticas:', error);
+      logger.error('❌ [NotificacaoModel] Erro ao buscar estatísticas:', error);
       throw error;
     }
   }

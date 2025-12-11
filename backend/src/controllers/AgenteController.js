@@ -69,7 +69,7 @@ class AgenteController {
         message: `Lista de agentes carregada com sucesso (${agentesLeves.length} agentes)`
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao carregar lista de agentes:', error);
+      logger.error('[AgenteController] Erro ao carregar lista de agentes:', error);
 
       res.status(500).json({
         success: false,
@@ -143,8 +143,8 @@ class AgenteController {
         message: `Agentes listados com sucesso (${agentesFormatados.length} agentes)`
       });
     } catch (error) {
-      console.error('❌ [AgenteController] Erro ao listar agentes:', error);
-      console.error('Stack trace:', error.stack);
+      logger.error('❌ [AgenteController] Erro ao listar agentes:', error);
+      logger.error('Stack trace:', error.stack);
       
       res.status(500).json({
         success: false,
@@ -255,7 +255,7 @@ class AgenteController {
         message: 'Agente encontrado com sucesso'
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao buscar agente:', error);
+      logger.error('[AgenteController] Erro ao buscar agente:', error);
       
       res.status(500).json({
         success: false,
@@ -313,7 +313,7 @@ class AgenteController {
           ? JSON.parse(servicos_oferecidos)
           : (servicos_oferecidos || []);
       } catch (e) {
-        console.error('Erro ao parsear servicos_oferecidos:', e);
+        logger.error('Erro ao parsear servicos_oferecidos:', e);
       }
 
       // ✅ ETAPA 6: Suporte para agendas_multi_unidade
@@ -325,7 +325,7 @@ class AgenteController {
             : agendas_multi_unidade;
         }
       } catch (e) {
-        console.error('Erro ao parsear agendas_multi_unidade:', e);
+        logger.error('Erro ao parsear agendas_multi_unidade:', e);
       }
 
       // Usar agendas_multi_unidade se disponível, senão usar formato legado
@@ -337,7 +337,7 @@ class AgenteController {
             : horarios_funcionamento;
         }
       } catch (e) {
-        console.error('Erro ao parsear horarios_funcionamento:', e);
+        logger.error('Erro ao parsear horarios_funcionamento:', e);
       }
 
 
@@ -452,7 +452,7 @@ class AgenteController {
         message: 'Agente criado com sucesso'
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao criar agente:', error);
+      logger.error('[AgenteController] Erro ao criar agente:', error);
 
       // Tratar erros específicos
       if (error.message.includes('duplicate key') && error.message.includes('email')) {
@@ -476,9 +476,9 @@ class AgenteController {
    */
   async update(req, res) {
     try {
-      console.log('🔍 [AgenteController] ===== INÍCIO UPDATE AGENTE =====');
-      console.log('🔍 [AgenteController] req.body:', JSON.stringify(req.body, null, 2));
-      console.log('🔍 [AgenteController] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
+      logger.log('🔍 [AgenteController] ===== INÍCIO UPDATE AGENTE =====');
+      logger.log('🔍 [AgenteController] req.body:', JSON.stringify(req.body, null, 2));
+      logger.log('🔍 [AgenteController] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
       
       const agenteId = req.params.id;
       const usuarioId = req.user.id;
@@ -516,7 +516,7 @@ class AgenteController {
           ? JSON.parse(servicos_oferecidos)
           : (servicos_oferecidos || []);
       } catch (e) {
-        console.error('Erro ao parsear servicos_oferecidos:', e);
+        logger.error('Erro ao parsear servicos_oferecidos:', e);
         servicosIds = [];
       }
 
@@ -529,7 +529,7 @@ class AgenteController {
             : agendas_multi_unidade;
         }
       } catch (e) {
-        console.error('Erro ao parsear agendas_multi_unidade:', e);
+        logger.error('Erro ao parsear agendas_multi_unidade:', e);
       }
 
       // Usar agendas_multi_unidade se disponível, senão usar formato legado
@@ -541,7 +541,7 @@ class AgenteController {
             : horarios_funcionamento;
         }
       } catch (e) {
-        console.error('❌ Erro ao parsear horarios_funcionamento:', e);
+        logger.error('❌ Erro ao parsear horarios_funcionamento:', e);
         horariosData = [];
       }
 
@@ -572,7 +572,7 @@ class AgenteController {
       } else {
         // ADMIN/MASTER: Verificar se o agente pertence a uma unidade do usuário logado
         if (agenteExistente.unidade_usuario_id !== usuarioId) {
-          console.log(`❌ [AgenteController.update] ADMIN tentando editar agente de outro usuário`);
+          logger.log(`❌ [AgenteController.update] ADMIN tentando editar agente de outro usuário`);
           return res.status(403).json({
             success: false,
             error: 'Acesso negado',
@@ -635,16 +635,17 @@ class AgenteController {
       // Hash da senha apenas se fornecida
       let senhaHash = agenteExistente.senha_hash; // Manter existente por padrão
       if (senha && senha.trim() !== '') {
-        console.log(`🔐 [AgenteController] Senha fornecida para atualização - Comprimento: ${senha.length}`);
+        logger.log(`🔐 [AgenteController] Senha fornecida para atualização - Comprimento: ${senha.length}`);
         
         // ✅ CORREÇÃO 1.9: Validação robusta de senha
         const { validatePasswordStrength } = require('../middleware/passwordValidation');
+const logger = require('./../utils/logger');
         const validation = validatePasswordStrength(senha);
         
-        console.log(`🔐 [AgenteController] Validação de senha - Válida: ${validation.valid}, Erros: ${validation.errors.length}`);
+        logger.log(`🔐 [AgenteController] Validação de senha - Válida: ${validation.valid}, Erros: ${validation.errors.length}`);
         
         if (!validation.valid) {
-          console.warn(`🚨 [AgenteController] Senha rejeitada:`, validation.errors);
+          logger.warn(`🚨 [AgenteController] Senha rejeitada:`, validation.errors);
           return res.status(400).json({
             success: false,
             error: 'Senha não atende aos requisitos de segurança',
@@ -653,7 +654,7 @@ class AgenteController {
           });
         }
         
-        console.log(`✅ [AgenteController] Senha validada com sucesso - Força: ${validation.strength}`);
+        logger.log(`✅ [AgenteController] Senha validada com sucesso - Força: ${validation.strength}`);
         senhaHash = await bcrypt.hash(senha, 12);
       }
 
@@ -705,9 +706,9 @@ class AgenteController {
         message: 'Agente atualizado com sucesso'
       });
     } catch (error) {
-      console.error('❌ [AgenteController] Erro ao atualizar agente:', error);
-      console.error('❌ Stack trace:', error.stack);
-      console.error('❌ Mensagem:', error.message);
+      logger.error('❌ [AgenteController] Erro ao atualizar agente:', error);
+      logger.error('❌ Stack trace:', error.stack);
+      logger.error('❌ Mensagem:', error.message);
 
       // Tratar erros específicos
       if (error.message.includes('duplicate key') && error.message.includes('email')) {
@@ -797,7 +798,7 @@ class AgenteController {
         message: 'Agente e usuário excluídos com sucesso'
       });
     } catch (error) {
-      console.error('[AgenteController] Erro ao excluir agente:', error);
+      logger.error('[AgenteController] Erro ao excluir agente:', error);
 
       res.status(500).json({
         success: false,

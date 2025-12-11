@@ -54,6 +54,7 @@ const handleFormDataWithUpload = (req, res, next) => {
 
   // Usar busboy para processar FormData manualmente
   const busboy = require('busboy');
+const logger = require('./../utils/logger');
 
   try {
     const bb = busboy({ headers: req.headers });
@@ -62,7 +63,7 @@ const handleFormDataWithUpload = (req, res, next) => {
     let fileProcessing = false;
 
     bb.on('field', (fieldname, val) => {
-      console.log(`📝 [FormData] Campo recebido: ${fieldname} = ${fieldname === 'senha' ? '[SENHA - ' + val.length + ' chars]' : val}`);
+      logger.log(`📝 [FormData] Campo recebido: ${fieldname} = ${fieldname === 'senha' ? '[SENHA - ' + val.length + ' chars]' : val}`);
       fields[fieldname] = val;
     });
 
@@ -107,7 +108,7 @@ const handleFormDataWithUpload = (req, res, next) => {
         });
 
         writeStream.on('error', (err) => {
-          console.error('Erro ao salvar arquivo:', err);
+          logger.error('Erro ao salvar arquivo:', err);
           fileProcessing = false;
           return res.status(500).json({
             success: false,
@@ -133,8 +134,8 @@ const handleFormDataWithUpload = (req, res, next) => {
         req.body = fields;
         req.files = files;
 
-        console.log('✅ [FormData] Processamento concluído');
-        console.log('✅ [FormData] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
+        logger.log('✅ [FormData] Processamento concluído');
+        logger.log('✅ [FormData] req.body.senha:', req.body.senha ? `[PRESENTE - ${req.body.senha.length} chars]` : '[AUSENTE]');
 
         next();
       };
@@ -143,7 +144,7 @@ const handleFormDataWithUpload = (req, res, next) => {
     });
 
     bb.on('error', (err) => {
-      console.error('Erro no busboy:', err);
+      logger.error('Erro no busboy:', err);
       return res.status(400).json({
         success: false,
         error: 'Erro no processamento',
@@ -154,7 +155,7 @@ const handleFormDataWithUpload = (req, res, next) => {
     req.pipe(bb);
 
   } catch (err) {
-    console.error('Erro no middleware FormData:', err);
+    logger.error('Erro no middleware FormData:', err);
     return res.status(500).json({
       success: false,
       error: 'Erro interno',
@@ -176,10 +177,10 @@ const deleteOldAvatar = (avatarUrl) => {
     
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      console.log(`Avatar antigo deletado: ${filename}`);
+      logger.log(`Avatar antigo deletado: ${filename}`);
     }
   } catch (error) {
-    console.error('Erro ao deletar avatar antigo:', error);
+    logger.error('Erro ao deletar avatar antigo:', error);
   }
 };
 

@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const config = require('../config/config');
+const logger = require('./../utils/logger');
 
 // Rate limiting específico para login - mais restritivo
 const loginRateLimit = rateLimit({
@@ -21,7 +22,7 @@ const loginRateLimit = rateLimit({
   },
   // Headers personalizados
   onLimitReached: (req, res) => {
-    console.warn(`🚨 Rate limit atingido para login - IP: ${req.ip}, User-Agent: ${req.get('User-Agent')}`);
+    logger.warn(`🚨 Rate limit atingido para login - IP: ${req.ip}, User-Agent: ${req.get('User-Agent')}`);
   }
 });
 
@@ -47,7 +48,7 @@ const userSpecificRateLimit = (req, res, next) => {
     const oldestAttempt = Math.min(...recentAttempts.map(a => a.timestamp));
     const retryAfter = Math.ceil((oldestAttempt + windowMs - now) / 1000);
 
-    console.warn(`🚨 Rate limit por usuário atingido - Email: ${email}, IP: ${req.ip}`);
+    logger.warn(`🚨 Rate limit por usuário atingido - Email: ${email}, IP: ${req.ip}`);
 
     return res.status(429).json({
       error: 'Muitas tentativas de login para este email',

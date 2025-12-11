@@ -71,7 +71,7 @@ class MasterUserService {
 
       return usersWithCalculatedData;
     } catch (error) {
-      console.error('Erro ao buscar usuários:', error);
+      logger.error('Erro ao buscar usuários:', error);
       throw new Error('Erro interno do servidor ao buscar usuários');
     }
   }
@@ -94,6 +94,7 @@ class MasterUserService {
 
       // ✅ CORREÇÃO 1.9: Validação robusta de senha
       const { validatePasswordStrength } = require('../middleware/passwordValidation');
+const logger = require('./../utils/logger');
       const validation = validatePasswordStrength(senha);
       
       if (!validation.valid) {
@@ -153,7 +154,7 @@ class MasterUserService {
 
     } catch (error) {
       await trx.rollback();
-      console.error('Erro ao criar usuário:', error);
+      logger.error('Erro ao criar usuário:', error);
       throw error;
     }
   }
@@ -211,7 +212,7 @@ class MasterUserService {
       return updatedUser;
 
     } catch (error) {
-      console.error('Erro ao atualizar usuário:', error);
+      logger.error('Erro ao atualizar usuário:', error);
       throw error;
     }
   }
@@ -244,7 +245,7 @@ class MasterUserService {
       return updatedUser;
 
     } catch (error) {
-      console.error('Erro ao atualizar status do usuário:', error);
+      logger.error('Erro ao atualizar status do usuário:', error);
       throw error;
     }
   }
@@ -296,7 +297,7 @@ class MasterUserService {
       };
 
     } catch (error) {
-      console.error('Erro ao buscar usuário por ID:', error);
+      logger.error('Erro ao buscar usuário por ID:', error);
       throw error;
     }
   }
@@ -321,7 +322,7 @@ class MasterUserService {
       return units;
 
     } catch (error) {
-      console.error('Erro ao buscar unidades do usuário:', error);
+      logger.error('Erro ao buscar unidades do usuário:', error);
       throw error;
     }
   }
@@ -358,7 +359,7 @@ class MasterUserService {
       return updatedUnit;
 
     } catch (error) {
-      console.error('Erro ao atualizar status da unidade:', error);
+      logger.error('Erro ao atualizar status da unidade:', error);
       throw error;
     }
   }

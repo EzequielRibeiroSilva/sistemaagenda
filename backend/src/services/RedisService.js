@@ -8,6 +8,8 @@
  * - TTL automático baseado na expiração do token
  */
 
+const logger = require('../utils/logger');
+
 class RedisService {
   constructor() {
     this.redis = null;
@@ -40,7 +42,7 @@ class RedisService {
             connectTimeout: 5000,
             reconnectStrategy: (retries) => {
               if (retries > 10) {
-                console.error('🔴 Redis: Máximo de tentativas de reconexão atingido');
+                logger.error('🔴 Redis: Máximo de tentativas de reconexão atingido');
                 return new Error('Redis reconnect failed');
               }
               return Math.min(retries * 100, 3000);
@@ -52,7 +54,7 @@ class RedisService {
 
         // Event handlers
         this.redis.on('error', (err) => {
-          console.error('🔴 Redis Error:', err.message);
+          logger.error('🔴 Redis Error:', err.message);
           this.isRedisAvailable = false;
           
           // Em produção, falha crítica
@@ -62,17 +64,17 @@ class RedisService {
         });
 
         this.redis.on('connect', () => {
-          console.log('✅ Redis: Conectado com sucesso');
+          logger.log('✅ Redis: Conectado com sucesso');
           this.isRedisAvailable = true;
         });
 
         this.redis.on('ready', () => {
-          console.log('✅ Redis: Pronto para uso');
+          logger.log('✅ Redis: Pronto para uso');
           this.isRedisAvailable = true;
         });
 
         this.redis.on('reconnecting', () => {
-          console.log('🔄 Redis: Tentando reconectar...');
+          logger.log('🔄 Redis: Tentando reconectar...');
           this.isRedisAvailable = false;
         });
 
@@ -85,19 +87,19 @@ class RedisService {
           throw new Error('🔴 PRODUÇÃO: Redis não configurado');
         }
         
-        console.warn('⚠️  Redis não configurado - usando memória (APENAS DESENVOLVIMENTO)');
-        console.warn('⚠️  Configure REDIS_HOST no .env para produção');
+        logger.warn('⚠️  Redis não configurado - usando memória (APENAS DESENVOLVIMENTO)');
+        logger.warn('⚠️  Configure REDIS_HOST no .env para produção');
         this.isRedisAvailable = false;
       }
       
     } catch (error) {
       if (process.env.NODE_ENV === 'production') {
-        console.error('🔴 ERRO CRÍTICO: Redis não disponível em produção');
+        logger.error('🔴 ERRO CRÍTICO: Redis não disponível em produção');
         throw error;
       }
       
-      console.warn('⚠️  Redis não disponível - usando fallback de memória');
-      console.warn('⚠️  Instale Redis: brew install redis (Mac) ou apt-get install redis (Linux)');
+      logger.warn('⚠️  Redis não disponível - usando fallback de memória');
+      logger.warn('⚠️  Instale Redis: brew install redis (Mac) ou apt-get install redis (Linux)');
       this.isRedisAvailable = false;
     }
   }
@@ -114,14 +116,14 @@ class RedisService {
       if (this.isRedisAvailable && this.redis) {
         // Redis: Set com TTL automático
         await this.redis.setEx(key, expiresIn, 'revoked');
-        console.log(`✅ Token adicionado à blacklist (Redis) - TTL: ${expiresIn}s`);
+        logger.log(`✅ Token adicionado à blacklist (Redis) - TTL: ${expiresIn}s`);
       } else {
         // Fallback: Memória com limpeza manual
         this.memoryStore.set(key, {
           value: 'revoked',
           expiresAt: Date.now() + (expiresIn * 1000)
         });
-        console.log(`⚠️  Token adicionado à blacklist (Memória) - TTL: ${expiresIn}s`);
+        logger.log(`⚠️  Token adicionado à blacklist (Memória) - TTL: ${expiresIn}s`);
         
         // Agendar limpeza
         setTimeout(() => {
@@ -131,7 +133,7 @@ class RedisService {
       
       return true;
     } catch (error) {
-      console.error('❌ Erro ao adicionar token à blacklist:', error.message);
+      logger.error('❌ Erro ao adicionar token à blacklist:', error.message);
       throw error;
     }
   }
@@ -163,7 +165,7 @@ class RedisService {
         return true;
       }
     } catch (error) {
-      console.error('❌ Erro ao verificar blacklist:', error.message);
+      logger.error('❌ Erro ao verificar blacklist:', error.message);
       // Em caso de erro, assumir que NÃO está na blacklist (fail-open)
       // Em produção, considere fail-closed (retornar true)
       return false;
@@ -186,7 +188,7 @@ class RedisService {
       
       return true;
     } catch (error) {
-      console.error('❌ Erro ao remover token da blacklist:', error.message);
+      logger.error('❌ Erro ao remover token da blacklist:', error.message);
       throw error;
     }
   }
@@ -201,16 +203,16 @@ class RedisService {
         if (keys.length > 0) {
           await this.redis.del(keys);
         }
-        console.log(`✅ Blacklist limpa: ${keys.length} tokens removidos`);
+        logger.log(`✅ Blacklist limpa: ${keys.length} tokens removidos`);
       } else {
         const count = this.memoryStore.size;
         this.memoryStore.clear();
-        console.log(`✅ Blacklist limpa: ${count} tokens removidos`);
+        logger.log(`✅ Blacklist limpa: ${count} tokens removidos`);
       }
       
       return true;
     } catch (error) {
-      console.error('❌ Erro ao limpar blacklist:', error.message);
+      logger.error('❌ Erro ao limpar blacklist:', error.message);
       throw error;
     }
   }
@@ -236,7 +238,7 @@ class RedisService {
         };
       }
     } catch (error) {
-      console.error('❌ Erro ao obter estatísticas:', error.message);
+      logger.error('❌ Erro ao obter estatísticas:', error.message);
       return {
         storage: 'unknown',
         tokensCount: 0,
@@ -252,10 +254,10 @@ class RedisService {
     try {
       if (this.redis && this.isRedisAvailable) {
         await this.redis.quit();
-        console.log('✅ Redis: Conexão fechada');
+        logger.log('✅ Redis: Conexão fechada');
       }
     } catch (error) {
-      console.error('❌ Erro ao fechar conexão Redis:', error.message);
+      logger.error('❌ Erro ao fechar conexão Redis:', error.message);
     }
   }
 

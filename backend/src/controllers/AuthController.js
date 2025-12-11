@@ -1,4 +1,5 @@
 const AuthService = require('../services/AuthService');
+const logger = require('../utils/logger');
 
 class AuthController {
   constructor() {
@@ -31,7 +32,7 @@ class AuthController {
       const result = await this.authService.login(email, senha);
 
       // Log de sucesso
-      console.log(`✅ Login realizado com sucesso: ${email} (${result.user.tipo_usuario})`);
+      logger.log(`✅ Login realizado com sucesso: ${email} (${result.user.tipo_usuario})`);
 
       // Determinar redirecionamento baseado no role
       let redirectTo = '/DashboardPage'; // Padrão
@@ -72,7 +73,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro no login:', error.message);
+      logger.error('❌ Erro no login:', error.message);
 
       // Não expor detalhes do erro por segurança
       const isCredentialError = error.message.includes('Credenciais inválidas') || 
@@ -109,7 +110,7 @@ class AuthController {
       // Fazer logout
       this.authService.logout(token);
 
-      console.log(`✅ Logout realizado com sucesso: ${req.user?.email || 'usuário'}`);
+      logger.log(`✅ Logout realizado com sucesso: ${req.user?.email || 'usuário'}`);
 
       return res.json({
         success: true,
@@ -117,7 +118,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro no logout:', error.message);
+      logger.error('❌ Erro no logout:', error.message);
 
       return res.status(500).json({
         error: 'Erro interno do servidor',
@@ -137,7 +138,7 @@ class AuthController {
         message: 'Token válido'
       });
     } catch (error) {
-      console.error('Erro na validação do token:', error);
+      logger.error('Erro na validação do token:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -163,7 +164,7 @@ class AuthController {
       // Refresh token
       const result = await this.authService.refreshToken(token);
 
-      console.log(`✅ Token renovado com sucesso: ${result.user.email}`);
+      logger.log(`✅ Token renovado com sucesso: ${result.user.email}`);
 
       return res.json({
         success: true,
@@ -172,7 +173,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro ao renovar token:', error.message);
+      logger.error('❌ Erro ao renovar token:', error.message);
 
       return res.status(401).json({
         error: 'Token inválido',
@@ -193,7 +194,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro ao buscar dados do usuário:', error.message);
+      logger.error('❌ Erro ao buscar dados do usuário:', error.message);
 
       return res.status(500).json({
         error: 'Erro interno do servidor',
@@ -246,7 +247,7 @@ class AuthController {
       // Atualizar senha
       await usuarioModel.update(userId, { senha: novaSenha });
 
-      console.log(`✅ Senha alterada com sucesso: ${req.user.email}`);
+      logger.log(`✅ Senha alterada com sucesso: ${req.user.email}`);
 
       return res.json({
         success: true,
@@ -254,7 +255,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro ao alterar senha:', error.message);
+      logger.error('❌ Erro ao alterar senha:', error.message);
 
       return res.status(500).json({
         error: 'Erro interno do servidor',
@@ -271,7 +272,7 @@ class AuthController {
       if (token) {
         // Adicionar token à blacklist
         await this.authService.blacklistToken(token);
-        console.log('🚪 Token adicionado à blacklist no logout');
+        logger.log('🚪 Token adicionado à blacklist no logout');
       }
 
       res.status(200).json({
@@ -280,7 +281,7 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('❌ Erro no logout:', error);
+      logger.error('❌ Erro no logout:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

@@ -71,6 +71,7 @@ class AuthMiddleware {
           // Para admins e masters: buscar logo_url das configurações da unidade
           const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
           const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
           const configuracaoModel = new ConfiguracaoSistema(db);
           const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
 
@@ -93,7 +94,7 @@ class AuthMiddleware {
         next();
 
       } catch (error) {
-        console.error('❌ Erro na autenticação:', error.message);
+        logger.error('❌ Erro na autenticação:', error.message);
 
         return res.status(401).json({
           error: 'Token inválido',
@@ -126,7 +127,7 @@ class AuthMiddleware {
         next();
 
       } catch (error) {
-        console.error('❌ Erro na verificação de permissão:', error.message);
+        logger.error('❌ Erro na verificação de permissão:', error.message);
 
         return res.status(500).json({
           error: 'Erro interno do servidor',
@@ -157,7 +158,7 @@ class AuthMiddleware {
         next();
 
       } catch (error) {
-        console.error('❌ Erro na verificação de tipo de usuário:', error.message);
+        logger.error('❌ Erro na verificação de tipo de usuário:', error.message);
 
         return res.status(500).json({
           error: 'Erro interno do servidor',
@@ -196,7 +197,7 @@ class AuthMiddleware {
         next();
 
       } catch (error) {
-        console.error('❌ Erro na verificação de propriedade:', error.message);
+        logger.error('❌ Erro na verificação de propriedade:', error.message);
 
         return res.status(500).json({
           error: 'Erro interno do servidor',

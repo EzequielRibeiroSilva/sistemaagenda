@@ -67,20 +67,29 @@ router.use(rbacMiddleware.requireRole('ADMIN', 'MASTER'));
  * Criar novo serviço
  * Acesso: ADMIN, MASTER
  */
-router.post('/', (req, res) => servicoController.store(req, res));
+router.post('/', 
+  rbacMiddleware.auditLog('CRIAR_SERVICO'),
+  (req, res) => servicoController.store(req, res)
+);
 
 /**
  * PUT /api/servicos/:id
  * Atualizar serviço
  * Acesso: ADMIN, MASTER
  */
-router.put('/:id', (req, res) => servicoController.update(req, res));
+router.put('/:id', 
+  rbacMiddleware.auditLog('ATUALIZAR_SERVICO'),
+  (req, res) => servicoController.update(req, res)
+);
 
 /**
  * DELETE /api/servicos/:id
  * Deletar serviço
  * Acesso: ADMIN, MASTER
  */
-router.delete('/:id', (req, res) => servicoController.destroy(req, res));
+router.delete('/:id', 
+  rbacMiddleware.auditLog('DELETAR_SERVICO'),
+  (req, res) => servicoController.destroy(req, res)
+);
 
 module.exports = router;

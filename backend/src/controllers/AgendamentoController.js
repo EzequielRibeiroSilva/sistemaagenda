@@ -2,6 +2,7 @@ const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
 const WhatsAppService = require('../services/WhatsAppService'); // ✅ CORREÇÃO: Usar WhatsAppService
 const AuthService = require('../services/AuthService');
+const logger = require('../utils/logger');
 
 class AgendamentoController extends BaseController {
   constructor() {
@@ -211,7 +212,7 @@ class AgendamentoController extends BaseController {
         for (const agendamento of data) {
           // 🔍 DEBUG: Log para verificar observações do agendamento #94
           if (agendamento.id === 94) {
-            console.log('🔍 [AgendamentoController] Agendamento #94 - observacoes do DB:', agendamento.observacoes);
+            logger.log('🔍 [AgendamentoController] Agendamento #94 - observacoes do DB:', agendamento.observacoes);
           }
 
           const servicos = await this.model.db('agendamento_servicos')
@@ -432,7 +433,7 @@ class AgendamentoController extends BaseController {
 
       return res.json({ data });
     } catch (error) {
-      console.error('❌ [AgendamentoController.index] Erro ao buscar agendamentos:', error);
+      logger.error('❌ [AgendamentoController.index] Erro ao buscar agendamentos:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -515,7 +516,7 @@ class AgendamentoController extends BaseController {
         data: data
       });
     } catch (error) {
-      console.error('❌ [AgendamentoController.show] Erro no show:', error);
+      logger.error('❌ [AgendamentoController.show] Erro no show:', error);
       return res.status(500).json({
         error: 'Interno do servidor',
         message: error.message
@@ -758,23 +759,23 @@ class AgendamentoController extends BaseController {
             created_at: new Date()
           });
 
-          console.log(`✅ [AgendamentoController] Pontos gerados: ${pontosGerados} pts para cliente #${clienteIdFinal} (R$ ${valorTotal.toFixed(2)})`);
+          logger.log(`✅ [AgendamentoController] Pontos gerados: ${pontosGerados} pts para cliente #${clienteIdFinal} (R$ ${valorTotal.toFixed(2)})`);
         }
       } catch (pontosError) {
-        console.error('❌ [AgendamentoController] Erro ao gerar pontos:', pontosError);
+        logger.error('❌ [AgendamentoController] Erro ao gerar pontos:', pontosError);
         // Não falhar a criação do agendamento por erro nos pontos
       }
 
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
       try {
-        console.log(`📱 [AgendamentoController] Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
+        logger.log(`📱 [AgendamentoController] Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
 
         // Buscar dados completos para a mensagem
         const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
         
         if (!dadosCompletos) {
-          console.error('❌ [AgendamentoController] Dados completos não encontrados para agendamento #' + agendamento.id);
+          logger.error('❌ [AgendamentoController] Dados completos não encontrados para agendamento #' + agendamento.id);
           return res.status(201).json({
             success: true,
             data: agendamentoCompleto,
@@ -782,7 +783,7 @@ class AgendamentoController extends BaseController {
           });
         }
         
-        console.log('✅ [AgendamentoController] Dados completos obtidos:', {
+        logger.log('✅ [AgendamentoController] Dados completos obtidos:', {
           cliente_telefone: dadosCompletos.cliente_telefone,
           agente_telefone: dadosCompletos.agente_telefone,
           unidade_telefone: dadosCompletos.unidade_telefone,
@@ -790,32 +791,32 @@ class AgendamentoController extends BaseController {
         });
 
         if (dadosCompletos && dadosCompletos.cliente_telefone) {
-          console.log(`📤 [AgendamentoController] Enviando confirmação para cliente: ${dadosCompletos.cliente.nome}`);
+          logger.log(`📤 [AgendamentoController] Enviando confirmação para cliente: ${dadosCompletos.cliente.nome}`);
           
           // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
           const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
-          console.log('📊 [AgendamentoController] Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
+          logger.log('📊 [AgendamentoController] Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
 
           if (resultadoWhatsApp.cliente && resultadoWhatsApp.cliente.success) {
-            console.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o cliente');
+            logger.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o cliente');
           } else {
-            console.error('❌ [AgendamentoController] Falha ao enviar mensagem para o cliente:', resultadoWhatsApp.cliente?.error);
+            logger.error('❌ [AgendamentoController] Falha ao enviar mensagem para o cliente:', resultadoWhatsApp.cliente?.error);
           }
 
           if (resultadoWhatsApp.agente && resultadoWhatsApp.agente.success) {
-            console.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o agente');
+            logger.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o agente');
           } else if (resultadoWhatsApp.agente) {
-            console.error('❌ [AgendamentoController] Falha ao enviar mensagem para o agente:', resultadoWhatsApp.agente?.error);
+            logger.error('❌ [AgendamentoController] Falha ao enviar mensagem para o agente:', resultadoWhatsApp.agente?.error);
           }
         } else {
-          console.error('❌ [AgendamentoController] Telefone do cliente não encontrado nos dados completos');
+          logger.error('❌ [AgendamentoController] Telefone do cliente não encontrado nos dados completos');
         }
         
         
       } catch (whatsappError) {
-        console.error('❌ [AgendamentoController] Erro no envio de WhatsApp:', whatsappError);
-        console.error('❌ [AgendamentoController] Stack:', whatsappError.stack);
+        logger.error('❌ [AgendamentoController] Erro no envio de WhatsApp:', whatsappError);
+        logger.error('❌ [AgendamentoController] Stack:', whatsappError.stack);
         // Não falhar a criação do agendamento por erro no WhatsApp
       }
 
@@ -825,7 +826,7 @@ class AgendamentoController extends BaseController {
         message: 'Agendamento criado com sucesso'
       });
     } catch (error) {
-      console.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
+      logger.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -960,9 +961,9 @@ class AgendamentoController extends BaseController {
         if (dadosCompletos) {
           try {
             await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-            console.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
+            logger.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
           } catch (whatsappError) {
-            console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
+            logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
           }
         }
       } else {
@@ -981,9 +982,9 @@ class AgendamentoController extends BaseController {
             // Enviar notificações de reagendamento para cliente e agente
             try {
               await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
-              console.log(`✅ [AgendamentoController] Notificações de REAGENDAMENTO enviadas para agendamento #${id}`);
+              logger.log(`✅ [AgendamentoController] Notificações de REAGENDAMENTO enviadas para agendamento #${id}`);
             } catch (whatsappError) {
-              console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de reagendamento:`, whatsappError);
+              logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de reagendamento:`, whatsappError);
               // Não falhar a requisição se o WhatsApp falhar
             }
           }
@@ -996,7 +997,7 @@ class AgendamentoController extends BaseController {
         message: 'Agendamento atualizado com sucesso' 
       });
     } catch (error) {
-      console.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
+      logger.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
       return res.status(500).json({ 
         success: false,
         error: 'Erro interno do servidor',
@@ -1075,9 +1076,9 @@ class AgendamentoController extends BaseController {
           podeUsar: !isPrimeiro // Pode usar se NÃO for o primeiro
         };
         
-        console.log(`💎 [AgendamentoController] Pontos calculados para cliente #${agendamento.cliente_id}:`, pontosInfo);
+        logger.log(`💎 [AgendamentoController] Pontos calculados para cliente #${agendamento.cliente_id}:`, pontosInfo);
       } catch (pontosError) {
-        console.error('❌ [AgendamentoController] Erro ao calcular pontos:', pontosError);
+        logger.error('❌ [AgendamentoController] Erro ao calcular pontos:', pontosError);
         // Continuar sem informação de pontos
       }
 
@@ -1125,7 +1126,7 @@ class AgendamentoController extends BaseController {
       };
 
     } catch (error) {
-      console.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
+      logger.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
     }
   }
@@ -1189,9 +1190,9 @@ class AgendamentoController extends BaseController {
         // Enviar notificações de cancelamento para cliente e agente
         try {
           await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-          console.log(`✅ [AgendamentoController] Notificações de cancelamento enviadas para agendamento #${id}`);
+          logger.log(`✅ [AgendamentoController] Notificações de cancelamento enviadas para agendamento #${id}`);
         } catch (whatsappError) {
-          console.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
+          logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
           // Não falhar a requisição se o WhatsApp falhar
         }
       }
@@ -1206,7 +1207,7 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
-      console.error('❌ [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
+      logger.error('❌ [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1291,7 +1292,7 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
-      console.error('❌ [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
+      logger.error('❌ [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1344,7 +1345,7 @@ class AgendamentoController extends BaseController {
         .where('id', id)
         .del();
 
-      console.log(`✅ [AgendamentoController] Agendamento #${id} deletado por ADMIN (usuario_id: ${usuarioId})`);
+      logger.log(`✅ [AgendamentoController] Agendamento #${id} deletado por ADMIN (usuario_id: ${usuarioId})`);
 
       return res.json({
         success: true,
@@ -1355,7 +1356,7 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
-      console.error('❌ [AgendamentoController.destroy] Erro ao deletar agendamento:', error);
+      logger.error('❌ [AgendamentoController.destroy] Erro ao deletar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

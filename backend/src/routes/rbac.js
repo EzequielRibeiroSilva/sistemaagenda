@@ -102,7 +102,7 @@ router.get('/unidades',
         user_role: req.user.role
       });
     } catch (error) {
-      console.error('Erro ao listar unidades:', error);
+      logger.error('Erro ao listar unidades:', error);
       res.status(500).json({
         error: 'Erro interno do servidor'
       });
@@ -123,7 +123,7 @@ router.post('/unidades',
       
       await unidadeController.store(req, res);
     } catch (error) {
-      console.error('Erro ao criar unidade:', error);
+      logger.error('Erro ao criar unidade:', error);
       res.status(500).json({
         error: 'Erro interno do servidor'
       });
@@ -182,7 +182,7 @@ router.get('/clientes',
         user_role: req.user.role
       });
     } catch (error) {
-      console.error('Erro ao listar clientes:', error);
+      logger.error('Erro ao listar clientes:', error);
       res.status(500).json({
         error: 'Erro interno do servidor'
       });
@@ -202,6 +202,7 @@ router.get('/servicos',
   async (req, res) => {
     try {
       const { ServicoController } = require('../controllers/ServicoController');
+const logger = require('./../utils/logger');
       const servicoController = new ServicoController();
       
       let servicos;
@@ -228,7 +229,7 @@ router.get('/servicos',
         user_role: req.user.role
       });
     } catch (error) {
-      console.error('Erro ao listar serviços:', error);
+      logger.error('Erro ao listar serviços:', error);
       res.status(500).json({
         error: 'Erro interno do servidor'
       });

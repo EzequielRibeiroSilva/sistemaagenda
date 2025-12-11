@@ -31,7 +31,7 @@ class SettingsService {
       const resultado = this.formatarParaFrontend(configuracao);
       return resultado;
     } catch (error) {
-      console.error('[SettingsService] Erro ao buscar configurações:', error);
+      logger.error('[SettingsService] Erro ao buscar configurações:', error);
       throw new Error('Erro ao carregar configurações do sistema');
     }
   }
@@ -53,7 +53,7 @@ class SettingsService {
       // Retorna formatado para o frontend
       return this.formatarParaFrontend(configuracaoAtualizada);
     } catch (error) {
-      console.error('[SettingsService] Erro ao atualizar configurações:', error);
+      logger.error('[SettingsService] Erro ao atualizar configurações:', error);
       throw error;
     }
   }
@@ -73,7 +73,7 @@ class SettingsService {
       // Retorna formatado para o frontend
       return this.formatarParaFrontend(configuracaoAtualizada);
     } catch (error) {
-      console.error('[SettingsService] Erro ao atualizar logo:', error);
+      logger.error('[SettingsService] Erro ao atualizar logo:', error);
       throw error;
     }
   }
@@ -94,6 +94,7 @@ class SettingsService {
 
       // ✅ CORREÇÃO 1.9: Validação robusta de senha
       const { validatePasswordStrength } = require('../middleware/passwordValidation');
+const logger = require('./../utils/logger');
       const validation = validatePasswordStrength(novaSenha);
       
       if (!validation.valid) {
@@ -131,7 +132,7 @@ class SettingsService {
 
       return { success: true, message: 'Senha atualizada com sucesso' };
     } catch (error) {
-      console.error('[SettingsService] Erro ao atualizar senha:', error);
+      logger.error('[SettingsService] Erro ao atualizar senha:', error);
       throw error;
     }
   }

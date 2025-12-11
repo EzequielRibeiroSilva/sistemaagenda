@@ -3,6 +3,7 @@ const Usuario = require('../models/Usuario');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const ExcecaoCalendario = require('../models/ExcecaoCalendario');
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 class UnidadeService {
   constructor() {
@@ -53,7 +54,7 @@ class UnidadeService {
         limit
       };
     } catch (error) {
-      console.error('Erro ao verificar limite de unidades:', error);
+      logger.error('Erro ao verificar limite de unidades:', error);
       throw error;
     }
   }
@@ -178,7 +179,7 @@ class UnidadeService {
 
         // Criar exceções de calendário (se fornecidas)
         if (unidadeData.excecoes_calendario && Array.isArray(unidadeData.excecoes_calendario) && unidadeData.excecoes_calendario.length > 0) {
-          console.log(`📅 [UnidadeService] Criando ${unidadeData.excecoes_calendario.length} exceções de calendário`);
+          logger.log(`📅 [UnidadeService] Criando ${unidadeData.excecoes_calendario.length} exceções de calendário`);
           
           for (const excecao of unidadeData.excecoes_calendario) {
             await ExcecaoCalendario.create({
@@ -208,7 +209,7 @@ class UnidadeService {
         throw transactionError;
       }
     } catch (error) {
-      console.error('Erro ao criar unidade:', error);
+      logger.error('Erro ao criar unidade:', error);
       throw error;
     }
   }
@@ -253,7 +254,7 @@ class UnidadeService {
         }
       };
     } catch (error) {
-      console.error('Erro ao listar unidades:', error);
+      logger.error('Erro ao listar unidades:', error);
       throw error;
     }
   }
@@ -278,7 +279,7 @@ class UnidadeService {
       const unidadeCompleta = await this.getUnidadeWithHorarios(unidadeId);
       return unidadeCompleta;
     } catch (error) {
-      console.error('Erro ao buscar unidade por ID:', error);
+      logger.error('Erro ao buscar unidade por ID:', error);
       throw error;
     }
   }
@@ -336,7 +337,7 @@ class UnidadeService {
 
       return canAccess;
     } catch (error) {
-      console.error('Erro ao verificar acesso à unidade:', error);
+      logger.error('Erro ao verificar acesso à unidade:', error);
       return false;
     }
   }
@@ -455,7 +456,7 @@ class UnidadeService {
             if (servicosValidos.length !== updateData.servicos_ids.length) {
               const idsValidos = servicosValidos.map(s => s.id);
               const idsInvalidos = updateData.servicos_ids.filter(id => !idsValidos.includes(id));
-              console.error('❌ [UnidadeService] Serviços inválidos ou não pertencentes ao usuário:', idsInvalidos);
+              logger.error('❌ [UnidadeService] Serviços inválidos ou não pertencentes ao usuário:', idsInvalidos);
               throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
             }
 
@@ -471,23 +472,23 @@ class UnidadeService {
         }
 
         // Atualizar exceções de calendário (se fornecidas)
-        console.log(`🔍 [UnidadeService] updateData.excecoes_calendario:`, updateData.excecoes_calendario);
+        logger.log(`🔍 [UnidadeService] updateData.excecoes_calendario:`, updateData.excecoes_calendario);
         
         if (updateData.excecoes_calendario !== undefined) {
-          console.log(`📅 [UnidadeService] Atualizando exceções de calendário para unidade ${unidadeId}`);
-          console.log(`📅 [UnidadeService] Tipo: ${typeof updateData.excecoes_calendario}, É Array: ${Array.isArray(updateData.excecoes_calendario)}`);
-          console.log(`📅 [UnidadeService] Quantidade: ${updateData.excecoes_calendario?.length || 0}`);
+          logger.log(`📅 [UnidadeService] Atualizando exceções de calendário para unidade ${unidadeId}`);
+          logger.log(`📅 [UnidadeService] Tipo: ${typeof updateData.excecoes_calendario}, É Array: ${Array.isArray(updateData.excecoes_calendario)}`);
+          logger.log(`📅 [UnidadeService] Quantidade: ${updateData.excecoes_calendario?.length || 0}`);
           
           // Remover exceções existentes
           const deletedCount = await ExcecaoCalendario.deleteByUnidade(unidadeId, trx);
-          console.log(`🗑️ [UnidadeService] ${deletedCount} exceções antigas removidas`);
+          logger.log(`🗑️ [UnidadeService] ${deletedCount} exceções antigas removidas`);
           
           // Criar novas exceções
           if (Array.isArray(updateData.excecoes_calendario) && updateData.excecoes_calendario.length > 0) {
-            console.log(`📅 [UnidadeService] Criando ${updateData.excecoes_calendario.length} novas exceções...`);
+            logger.log(`📅 [UnidadeService] Criando ${updateData.excecoes_calendario.length} novas exceções...`);
             
             for (const excecao of updateData.excecoes_calendario) {
-              console.log(`   ➕ Criando exceção:`, excecao);
+              logger.log(`   ➕ Criando exceção:`, excecao);
               
               const excecaoCriada = await ExcecaoCalendario.create({
                 unidade_id: unidadeId,
@@ -497,15 +498,15 @@ class UnidadeService {
                 descricao: excecao.descricao
               }, trx);
               
-              console.log(`   ✅ Exceção criada com ID: ${excecaoCriada.id}`);
+              logger.log(`   ✅ Exceção criada com ID: ${excecaoCriada.id}`);
             }
             
-            console.log(`✅ [UnidadeService] Todas as ${updateData.excecoes_calendario.length} exceções foram criadas`);
+            logger.log(`✅ [UnidadeService] Todas as ${updateData.excecoes_calendario.length} exceções foram criadas`);
           } else {
-            console.log(`⚠️ [UnidadeService] Nenhuma exceção para criar (array vazio ou inválido)`);
+            logger.log(`⚠️ [UnidadeService] Nenhuma exceção para criar (array vazio ou inválido)`);
           }
         } else {
-          console.log(`⚠️ [UnidadeService] excecoes_calendario não foi fornecido no updateData`);
+          logger.log(`⚠️ [UnidadeService] excecoes_calendario não foi fornecido no updateData`);
         }
 
         await trx.commit();
@@ -515,11 +516,11 @@ class UnidadeService {
         return unidadeCompleta;
       } catch (transactionError) {
         await trx.rollback();
-        console.error('❌ [UnidadeService] Rollback executado. Erro:', transactionError.message);
+        logger.error('❌ [UnidadeService] Rollback executado. Erro:', transactionError.message);
         throw transactionError;
       }
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao atualizar unidade:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao atualizar unidade:', error.message);
       throw error;
     }
   }
@@ -548,7 +549,7 @@ class UnidadeService {
 
       return resultado;
     } catch (error) {
-      console.error('Erro ao alterar status da unidade:', error);
+      logger.error('Erro ao alterar status da unidade:', error);
       throw error;
     }
   }
@@ -585,7 +586,7 @@ class UnidadeService {
       try {
         excecoes = await ExcecaoCalendario.findByUnidade(unidadeId);
       } catch (excecaoError) {
-        console.warn('⚠️ [UnidadeService] Erro ao buscar exceções de calendário, continuando sem elas:', excecaoError.message);
+        logger.warn('⚠️ [UnidadeService] Erro ao buscar exceções de calendário, continuando sem elas:', excecaoError.message);
         // Não quebra o fluxo, apenas retorna array vazio
       }
 
@@ -597,7 +598,7 @@ class UnidadeService {
         excecoes_calendario: excecoes
       };
     } catch (error) {
-      console.error('Erro ao buscar unidade com horários:', error);
+      logger.error('Erro ao buscar unidade com horários:', error);
       throw error;
     }
   }
@@ -665,10 +666,10 @@ class UnidadeService {
         unidade_id: unidadeId
       });
 
-      console.log(`✅ [UnidadeService] Exceção de calendário criada: ID ${excecao.id}, Unidade ${unidadeId}`);
+      logger.log(`✅ [UnidadeService] Exceção de calendário criada: ID ${excecao.id}, Unidade ${unidadeId}`);
       return excecao;
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao criar exceção de calendário:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao criar exceção de calendário:', error.message);
       throw error;
     }
   }
@@ -704,10 +705,10 @@ class UnidadeService {
       // Atualizar exceção
       const excecaoAtualizada = await ExcecaoCalendario.update(excecaoId, excecaoData);
 
-      console.log(`✅ [UnidadeService] Exceção de calendário atualizada: ID ${excecaoId}`);
+      logger.log(`✅ [UnidadeService] Exceção de calendário atualizada: ID ${excecaoId}`);
       return excecaoAtualizada;
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao atualizar exceção de calendário:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao atualizar exceção de calendário:', error.message);
       throw error;
     }
   }
@@ -742,10 +743,10 @@ class UnidadeService {
       // Deletar exceção
       const deleted = await ExcecaoCalendario.delete(excecaoId);
 
-      console.log(`✅ [UnidadeService] Exceção de calendário deletada: ID ${excecaoId}`);
+      logger.log(`✅ [UnidadeService] Exceção de calendário deletada: ID ${excecaoId}`);
       return deleted;
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao deletar exceção de calendário:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao deletar exceção de calendário:', error.message);
       throw error;
     }
   }
@@ -774,7 +775,7 @@ class UnidadeService {
 
       return excecoes;
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao listar exceções de calendário:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao listar exceções de calendário:', error.message);
       throw error;
     }
   }
@@ -790,7 +791,7 @@ class UnidadeService {
       const excecao = await ExcecaoCalendario.isDataBloqueada(unidadeId, data);
       return excecao;
     } catch (error) {
-      console.error('❌ [UnidadeService] Erro ao verificar se data está bloqueada:', error.message);
+      logger.error('❌ [UnidadeService] Erro ao verificar se data está bloqueada:', error.message);
       throw error;
     }
   }

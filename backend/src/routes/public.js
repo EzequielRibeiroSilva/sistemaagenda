@@ -128,7 +128,7 @@ router.get('/usuario/:usuarioId/unidades', async (req, res) => {
     const Unidade = require('../models/Unidade');
     const unidadeModel = new Unidade();
 
-    console.log(`[Public] Buscando unidades para usuario_id ${usuarioId}`);
+    logger.log(`[Public] Buscando unidades para usuario_id ${usuarioId}`);
 
     // Buscar todas as unidades ativas do usuário
     const unidades = await unidadeModel.db('unidades')
@@ -137,7 +137,7 @@ router.get('/usuario/:usuarioId/unidades', async (req, res) => {
       .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
       .orderBy('nome', 'asc');
 
-    console.log(`[Public] Encontradas ${unidades.length} unidades ativas`);
+    logger.log(`[Public] Encontradas ${unidades.length} unidades ativas`);
 
     res.json({
       success: true,
@@ -145,7 +145,7 @@ router.get('/usuario/:usuarioId/unidades', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Public] Erro ao buscar unidades do usuário:', error);
+    logger.error('[Public] Erro ao buscar unidades do usuário:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -184,7 +184,7 @@ router.get('/salao/slug/:slug', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Public] Erro ao buscar por slug:', error);
+    logger.error('[Public] Erro ao buscar por slug:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -200,6 +200,7 @@ router.get('/salao/slug/:slug', async (req, res) => {
 router.get('/whatsapp/test', async (req, res) => {
   try {
     const WhatsAppService = require('../services/WhatsAppService');
+const logger = require('./../utils/logger');
     const whatsAppService = new WhatsAppService();
 
     const result = await whatsAppService.testConnection();
@@ -212,7 +213,7 @@ router.get('/whatsapp/test', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Public] Erro ao testar WhatsApp:', error);
+    logger.error('[Public] Erro ao testar WhatsApp:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',

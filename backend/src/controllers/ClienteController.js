@@ -1,4 +1,5 @@
 const Cliente = require('../models/Cliente');
+const logger = require('./../utils/logger');
 
 /**
  * Controller para gerenciamento de clientes
@@ -33,7 +34,7 @@ class ClienteController {
 
       // Validar se usuário tem unidade_id (Multi-Tenant)
       if (!unidadeId) {
-        console.error('❌ [ClienteController.search] Usuário sem unidade_id');
+        logger.error('❌ [ClienteController.search] Usuário sem unidade_id');
         return res.status(400).json({
           success: false,
           message: 'Usuário deve estar associado a uma unidade para acessar clientes'
@@ -60,7 +61,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.search] Erro na busca de clientes:', error);
+      logger.error('❌ [ClienteController.search] Erro na busca de clientes:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -163,7 +164,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.list] Erro ao listar clientes:', error);
+      logger.error('❌ [ClienteController.list] Erro ao listar clientes:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao listar clientes',
@@ -222,7 +223,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.create] Erro ao criar cliente:', error);
+      logger.error('❌ [ClienteController.create] Erro ao criar cliente:', error);
 
       // Tratar erros específicos
       if (error.message.includes('telefone nesta unidade')) {
@@ -290,7 +291,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.show] Erro ao buscar cliente:', error);
+      logger.error('❌ [ClienteController.show] Erro ao buscar cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao buscar cliente',
@@ -340,7 +341,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.update] Erro ao atualizar cliente:', error);
+      logger.error('❌ [ClienteController.update] Erro ao atualizar cliente:', error);
 
       // Tratar erros específicos
       if (error.message.includes('não encontrado') || error.message.includes('telefone nesta unidade')) {
@@ -395,7 +396,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.delete] Erro ao excluir cliente:', error);
+      logger.error('❌ [ClienteController.delete] Erro ao excluir cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor ao excluir cliente',
@@ -440,7 +441,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.createForAgendamento] Erro ao criar cliente para agendamento:', error);
+      logger.error('❌ [ClienteController.createForAgendamento] Erro ao criar cliente para agendamento:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -487,7 +488,7 @@ class ClienteController {
       });
 
     } catch (error) {
-      console.error('❌ [ClienteController.getPontos] Erro ao buscar pontos do cliente:', error);
+      logger.error('❌ [ClienteController.getPontos] Erro ao buscar pontos do cliente:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',

@@ -1,5 +1,6 @@
 const BaseController = require('./BaseController');
 const ServicoExtra = require('../models/ServicoExtra');
+const logger = require('./../utils/logger');
 
 class ServicoExtraController extends BaseController {
   constructor() {
@@ -20,10 +21,10 @@ class ServicoExtraController extends BaseController {
         });
       }
 
-      console.log('🔍 [ServicoExtraController.list] Iniciando busca de serviços extras');
-      console.log('   Role:', userRole);
-      console.log('   UsuarioId (req.user.id):', usuarioId);
-      console.log('   AgenteId (req.user.agente_id):', userAgenteId);
+      logger.log('🔍 [ServicoExtraController.list] Iniciando busca de serviços extras');
+      logger.log('   Role:', userRole);
+      logger.log('   UsuarioId (req.user.id):', usuarioId);
+      logger.log('   AgenteId (req.user.agente_id):', userAgenteId);
 
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar serviços extras da unidade onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
@@ -33,7 +34,7 @@ class ServicoExtraController extends BaseController {
           .first();
 
         if (agente && agente.unidade_id) {
-          console.log(`✅ [ServicoExtraController.list] AGENTE detectado. Buscando serviços extras da unidade_id=${agente.unidade_id}`);
+          logger.log(`✅ [ServicoExtraController.list] AGENTE detectado. Buscando serviços extras da unidade_id=${agente.unidade_id}`);
 
           // Buscar o usuario_id da unidade para filtrar os serviços extras
           const unidade = await this.model.db('unidades')
@@ -43,9 +44,9 @@ class ServicoExtraController extends BaseController {
 
           if (unidade && unidade.usuario_id) {
             usuarioId = unidade.usuario_id;
-            console.log(`✅ [ServicoExtraController.list] Usando usuario_id=${usuarioId} da unidade para buscar serviços extras`);
+            logger.log(`✅ [ServicoExtraController.list] Usando usuario_id=${usuarioId} da unidade para buscar serviços extras`);
           } else {
-            console.log(`❌ [ServicoExtraController.list] ERRO: Unidade não encontrada ou sem usuario_id!`);
+            logger.log(`❌ [ServicoExtraController.list] ERRO: Unidade não encontrada ou sem usuario_id!`);
             return res.status(200).json({
               success: true,
               data: [],
@@ -72,7 +73,7 @@ class ServicoExtraController extends BaseController {
         duracao_minutos: servicoExtra.duracao_minutos || 0
       }));
 
-      console.log(`✅ [ServicoExtraController.list] ${servicosExtrasLeves.length} serviços extras encontrados para usuario_id ${usuarioId}`);
+      logger.log(`✅ [ServicoExtraController.list] ${servicosExtrasLeves.length} serviços extras encontrados para usuario_id ${usuarioId}`);
 
       return res.status(200).json({
         success: true,
@@ -80,7 +81,7 @@ class ServicoExtraController extends BaseController {
         message: 'Lista de serviços extras carregada com sucesso'
       });
     } catch (error) {
-      console.error('[ServicoExtraController.list] Erro ao carregar lista de serviços extras:', error);
+      logger.error('[ServicoExtraController.list] Erro ao carregar lista de serviços extras:', error);
 
       return res.status(500).json({
         success: false,
@@ -116,7 +117,7 @@ class ServicoExtraController extends BaseController {
         data 
       });
     } catch (error) {
-      console.error('❌ [ServicoExtraController.index] Erro ao buscar serviços extras:', error);
+      logger.error('❌ [ServicoExtraController.index] Erro ao buscar serviços extras:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -161,7 +162,7 @@ class ServicoExtraController extends BaseController {
         message: 'Serviço extra encontrado com sucesso'
       });
     } catch (error) {
-      console.error('[ServicoExtraController] Erro ao buscar serviço extra:', error);
+      logger.error('[ServicoExtraController] Erro ao buscar serviço extra:', error);
       
       return res.status(500).json({
         success: false,
@@ -231,7 +232,7 @@ class ServicoExtraController extends BaseController {
         message: 'Serviço extra criado com sucesso' 
       });
     } catch (error) {
-      console.error('Erro ao criar serviço extra:', error);
+      logger.error('Erro ao criar serviço extra:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -291,7 +292,7 @@ class ServicoExtraController extends BaseController {
       if (quantidade_maxima !== undefined) servicoExtraData.quantidade_maxima = quantidade_maxima;
       if (status !== undefined) servicoExtraData.status = status;
 
-      console.log(`🔗 [ServicoExtraController] Atualizando serviço extra ${id} com ${servicos_conectados?.length || 0} serviços conectados`);
+      logger.log(`🔗 [ServicoExtraController] Atualizando serviço extra ${id} com ${servicos_conectados?.length || 0} serviços conectados`);
 
       await this.model.updateWithTransaction(
         id,
@@ -308,7 +309,7 @@ class ServicoExtraController extends BaseController {
         message: 'Serviço extra atualizado com sucesso' 
       });
     } catch (error) {
-      console.error('Erro ao atualizar serviço extra:', error);
+      logger.error('Erro ao atualizar serviço extra:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -356,7 +357,7 @@ class ServicoExtraController extends BaseController {
         });
       }
     } catch (error) {
-      console.error('❌ [ServicoExtraController.destroy] Erro ao deletar serviço extra:', error);
+      logger.error('❌ [ServicoExtraController.destroy] Erro ao deletar serviço extra:', error);
 
       if (error.code === '23503') {
         return res.status(400).json({ 
