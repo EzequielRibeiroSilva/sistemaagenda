@@ -15,6 +15,7 @@ const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
 const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 class PublicBookingController {
   constructor() {
@@ -37,7 +38,7 @@ class PublicBookingController {
     try {
       const { unidadeId } = req.params;
       
-      console.log(`[PublicBooking] Carregando dados públicos para unidade ${unidadeId}`);
+      logger.log(`[PublicBooking] Carregando dados públicos para unidade ${unidadeId}`);
 
       // Buscar unidade
       const unidade = await this.unidadeModel.findById(unidadeId);
@@ -52,7 +53,7 @@ class PublicBookingController {
       // Buscar configurações da unidade
       let configuracoes = await this.configuracaoModel.findByUnidade(unidadeId);
       
-      console.log(`[PublicBooking] Configurações da unidade ${unidadeId}:`, {
+      logger.log(`[PublicBooking] Configurações da unidade ${unidadeId}:`, {
         logo_url: configuracoes?.logo_url,
         nome_negocio: configuracoes?.nome_negocio,
         usuario_id: unidade.usuario_id
@@ -60,7 +61,7 @@ class PublicBookingController {
       
       // ✅ CORREÇÃO: Se a unidade não tem configurações OU não tem logo, buscar logo de qualquer unidade do usuário
       if ((!configuracoes || !configuracoes.logo_url) && unidade.usuario_id) {
-        console.log(`[PublicBooking] Unidade ${unidadeId} sem logo, buscando logo global do usuário ${unidade.usuario_id}`);
+        logger.log(`[PublicBooking] Unidade ${unidadeId} sem logo, buscando logo global do usuário ${unidade.usuario_id}`);
         
         // Se não tem configurações, criar objeto padrão
         if (!configuracoes) {
@@ -81,25 +82,25 @@ class PublicBookingController {
           .where('status', 'Ativo')
           .orderBy('id', 'asc');
         
-        console.log(`[PublicBooking] Encontradas ${unidadesDoUsuario.length} unidades do usuário ${unidade.usuario_id}`);
+        logger.log(`[PublicBooking] Encontradas ${unidadesDoUsuario.length} unidades do usuário ${unidade.usuario_id}`);
         
         // Buscar a primeira unidade que tenha logo configurado
         for (const unidadeAux of unidadesDoUsuario) {
           if (unidadeAux.id !== unidadeId) {
             const configAux = await this.configuracaoModel.findByUnidade(unidadeAux.id);
             if (configAux && configAux.logo_url) {
-              console.log(`[PublicBooking] ✅ Logo encontrado na unidade ${unidadeAux.id}: ${configAux.logo_url}`);
+              logger.log(`[PublicBooking] ✅ Logo encontrado na unidade ${unidadeAux.id}: ${configAux.logo_url}`);
               configuracoes.logo_url = configAux.logo_url;
               configuracoes.nome_negocio = configAux.nome_negocio || configuracoes.nome_negocio;
               break;
             } else {
-              console.log(`[PublicBooking] ❌ Unidade ${unidadeAux.id} também não tem logo`);
+              logger.log(`[PublicBooking] ❌ Unidade ${unidadeAux.id} também não tem logo`);
             }
           }
         }
         
         if (!configuracoes.logo_url) {
-          console.log(`[PublicBooking] ⚠️ Nenhuma unidade do usuário ${unidade.usuario_id} tem logo configurado`);
+          logger.log(`[PublicBooking] ⚠️ Nenhuma unidade do usuário ${unidade.usuario_id} tem logo configurado`);
         }
       }
 
@@ -146,14 +147,14 @@ class PublicBookingController {
         .whereIn('servico_id', servicos.map(s => s.id))
         .select('servico_id', 'servico_extra_id');
 
-      console.log(`[PublicBooking] Associações serviço-extra: ${associacoesServicoExtra.length} registros`);
+      logger.log(`[PublicBooking] Associações serviço-extra: ${associacoesServicoExtra.length} registros`);
 
       // Buscar associações agente-serviço para filtrar no frontend
       const associacoesAgenteServico = await db('agente_servicos')
         .whereIn('agente_id', agentes.map(a => a.id))
         .select('agente_id', 'servico_id');
 
-      console.log(`[PublicBooking] Associações agente-serviço: ${associacoesAgenteServico.length} registros`);
+      logger.log(`[PublicBooking] Associações agente-serviço: ${associacoesAgenteServico.length} registros`);
 
       // Buscar horários de funcionamento dos agentes da unidade
       // ✅ CORREÇÃO CRÍTICA: Filtrar por unidade_id para agentes multi-unidade
@@ -162,7 +163,7 @@ class PublicBookingController {
         .where('unidade_id', unidadeId) // ✅ Filtrar apenas horários desta unidade
         .select('agente_id', 'dia_semana', 'ativo', 'periodos');
 
-      console.log(`[PublicBooking] Horários dos agentes para unidade ${unidadeId}: ${horariosAgentes.length} registros`);
+      logger.log(`[PublicBooking] Horários dos agentes para unidade ${unidadeId}: ${horariosAgentes.length} registros`);
 
       // ✅ CORREÇÃO CRÍTICA: Buscar horários de funcionamento DA UNIDADE
       // Necessário para determinar quais dias a unidade está aberta (interseção com horários do agente)
@@ -171,7 +172,7 @@ class PublicBookingController {
         .select('dia_semana', 'is_aberto', 'horarios_json')
         .orderBy('dia_semana');
 
-      console.log(`[PublicBooking] Horários da unidade ${unidadeId}: ${horariosUnidade.length} registros`);
+      logger.log(`[PublicBooking] Horários da unidade ${unidadeId}: ${horariosUnidade.length} registros`);
 
       const salonData = {
         unidade: {
@@ -200,7 +201,7 @@ class PublicBookingController {
         horarios_unidade: horariosUnidade // ✅ CRÍTICO: Incluir horários da unidade para interseção no frontend
       };
 
-      console.log(`[PublicBooking] Dados carregados: ${agentes.length} agentes, ${servicos.length} serviços`);
+      logger.log(`[PublicBooking] Dados carregados: ${agentes.length} agentes, ${servicos.length} serviços`);
 
       res.json({
         success: true,
@@ -209,7 +210,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao carregar dados do salão:', error);
+      logger.error('[PublicBooking] Erro ao carregar dados do salão:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -227,7 +228,7 @@ class PublicBookingController {
       const { unidadeId } = req.params;
       const { servico_ids } = req.query;
 
-      console.log(`[PublicBooking] Buscando extras para unidade ${unidadeId} e serviços:`, servico_ids);
+      logger.log(`[PublicBooking] Buscando extras para unidade ${unidadeId} e serviços:`, servico_ids);
 
       if (!unidadeId) {
         return res.status(400).json({
@@ -246,7 +247,7 @@ class PublicBookingController {
       // Converter string para array se necessário
       const servicoIds = Array.isArray(servico_ids) ? servico_ids : servico_ids.split(',').map(id => parseInt(id));
 
-      console.log(`[PublicBooking] Serviços processados:`, servicoIds);
+      logger.log(`[PublicBooking] Serviços processados:`, servicoIds);
 
       // Buscar extras associados aos serviços selecionados (UNIÃO)
       const extrasAssociados = await db('servicos_extras')
@@ -268,7 +269,7 @@ class PublicBookingController {
         category: extra.categoria
       }));
 
-      console.log(`[PublicBooking] Encontrados ${extras.length} extras para os serviços selecionados`);
+      logger.log(`[PublicBooking] Encontrados ${extras.length} extras para os serviços selecionados`);
 
       res.json({
         success: true,
@@ -277,7 +278,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao buscar extras por serviços:', error);
+      logger.error('[PublicBooking] Erro ao buscar extras por serviços:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -309,7 +310,7 @@ class PublicBookingController {
       // Duração em minutos (padrão: 60 min)
       const duracaoMinutos = parseInt(duration) || 60;
 
-      console.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min, exclude: ${exclude_agendamento_id || 'nenhum'})`);
+      logger.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min, exclude: ${exclude_agendamento_id || 'nenhum'})`);
 
       // Verificar se agente existe e está ativo
       const agente = await this.agenteModel.findById(agenteId);
@@ -323,7 +324,7 @@ class PublicBookingController {
 
       // ✅ CORREÇÃO: Usar unidade_id do parâmetro se fornecido, senão usar do agente
       const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
-      console.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
+      logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
       // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
       const configuracoes = await db('configuracoes')
@@ -332,7 +333,7 @@ class PublicBookingController {
         .first();
 
       const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
-      console.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
+      logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
 
       // Calcular dia da semana (0 = Domingo, 6 = Sábado)
       const dataObj = new Date(data + 'T00:00:00');
@@ -367,15 +368,15 @@ class PublicBookingController {
         .where('unidade_id', unidadeIdParaUsar) // ✅ SEMPRE filtrar por unidade
         .first();
 
-      console.log(`[PublicBooking] Horário do agente para dia ${diaSemana} na unidade ${unidadeIdParaUsar}:`, horarioAgente);
+      logger.log(`[PublicBooking] Horário do agente para dia ${diaSemana} na unidade ${unidadeIdParaUsar}:`, horarioAgente);
 
       // REGRA DE INTERSEÇÃO: Calcular (Horários do Agente) ∩ (Horários do Local)
       let horariosParaUsar = [];
 
       if (horarioAgente && horarioAgente.ativo && horarioAgente.periodos && horarioAgente.periodos.length > 0) {
         // Agente tem horário personalizado e trabalha neste dia
-        console.log(`[PublicBooking] Horários do agente:`, horarioAgente.periodos);
-        console.log(`[PublicBooking] Horários da unidade:`, horarioUnidade.horarios_json);
+        logger.log(`[PublicBooking] Horários do agente:`, horarioAgente.periodos);
+        logger.log(`[PublicBooking] Horários da unidade:`, horarioUnidade.horarios_json);
 
         // ✅ NORMALIZAR FORMATO: Converter start/end para inicio/fim
         const periodosAgenteNormalizados = horarioAgente.periodos.map(p => ({
@@ -385,17 +386,17 @@ class PublicBookingController {
 
         // APLICAR INTERSEÇÃO: Para cada período do agente, calcular sobreposição com períodos da unidade
         horariosParaUsar = this.calcularIntersecaoHorarios(periodosAgenteNormalizados, horarioUnidade.horarios_json);
-        console.log(`[PublicBooking] Horários após interseção:`, horariosParaUsar);
+        logger.log(`[PublicBooking] Horários após interseção:`, horariosParaUsar);
 
       } else if (horarioAgente && (!horarioAgente.ativo || !horarioAgente.periodos || horarioAgente.periodos.length === 0)) {
         // Agente tem folga neste dia (ativo = false ou sem períodos)
         horariosParaUsar = [];
-        console.log(`[PublicBooking] Agente tem folga neste dia`);
+        logger.log(`[PublicBooking] Agente tem folga neste dia`);
 
       } else {
         // Agente não tem horário personalizado, usar da unidade (caso raro)
         horariosParaUsar = horarioUnidade.horarios_json;
-        console.log(`[PublicBooking] Usando horário padrão da unidade (agente sem horário personalizado):`, horariosParaUsar);
+        logger.log(`[PublicBooking] Usando horário padrão da unidade (agente sem horário personalizado):`, horariosParaUsar);
       }
 
       // Verificar se há horários para trabalhar (se vazio = folga)
@@ -424,12 +425,12 @@ class PublicBookingController {
       // Se exclude_agendamento_id foi fornecido, excluir da verificação
       if (exclude_agendamento_id) {
         queryAgendamentos = queryAgendamentos.whereNot('id', parseInt(exclude_agendamento_id));
-        console.log(`[PublicBooking] ✅ Excluindo agendamento #${exclude_agendamento_id} da verificação de conflitos`);
+        logger.log(`[PublicBooking] ✅ Excluindo agendamento #${exclude_agendamento_id} da verificação de conflitos`);
       }
 
       const agendamentosExistentes = await queryAgendamentos.select('hora_inicio', 'hora_fim');
 
-      console.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
+      logger.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
 
       // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
       // ✅ CRÍTICO: Passar data para bloquear horários passados
@@ -459,7 +460,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao buscar disponibilidade:', error);
+      logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -489,7 +490,7 @@ class PublicBookingController {
     // ✅ NOVO: Calcular horário mínimo baseado em tempo_limite_agendar_horas
     const horarioMinimoPermitido = new Date(agora.getTime() + (tempoLimiteHoras * 60 * 60 * 1000));
     
-    console.log(`[PublicBooking] Gerando slots para ${dataAgendamento}:`, {
+    logger.log(`[PublicBooking] Gerando slots para ${dataAgendamento}:`, {
       isDiaAtual,
       horarioAtual: this.minutesToTime(horarioAtualEmMinutos),
       tempoLimiteHoras,
@@ -512,7 +513,7 @@ class PublicBookingController {
 
         // ✅ CRÍTICO: Bloquear horários que já passaram (apenas para o dia atual)
         if (isDiaAtual && minuto < horarioAtualEmMinutos) {
-          console.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (já passou)`);
+          logger.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (já passou)`);
           continue; // Horário já passou, não disponibilizar
         }
 
@@ -522,7 +523,7 @@ class PublicBookingController {
           const dataHoraSlot = new Date(`${dataAgendamento}T${horarioSlot}`);
           
           if (dataHoraSlot < horarioMinimoPermitido) {
-            console.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (fora do prazo mínimo de ${tempoLimiteHoras}h)`);
+            logger.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (fora do prazo mínimo de ${tempoLimiteHoras}h)`);
             continue; // Fora do prazo mínimo, não disponibilizar
           }
         }
@@ -550,7 +551,7 @@ class PublicBookingController {
     // Ordenar slots por horário
     slots.sort((a, b) => this.timeToMinutes(a.hora_inicio) - this.timeToMinutes(b.hora_inicio));
 
-    console.log(`[PublicBooking] ✅ ${slots.length} slots disponíveis gerados (horários passados bloqueados)`);
+    logger.log(`[PublicBooking] ✅ ${slots.length} slots disponíveis gerados (horários passados bloqueados)`);
     return slots;
   }
 
@@ -635,7 +636,7 @@ class PublicBookingController {
         expires_in: '30 minutos'
       });
     } catch (error) {
-      console.error('[PublicBooking] Erro ao criar sessão:', error);
+      logger.error('[PublicBooking] Erro ao criar sessão:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -663,7 +664,7 @@ class PublicBookingController {
 
       // ✅ CORREÇÃO 1.2: Validar sessão (OPCIONAL - pode ser desabilitado em desenvolvimento)
       if (process.env.NODE_ENV === 'production' && !session_token) {
-        console.warn(`🚨 [SECURITY] Tentativa de busca de cliente sem sessão - IP: ${req.ip}, Telefone: ${telefone}`);
+        logger.warn(`🚨 [SECURITY] Tentativa de busca de cliente sem sessão - IP: ${req.ip}, Telefone: ${telefone}`);
         return res.status(401).json({
           success: false,
           error: 'Sessão inválida',
@@ -675,7 +676,7 @@ class PublicBookingController {
       if (session_token) {
         const sessionData = await this.publicSessionService.validateAndIncrementSession(session_token, 'client_search');
         if (!sessionData) {
-          console.warn(`🚨 [SECURITY] Sessão inválida ou expirada - IP: ${req.ip}, Token: ${session_token.substring(0, 8)}...`);
+          logger.warn(`🚨 [SECURITY] Sessão inválida ou expirada - IP: ${req.ip}, Token: ${session_token.substring(0, 8)}...`);
           return res.status(401).json({
             success: false,
             error: 'Sessão inválida',
@@ -685,7 +686,7 @@ class PublicBookingController {
 
         // Verificar se a sessão pertence à mesma unidade
         if (sessionData.unidade_id !== parseInt(unidade_id)) {
-          console.warn(`🚨 [SECURITY] Tentativa de busca em unidade diferente - IP: ${req.ip}, Sessão Unidade: ${sessionData.unidade_id}, Busca Unidade: ${unidade_id}`);
+          logger.warn(`🚨 [SECURITY] Tentativa de busca em unidade diferente - IP: ${req.ip}, Sessão Unidade: ${sessionData.unidade_id}, Busca Unidade: ${unidade_id}`);
           return res.status(403).json({
             success: false,
             error: 'Acesso negado',
@@ -695,7 +696,7 @@ class PublicBookingController {
 
         // Limite de buscas por sessão (proteção adicional)
         if (sessionData.client_searches > 10) {
-          console.warn(`🚨 [SECURITY] Limite de buscas excedido - IP: ${req.ip}, Buscas: ${sessionData.client_searches}`);
+          logger.warn(`🚨 [SECURITY] Limite de buscas excedido - IP: ${req.ip}, Buscas: ${sessionData.client_searches}`);
           return res.status(429).json({
             success: false,
             error: 'Limite excedido',
@@ -720,7 +721,7 @@ class PublicBookingController {
 
       if (cliente) {
         // ✅ CORREÇÃO 1.2: Log de acesso a dados pessoais (LGPD)
-        console.log(`🔍 [LGPD] Busca de cliente - IP: ${req.ip}, Cliente ID: ${cliente.id}, Unidade: ${unidade_id}`);
+        logger.log(`🔍 [LGPD] Busca de cliente - IP: ${req.ip}, Cliente ID: ${cliente.id}, Unidade: ${unidade_id}`);
         
         return res.json({
           success: true,
@@ -738,7 +739,7 @@ class PublicBookingController {
         });
       }
     } catch (error) {
-      console.error('[PublicBooking] Erro ao buscar cliente:', error);
+      logger.error('[PublicBooking] Erro ao buscar cliente:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -767,7 +768,7 @@ class PublicBookingController {
         observacoes
       } = req.body;
 
-      console.log('[PublicBooking] Criando agendamento:', req.body);
+      logger.log('[PublicBooking] Criando agendamento:', req.body);
 
       // Validações básicas
       if (!unidade_id || !agente_id || !servico_ids || !data_agendamento || !hora_inicio || !cliente_nome || !cliente_telefone) {
@@ -808,7 +809,7 @@ class PublicBookingController {
         .first();
 
       if (!configuracoes) {
-        console.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${unidade_id}`);
+        logger.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${unidade_id}`);
         await trx.rollback();
         return res.status(500).json({
           success: false,
@@ -817,7 +818,7 @@ class PublicBookingController {
         });
       }
 
-      console.log(`[PublicBooking] 🔍 Configurações de agendamento:`, {
+      logger.log(`[PublicBooking] 🔍 Configurações de agendamento:`, {
         tempo_limite_agendar_horas: configuracoes.tempo_limite_agendar_horas
       });
 
@@ -827,7 +828,7 @@ class PublicBookingController {
       const diferencaMs = dataHoraAgendamento - agora;
       const diferencaHoras = diferencaMs / (1000 * 60 * 60);
 
-      console.log(`[PublicBooking] 🔍 Cálculo de prazo para agendamento:`, {
+      logger.log(`[PublicBooking] 🔍 Cálculo de prazo para agendamento:`, {
         agora: agora.toISOString(),
         agendamento: dataHoraAgendamento.toISOString(),
         diferencaHoras: diferencaHoras.toFixed(2),
@@ -837,7 +838,7 @@ class PublicBookingController {
       // ✅ VALIDAÇÃO 3: Bloquear agendamentos no passado
       if (diferencaHoras < 0) {
         const horasPassadas = Math.abs(diferencaHoras).toFixed(1);
-        console.log(`[PublicBooking] ❌ Tentativa de agendar para horário que já passou há ${horasPassadas} hora(s)`);
+        logger.log(`[PublicBooking] ❌ Tentativa de agendar para horário que já passou há ${horasPassadas} hora(s)`);
         await trx.rollback();
         return res.status(400).json({
           success: false,
@@ -851,7 +852,7 @@ class PublicBookingController {
         const horasRestantes = diferencaHoras.toFixed(1);
         const horasNecessarias = configuracoes.tempo_limite_agendar_horas;
         
-        console.log(`[PublicBooking] ❌ Agendamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
+        logger.log(`[PublicBooking] ❌ Agendamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
         
         await trx.rollback();
         return res.status(403).json({
@@ -861,7 +862,7 @@ class PublicBookingController {
         });
       }
 
-      console.log(`✅ [PublicBooking] Agendamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_agendar_horas}h`);
+      logger.log(`✅ [PublicBooking] Agendamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_agendar_horas}h`);
 
       // Buscar serviços e calcular duração total e valor total
       const servicos = await trx('servicos')
@@ -996,7 +997,7 @@ class PublicBookingController {
 
       await trx.commit();
 
-      console.log(`[PublicBooking] Agendamento criado com sucesso: ID ${agendamento.id}`);
+      logger.log(`[PublicBooking] Agendamento criado com sucesso: ID ${agendamento.id}`);
 
       // Preparar dados para notificação WhatsApp
       const nomeCompleto = `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim();
@@ -1027,14 +1028,14 @@ class PublicBookingController {
       // Enviar notificação WhatsApp e criar lembretes programados (não bloquear a resposta)
       setImmediate(async () => {
         try {
-          console.log(`📧 [PublicBooking] Iniciando envio de confirmação para agendamento #${agendamento.id}`);
+          logger.log(`📧 [PublicBooking] Iniciando envio de confirmação para agendamento #${agendamento.id}`);
           
           // 1. Enviar confirmação imediata
           await this.whatsAppService.sendAppointmentConfirmation(agendamentoCompleto);
-          console.log(`✅ [PublicBooking] Confirmação enviada para agendamento #${agendamento.id}`);
+          logger.log(`✅ [PublicBooking] Confirmação enviada para agendamento #${agendamento.id}`);
           
           // 2. Criar lembretes programados (24h e 1h antes)
-          console.log(`📅 [PublicBooking] Criando lembretes programados para agendamento #${agendamento.id}`);
+          logger.log(`📅 [PublicBooking] Criando lembretes programados para agendamento #${agendamento.id}`);
           const result = await this.scheduledReminderService.criarLembretesProgramados({
             agendamento_id: agendamento.id,
             unidade_id: agendamento.unidade_id,
@@ -1042,10 +1043,10 @@ class PublicBookingController {
             hora_inicio: agendamento.hora_inicio,
             cliente_telefone: cliente.telefone
           });
-          console.log(`✅ [PublicBooking] Lembretes programados criados:`, result);
+          logger.log(`✅ [PublicBooking] Lembretes programados criados:`, result);
         } catch (whatsappError) {
-          console.error('❌ [PublicBooking] Erro ao enviar WhatsApp ou criar lembretes:', whatsappError);
-          console.error('❌ [PublicBooking] Stack:', whatsappError.stack);
+          logger.error('❌ [PublicBooking] Erro ao enviar WhatsApp ou criar lembretes:', whatsappError);
+          logger.error('❌ [PublicBooking] Stack:', whatsappError.stack);
           // Não falhar o agendamento por erro no WhatsApp
         }
       });
@@ -1062,7 +1063,7 @@ class PublicBookingController {
 
     } catch (error) {
       await trx.rollback();
-      console.error('[PublicBooking] Erro ao criar agendamento:', error);
+      logger.error('[PublicBooking] Erro ao criar agendamento:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1080,7 +1081,7 @@ class PublicBookingController {
     try {
       const { id } = req.params;
 
-      console.log(`[PublicBooking] Buscando preview do agendamento #${id}`);
+      logger.log(`[PublicBooking] Buscando preview do agendamento #${id}`);
 
       // Buscar apenas unidade_id do agendamento
       const agendamento = await this.agendamentoModel.db('agendamentos')
@@ -1104,7 +1105,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao buscar preview do agendamento:', error);
+      logger.error('[PublicBooking] Erro ao buscar preview do agendamento:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1122,7 +1123,7 @@ class PublicBookingController {
       const { id } = req.params;
       const { telefone } = req.query;
 
-      console.log(`[PublicBooking] Buscando agendamento #${id} com telefone ${telefone}`);
+      logger.log(`[PublicBooking] Buscando agendamento #${id} com telefone ${telefone}`);
 
       if (!telefone) {
         return res.status(400).json({
@@ -1188,7 +1189,7 @@ class PublicBookingController {
       );
       
       if (!telefoneValido) {
-        console.log(`[PublicBooking] ❌ Validação de telefone falhou:`, {
+        logger.log(`[PublicBooking] ❌ Validação de telefone falhou:`, {
           telefoneDigitado: telefoneNormalizado,
           telefoneEsperado: telefoneClienteNormalizado,
           formatoAceitos: {
@@ -1204,7 +1205,7 @@ class PublicBookingController {
         });
       }
       
-      console.log(`[PublicBooking] ✅ Telefone validado com sucesso para agendamento #${id}`);
+      logger.log(`[PublicBooking] ✅ Telefone validado com sucesso para agendamento #${id}`);
 
       // ✅ VALIDAÇÃO DE DATA: Bloquear acesso a agendamentos passados
       // Cliente não pode gerenciar agendamentos que já aconteceram
@@ -1214,7 +1215,7 @@ class PublicBookingController {
       
       if (dataAgendamento < hoje) {
         const diasPassados = Math.floor((hoje - dataAgendamento) / (1000 * 60 * 60 * 24));
-        console.log(`[PublicBooking] ❌ Agendamento #${id} já passou há ${diasPassados} dia(s)`);
+        logger.log(`[PublicBooking] ❌ Agendamento #${id} já passou há ${diasPassados} dia(s)`);
         return res.status(410).json({
           success: false,
           error: 'Agendamento expirado',
@@ -1281,7 +1282,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao buscar agendamento:', error);
+      logger.error('[PublicBooking] Erro ao buscar agendamento:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1299,7 +1300,7 @@ class PublicBookingController {
       const { id } = req.params;
       const { telefone, data_agendamento, hora_inicio } = req.body;
 
-      console.log(`[PublicBooking] Reagendando agendamento #${id}`);
+      logger.log(`[PublicBooking] Reagendando agendamento #${id}`);
 
       // Validações
       if (!telefone || !data_agendamento || !hora_inicio) {
@@ -1360,7 +1361,7 @@ class PublicBookingController {
       
       if (dataAgendamentoAtual < hoje) {
         const diasPassados = Math.floor((hoje - dataAgendamentoAtual) / (1000 * 60 * 60 * 24));
-        console.log(`[PublicBooking] ❌ Tentativa de reagendar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
+        logger.log(`[PublicBooking] ❌ Tentativa de reagendar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
         return res.status(410).json({
           success: false,
           error: 'Agendamento expirado',
@@ -1389,7 +1390,7 @@ class PublicBookingController {
       const dataObj = new Date(data_agendamento + 'T00:00:00');
       const diaSemana = dataObj.getDay(); // 0 = Domingo, 6 = Sábado
 
-      console.log(`[PublicBooking] Validando dia de funcionamento: ${data_agendamento} (dia_semana: ${diaSemana})`);
+      logger.log(`[PublicBooking] Validando dia de funcionamento: ${data_agendamento} (dia_semana: ${diaSemana})`);
 
       const horarioUnidade = await db('horarios_funcionamento_unidade')
         .where('unidade_id', agendamento.unidade_id)
@@ -1398,7 +1399,7 @@ class PublicBookingController {
         .first();
 
       if (!horarioUnidade || !horarioUnidade.horarios_json || horarioUnidade.horarios_json.length === 0) {
-        console.log(`[PublicBooking] ❌ Local fechado no dia ${diaSemana} (${data_agendamento})`);
+        logger.log(`[PublicBooking] ❌ Local fechado no dia ${diaSemana} (${data_agendamento})`);
         return res.status(400).json({
           success: false,
           error: 'Local fechado',
@@ -1406,7 +1407,7 @@ class PublicBookingController {
         });
       }
 
-      console.log(`[PublicBooking] ✅ Local aberto no dia ${diaSemana}:`, horarioUnidade.horarios_json);
+      logger.log(`[PublicBooking] ✅ Local aberto no dia ${diaSemana}:`, horarioUnidade.horarios_json);
 
       // Buscar serviços para calcular duração total
       const servicos = await this.agendamentoModel.db('agendamento_servicos')
@@ -1432,7 +1433,7 @@ class PublicBookingController {
           updated_at: this.agendamentoModel.db.fn.now()
         });
 
-      console.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
+      logger.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
 
       // Enviar notificação de reagendamento (assíncrono)
       setImmediate(async () => {
@@ -1442,7 +1443,7 @@ class PublicBookingController {
           
           if (dadosCompletos) {
             await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
-            console.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
+            logger.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
             
             // Atualizar lembretes programados com nova data/hora
             await this.scheduledReminderService.atualizarLembretesProgramados({
@@ -1452,10 +1453,10 @@ class PublicBookingController {
               hora_inicio,
               cliente_telefone: dadosCompletos.cliente_telefone
             });
-            console.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
+            logger.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
           }
         } catch (err) {
-          console.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
+          logger.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
         }
       });
 
@@ -1471,7 +1472,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao reagendar agendamento:', error);
+      logger.error('[PublicBooking] Erro ao reagendar agendamento:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1489,7 +1490,7 @@ class PublicBookingController {
       const { id } = req.params;
       const { telefone, motivo } = req.body;
 
-      console.log(`[PublicBooking] Cancelando agendamento #${id}`);
+      logger.log(`[PublicBooking] Cancelando agendamento #${id}`);
 
       if (!telefone) {
         return res.status(400).json({
@@ -1550,7 +1551,7 @@ class PublicBookingController {
         .first();
 
       if (!configuracoes) {
-        console.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${agendamento.unidade_id}`);
+        logger.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${agendamento.unidade_id}`);
         return res.status(500).json({
           success: false,
           error: 'Configuração não encontrada',
@@ -1558,14 +1559,14 @@ class PublicBookingController {
         });
       }
 
-      console.log(`[PublicBooking] 🔍 Configurações de cancelamento:`, {
+      logger.log(`[PublicBooking] 🔍 Configurações de cancelamento:`, {
         permitir_cancelamento: configuracoes.permitir_cancelamento,
         tempo_limite_cancelar_horas: configuracoes.tempo_limite_cancelar_horas
       });
 
       // ✅ VALIDAÇÃO 2: Verificar se cancelamento está permitido
       if (!configuracoes.permitir_cancelamento) {
-        console.log(`[PublicBooking] ❌ Cancelamento não permitido pela política da empresa`);
+        logger.log(`[PublicBooking] ❌ Cancelamento não permitido pela política da empresa`);
         return res.status(403).json({
           success: false,
           error: 'Cancelamento não permitido',
@@ -1579,7 +1580,7 @@ class PublicBookingController {
       const diferencaMs = dataHoraAgendamento - agora;
       const diferencaHoras = diferencaMs / (1000 * 60 * 60);
 
-      console.log(`[PublicBooking] 🔍 Cálculo de prazo:`, {
+      logger.log(`[PublicBooking] 🔍 Cálculo de prazo:`, {
         agora: agora.toISOString(),
         agendamento: dataHoraAgendamento.toISOString(),
         diferencaHoras: diferencaHoras.toFixed(2),
@@ -1589,7 +1590,7 @@ class PublicBookingController {
       // ✅ VALIDAÇÃO 4: Bloquear cancelamento de agendamentos passados
       if (diferencaHoras < 0) {
         const horasPassadas = Math.abs(diferencaHoras).toFixed(1);
-        console.log(`[PublicBooking] ❌ Tentativa de cancelar agendamento #${id} que já passou há ${horasPassadas} hora(s)`);
+        logger.log(`[PublicBooking] ❌ Tentativa de cancelar agendamento #${id} que já passou há ${horasPassadas} hora(s)`);
         return res.status(410).json({
           success: false,
           error: 'Agendamento expirado',
@@ -1602,7 +1603,7 @@ class PublicBookingController {
         const horasRestantes = diferencaHoras.toFixed(1);
         const horasNecessarias = configuracoes.tempo_limite_cancelar_horas;
         
-        console.log(`[PublicBooking] ❌ Cancelamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
+        logger.log(`[PublicBooking] ❌ Cancelamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
         
         return res.status(403).json({
           success: false,
@@ -1611,7 +1612,7 @@ class PublicBookingController {
         });
       }
 
-      console.log(`✅ [PublicBooking] Cancelamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_cancelar_horas}h`);
+      logger.log(`✅ [PublicBooking] Cancelamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_cancelar_horas}h`);
 
       // ✅ VALIDAÇÃO 6: Verificar se já está cancelado
       if (agendamento.status === 'Cancelado') {
@@ -1640,7 +1641,7 @@ class PublicBookingController {
           updated_at: this.agendamentoModel.db.fn.now()
         });
 
-      console.log(`✅ [PublicBooking] Agendamento #${id} cancelado`);
+      logger.log(`✅ [PublicBooking] Agendamento #${id} cancelado`);
 
       // Enviar notificação de cancelamento (assíncrono)
       setImmediate(async () => {
@@ -1650,14 +1651,14 @@ class PublicBookingController {
           
           if (dadosCompletos) {
             await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-            console.log(`✅ [PublicBooking] Notificações de cancelamento enviadas para agendamento #${id}`);
+            logger.log(`✅ [PublicBooking] Notificações de cancelamento enviadas para agendamento #${id}`);
             
             // Cancelar lembretes programados
             await this.scheduledReminderService.cancelarLembretesProgramados(id);
-            console.log(`✅ [PublicBooking] Lembretes programados cancelados para agendamento #${id}`);
+            logger.log(`✅ [PublicBooking] Lembretes programados cancelados para agendamento #${id}`);
           }
         } catch (err) {
-          console.error('❌ [PublicBooking] Erro ao enviar notificação de cancelamento:', err);
+          logger.error('❌ [PublicBooking] Erro ao enviar notificação de cancelamento:', err);
         }
       });
 
@@ -1667,7 +1668,7 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      console.error('[PublicBooking] Erro ao cancelar agendamento:', error);
+      logger.error('[PublicBooking] Erro ao cancelar agendamento:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -1761,7 +1762,7 @@ class PublicBookingController {
       };
 
     } catch (error) {
-      console.error('❌ [PublicBooking.buscarDadosCompletos] Erro ao buscar dados completos:', error);
+      logger.error('❌ [PublicBooking.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
     }
   }

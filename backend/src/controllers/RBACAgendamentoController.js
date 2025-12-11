@@ -2,6 +2,7 @@ const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
 const EvolutionApiService = require('../services/EvolutionApiService');
 const AuthService = require('../services/AuthService');
+const logger = require('./../utils/logger');
 
 class RBACAgendamentoController extends BaseController {
   constructor() {
@@ -150,7 +151,7 @@ class RBACAgendamentoController extends BaseController {
         filters_applied: req.user.role !== 'MASTER'
       });
     } catch (error) {
-      console.error('Erro ao listar agendamentos:', error);
+      logger.error('Erro ao listar agendamentos:', error);
       res.status(500).json({
         error: 'Erro interno do servidor',
         message: 'Não foi possível listar os agendamentos'
@@ -265,7 +266,7 @@ class RBACAgendamentoController extends BaseController {
           }
         }
       } catch (whatsappError) {
-        console.error('❌ Erro ao enviar WhatsApp:', whatsappError.message);
+        logger.error('❌ Erro ao enviar WhatsApp:', whatsappError.message);
       }
 
       res.status(201).json({
@@ -280,7 +281,7 @@ class RBACAgendamentoController extends BaseController {
       });
 
     } catch (error) {
-      console.error('Erro ao criar agendamento:', error);
+      logger.error('Erro ao criar agendamento:', error);
       res.status(500).json({
         error: 'Erro interno do servidor',
         message: 'Não foi possível criar o agendamento'
@@ -332,7 +333,7 @@ class RBACAgendamentoController extends BaseController {
         servicos
       };
     } catch (error) {
-      console.error('Erro ao buscar dados completos:', error);
+      logger.error('Erro ao buscar dados completos:', error);
       return null;
     }
   }

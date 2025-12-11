@@ -59,8 +59,14 @@ const config = {
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutos
     rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 2000, // Valor otimizado após correções
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12,
-    // ✅ CORREÇÃO 1.7: Removido file:// (inseguro e desnecessário)
-    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001']
+    // ✅ FASE 2.6: CORS Restritivo com whitelist dinâmica
+    corsOrigins: process.env.CORS_ORIGINS 
+      ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+      : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'],
+    // Whitelist de produção (adicionar domínios reais aqui)
+    corsProductionOrigins: process.env.CORS_PRODUCTION_ORIGINS
+      ? process.env.CORS_PRODUCTION_ORIGINS.split(',').map(origin => origin.trim())
+      : []
   },
 
   // Configurações de log

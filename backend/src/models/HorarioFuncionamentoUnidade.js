@@ -1,5 +1,6 @@
 const BaseModel = require('./BaseModel');
 const { db } = require('../config/knex');
+const logger = require('./../utils/logger');
 
 /**
  * Modelo para gerenciar horários de funcionamento das unidades
@@ -37,7 +38,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
           : h.horarios_json
       }));
     } catch (error) {
-      console.error('Erro ao buscar horários da unidade:', error);
+      logger.error('Erro ao buscar horários da unidade:', error);
       throw error;
     }
   }
@@ -65,7 +66,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
           : horario.horarios_json
       };
     } catch (error) {
-      console.error('Erro ao buscar horário específico:', error);
+      logger.error('Erro ao buscar horário específico:', error);
       throw error;
     }
   }
@@ -99,7 +100,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
 
       return horariosInseridos;
     } catch (error) {
-      console.error('Erro ao criar/atualizar horários semanais:', error);
+      logger.error('Erro ao criar/atualizar horários semanais:', error);
       throw error;
     }
   }
@@ -117,7 +118,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
       const deletedCount = await query.delete().where('unidade_id', unidadeId);
       return deletedCount;
     } catch (error) {
-      console.error('❌ [HorarioFuncionamentoUnidade] Erro ao deletar horários da unidade:', error);
+      logger.error('❌ [HorarioFuncionamentoUnidade] Erro ao deletar horários da unidade:', error);
       throw error;
     }
   }
@@ -147,7 +148,7 @@ class HorarioFuncionamentoUnidade extends BaseModel {
         return horarioMinutos >= inicioMinutos && horarioMinutos <= fimMinutos;
       });
     } catch (error) {
-      console.error('Erro ao verificar se unidade está aberta:', error);
+      logger.error('Erro ao verificar se unidade está aberta:', error);
       return false;
     }
   }

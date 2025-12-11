@@ -4,6 +4,7 @@
  */
 
 const WhatsAppService = require('../services/WhatsAppService');
+const logger = require('./../utils/logger');
 
 class WhatsAppTestController {
   constructor() {
@@ -46,7 +47,7 @@ class WhatsAppTestController {
         ]
       };
 
-      console.log(`[WhatsAppTest] Testando envio para ${telefone}`);
+      logger.log(`[WhatsAppTest] Testando envio para ${telefone}`);
 
       // Enviar mensagem de teste
       const resultado = await this.whatsAppService.sendAppointmentConfirmation(agendamentoTeste);
@@ -68,7 +69,7 @@ class WhatsAppTestController {
       });
 
     } catch (error) {
-      console.error('[WhatsAppTest] Erro ao testar mensagem:', error);
+      logger.error('[WhatsAppTest] Erro ao testar mensagem:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -98,7 +99,7 @@ class WhatsAppTestController {
       });
 
     } catch (error) {
-      console.error('[WhatsAppTest] Erro ao obter configurações:', error);
+      logger.error('[WhatsAppTest] Erro ao obter configurações:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -151,7 +152,7 @@ class WhatsAppTestController {
       });
 
     } catch (error) {
-      console.error('[WhatsAppTest] Erro ao gerar preview:', error);
+      logger.error('[WhatsAppTest] Erro ao gerar preview:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -165,7 +166,7 @@ class WhatsAppTestController {
    */
   async testConnection(req, res) {
     try {
-      console.log('[WhatsAppTest] Testando conectividade com Evolution API...');
+      logger.log('[WhatsAppTest] Testando conectividade com Evolution API...');
 
       const { apikey } = req.body || {};
       const testApiKey = apikey || this.whatsAppService.evolutionApiKey;
@@ -196,7 +197,7 @@ class WhatsAppTestController {
       });
 
     } catch (error) {
-      console.error('[WhatsAppTest] Erro ao testar conectividade:', error);
+      logger.error('[WhatsAppTest] Erro ao testar conectividade:', error);
       res.status(500).json({
         success: false,
         message: 'Erro ao testar conectividade',
@@ -219,7 +220,7 @@ class WhatsAppTestController {
         });
       }
 
-      console.log(`[WhatsAppTest] Criando instância ${instanceName}...`);
+      logger.log(`[WhatsAppTest] Criando instância ${instanceName}...`);
 
       const createUrl = `${this.whatsAppService.evolutionApiUrl}/instance/create`;
 
@@ -257,7 +258,7 @@ class WhatsAppTestController {
       });
 
     } catch (error) {
-      console.error('[WhatsAppTest] Erro ao criar instância:', error);
+      logger.error('[WhatsAppTest] Erro ao criar instância:', error);
       res.status(500).json({
         success: false,
         message: 'Erro ao criar instância',

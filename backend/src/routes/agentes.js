@@ -66,6 +66,7 @@ router.get('/:id',
  */
 router.put('/:id', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('ATUALIZAR_AGENTE'),
   handleFormDataWithUpload,
   validateBusboyFiles,
   async (req, res) => {
@@ -85,6 +86,7 @@ router.use(rbacMiddleware.requireRole('ADMIN'));
  * @returns { success: boolean, data: Agent, message: string }
  */
 router.post('/', 
+  rbacMiddleware.auditLog('CRIAR_AGENTE'),
   handleFormDataWithUpload,
   validateBusboyFiles,
   async (req, res) => {
@@ -99,8 +101,11 @@ router.post('/',
  * @param {string} id - ID do agente
  * @returns { success: boolean, message: string }
  */
-router.delete('/:id', async (req, res) => {
-  await agenteController.destroy(req, res);
-});
+router.delete('/:id', 
+  rbacMiddleware.auditLog('DELETAR_AGENTE'),
+  async (req, res) => {
+    await agenteController.destroy(req, res);
+  }
+);
 
 module.exports = router;

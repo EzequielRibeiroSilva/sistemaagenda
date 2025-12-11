@@ -6,6 +6,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const logger = require('./../utils/logger');
 
 /**
  * Magic bytes (assinaturas binárias) de formatos de imagem permitidos
@@ -47,7 +48,7 @@ async function readMagicBytes(filePath, bytesToRead = 12) {
     
     return buffer.toString('hex');
   } catch (error) {
-    console.error(`❌ [FileValidation] Erro ao ler magic bytes: ${error.message}`);
+    logger.error(`❌ [FileValidation] Erro ao ler magic bytes: ${error.message}`);
     throw new Error('Não foi possível ler o arquivo');
   }
 }
@@ -75,7 +76,7 @@ async function validateImageMagicBytes(filePath, declaredMimeType) {
     
     // Se não detectou nenhum formato conhecido
     if (!detectedFormat) {
-      console.warn(`🚨 [FileValidation] Magic bytes não reconhecidos: ${hexString.substring(0, 16)}`);
+      logger.warn(`🚨 [FileValidation] Magic bytes não reconhecidos: ${hexString.substring(0, 16)}`);
       return {
         valid: false,
         detectedType: 'unknown',
@@ -87,7 +88,7 @@ async function validateImageMagicBytes(filePath, declaredMimeType) {
     if (hexString.startsWith('52494646')) { // RIFF
       const webpSignature = hexString.substring(16, 24); // Bytes 8-11
       if (webpSignature !== '57454250') { // "WEBP" em hex
-        console.warn(`🚨 [FileValidation] Arquivo RIFF mas não é WebP: ${hexString.substring(0, 24)}`);
+        logger.warn(`🚨 [FileValidation] Arquivo RIFF mas não é WebP: ${hexString.substring(0, 24)}`);
         return {
           valid: false,
           detectedType: 'riff-not-webp',
@@ -98,7 +99,7 @@ async function validateImageMagicBytes(filePath, declaredMimeType) {
     
     // Verificar se o MIME type declarado corresponde ao detectado
     if (declaredMimeType && declaredMimeType !== detectedFormat.mime) {
-      console.warn(`🚨 [FileValidation] MIME type não corresponde: declarado=${declaredMimeType}, detectado=${detectedFormat.mime}`);
+      logger.warn(`🚨 [FileValidation] MIME type não corresponde: declarado=${declaredMimeType}, detectado=${detectedFormat.mime}`);
       return {
         valid: false,
         detectedType: detectedFormat.name,
@@ -107,7 +108,7 @@ async function validateImageMagicBytes(filePath, declaredMimeType) {
     }
     
     // Validação bem-sucedida
-    console.log(`✅ [FileValidation] Arquivo validado: ${detectedFormat.name} (${detectedFormat.mime})`);
+    logger.log(`✅ [FileValidation] Arquivo validado: ${detectedFormat.name} (${detectedFormat.mime})`);
     return {
       valid: true,
       detectedType: detectedFormat.name,
@@ -116,7 +117,7 @@ async function validateImageMagicBytes(filePath, declaredMimeType) {
     };
     
   } catch (error) {
-    console.error(`❌ [FileValidation] Erro na validação: ${error.message}`);
+    logger.error(`❌ [FileValidation] Erro na validação: ${error.message}`);
     return {
       valid: false,
       detectedType: 'error',
@@ -138,7 +139,7 @@ const validateUploadedFile = async (req, res, next) => {
     
     const { path: filePath, mimetype, originalname } = req.file;
     
-    console.log(`🔍 [FileValidation] Validando arquivo: ${originalname} (${mimetype})`);
+    logger.log(`🔍 [FileValidation] Validando arquivo: ${originalname} (${mimetype})`);
     
     // Validar magic bytes
     const validation = await validateImageMagicBytes(filePath, mimetype);
@@ -147,9 +148,9 @@ const validateUploadedFile = async (req, res, next) => {
       // Deletar arquivo inválido
       try {
         await fs.unlink(filePath);
-        console.log(`🗑️ [FileValidation] Arquivo inválido deletado: ${originalname}`);
+        logger.log(`🗑️ [FileValidation] Arquivo inválido deletado: ${originalname}`);
       } catch (unlinkError) {
-        console.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
+        logger.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
       }
       
       // Retornar erro
@@ -170,18 +171,18 @@ const validateUploadedFile = async (req, res, next) => {
     req.file.detectedType = validation.detectedType;
     req.file.detectedMime = validation.mime;
     
-    console.log(`✅ [FileValidation] Arquivo validado com sucesso: ${originalname}`);
+    logger.log(`✅ [FileValidation] Arquivo validado com sucesso: ${originalname}`);
     next();
     
   } catch (error) {
-    console.error(`❌ [FileValidation] Erro no middleware: ${error.message}`);
+    logger.error(`❌ [FileValidation] Erro no middleware: ${error.message}`);
     
     // Deletar arquivo se houver erro
     if (req.file && req.file.path) {
       try {
         await fs.unlink(req.file.path);
       } catch (unlinkError) {
-        console.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
+        logger.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
       }
     }
     
@@ -216,7 +217,7 @@ const validateBusboyFiles = async (req, res, next) => {
     for (const file of req.files) {
       const { path: filePath, mimetype, originalname } = file;
       
-      console.log(`🔍 [FileValidation] Validando arquivo: ${originalname} (${mimetype})`);
+      logger.log(`🔍 [FileValidation] Validando arquivo: ${originalname} (${mimetype})`);
       
       // Validar magic bytes
       const validation = await validateImageMagicBytes(filePath, mimetype);
@@ -225,9 +226,9 @@ const validateBusboyFiles = async (req, res, next) => {
         // Deletar arquivo inválido
         try {
           await fs.unlink(filePath);
-          console.log(`🗑️ [FileValidation] Arquivo inválido deletado: ${originalname}`);
+          logger.log(`🗑️ [FileValidation] Arquivo inválido deletado: ${originalname}`);
         } catch (unlinkError) {
-          console.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
+          logger.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
         }
         
         // Retornar erro
@@ -248,13 +249,13 @@ const validateBusboyFiles = async (req, res, next) => {
       file.detectedType = validation.detectedType;
       file.detectedMime = validation.mime;
       
-      console.log(`✅ [FileValidation] Arquivo validado com sucesso: ${originalname}`);
+      logger.log(`✅ [FileValidation] Arquivo validado com sucesso: ${originalname}`);
     }
     
     next();
     
   } catch (error) {
-    console.error(`❌ [FileValidation] Erro no middleware: ${error.message}`);
+    logger.error(`❌ [FileValidation] Erro no middleware: ${error.message}`);
     
     // Deletar arquivos se houver erro
     if (req.files && req.files.length > 0) {
@@ -262,7 +263,7 @@ const validateBusboyFiles = async (req, res, next) => {
         try {
           await fs.unlink(file.path);
         } catch (unlinkError) {
-          console.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
+          logger.error(`❌ [FileValidation] Erro ao deletar arquivo: ${unlinkError.message}`);
         }
       }
     }

@@ -33,6 +33,7 @@ router.get('/:id',
 // ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem criar agendamentos
 router.post('/', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('CRIAR_AGENDAMENTO'),
   (req, res) => agendamentoController.store(req, res)
 );
 
@@ -41,6 +42,7 @@ router.post('/',
 // Validação de propriedade feita no controller
 router.put('/:id', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('ATUALIZAR_AGENDAMENTO'),
   (req, res) => agendamentoController.update(req, res)
 );
 
@@ -48,6 +50,7 @@ router.put('/:id',
 // ✅ CORREÇÃO 1.3: Apenas ADMIN pode deletar agendamentos (hard delete)
 router.delete('/:id', 
   rbacMiddleware.requireRole('ADMIN'),
+  rbacMiddleware.auditLog('DELETAR_AGENDAMENTO'),
   (req, res) => agendamentoController.destroy(req, res)
 );
 
@@ -57,6 +60,7 @@ router.delete('/:id',
 // ADMIN: qualquer agendamento da sua unidade
 router.patch('/:id/cancel', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('CANCELAR_AGENDAMENTO'),
   (req, res) => agendamentoController.cancel(req, res)
 );
 
@@ -66,6 +70,7 @@ router.patch('/:id/cancel',
 // ADMIN: qualquer agendamento da sua unidade
 router.patch('/:id/finalize', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('FINALIZAR_AGENDAMENTO'),
   (req, res) => agendamentoController.finalize(req, res)
 );
 

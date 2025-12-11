@@ -1,6 +1,7 @@
 const BaseController = require('./BaseController');
 const Unidade = require('../models/Unidade');
 const UnidadeService = require('../services/UnidadeService');
+const logger = require('./../utils/logger');
 
 class UnidadeController extends BaseController {
   constructor() {
@@ -82,7 +83,7 @@ class UnidadeController extends BaseController {
 
       return res.json(result);
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao buscar unidades:', error);
+      logger.error('❌ [UnidadeController] Erro ao buscar unidades:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -125,7 +126,7 @@ class UnidadeController extends BaseController {
 
       // Log para debug
       if (req.body.excecoes_calendario) {
-        console.log(`📅 [UnidadeController] Criando unidade com exceções:`, {
+        logger.log(`📅 [UnidadeController] Criando unidade com exceções:`, {
           isArray: Array.isArray(req.body.excecoes_calendario),
           length: req.body.excecoes_calendario?.length,
           data: req.body.excecoes_calendario
@@ -141,7 +142,7 @@ class UnidadeController extends BaseController {
         message: 'Unidade criada com sucesso'
       });
     } catch (error) {
-      console.error('Erro ao criar unidade:', error);
+      logger.error('Erro ao criar unidade:', error);
 
       // Tratar erro específico de limite excedido
       if (error.code === 'UNIT_LIMIT_EXCEEDED') {
@@ -189,7 +190,7 @@ class UnidadeController extends BaseController {
         data: unidadeCompleta
       });
     } catch (error) {
-      console.error('Erro ao buscar unidade:', error);
+      logger.error('Erro ao buscar unidade:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -260,7 +261,7 @@ class UnidadeController extends BaseController {
 
       if (req.body.servicos_ids !== undefined) {
         updateData.servicos_ids = req.body.servicos_ids;
-        console.log(`🔗 [UnidadeController] servicos_ids recebidos:`, {
+        logger.log(`🔗 [UnidadeController] servicos_ids recebidos:`, {
           isArray: Array.isArray(req.body.servicos_ids),
           length: req.body.servicos_ids?.length,
           ids: req.body.servicos_ids
@@ -270,7 +271,7 @@ class UnidadeController extends BaseController {
       // Suporte para exceções de calendário
       if (req.body.excecoes_calendario !== undefined) {
         updateData.excecoes_calendario = req.body.excecoes_calendario;
-        console.log(`📅 [UnidadeController] excecoes_calendario recebidas:`, {
+        logger.log(`📅 [UnidadeController] excecoes_calendario recebidas:`, {
           isArray: Array.isArray(req.body.excecoes_calendario),
           length: req.body.excecoes_calendario?.length,
           data: req.body.excecoes_calendario
@@ -293,7 +294,7 @@ class UnidadeController extends BaseController {
         message: 'Unidade atualizada com sucesso'
       });
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao atualizar unidade:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao atualizar unidade:', error.message);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -344,7 +345,7 @@ class UnidadeController extends BaseController {
         message: `Status da unidade alterado para ${status}`
       });
     } catch (error) {
-      console.error('Erro ao alterar status da unidade:', error);
+      logger.error('Erro ao alterar status da unidade:', error);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -394,7 +395,7 @@ class UnidadeController extends BaseController {
         message: 'Unidade excluída com sucesso'
       });
     } catch (error) {
-      console.error('Erro ao excluir unidade:', error);
+      logger.error('Erro ao excluir unidade:', error);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -465,7 +466,7 @@ class UnidadeController extends BaseController {
         message: 'Exceção de calendário criada com sucesso'
       });
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao criar exceção:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao criar exceção:', error.message);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -523,7 +524,7 @@ class UnidadeController extends BaseController {
         data: excecoes
       });
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao listar exceções:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao listar exceções:', error.message);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -581,7 +582,7 @@ class UnidadeController extends BaseController {
         message: 'Exceção de calendário atualizada com sucesso'
       });
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao atualizar exceção:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao atualizar exceção:', error.message);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -642,7 +643,7 @@ class UnidadeController extends BaseController {
         message: 'Exceção de calendário deletada com sucesso'
       });
     } catch (error) {
-      console.error('❌ [UnidadeController] Erro ao deletar exceção:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao deletar exceção:', error.message);
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({

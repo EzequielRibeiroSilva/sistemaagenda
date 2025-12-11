@@ -1,3 +1,5 @@
+const logger = require('./../utils/logger');
+
 class BaseController {
   constructor(model) {
     this.model = model;
@@ -20,7 +22,7 @@ class BaseController {
         return res.json({ data });
       }
     } catch (error) {
-      console.error('Erro no index:', error);
+      logger.error('Erro no index:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -42,7 +44,7 @@ class BaseController {
       
       return res.json({ data });
     } catch (error) {
-      console.error('Erro no show:', error);
+      logger.error('Erro no show:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -59,7 +61,7 @@ class BaseController {
         message: 'Registro criado com sucesso' 
       });
     } catch (error) {
-      console.error('Erro no store:', error);
+      logger.error('Erro no store:', error);
       
       // Verificar se é erro de validação/constraint
       if (error.code === '23505') { // Unique violation
@@ -102,7 +104,7 @@ class BaseController {
         message: 'Registro atualizado com sucesso' 
       });
     } catch (error) {
-      console.error('Erro no update:', error);
+      logger.error('Erro no update:', error);
       
       if (error.code === '23505') {
         return res.status(400).json({ 
@@ -150,7 +152,7 @@ class BaseController {
         });
       }
     } catch (error) {
-      console.error('Erro no destroy:', error);
+      logger.error('Erro no destroy:', error);
       
       if (error.code === '23503') {
         return res.status(400).json({ 

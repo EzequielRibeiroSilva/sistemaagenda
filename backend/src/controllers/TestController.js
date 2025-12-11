@@ -28,7 +28,7 @@ class TestController {
       // Usar mensagem personalizada ou padrão
       const mensagemTeste = mensagem || 'Teste de integração WhatsApp - Sistema de Agendamentos';
 
-      console.log('🧪 [TestController] Iniciando teste WhatsApp:', {
+      logger.log('🧪 [TestController] Iniciando teste WhatsApp:', {
         telefone,
         mensagem: mensagemTeste
       });
@@ -36,7 +36,7 @@ class TestController {
       // Testar envio direto
       const resultado = await this.whatsAppService.sendMessage(telefone, mensagemTeste);
 
-      console.log('🧪 [TestController] Resultado do teste:', resultado);
+      logger.log('🧪 [TestController] Resultado do teste:', resultado);
 
       return res.status(200).json({
         success: true,
@@ -45,7 +45,7 @@ class TestController {
       });
 
     } catch (error) {
-      console.error('❌ [TestController] Erro no teste WhatsApp:', error);
+      logger.error('❌ [TestController] Erro no teste WhatsApp:', error);
       return res.status(500).json({
         success: false,
         error: error.message,
@@ -69,10 +69,11 @@ class TestController {
         });
       }
 
-      console.log('🧪 [TestController] Testando template de agendamento:', agendamento_id);
+      logger.log('🧪 [TestController] Testando template de agendamento:', agendamento_id);
 
       // Buscar dados do agendamento (usando o mesmo método do AgendamentoController)
       const AgendamentoController = require('./AgendamentoController');
+const logger = require('./../utils/logger');
       const agendamentoController = new AgendamentoController();
       
       const dadosCompletos = await agendamentoController.buscarDadosCompletos(agendamento_id);
@@ -84,12 +85,12 @@ class TestController {
         });
       }
 
-      console.log('🧪 [TestController] Dados do agendamento:', dadosCompletos);
+      logger.log('🧪 [TestController] Dados do agendamento:', dadosCompletos);
 
       // Testar envio da confirmação
       const resultado = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
 
-      console.log('🧪 [TestController] Resultado do envio:', resultado);
+      logger.log('🧪 [TestController] Resultado do envio:', resultado);
 
       return res.status(200).json({
         success: true,
@@ -101,7 +102,7 @@ class TestController {
       });
 
     } catch (error) {
-      console.error('❌ [TestController] Erro no teste de agendamento:', error);
+      logger.error('❌ [TestController] Erro no teste de agendamento:', error);
       return res.status(500).json({
         success: false,
         error: error.message,
@@ -116,7 +117,7 @@ class TestController {
    */
   async testWhatsAppStatus(req, res) {
     try {
-      console.log('🧪 [TestController] Testando status da Evolution API');
+      logger.log('🧪 [TestController] Testando status da Evolution API');
 
       // Verificar configurações
       const config = {
@@ -127,7 +128,7 @@ class TestController {
         has_key: !!process.env.EVOLUTION_API_KEY
       };
 
-      console.log('🧪 [TestController] Configurações WhatsApp:', config);
+      logger.log('🧪 [TestController] Configurações WhatsApp:', config);
 
       // Testar conectividade básica (se habilitado)
       let status_api = null;
@@ -164,7 +165,7 @@ class TestController {
       });
 
     } catch (error) {
-      console.error('❌ [TestController] Erro no teste de status:', error);
+      logger.error('❌ [TestController] Erro no teste de status:', error);
       return res.status(500).json({
         success: false,
         error: error.message,

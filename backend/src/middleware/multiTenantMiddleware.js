@@ -8,6 +8,8 @@
  * - Verificação de propriedade de recursos
  * - Auditoria de acesso
  */
+const logger = require('./../utils/logger');
+
 class MultiTenantMiddleware {
   
   /**
@@ -38,7 +40,7 @@ class MultiTenantMiddleware {
         
         next();
       } catch (error) {
-        console.error('[MultiTenantMiddleware] Erro ao verificar unidade_id:', error);
+        logger.error('[MultiTenantMiddleware] Erro ao verificar unidade_id:', error);
         return res.status(500).json({
           success: false,
           message: 'Erro interno na verificação de unidade'
@@ -81,7 +83,7 @@ class MultiTenantMiddleware {
 
         next();
       } catch (error) {
-        console.error('[MultiTenantMiddleware] Erro ao validar propriedade do recurso:', error);
+        logger.error('[MultiTenantMiddleware] Erro ao validar propriedade do recurso:', error);
         return res.status(500).json({
           success: false,
           message: 'Erro interno na validação de propriedade'
@@ -110,7 +112,7 @@ class MultiTenantMiddleware {
 
         next();
       } catch (error) {
-        console.error('[MultiTenantMiddleware] Erro ao adicionar filtro de unidade:', error);
+        logger.error('[MultiTenantMiddleware] Erro ao adicionar filtro de unidade:', error);
         return res.status(500).json({
           success: false,
           message: 'Erro interno no filtro de unidade'
@@ -149,9 +151,9 @@ class MultiTenantMiddleware {
 
           // Log apenas tentativas de acesso negado ou suspeitas
           if (res.statusCode === 403 || res.statusCode === 401) {
-            console.warn('[AUDIT] Tentativa de acesso negado:', JSON.stringify(logData, null, 2));
+            logger.warn('[AUDIT] Tentativa de acesso negado:', JSON.stringify(logData, null, 2));
           } else if (process.env.NODE_ENV === 'development') {
-            console.log('[AUDIT] Acesso Multi-Tenant:', JSON.stringify(logData, null, 2));
+            logger.log('[AUDIT] Acesso Multi-Tenant:', JSON.stringify(logData, null, 2));
           }
 
           originalSend.call(this, data);
@@ -159,7 +161,7 @@ class MultiTenantMiddleware {
 
         next();
       } catch (error) {
-        console.error('[MultiTenantMiddleware] Erro na auditoria:', error);
+        logger.error('[MultiTenantMiddleware] Erro na auditoria:', error);
         next(); // Continuar mesmo com erro na auditoria
       }
     };
@@ -195,7 +197,7 @@ class MultiTenantMiddleware {
 
         next();
       } catch (error) {
-        console.error('[MultiTenantMiddleware] Erro na validação de dados:', error);
+        logger.error('[MultiTenantMiddleware] Erro na validação de dados:', error);
         return res.status(500).json({
           success: false,
           message: 'Erro interno na validação de dados'

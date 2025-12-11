@@ -1,5 +1,6 @@
 const Cupom = require('../models/Cupom');
 const CupomService = require('../services/CupomService');
+const logger = require('./../utils/logger');
 
 /**
  * Controller para gerenciamento de cupons de desconto
@@ -67,7 +68,7 @@ class CupomController {
                   unidade_ids: unidadeIds
                 };
               } catch (err) {
-                console.error(`[CupomController] Erro ao buscar relacionamentos do cupom ${cupom.id}:`, err.message);
+                logger.error(`[CupomController] Erro ao buscar relacionamentos do cupom ${cupom.id}:`, err.message);
                 return {
                   ...cupom,
                   servico_ids: [],
@@ -85,7 +86,7 @@ class CupomController {
           }));
         }
       } catch (schemaError) {
-        console.error('[CupomController] Erro ao verificar schema:', schemaError.message);
+        logger.error('[CupomController] Erro ao verificar schema:', schemaError.message);
         // Em caso de erro, retornar cupons sem relacionamentos
         cuponsComRelacionamentos = result.data.map(cupom => ({
           ...cupom,
@@ -100,7 +101,7 @@ class CupomController {
         pagination: result.pagination
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao listar cupons:', error);
+      logger.error('[CupomController] Erro ao listar cupons:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -152,7 +153,7 @@ class CupomController {
           unidadeIds = await this.cupomModel.buscarUnidades(id);
         }
       } catch (err) {
-        console.error(`[CupomController.show] Erro ao buscar relacionamentos:`, err.message);
+        logger.error(`[CupomController.show] Erro ao buscar relacionamentos:`, err.message);
         // Continuar sem relacionamentos em caso de erro
       }
 
@@ -165,7 +166,7 @@ class CupomController {
         }
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao buscar cupom:', error);
+      logger.error('[CupomController] Erro ao buscar cupom:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -181,7 +182,7 @@ class CupomController {
     try {
       const usuarioId = req.user?.id;
       
-      console.log('🔍 [CupomController.store] Recebendo requisição:', {
+      logger.log('🔍 [CupomController.store] Recebendo requisição:', {
         usuarioId,
         body: req.body,
         dias_semana_permitidos: req.body.dias_semana_permitidos,
@@ -196,7 +197,7 @@ class CupomController {
 
       const cupom = await this.cupomService.criarCupom(req.body, usuarioId);
 
-      console.log('✅ [CupomController.store] Cupom criado com sucesso:', cupom.id);
+      logger.log('✅ [CupomController.store] Cupom criado com sucesso:', cupom.id);
 
       return res.status(201).json({
         success: true,
@@ -204,7 +205,7 @@ class CupomController {
         message: 'Cupom criado com sucesso'
       });
     } catch (error) {
-      console.error('❌ [CupomController.store] Erro ao criar cupom:', {
+      logger.error('❌ [CupomController.store] Erro ao criar cupom:', {
         message: error.message,
         stack: error.stack
       });
@@ -233,7 +234,7 @@ class CupomController {
       const { id } = req.params;
       const usuarioId = req.user?.id;
       
-      console.log('🔍 [CupomController.update] Recebendo requisição:', {
+      logger.log('🔍 [CupomController.update] Recebendo requisição:', {
         cupomId: id,
         usuarioId,
         body: req.body,
@@ -253,7 +254,7 @@ class CupomController {
         usuarioId
       );
 
-      console.log('✅ [CupomController.update] Cupom atualizado com sucesso:', cupom.id);
+      logger.log('✅ [CupomController.update] Cupom atualizado com sucesso:', cupom.id);
 
       return res.json({
         success: true,
@@ -261,7 +262,7 @@ class CupomController {
         message: 'Cupom atualizado com sucesso'
       });
     } catch (error) {
-      console.error('❌ [CupomController.update] Erro ao atualizar cupom:', {
+      logger.error('❌ [CupomController.update] Erro ao atualizar cupom:', {
         message: error.message,
         stack: error.stack
       });
@@ -339,7 +340,7 @@ class CupomController {
         });
       }
     } catch (error) {
-      console.error('[CupomController] Erro ao deletar cupom:', error);
+      logger.error('[CupomController] Erro ao deletar cupom:', error);
       
       // Erro de constraint (cupom tem usos registrados)
       if (error.code === '23503') {
@@ -408,7 +409,7 @@ class CupomController {
         ...result
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao buscar histórico:', error);
+      logger.error('[CupomController] Erro ao buscar histórico:', error);
       return res.status(500).json({
         error: 'Erro interno do servidor',
         message: error.message
@@ -470,7 +471,7 @@ class CupomController {
         message: `Cupom ${codigo} válido!`
       });
     } catch (error) {
-      console.error('[CupomController] Erro ao validar cupom:', error);
+      logger.error('[CupomController] Erro ao validar cupom:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

@@ -1,4 +1,5 @@
 const Cupom = require('../models/Cupom');
+const logger = require('./../utils/logger');
 
 /**
  * Service para lógica de negócio de cupons de desconto
@@ -431,7 +432,7 @@ class CupomService {
         }
       }
     } catch (err) {
-      console.error('[CupomService.atualizarCupom] Erro ao atualizar serviços:', err.message);
+      logger.error('[CupomService.atualizarCupom] Erro ao atualizar serviços:', err.message);
       // Continuar sem atualizar relacionamentos em caso de erro
     }
     
@@ -445,7 +446,7 @@ class CupomService {
         }
       }
     } catch (err) {
-      console.error('[CupomService.atualizarCupom] Erro ao atualizar unidades:', err.message);
+      logger.error('[CupomService.atualizarCupom] Erro ao atualizar unidades:', err.message);
       // Continuar sem atualizar relacionamentos em caso de erro
     }
     

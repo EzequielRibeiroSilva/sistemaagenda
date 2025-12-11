@@ -1,4 +1,5 @@
 const MasterUserService = require('../services/MasterUserService');
+const logger = require('./../utils/logger');
 
 class MasterUserController {
   constructor() {
@@ -12,11 +13,11 @@ class MasterUserController {
     try {
       const { search } = req.query;
       
-      console.log(`[MasterUserController] Buscando usuários - Search: "${search || 'todos'}"`);
+      logger.log(`[MasterUserController] Buscando usuários - Search: "${search || 'todos'}"`);
       
       const users = await this.masterUserService.getAllUsers(search);
       
-      console.log(`[MasterUserController] Encontrados ${users.length} usuários`);
+      logger.log(`[MasterUserController] Encontrados ${users.length} usuários`);
       
       res.status(200).json({
         success: true,
@@ -25,7 +26,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao buscar usuários:', error);
+      logger.error('[MasterUserController] Erro ao buscar usuários:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -41,7 +42,7 @@ class MasterUserController {
     try {
       const userData = req.body;
       
-      console.log('[MasterUserController] Criando novo usuário:', {
+      logger.log('[MasterUserController] Criando novo usuário:', {
         nome: userData.nome,
         email: userData.email,
         plano: userData.plano
@@ -50,7 +51,7 @@ class MasterUserController {
       
       const newUser = await this.masterUserService.createUser(userData);
       
-      console.log(`[MasterUserController] Usuário criado com sucesso - ID: ${newUser.id}`);
+      logger.log(`[MasterUserController] Usuário criado com sucesso - ID: ${newUser.id}`);
       
       res.status(201).json({
         success: true,
@@ -59,7 +60,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao criar usuário:', error);
+      logger.error('[MasterUserController] Erro ao criar usuário:', error);
       
       // Tratar erros específicos
       if (error.message.includes('Email já está em uso')) {
@@ -94,11 +95,11 @@ class MasterUserController {
       const { id } = req.params;
       const userData = req.body;
       
-      console.log(`[MasterUserController] Atualizando usuário ID: ${id}`);
+      logger.log(`[MasterUserController] Atualizando usuário ID: ${id}`);
       
       const updatedUser = await this.masterUserService.updateUser(parseInt(id), userData);
       
-      console.log(`[MasterUserController] Usuário ${id} atualizado com sucesso`);
+      logger.log(`[MasterUserController] Usuário ${id} atualizado com sucesso`);
       
       res.status(200).json({
         success: true,
@@ -107,7 +108,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao atualizar usuário:', error);
+      logger.error('[MasterUserController] Erro ao atualizar usuário:', error);
       
       if (error.message.includes('não encontrado')) {
         return res.status(404).json({
@@ -141,11 +142,11 @@ class MasterUserController {
       const { id } = req.params;
       const { status } = req.body;
       
-      console.log(`[MasterUserController] Alterando status do usuário ${id} para: ${status}`);
+      logger.log(`[MasterUserController] Alterando status do usuário ${id} para: ${status}`);
       
       const updatedUser = await this.masterUserService.updateUserStatus(parseInt(id), status);
       
-      console.log(`[MasterUserController] Status do usuário ${id} alterado para: ${status}`);
+      logger.log(`[MasterUserController] Status do usuário ${id} alterado para: ${status}`);
       
       res.status(200).json({
         success: true,
@@ -154,7 +155,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao alterar status:', error);
+      logger.error('[MasterUserController] Erro ao alterar status:', error);
       
       if (error.message.includes('não encontrado')) {
         return res.status(404).json({
@@ -187,11 +188,11 @@ class MasterUserController {
     try {
       const { id } = req.params;
       
-      console.log(`[MasterUserController] Buscando unidades do usuário ${id}`);
+      logger.log(`[MasterUserController] Buscando unidades do usuário ${id}`);
       
       const units = await this.masterUserService.getUserUnits(parseInt(id));
       
-      console.log(`[MasterUserController] Encontradas ${units.length} unidades para usuário ${id}`);
+      logger.log(`[MasterUserController] Encontradas ${units.length} unidades para usuário ${id}`);
       
       res.status(200).json({
         success: true,
@@ -200,7 +201,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao buscar unidades:', error);
+      logger.error('[MasterUserController] Erro ao buscar unidades:', error);
       
       if (error.message.includes('não encontrado')) {
         return res.status(404).json({
@@ -226,11 +227,11 @@ class MasterUserController {
       const { id } = req.params;
       const { status } = req.body;
       
-      console.log(`[MasterUserController] Alterando status da unidade ${id} para: ${status}`);
+      logger.log(`[MasterUserController] Alterando status da unidade ${id} para: ${status}`);
       
       const updatedUnit = await this.masterUserService.updateUnitStatus(parseInt(id), status);
       
-      console.log(`[MasterUserController] Status da unidade ${id} alterado para: ${status}`);
+      logger.log(`[MasterUserController] Status da unidade ${id} alterado para: ${status}`);
       
       res.status(200).json({
         success: true,
@@ -239,7 +240,7 @@ class MasterUserController {
       });
 
     } catch (error) {
-      console.error('[MasterUserController] Erro ao alterar status da unidade:', error);
+      logger.error('[MasterUserController] Erro ao alterar status da unidade:', error);
       
       if (error.message.includes('não encontrada')) {
         return res.status(404).json({

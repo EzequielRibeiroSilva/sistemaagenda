@@ -3,6 +3,8 @@
  * Descrição: Gerencia configurações do sistema por unidade
  * Padrão: RUD (Read, Update, Delete) - um registro único por unidade_id
  */
+const logger = require('./../utils/logger');
+
 
 class ConfiguracaoSistema {
   constructor(db) {
@@ -39,7 +41,7 @@ class ConfiguracaoSistema {
 
       return configuracao || null;
     } catch (error) {
-      console.error('[ConfiguracaoSistema] Erro ao buscar configuração:', error);
+      logger.error('[ConfiguracaoSistema] Erro ao buscar configuração:', error);
       throw error;
     }
   }
@@ -70,7 +72,7 @@ class ConfiguracaoSistema {
       // Retorna a configuração criada
       return await this.findByUnidade(unidadeId);
     } catch (error) {
-      console.error('[ConfiguracaoSistema] Erro ao criar configuração padrão:', error);
+      logger.error('[ConfiguracaoSistema] Erro ao criar configuração padrão:', error);
       throw error;
     }
   }
@@ -100,7 +102,7 @@ class ConfiguracaoSistema {
       // Retorna a configuração atualizada
       return await this.findByUnidade(unidadeId);
     } catch (error) {
-      console.error('[ConfiguracaoSistema] Erro ao atualizar configuração:', error);
+      logger.error('[ConfiguracaoSistema] Erro ao atualizar configuração:', error);
       throw error;
     }
   }
@@ -132,7 +134,7 @@ class ConfiguracaoSistema {
         return await this.findByUnidade(unidadeId);
       }
     } catch (error) {
-      console.error('[ConfiguracaoSistema] Erro no upsert:', error);
+      logger.error('[ConfiguracaoSistema] Erro no upsert:', error);
       throw error;
     }
   }
@@ -148,7 +150,7 @@ class ConfiguracaoSistema {
 
       return rowsAffected > 0;
     } catch (error) {
-      console.error('[ConfiguracaoSistema] Erro ao deletar configuração:', error);
+      logger.error('[ConfiguracaoSistema] Erro ao deletar configuração:', error);
       throw error;
     }
   }

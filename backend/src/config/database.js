@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 require('dotenv').config();
+const logger = require('./../utils/logger');
 
 // Configuração do pool de conexões PostgreSQL
 const pool = new Pool({
@@ -15,11 +16,11 @@ const pool = new Pool({
 
 // Event listeners para monitoramento
 pool.on('connect', (client) => {
-  console.log('Nova conexão PostgreSQL estabelecida');
+  logger.log('Nova conexão PostgreSQL estabelecida');
 });
 
 pool.on('error', (err, client) => {
-  console.error('Erro inesperado no cliente PostgreSQL:', err);
+  logger.error('Erro inesperado no cliente PostgreSQL:', err);
   process.exit(-1);
 });
 
@@ -28,13 +29,13 @@ const testConnection = async () => {
   try {
     const client = await pool.connect();
     const result = await client.query('SELECT NOW() as current_time, version() as pg_version');
-    console.log('✅ Conexão PostgreSQL estabelecida com sucesso!');
-    console.log('📅 Hora atual do servidor:', result.rows[0].current_time);
-    console.log('🗄️ Versão PostgreSQL:', result.rows[0].pg_version.split(' ')[0] + ' ' + result.rows[0].pg_version.split(' ')[1]);
+    logger.log('✅ Conexão PostgreSQL estabelecida com sucesso!');
+    logger.log('📅 Hora atual do servidor:', result.rows[0].current_time);
+    logger.log('🗄️ Versão PostgreSQL:', result.rows[0].pg_version.split(' ')[0] + ' ' + result.rows[0].pg_version.split(' ')[1]);
     client.release();
     return true;
   } catch (err) {
-    console.error('❌ Erro ao conectar com PostgreSQL:', err.message);
+    logger.error('❌ Erro ao conectar com PostgreSQL:', err.message);
     return false;
   }
 };
@@ -45,10 +46,10 @@ const query = async (text, params) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Query executada:', { text, duration, rows: res.rowCount });
+    logger.log('Query executada:', { text, duration, rows: res.rowCount });
     return res;
   } catch (err) {
-    console.error('Erro na query:', { text, error: err.message });
+    logger.error('Erro na query:', { text, error: err.message });
     throw err;
   }
 };

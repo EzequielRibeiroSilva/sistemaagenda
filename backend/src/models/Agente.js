@@ -1,4 +1,5 @@
 const BaseModel = require('./BaseModel');
+const logger = require('./../utils/logger');
 
 class Agente extends BaseModel {
   constructor() {
@@ -115,7 +116,7 @@ class Agente extends BaseModel {
               availability: this.formatarDisponibilidadeSemanal(disponibilidadeSemanal)
             };
           } catch (error) {
-            console.error(`❌ [Agente.findWithCalculatedData] Erro ao processar agente ${agente.id}:`, error);
+            logger.error(`❌ [Agente.findWithCalculatedData] Erro ao processar agente ${agente.id}:`, error);
             throw error;
           }
         })
@@ -123,7 +124,7 @@ class Agente extends BaseModel {
 
       return agentesComDados;
     } catch (error) {
-      console.error('❌ [Agente.findWithCalculatedData] Erro geral:', error);
+      logger.error('❌ [Agente.findWithCalculatedData] Erro geral:', error);
       throw error;
     }
   }
@@ -147,7 +148,7 @@ class Agente extends BaseModel {
       // ✅ Formatar: "08:00-12:00 14:00-21:00" (sem espaços extras)
       return periodos.map(p => `${p.inicio || p.start}-${p.fim || p.end}`).join(' ');
     } catch (error) {
-      console.error('❌ Erro ao formatar horários:', error);
+      logger.error('❌ Erro ao formatar horários:', error);
       return '';
     }
   }
@@ -168,7 +169,7 @@ class Agente extends BaseModel {
             : horarioDia.periodos;
           temPeriodos = Array.isArray(periodos) && periodos.length > 0;
         } catch (error) {
-          console.error('Erro ao parsear períodos:', error);
+          logger.error('Erro ao parsear períodos:', error);
         }
       }
       
@@ -362,8 +363,8 @@ class Agente extends BaseModel {
         return agenteId;
       });
     } catch (error) {
-      console.error('❌ [Agente.updateWithTransaction] Erro na transação:', error);
-      console.error('❌ Stack trace:', error.stack);
+      logger.error('❌ [Agente.updateWithTransaction] Erro na transação:', error);
+      logger.error('❌ Stack trace:', error.stack);
       throw error; // Re-throw para o controller tratar
     }
   }

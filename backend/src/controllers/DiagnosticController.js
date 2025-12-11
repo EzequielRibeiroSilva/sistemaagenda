@@ -1,6 +1,7 @@
 const Usuario = require('../models/Usuario');
 const Agente = require('../models/Agente');
 const Unidade = require('../models/Unidade');
+const logger = require('./../utils/logger');
 
 class DiagnosticController {
   constructor() {
@@ -40,7 +41,7 @@ class DiagnosticController {
       // 2. Para cada usuário ADMIN, buscar suas unidades e agentes
       const auditResults = await Promise.all(
         usuariosAdmin.map(async (usuario) => {
-          console.log(`🔍 [DIAGNÓSTICO] Auditando usuário: ${usuario.email} (ID: ${usuario.id})`);
+          logger.log(`🔍 [DIAGNÓSTICO] Auditando usuário: ${usuario.email} (ID: ${usuario.id})`);
 
           // Buscar unidades do usuário
           const unidades = await this.unidadeModel.findByUsuario(usuario.id);
@@ -193,7 +194,7 @@ class DiagnosticController {
       });
 
     } catch (error) {
-      console.error('❌ [DIAGNÓSTICO] Erro na auditoria:', error);
+      logger.error('❌ [DIAGNÓSTICO] Erro na auditoria:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -221,7 +222,7 @@ class DiagnosticController {
         });
       }
 
-      console.log(`🔍 [DIAGNÓSTICO] Diagnóstico específico do usuário ID: ${userId}`);
+      logger.log(`🔍 [DIAGNÓSTICO] Diagnóstico específico do usuário ID: ${userId}`);
 
       // Buscar dados do usuário
       const usuario = await this.usuarioModel.findById(userId);
@@ -279,7 +280,7 @@ class DiagnosticController {
       });
 
     } catch (error) {
-      console.error('❌ [DIAGNÓSTICO] Erro no diagnóstico do usuário:', error);
+      logger.error('❌ [DIAGNÓSTICO] Erro no diagnóstico do usuário:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
