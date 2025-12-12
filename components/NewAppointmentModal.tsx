@@ -485,7 +485,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 const token = localStorage.getItem('authToken');
                 if (!token) return;
 
-                const response = await fetch(`http://localhost:3000/api/unidades/${effectiveLocationId}`, {
+                const response = await fetch(`http://localhost:3001/api/unidades/${effectiveLocationId}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -902,7 +902,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             try {
                 const token = localStorage.getItem('authToken');
                 const response = await fetch(
-                    `http://localhost:3000/api/clientes/${clienteId}/pontos?unidade_id=${unidadeId}`,
+                    `http://localhost:3001/api/clientes/${clienteId}/pontos?unidade_id=${unidadeId}`,
                     {
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -1049,7 +1049,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             try {
                 const token = localStorage.getItem('authToken');
                 const response = await fetch(
-                    `http://localhost:3000/api/clientes/${client.id}/pontos?unidade_id=${selectedLocationId}`,
+                    `http://localhost:3001/api/clientes/${client.id}/pontos?unidade_id=${selectedLocationId}`,
                     {
                         headers: {
                             'Authorization': `Bearer ${token}`,

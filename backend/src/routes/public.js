@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const PublicBookingController = require('../controllers/PublicBookingController');
 const CupomController = require('../controllers/CupomController');
+const logger = require('../utils/logger'); // ✅ CORREÇÃO: Import do logger
 const { 
   clientSearchRateLimit, 
   createBookingRateLimit, 

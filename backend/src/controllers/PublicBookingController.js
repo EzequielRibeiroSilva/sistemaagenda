@@ -327,7 +327,7 @@ class PublicBookingController {
       logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
       // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
-      const configuracoes = await db('configuracoes')
+      const configuracoes = await db('configuracoes_sistema')
         .where('unidade_id', unidadeIdParaUsar)
         .select('tempo_limite_agendar_horas')
         .first();
@@ -461,10 +461,12 @@ class PublicBookingController {
 
     } catch (error) {
       logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error);
+      logger.error('[PublicBooking] Stack trace:', error.stack);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
-        message: 'Erro ao buscar disponibilidade'
+        message: 'Erro ao buscar disponibilidade',
+        debug: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
@@ -803,7 +805,7 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
-      const configuracoes = await trx('configuracoes')
+      const configuracoes = await trx('configuracoes_sistema')
         .where('unidade_id', unidade_id)
         .select('tempo_limite_agendar_horas')
         .first();
@@ -1544,10 +1546,10 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
-      const configuracoes = await this.agendamentoModel.db('configuracoes')
-        .join('unidades', 'configuracoes.unidade_id', 'unidades.id')
+      const configuracoes = await this.agendamentoModel.db('configuracoes_sistema')
+        .join('unidades', 'configuracoes_sistema.unidade_id', 'unidades.id')
         .where('unidades.id', agendamento.unidade_id)
-        .select('configuracoes.permitir_cancelamento', 'configuracoes.tempo_limite_cancelar_horas')
+        .select('configuracoes_sistema.permitir_cancelamento', 'configuracoes_sistema.tempo_limite_cancelar_horas')
         .first();
 
       if (!configuracoes) {
