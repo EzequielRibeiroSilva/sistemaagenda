@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { compressImageFromPath } = require('./imageCompressionMiddleware');
 
 // Criar diretório de uploads se não existir
 const uploadsDir = path.join(__dirname, '../../uploads/avatars');
@@ -95,15 +96,30 @@ const logger = require('./../utils/logger');
         const writeStream = fs.createWriteStream(filePath);
         file.pipe(writeStream);
 
-        writeStream.on('close', () => {
-          req.avatarUrl = `/uploads/avatars/${newFilename}`;
-          files.push({
-            fieldname,
-            filename: newFilename,
-            originalname: filename,
-            mimetype: mimeType,
-            path: filePath
-          });
+        writeStream.on('close', async () => {
+          // ✅ ITEM 5/7: Comprimir imagem após upload
+          try {
+            const compressed = await compressImageFromPath(filePath, newFilename);
+            req.avatarUrl = compressed.url;
+            files.push({
+              fieldname,
+              filename: compressed.filename,
+              originalname: filename,
+              mimetype: compressed.mimetype,
+              path: compressed.path,
+              size: compressed.size
+            });
+          } catch (error) {
+            logger.error('Erro ao comprimir imagem, usando original:', error);
+            req.avatarUrl = `/uploads/avatars/${newFilename}`;
+            files.push({
+              fieldname,
+              filename: newFilename,
+              originalname: filename,
+              mimetype: mimeType,
+              path: filePath
+            });
+          }
           fileProcessing = false;
         });
 

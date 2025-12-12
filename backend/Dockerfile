@@ -20,7 +20,7 @@ COPY . .
 RUN mkdir -p logs
 
 # Expor porta
-EXPOSE 3000
+EXPOSE 3001
 
 # Definir usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs

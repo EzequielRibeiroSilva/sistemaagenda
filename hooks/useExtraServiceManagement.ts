@@ -52,7 +52,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3000/api/servicos/extras', {
+      const response = await fetch('http://localhost:3001/api/servicos/extras', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -84,7 +84,7 @@ export const useExtraServiceManagement = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3000/api/servicos/list', {
+      const response = await fetch('http://localhost:3001/api/servicos/list', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -115,7 +115,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3000/api/servicos/extras/${id}`, {
+      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -148,7 +148,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3000/api/servicos/extras', {
+      const response = await fetch('http://localhost:3001/api/servicos/extras', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -183,7 +183,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3000/api/servicos/extras/${id}`, {
+      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -218,7 +218,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3000/api/servicos/extras/${id}`, {
+      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
