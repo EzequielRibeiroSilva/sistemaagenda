@@ -6,7 +6,7 @@ const config = {
     name: 'Painel de Agendamento API',
     version: '1.0.0',
     env: process.env.NODE_ENV || 'development',
-    port: parseInt(process.env.PORT) || 3000,
+    port: parseInt(process.env.PORT) || 3001,
     host: process.env.HOST || '0.0.0.0'
   },
 
