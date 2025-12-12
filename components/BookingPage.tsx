@@ -507,6 +507,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   // Função para buscar disponibilidade quando uma data é selecionada
   const handleDateSelect = async (date: Date) => {
+    console.log('🗓️ [BookingPage] Data selecionada:', date.toISOString().split('T')[0]);
     setSelectedDate(date);
     setTempSelectedTime('');
     setIsLoadingSlots(true);
@@ -514,28 +515,43 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     try {
       if (!selectedAgent) {
+        console.error('❌ [BookingPage] Nenhum agente selecionado');
+        setIsLoadingSlots(false);
         return;
       }
 
       if (!selectedServices || selectedServices.length === 0) {
+        console.error('❌ [BookingPage] Nenhum serviço selecionado');
+        setIsLoadingSlots(false);
         return;
       }
 
       // Calcular duração total dos serviços selecionados
       const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
+      console.log('⏱️ [BookingPage] Duração total:', totalDuration, 'minutos');
 
       const dateStr = date.toISOString().split('T')[0];
+      console.log('🔍 [BookingPage] Buscando disponibilidade:', {
+        agenteId: selectedAgent.id,
+        data: dateStr,
+        duracao: totalDuration,
+        unidadeId: unidadeId
+      });
 
       // Passar unidadeId para filtrar horários do agente multi-unidade
       const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
 
+      console.log('📊 [BookingPage] Disponibilidade retornada:', disponibilidade);
+
       if (disponibilidade && disponibilidade.slots_disponiveis) {
+        console.log('✅ [BookingPage] Slots encontrados:', disponibilidade.slots_disponiveis.length);
         setAvailableTimeSlots(disponibilidade.slots_disponiveis);
       } else {
+        console.warn('⚠️ [BookingPage] Nenhum slot disponível');
         setAvailableTimeSlots([]);
       }
     } catch (error) {
-      // Erro ao buscar disponibilidade
+      console.error('❌ [BookingPage] Erro ao buscar disponibilidade:', error);
       setAvailableTimeSlots([]);
     } finally {
       setIsLoadingSlots(false);
