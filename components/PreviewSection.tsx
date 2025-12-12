@@ -37,8 +37,8 @@ const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['deta
                         const target = e.target as HTMLImageElement;
                         target.onerror = null;
                         target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2663eb&color=fff`;
-                    }}
-                />
+
+                        />
                 <div className="ml-3">
                     <p className="text-xs text-gray-500 uppercase tracking-wide">Agente</p>
                     <p className="font-bold text-gray-800">{name}</p>

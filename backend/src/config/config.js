@@ -69,6 +69,20 @@ const config = {
       : []
   },
 
+  // Configurações do Redis
+  // ✅ ITEM 3/7: Redis para blacklist de tokens e cache
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT) || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB) || 0,
+    // Timeout de conexão (5 segundos)
+    connectTimeout: 5000,
+    // Estratégia de reconexão
+    maxReconnectAttempts: 10,
+    reconnectDelay: 100
+  },
+
   // Configurações de log
   logging: {
     level: process.env.LOG_LEVEL || 'info',
