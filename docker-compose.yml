@@ -54,6 +54,10 @@ services:
       ENABLE_WHATSAPP_NOTIFICATIONS: true
       REMINDER_24H_ENABLED: true
       REMINDER_1H_ENABLED: true
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD:
+      REDIS_DB: 0
     ports:
       - "3000:3000"
     volumes:
@@ -63,6 +67,8 @@ services:
       - painel_network
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: npm run dev
     healthcheck:
@@ -89,6 +95,7 @@ services:
     networks:
       - painel_network
     depends_on:
+      - db
       - backend
     command: npm run dev -- --host 0.0.0.0
     healthcheck:
@@ -97,9 +104,29 @@ services:
       timeout: 10s
       retries: 3
 
+  # ✅ ITEM 3/7: Redis para blacklist de tokens e cache
+  redis:
+    image: redis:7-alpine
+    container_name: painel_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - painel_network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 # Volumes para persistência de dados
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
 
 # Rede personalizada para comunicação entre containers
