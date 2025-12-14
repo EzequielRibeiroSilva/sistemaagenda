@@ -1,0 +1,41 @@
+# Backend - Production image (optimized)
+
+# 1) Dependencies stage
+FROM node:18-alpine AS deps
+
+WORKDIR /app
+
+RUN apk add --no-cache curl tzdata
+
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# 2) Runtime stage
+FROM node:18-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache curl tzdata
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package*.json ./
+
+COPY src ./src
+COPY scripts ./scripts
+COPY migrations ./migrations
+COPY seeds ./seeds
+COPY knexfile.js ./knexfile.js
+
+# Knex CLI procura por um arquivo chamado "knexfile.js" no CWD,
+# mas também pode depender de configurações do pacote.
+
+RUN mkdir -p logs
+
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start:prod"]
