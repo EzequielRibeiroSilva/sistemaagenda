@@ -41,10 +41,10 @@ const poolConfig = {
   // Identificação da aplicação (útil para debugging no pg_stat_activity)
   application_name: `painel_agendamento_${process.env.NODE_ENV || 'dev'}`,
 
-  // SSL em produção
-  ssl: isProduction ? {
-    rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false'
-  } : false,
+  // SSL em produção - desabilitar completamente se PG_SSL_REJECT_UNAUTHORIZED === 'false'
+  ssl: isProduction
+    ? (process.env.PG_SSL_REJECT_UNAUTHORIZED === 'false' ? false : { rejectUnauthorized: true })
+    : false,
 
   // Statement timeout para evitar queries travadas (30 segundos)
   statement_timeout: 30000,

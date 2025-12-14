@@ -99,9 +99,9 @@ module.exports = {
       database: process.env.PG_DATABASE,
       user: process.env.PG_USER,
       password: process.env.PG_PASSWORD,
-      // SSL obrigatório em produção
-      ssl: {
-        rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false'
+      // SSL configurável - desabilitar para containers Docker internos
+      ssl: process.env.PG_SSL_REJECT_UNAUTHORIZED === 'false' ? false : {
+        rejectUnauthorized: true
       },
       // Configurações de conexão
       application_name: 'painel_agendamento_prod',
