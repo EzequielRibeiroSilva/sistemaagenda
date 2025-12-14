@@ -227,18 +227,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 columns={tableColumns}
                 isLoading={loading}
                 loadingMessage="Carregando clientes..."
-                emptyMessage={hasActiveFilters ? '🔍 Nenhum cliente encontrado com esses filtros' : '👥 Nenhum cliente cadastrado'}
-                emptyIcon={
-                    !hasActiveFilters ? (
-                        <button
-                            onClick={() => setActiveView('clients-add')}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Cadastrar Primeiro Cliente
-                        </button>
-                    ) : undefined
-                }
+                emptyMessage={hasActiveFilters ? '🔍 Nenhum cliente encontrado com esses filtros' : ''}
                 error={error}
                 pagination={{
                     currentPage,
