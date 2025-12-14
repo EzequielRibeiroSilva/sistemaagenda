@@ -914,7 +914,15 @@ class PublicBookingController {
       const horaFimMinutos = horaInicioMinutos + duracaoTotalMinutos;
       const hora_fim = this.minutesToTime(horaFimMinutos);
 
-      // Verificar disponibilidade do agente
+      // ✅ CORREÇÃO CRÍTICA: Adquirir advisory lock para prevenir race condition
+      // Isso serializa todas as operações de criação para o mesmo agente/data
+      await trx.raw(`
+        SELECT pg_advisory_xact_lock(
+          hashtext(?::text || ?::text)
+        )
+      `, [agente_id.toString(), data_agendamento]);
+
+      // Verificar disponibilidade do agente (agora protegido pelo lock)
       const conflito = await trx('agendamentos')
         .where('agente_id', agente_id)
         .where('data_agendamento', data_agendamento)
@@ -1066,6 +1074,15 @@ class PublicBookingController {
     } catch (error) {
       await trx.rollback();
       logger.error('[PublicBooking] Erro ao criar agendamento:', error);
+
+      if (error && (error.code === '23P01' || error.constraint === 'agendamentos_no_overlap')) {
+        return res.status(409).json({
+          success: false,
+          error: 'Horário indisponível',
+          message: 'Este horário já está ocupado'
+        });
+      }
+
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',

@@ -1,5 +1,6 @@
 const AuthService = require('../services/AuthService');
 const Usuario = require('../models/Usuario');
+const logger = require('./../utils/logger');
 
 class AuthMiddleware {
   constructor() {
@@ -71,7 +72,6 @@ class AuthMiddleware {
           // Para admins e masters: buscar logo_url das configurações da unidade
           const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
           const { db } = require('../config/knex');
-const logger = require('./../utils/logger');
           const configuracaoModel = new ConfiguracaoSistema(db);
           const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
 
@@ -212,14 +212,15 @@ const logger = require('./../utils/logger');
     return async (req, res, next) => {
       try {
         const authHeader = req.headers.authorization;
-        
+
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
           return next(); // Continua sem usuário
         }
 
         const token = authHeader.substring(7);
 
-        if (this.authService.isTokenBlacklisted(token)) {
+        // ✅ CORREÇÃO CRÍTICA: Adicionar await para função assíncrona
+        if (await this.authService.isTokenBlacklisted(token)) {
           return next(); // Continua sem usuário
         }
 
