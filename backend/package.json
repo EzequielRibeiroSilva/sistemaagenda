@@ -5,6 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
+    "start:prod": "node scripts/validate-env.js && npx knex migrate:latest && node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -20,6 +21,7 @@
     "migrate": "npx knex migrate:latest",
     "migrate:rollback": "npx knex migrate:rollback",
     "seed": "npx knex seed:run",
+    "validate:env": "node scripts/validate-env.js",
     "db:maintenance": "node scripts/db-maintenance.js",
     "db:maintenance:full": "node scripts/db-maintenance.js --full",
     "db:health": "node scripts/db-health-check.js",
