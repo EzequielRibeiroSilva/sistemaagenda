@@ -8,8 +8,22 @@
     "dev": "nodemon src/app.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "migrate": "node migrations/migrate.js",
-    "seed": "node seeds/seed.js"
+    "test:concurrency": "jest --testPathPattern=concurrency --verbose",
+    "test:business": "jest --testPathPattern=business --verbose",
+    "test:crud": "jest --testPathPattern=crud --verbose",
+    "test:advanced": "jest --testPathPattern=advanced --verbose",
+    "test:all": "jest --verbose",
+    "test:load": "node tests/load/loadTest.js",
+    "test:load:login": "node tests/load/loadTest.js login",
+    "test:load:agendamentos": "node tests/load/loadTest.js agendamentos",
+    "test:artillery": "artillery run tests/load/artillery-config.yml",
+    "migrate": "npx knex migrate:latest",
+    "migrate:rollback": "npx knex migrate:rollback",
+    "seed": "npx knex seed:run",
+    "db:maintenance": "node scripts/db-maintenance.js",
+    "db:maintenance:full": "node scripts/db-maintenance.js --full",
+    "db:health": "node scripts/db-health-check.js",
+    "db:archive": "node -e \"require('./src/jobs/dataArchiveJob').runArchiveJob().then(() => process.exit(0))\""
   },
   "keywords": [
     "nodejs",
@@ -48,6 +62,9 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.8",
+    "artillery": "^2.0.27",
+    "artillery-plugin-expect": "^2.21.0",
+    "autocannon": "^8.0.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3"
