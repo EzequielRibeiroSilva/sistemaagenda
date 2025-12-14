@@ -612,14 +612,8 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      // Verificar conflito de horário
-      const hasConflict = await this.model.checkConflict(agente_id, data_agendamento, hora_inicio, hora_fim);
-      if (hasConflict) {
-        return res.status(400).json({ 
-          error: 'Conflito de horário',
-          message: 'O agente já possui um agendamento neste horário' 
-        });
-      }
+      // NOTA: A verificação de conflito agora é feita DENTRO da transação
+      // no método createWithLock() para evitar race conditions
 
       // Buscar dados dos serviços principais
       let servicosData = [];
@@ -689,8 +683,8 @@ class AgendamentoController extends BaseController {
         ...outrosDados
       };
 
-      // Criar agendamento
-      const agendamento = await this.model.create(dadosAgendamento);
+      // Criar agendamento com proteção contra race conditions
+      const agendamento = await this.model.createWithLock(dadosAgendamento);
 
       // Criar relacionamentos com serviços principais
       if (servicosData.length > 0) {
@@ -827,9 +821,17 @@ class AgendamentoController extends BaseController {
       });
     } catch (error) {
       logger.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
-      return res.status(500).json({ 
+
+      // Tratar erro de conflito do createWithLock ou da constraint do banco
+      if (error && (error.code === 'CONFLICT' || error.code === '23P01' || error.constraint === 'agendamentos_no_overlap')) {
+        return res.status(409).json({
+          error: 'Conflito de horário',
+          message: 'O agente já possui um agendamento neste horário'
+        });
+      }
+      return res.status(500).json({
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: error.message
       });
     }
   }

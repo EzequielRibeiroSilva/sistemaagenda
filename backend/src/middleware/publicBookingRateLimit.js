@@ -11,6 +11,38 @@
 const rateLimit = require('express-rate-limit');
 const logger = require('./../utils/logger');
 
+function isLocalDevBypass(req) {
+  if (process.env.NODE_ENV === 'production') return false;
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  const host = (req.get && req.get('host')) || '';
+
+  // Se o host é localhost/127.0.0.1, estamos em cenário de dev local
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+    return true;
+  }
+
+  // IPv6-mapped IPv4 pode vir como ::ffff:127.0.0.1
+  if (ip === '127.0.0.1' || ip === '::1' || ip.includes('127.0.0.1') || ip.includes('::1')) {
+    return true;
+  }
+
+  // Redes privadas comuns (Docker/VM/local)
+  if (ip.startsWith('10.') || ip.startsWith('192.168.')) {
+    return true;
+  }
+
+  // 172.16.0.0/12
+  const m = ip.match(/^(?:.*:)?(172)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) {
+    const secondOctet = parseInt(m[2], 10);
+    if (secondOctet >= 16 && secondOctet <= 31) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Rate limit para busca de cliente (CRÍTICO - LGPD)
  * 3 tentativas a cada 5 minutos por IP
@@ -18,6 +50,7 @@ const logger = require('./../utils/logger');
 const clientSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutos
   max: 3, // 3 tentativas
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de busca',
     message: 'Você excedeu o limite de buscas. Tente novamente em 5 minutos.',
@@ -47,6 +80,7 @@ const clientSearchRateLimit = rateLimit({
 const createBookingRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 5, // 5 tentativas
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de agendamento',
     message: 'Você excedeu o limite de agendamentos. Tente novamente em 15 minutos.',
@@ -74,6 +108,7 @@ const createBookingRateLimit = rateLimit({
 const couponValidationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 10, // 10 tentativas
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de validação',
     message: 'Você excedeu o limite de validações de cupom. Tente novamente em 15 minutos.',
@@ -101,6 +136,7 @@ const couponValidationRateLimit = rateLimit({
 const cancelBookingRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 3, // 3 tentativas
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de cancelamento',
     message: 'Você excedeu o limite de cancelamentos. Tente novamente em 15 minutos.',
@@ -128,6 +164,7 @@ const cancelBookingRateLimit = rateLimit({
 const rescheduleBookingRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 5, // 5 tentativas
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de reagendamento',
     message: 'Você excedeu o limite de reagendamentos. Tente novamente em 15 minutos.',
@@ -155,6 +192,7 @@ const rescheduleBookingRateLimit = rateLimit({
 const generalPublicRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 100, // 100 requisições
+  skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas requisições',
     message: 'Você excedeu o limite de requisições. Tente novamente em 15 minutos.',

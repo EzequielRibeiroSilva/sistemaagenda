@@ -211,6 +211,62 @@ class Agendamento extends BaseModel {
     const conflicts = await query.select('*');
     return conflicts.length > 0;
   }
+
+  /**
+   * Criar agendamento de forma atômica com proteção contra race conditions
+   * Usa transação com SERIALIZABLE isolation level para garantir consistência
+   */
+  async createWithLock(dadosAgendamento) {
+    const { agente_id, data_agendamento, hora_inicio, hora_fim } = dadosAgendamento;
+
+    return this.db.transaction(async (trx) => {
+      // 1. Adquirir lock exclusivo no agente para a data específica
+      // Isso serializa todas as operações de criação para o mesmo agente/data
+      await trx.raw(`
+        SELECT pg_advisory_xact_lock(
+          hashtext(?::text || ?::text)
+        )
+      `, [agente_id.toString(), data_agendamento]);
+
+      // 2. Verificar conflitos dentro da transação
+      const conflicts = await trx(this.tableName)
+        .where('agente_id', agente_id)
+        .where('data_agendamento', data_agendamento)
+        .where('status', '!=', 'Cancelado')
+        .where(function() {
+          this.where(function() {
+            this.where('hora_inicio', '<=', hora_inicio)
+              .where('hora_fim', '>', hora_inicio);
+          })
+          .orWhere(function() {
+            this.where('hora_inicio', '<', hora_fim)
+              .where('hora_fim', '>=', hora_fim);
+          })
+          .orWhere(function() {
+            this.where('hora_inicio', '>=', hora_inicio)
+              .where('hora_fim', '<=', hora_fim);
+          });
+        })
+        .select('id');
+
+      if (conflicts.length > 0) {
+        const error = new Error('Conflito de horário');
+        error.code = 'CONFLICT';
+        throw error;
+      }
+
+      // 3. Criar o agendamento
+      const [agendamento] = await trx(this.tableName)
+        .insert({
+          ...dadosAgendamento,
+          created_at: new Date(),
+          updated_at: new Date()
+        })
+        .returning('*');
+
+      return agendamento;
+    });
+  }
 }
 
 module.exports = Agendamento;
