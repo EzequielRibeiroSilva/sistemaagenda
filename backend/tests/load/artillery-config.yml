@@ -1,0 +1,115 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    # Fase 1: Aquecimento (warm-up)
+    - duration: 10
+      arrivalRate: 5
+      name: "Warm up"
+    
+    # Fase 2: Carga normal (simula uso regular)
+    - duration: 30
+      arrivalRate: 20
+      name: "Normal load"
+    
+    # Fase 3: Pico de carga (simula horário de pico)
+    - duration: 20
+      arrivalRate: 50
+      name: "Peak load"
+    
+    # Fase 4: Stress (testar limite)
+    - duration: 10
+      arrivalRate: 100
+      name: "Stress test"
+
+  # Variáveis para os testes
+  variables:
+    testEmail: "testando@gmail.com"
+    testPassword: "Teste@123"
+
+  # Plugin para validar respostas
+  plugins:
+    expect: {}
+
+  # Timeouts
+  http:
+    timeout: 30
+
+scenarios:
+  # Cenário 1: Fluxo de Login
+  - name: "Login Flow"
+    weight: 30  # 30% das requisições
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ testEmail }}"
+            senha: "{{ testPassword }}"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+
+  # Cenário 2: Listagem de Agendamentos (autenticado)
+  - name: "List Appointments"
+    weight: 40  # 40% das requisições
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ testEmail }}"
+            senha: "{{ testPassword }}"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+      - get:
+          url: "/api/agendamentos?page=1&limit=10"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  # Cenário 3: Listagem de Clientes
+  - name: "List Clients"
+    weight: 20  # 20% das requisições
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ testEmail }}"
+            senha: "{{ testPassword }}"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+      - get:
+          url: "/api/clientes?page=1&limit=20"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  # Cenário 4: Dashboard (múltiplas chamadas)
+  - name: "Dashboard Load"
+    weight: 10  # 10% das requisições
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ testEmail }}"
+            senha: "{{ testPassword }}"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+      - get:
+          url: "/api/unidades"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - get:
+          url: "/api/agentes"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - get:
+          url: "/api/servicos"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
