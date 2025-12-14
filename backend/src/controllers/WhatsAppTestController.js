@@ -138,7 +138,16 @@ class WhatsAppTestController {
       };
 
       // Gerar mensagem sem enviar
-      const mensagem = this.whatsAppService.generateAppointmentMessage(agendamentoTeste);
+      const mensagem = this.whatsAppService.generateAppointmentConfirmationClient({
+        ...agendamentoTeste,
+        cliente_telefone: agendamentoTeste.cliente.telefone,
+        agente_telefone: '',
+        unidade_telefone: '',
+        unidade_endereco: '',
+        unidade_slug: '',
+        agendamento_id: 0,
+        unidade_id: 0
+      });
 
       res.status(200).json({
         success: true,

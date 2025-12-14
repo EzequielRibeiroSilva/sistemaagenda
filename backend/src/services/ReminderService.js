@@ -6,6 +6,7 @@
 
 const { db } = require('../config/knex');
 const WhatsAppService = require('./WhatsAppService');
+const logger = require('../utils/logger');
 
 class ReminderService {
   constructor() {
