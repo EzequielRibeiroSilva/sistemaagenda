@@ -179,37 +179,17 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
           {/* Services grid */}
           {!loading && !error && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {services.length === 0 ? (
-                <div className="col-span-full text-center py-12">
-                  <div className="text-gray-400 mb-4">
-                    <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-500 mb-2">Nenhum serviço encontrado</h3>
-                  <p className="text-gray-400 text-sm mb-6">Comece criando seu primeiro serviço</p>
-                  <button
-                    onClick={() => setActiveView('services-create')}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Criar Primeiro Serviço
-                  </button>
+              {services.map((service) => (
+                <div key={service.id} className={deleteLoading === service.id ? 'opacity-50 pointer-events-none' : ''}>
+                  <ServiceCard
+                    service={service}
+                    onEdit={onEditService}
+                    onDelete={handleDeleteService}
+                    isConfirmingDelete={confirmingDelete === service.id}
+                  />
                 </div>
-              ) : (
-                <>
-                  {services.map((service) => (
-                    <div key={service.id} className={deleteLoading === service.id ? 'opacity-50 pointer-events-none' : ''}>
-                      <ServiceCard
-                        service={service}
-                        onEdit={onEditService}
-                        onDelete={handleDeleteService}
-                        isConfirmingDelete={confirmingDelete === service.id}
-                      />
-                    </div>
-                  ))}
-                  <AddServiceCard onClick={() => setActiveView('services-create')} />
-                </>
-              )}
+              ))}
+              <AddServiceCard onClick={() => setActiveView('services-create')} />
             </div>
           )}
         </div>
