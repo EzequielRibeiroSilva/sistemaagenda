@@ -693,7 +693,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                                 </button>
                                             </td>
                                         )}
-                                        {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className={`w-2 h-2 rounded-full ${app.service === 'CORTE' ? 'bg-blue-500' : 'bg-cyan-500'}`}></span><span className="truncate">{app.service}</span></td>}
+                                        {visibleColumns.servico && <td className="p-3 w-64 font-medium text-gray-800 flex items-center gap-2 whitespace-nowrap"><span className="w-2 h-2 rounded-full bg-blue-500"></span><span className="truncate">{app.service}</span></td>}
                                         {visibleColumns.dataHora && <td className="p-3 w-64 text-gray-600 whitespace-nowrap">{app.dateTime}</td>}
                                         {visibleColumns.tempoRestante && <td className="p-3 w-32"><span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${getRemainingTimeClass(app.timeRemainingStatus)}`}>{app.timeRemaining}</span></td>}
                                         {visibleColumns.agente && (

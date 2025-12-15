@@ -208,8 +208,10 @@ export const useAppointmentManagement = () => {
                     new Date(`1970-01-01T${backendData.hora_inicio}:00`).getTime();
     const durationMinutes = duration / (1000 * 60);
 
-    let service = 'CORTE';
-    if (durationMinutes > 60) {
+    const backendServiceName = backendData.servicos?.[0]?.nome?.trim();
+
+    let service = backendServiceName || 'CORTE';
+    if (!backendServiceName && durationMinutes > 60) {
       service = 'CORTE + BARBA';
     }
 
