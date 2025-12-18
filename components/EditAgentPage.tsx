@@ -7,6 +7,42 @@ import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
 import { AgentUnitScheduleState } from '../types';
 
+ class ScheduleErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
+     declare props: { children: React.ReactNode };
+     declare state: { hasError: boolean; error?: Error };
+
+     constructor(props: { children: React.ReactNode }) {
+         super(props);
+         this.state = { hasError: false };
+     }
+
+     static getDerivedStateFromError(error: Error) {
+         return { hasError: true, error };
+     }
+
+     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+         console.error('❌ [EditAgentPage] Erro ao renderizar agenda personalizada:', error, errorInfo);
+     }
+
+     render() {
+         if (this.state.hasError) {
+             return (
+                 <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+                     <h3 className="font-semibold text-red-800">Erro ao exibir a agenda personalizada</h3>
+                     <p className="text-sm text-red-700 mt-1">
+                         Abra o console do navegador (F12) para ver o stack trace e me envie o erro.
+                     </p>
+                     <p className="text-xs text-red-700 mt-2 font-mono break-words">
+                         {this.state.error?.message}
+                     </p>
+                 </div>
+             );
+         }
+
+         return this.props.children;
+     }
+ }
+
 const FormCard: React.FC<{ title: string; children: React.ReactNode; rightContent?: React.ReactNode }> = ({ title, children, rightContent }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
     <div className="flex justify-between items-center mb-6">
@@ -196,8 +232,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 if (dayName) {
                     schedule[dayName] = {
                         isActive: true,
-                        periods: horario.periodos.map((p: any, index: number) => ({
-                            id: Date.now() + index, // ✅ Gerar ID único para cada período
+                        periods: horario.periodos.map((p: any) => ({
+                            id: p.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)),
                             start: p.inicio || p.start || '09:00',
                             end: p.fim || p.end || '17:00'
                         }))
@@ -491,9 +527,21 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             {/* ✅ NOVO: Renderizar uma seção de agenda para cada unidade */}
             {agentSchedules.length > 0 ? (
                 agentSchedules.map((agentUnitSchedule) => {
+                    console.log('🟢 [EditAgentPage] Renderizando unidade:', {
+                        unidade_id: agentUnitSchedule.unidade_id,
+                        unidade_nome: agentUnitSchedule.unidade_nome,
+                        agenda_personalizada: agentUnitSchedule.agenda_personalizada,
+                        schedule_keys: Object.keys(agentUnitSchedule.schedule || {})
+                    });
+                    
                     const unitData = availableUnits.find(u => u.id === agentUnitSchedule.unidade_id);
                     const unitLimits = unitData?.horarios_funcionamento;
-
+                    
+                    console.log('🟢 [EditAgentPage] unitData encontrado:', {
+                        found: !!unitData,
+                        unitLimits_length: unitLimits?.length || 0
+                    });
+                    
                     return (
                         <FormCard 
                             key={agentUnitSchedule.unidade_id}
@@ -506,23 +554,26 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                                         onChange={(e) => handleToggleCustomSchedule(agentUnitSchedule.unidade_id, e.target.checked)}
                                         className="sr-only"
                                     />
-                                    <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${agentUnitSchedule.agenda_personalizada ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                        {agentUnitSchedule.agenda_personalizada && <Check className="w-3 h-3 text-white" />}
-                                    </div>
-                                    <span className="ml-2 text-sm text-gray-600">Agenda personalizada</span>
-                                </label>
-                            }
-                        >
+                                        <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${agentUnitSchedule.agenda_personalizada ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                            {agentUnitSchedule.agenda_personalizada && <Check className="w-3 h-3 text-white" />}
+                                        </div>
+                                        <span className="ml-2 text-sm text-gray-600">Agenda personalizada</span>
+                                    </label>
+                                }
+                            >
                             {agentUnitSchedule.agenda_personalizada ? (
-                                <AgentScheduleEditor
-                                    schedule={agentUnitSchedule.schedule}
-                                    onChange={(newSchedule) => handleScheduleChange(agentUnitSchedule.unidade_id, newSchedule)}
-                                    unitScheduleLimits={unitLimits}
-                                />
+                                <div className="mt-4">
+                                    <ScheduleErrorBoundary>
+                                        <AgentScheduleEditor
+                                            schedule={agentUnitSchedule.schedule}
+                                            onChange={(newSchedule) => handleScheduleChange(agentUnitSchedule.unidade_id, newSchedule)}
+                                            unitScheduleLimits={unitLimits}
+                                        />
+                                    </ScheduleErrorBoundary>
+                                </div>
                             ) : (
-                                <div className="text-center py-8 text-gray-500">
+                                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300 mt-4">
                                     <p>Usando agenda padrão da unidade</p>
-                                    <p className="text-sm mt-1">Marque "Agenda personalizada" para definir horários específicos</p>
                                 </div>
                             )}
                         </FormCard>
@@ -537,17 +588,31 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 </FormCard>
             )}
 
-            <div className="pt-2">
+            <div className="pt-2 flex items-center gap-4">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className={`font-semibold px-8 py-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                    className={`font-semibold px-8 py-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center ${
                         isSaving
                             ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                 >
-                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                    {isSaving ? (
+                        <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Salvando...
+                        </>
+                    ) : (
+                        'Salvar Alterações'
+                    )}
+                </button>
+                <button
+                    onClick={() => setActiveView('agents-list')}
+                    disabled={isSaving}
+                    className="bg-gray-100 text-gray-800 font-semibold px-8 py-3 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Cancelar
                 </button>
             </div>
         </div>
