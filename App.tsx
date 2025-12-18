@@ -306,7 +306,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100 text-gray-800">
+    <div className="flex h-screen overflow-hidden bg-gray-100 text-gray-800">
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
@@ -321,7 +321,7 @@ const App: React.FC = () => {
           userData: user.userData
         }}
       />
-      <div className="relative z-20 flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <Header 
           onLogout={handleLogout} 
           setActiveView={setActiveView} 
@@ -333,7 +333,7 @@ const App: React.FC = () => {
           loggedInAgentId={user.agentId}
           onToggleMobileSidebar={() => setMobileSidebarOpen(true)}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
+        <main className="flex-1 relative overflow-y-auto focus:outline-none bg-gray-100 p-4 lg:p-6">
           {renderMainContent()}
         </main>
       </div>

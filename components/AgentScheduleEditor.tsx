@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Edit, Plus, X } from './Icons';
 
-type TimePeriod = { id: number; start: string; end: string };
+type TimePeriod = { id: string; start: string; end: string };
 type DayScheduleData = {
   isActive: boolean;
   periods: TimePeriod[];
@@ -37,15 +37,9 @@ interface AgentScheduleEditorProps {
   unitScheduleLimits?: UnitScheduleLimit[];
 }
 
-const initialSchedule: ScheduleData = {
-  'Segunda-feira': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '19:00' }] },
-  'Terça': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '20:00' }] },
-  'Quarta-feira': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '20:00' }] },
-  'Quinta': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '21:00' }] },
-  'Sexta-feira': { isActive: true, periods: [{ id: 1, start: '08:00', end: '12:00' }, { id: 2, start: '14:00', end: '21:00' }] },
-  'Sábado': { isActive: false, periods: [] },
-  'Domingo': { isActive: false, periods: [] },
-};
+const DAY_MAP = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const DayScheduleRow: React.FC<{
   dayName: string;
@@ -58,22 +52,28 @@ const DayScheduleRow: React.FC<{
   const { isActive, periods } = schedule;
 
   const handleAddPeriod = () => {
-    onUpdatePeriods([...periods, { id: Date.now(), start: '09:00', end: '17:00' }]);
+    onUpdatePeriods([...periods, { id: generateId(), start: '09:00', end: '17:00' }]);
+    setIsEditing(true);
   };
 
-  const handleRemovePeriod = (id: number) => {
+  const handleRemovePeriod = (id: string) => {
     onUpdatePeriods(periods.filter(p => p.id !== id));
   };
 
-  const handlePeriodChange = (id: number, field: 'start' | 'end', value: string) => {
+  const handlePeriodChange = (id: string, field: 'start' | 'end', value: string) => {
     // ✅ ETAPA 5: Validar contra limites da unidade
-    if (unitLimit && unitLimit.is_aberto && unitLimit.periodos.length > 0) {
-      const isValid = unitLimit.periodos.some(limite => {
-        return value >= limite.inicio && value <= limite.fim;
-      });
-      
+    const unitPeriods = Array.isArray(unitLimit?.periodos) ? unitLimit.periodos : [];
+    if (unitLimit?.is_aberto && unitPeriods.length > 0) {
+      const isValid = unitPeriods
+        .filter((limite) => typeof limite?.inicio === 'string' && typeof limite?.fim === 'string')
+        .some((limite) => value >= limite.inicio && value <= limite.fim);
+
       if (!isValid) {
-        alert(`Horário inválido! ${dayName} - A unidade funciona apenas nos seguintes horários: ${unitLimit.periodos.map(p => `${p.inicio}-${p.fim}`).join(', ')}`);
+        const label = unitPeriods
+          .filter((p) => typeof p?.inicio === 'string' && typeof p?.fim === 'string')
+          .map((p) => `${p.inicio}-${p.fim}`)
+          .join(', ');
+        alert(`Horário inválido! ${dayName} - A unidade funciona apenas nos seguintes horários: ${label}`);
         return;
       }
     }
@@ -149,53 +149,63 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     onChange: legacyOnChange,
     unitScheduleLimits
 }) => {
-    const [schedule, setSchedule] = useState<ScheduleData>(initialSchedule);
-    const [isInitialized, setIsInitialized] = useState(false);
+    console.log('🟡 [AgentScheduleEditor] Componente montado/atualizado com props:', {
+        hasScheduleData: !!scheduleData,
+        hasLegacySchedule: !!legacySchedule,
+        legacyScheduleType: typeof legacySchedule,
+        legacyScheduleKeys: legacySchedule ? Object.keys(legacySchedule) : [],
+        hasUnitScheduleLimits: !!unitScheduleLimits,
+        unitScheduleLimitsLength: unitScheduleLimits?.length || 0
+    });
+    
+    const [schedule, setSchedule] = useState<ScheduleData>({});
+    const [isReady, setIsReady] = useState(false);
 
-    // Converter dados da API para formato interno (nova interface) - APENAS UMA VEZ
+    // Efeito para carregar dados (Prioridade: Props novas -> Props legadas -> Default Vazio)
     useEffect(() => {
-        if (scheduleData && Array.isArray(scheduleData) && !isInitialized) {
-            const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
-            const convertedSchedule: ScheduleData = {};
+        let newSchedule: ScheduleData = {};
+        const baseDays = DAY_MAP;
 
-            // Inicializar todos os dias primeiro
-            dayNames.forEach((dayName) => {
-                convertedSchedule[dayName] = {
-                    isActive: false,
-                    periods: []
-                };
+        // Caso 1: Dados vindos da API (Edit Mode)
+        if (scheduleData && Array.isArray(scheduleData)) {
+            baseDays.forEach((dayName) => {
+                newSchedule[dayName] = { isActive: false, periods: [] };
             });
 
-            // Processar dados da API para todos os dias (abertos e fechados)
             scheduleData.forEach((dayData) => {
-                const dayName = dayNames[dayData.dia_semana];
+                const dayName = baseDays[dayData.dia_semana];
                 if (dayName) {
-                    // ✅ CORREÇÃO: Suportar tanto "inicio/fim" (legado) quanto "start/end" (novo)
-                    const periods = dayData.periodos ? dayData.periodos.map((periodo: any, periodIndex) => ({
-                        id: periodIndex + 1,
-                        start: periodo.start || periodo.inicio || '09:00',
-                        end: periodo.end || periodo.fim || '17:00'
+                    const periods = dayData.periodos ? dayData.periodos.map((p: any) => ({
+                        id: generateId(),
+                        start: p.start || p.inicio || '09:00',
+                        end: p.end || p.fim || '17:00'
                     })) : [];
 
-                    convertedSchedule[dayName] = {
-                        // Calcular isActive baseado se há períodos (já que API não envia is_aberto)
-                        isActive: periods.length > 0,
+                    newSchedule[dayName] = {
+                        isActive: periods.length > 0 || !!dayData.is_aberto,
                         periods: periods
                     };
                 }
             });
-
-            setSchedule(convertedSchedule);
-            setIsInitialized(true);
+        } 
+        // Caso 2: Legacy (Create Mode com estado prévio)
+        else if (legacySchedule && Object.keys(legacySchedule).length > 0) {
+            newSchedule = legacySchedule;
+        } 
+        // Caso 3: Inicialização Padrão (Create Mode limpo)
+        else {
+            baseDays.forEach(day => {
+                const isWorkDay = day !== 'Sábado' && day !== 'Domingo';
+                newSchedule[day] = {
+                    isActive: isWorkDay,
+                    periods: isWorkDay ? [{ id: generateId(), start: '09:00', end: '18:00' }] : []
+                };
+            });
         }
-    }, [scheduleData, isInitialized]);
 
-    // Suporte para interface legada (CreateAgentPage)
-    useEffect(() => {
-        if (legacySchedule && typeof legacySchedule === 'object') {
-            setSchedule(legacySchedule);
-        }
-    }, [legacySchedule]);
+        setSchedule(newSchedule);
+        setIsReady(true);
+    }, [scheduleData, legacySchedule]);
 
     const handleUpdateDay = (dayName: string, newDayData: DayScheduleData) => {
         const newSchedule = {
@@ -254,22 +264,26 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
         });
     };
     
+    if (!isReady) {
+        return <div className="p-4 text-center text-gray-400">Carregando horários...</div>;
+    }
+
     return (
-        <div>
-            {Object.entries(schedule).map(([dayName, dayData]) => {
-                // ✅ ETAPA 5: Buscar limites da unidade para este dia
-                const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
-                const dayIndex = dayNames.indexOf(dayName);
-                const unitLimit = unitScheduleLimits?.find(limit => limit.dia_semana === dayIndex);
+        <div className="w-full bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+            {DAY_MAP.map((dayName, index) => {
+                const dayData = schedule[dayName] || { isActive: false, periods: [] };
+                
+                // Encontrar limites da unidade para este dia
+                const limit = unitScheduleLimits?.find(u => u.dia_semana === index);
                 
                 return (
                     <DayScheduleRow
                         key={dayName}
                         dayName={dayName}
                         schedule={dayData}
-                        onToggle={() => handleToggleDay(dayName)}
-                        onUpdatePeriods={(periods) => handleUpdatePeriods(dayName, periods)}
-                        unitLimit={unitLimit}
+                        unitLimit={limit}
+                        onToggle={() => handleUpdateDay(dayName, { ...dayData, isActive: !dayData.isActive })}
+                        onUpdatePeriods={(periods) => handleUpdateDay(dayName, { ...dayData, periods, isActive: periods.length > 0 })}
                     />
                 );
             })}

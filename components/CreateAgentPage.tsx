@@ -439,18 +439,11 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         );
       })}
 
-      <div className="flex justify-end space-x-4">
-        <button
-          onClick={() => setActiveView('agents-list')}
-          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          disabled={isSubmitting}
-        >
-          Cancelar
-        </button>
+      <div className="pt-2 flex items-center gap-4">
         <button
           onClick={handleSave}
           disabled={isSubmitting || loading || availableUnits.length === 0}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+          className="bg-blue-600 text-white font-semibold px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
         >
           {isSubmitting ? (
             <>
@@ -463,6 +456,13 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
               Criar Agente
             </>
           )}
+        </button>
+        <button
+          onClick={() => setActiveView('agents-list')}
+          disabled={isSubmitting}
+          className="bg-gray-100 text-gray-800 font-semibold px-8 py-3 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Cancelar
         </button>
       </div>
     </div>
