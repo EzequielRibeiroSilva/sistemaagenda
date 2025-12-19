@@ -13,7 +13,11 @@ if (import.meta.env.PROD && (!envApiBaseUrl || envApiBaseUrl.trim() === '')) {
 export const API_BASE_URL = envApiBaseUrl || 'http://localhost:3001/api';
 
 // URL base para assets (uploads, avatares, etc.)
-export const ASSETS_BASE_URL = envApiBaseUrl?.replace('/api', '') || 'http://localhost:3001';
+// NOTA: Se VITE_API_BASE_URL é '/api', o replace retorna '' (string vazia)
+// que é o comportamento correto para usar URLs relativas em produção.
+// Usamos !== undefined para não confundir string vazia com ausência de valor.
+const assetsBaseFromEnv = envApiBaseUrl !== undefined ? envApiBaseUrl.replace('/api', '') : undefined;
+export const ASSETS_BASE_URL = assetsBaseFromEnv !== undefined ? assetsBaseFromEnv : 'http://localhost:3001';
 
 /**
  * Constrói URL completa para assets (avatares, logos, etc.)
