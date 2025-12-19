@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
+// ✅ CORREÇÃO: Usar variável de ambiente para URL da API
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
 interface ExtraService {
   id: number;
   nome: string;
@@ -52,7 +55,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3001/api/servicos/extras', {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -84,7 +87,7 @@ export const useExtraServiceManagement = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/servicos/list', {
+      const response = await fetch(`${API_BASE_URL}/servicos/list`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -115,7 +118,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras/${id}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -148,7 +151,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3001/api/servicos/extras', {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -183,7 +186,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras/${id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -218,7 +221,7 @@ export const useExtraServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/extras/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

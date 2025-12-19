@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
+// ✅ CORREÇÃO: Usar variável de ambiente para URL da API
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
 interface Service {
   id: number;
   nome: string;
@@ -54,7 +57,7 @@ export const useServiceManagement = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/servicos/list', {
+      const response = await fetch(`${API_BASE_URL}/servicos/list`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -86,7 +89,7 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3001/api/servicos', {
+      const response = await fetch(`${API_BASE_URL}/servicos`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -118,7 +121,7 @@ export const useServiceManagement = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/agentes/list', {
+      const response = await fetch(`${API_BASE_URL}/agentes/list`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -147,7 +150,7 @@ export const useServiceManagement = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/servicos/extras/list', {
+      const response = await fetch(`${API_BASE_URL}/servicos/extras/list`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -178,7 +181,7 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/${id}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -211,7 +214,7 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:3001/api/servicos', {
+      const response = await fetch(`${API_BASE_URL}/servicos`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -246,7 +249,7 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/${id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -281,7 +284,7 @@ export const useServiceManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/servicos/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/servicos/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

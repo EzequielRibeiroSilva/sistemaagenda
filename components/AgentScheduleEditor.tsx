@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Edit, Plus, X } from './Icons';
 
 type TimePeriod = { id: string; start: string; end: string };
@@ -149,24 +149,37 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
     onChange: legacyOnChange,
     unitScheduleLimits
 }) => {
-    console.log('🟡 [AgentScheduleEditor] Componente montado/atualizado com props:', {
-        hasScheduleData: !!scheduleData,
-        hasLegacySchedule: !!legacySchedule,
-        legacyScheduleType: typeof legacySchedule,
-        legacyScheduleKeys: legacySchedule ? Object.keys(legacySchedule) : [],
-        hasUnitScheduleLimits: !!unitScheduleLimits,
-        unitScheduleLimitsLength: unitScheduleLimits?.length || 0
-    });
-    
     const [schedule, setSchedule] = useState<ScheduleData>({});
     const [isReady, setIsReady] = useState(false);
 
-    // Efeito para carregar dados (Prioridade: Props novas -> Props legadas -> Default Vazio)
+    // ✅ CORREÇÃO: Usar ref para rastrear mudanças internas vs externas
+    // Isso evita o ciclo infinito quando onScheduleChange atualiza scheduleData
+    const isInternalChangeRef = useRef(false);
+    const lastScheduleDataRef = useRef<string | null>(null);
+
+    // Efeito para carregar dados APENAS quando há mudança externa real
     useEffect(() => {
+        // Criar uma "assinatura" dos dados para detectar mudanças reais
+        const currentSignature = scheduleData ? JSON.stringify(scheduleData) : null;
+
+        // ✅ CORREÇÃO: Se foi uma mudança interna, apenas atualizar a ref e retornar
+        if (isInternalChangeRef.current) {
+            isInternalChangeRef.current = false;
+            lastScheduleDataRef.current = currentSignature;
+            return;
+        }
+
+        // Se os dados são os mesmos, não fazer nada
+        if (currentSignature === lastScheduleDataRef.current && isReady) {
+            return;
+        }
+
+        lastScheduleDataRef.current = currentSignature;
+
         let newSchedule: ScheduleData = {};
         const baseDays = DAY_MAP;
 
-        // Caso 1: Dados vindos da API (Edit Mode)
+        // Caso 1: Dados vindos da API (Edit Mode) ou de getDefaultSchedule (Create Mode)
         if (scheduleData && Array.isArray(scheduleData)) {
             baseDays.forEach((dayName) => {
                 newSchedule[dayName] = { isActive: false, periods: [] };
@@ -187,11 +200,11 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
                     };
                 }
             });
-        } 
+        }
         // Caso 2: Legacy (Create Mode com estado prévio)
         else if (legacySchedule && Object.keys(legacySchedule).length > 0) {
             newSchedule = legacySchedule;
-        } 
+        }
         // Caso 3: Inicialização Padrão (Create Mode limpo)
         else {
             baseDays.forEach(day => {
@@ -205,7 +218,7 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
 
         setSchedule(newSchedule);
         setIsReady(true);
-    }, [scheduleData, legacySchedule]);
+    }, [scheduleData, legacySchedule, isReady]);
 
     const handleUpdateDay = (dayName: string, newDayData: DayScheduleData) => {
         const newSchedule = {
@@ -215,8 +228,11 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
 
         setSchedule(newSchedule);
 
-        // Notificar interface nova (EditAgentPage)
+        // Notificar interface nova (EditAgentPage/CreateLocationPage/EditLocationPage)
         if (onScheduleChange) {
+            // ✅ CORREÇÃO: Marcar que a próxima mudança de scheduleData é interna
+            isInternalChangeRef.current = true;
+
             const dayNames = ['Domingo', 'Segunda-feira', 'Terça', 'Quarta-feira', 'Quinta', 'Sexta-feira', 'Sábado'];
 
             // ⚠️ REGRA CRÍTICA: Backend SEMPRE espera 7 dias, mesmo os fechados
@@ -282,7 +298,14 @@ const AgentScheduleEditor: React.FC<AgentScheduleEditorProps> = ({
                         dayName={dayName}
                         schedule={dayData}
                         unitLimit={limit}
-                        onToggle={() => handleUpdateDay(dayName, { ...dayData, isActive: !dayData.isActive })}
+                        onToggle={() => {
+                            const newIsActive = !dayData.isActive;
+                            // ✅ CORREÇÃO: Ao ativar um dia sem períodos, adicionar período padrão
+                            const newPeriods = newIsActive && dayData.periods.length === 0
+                                ? [{ id: generateId(), start: '09:00', end: '18:00' }]
+                                : dayData.periods;
+                            handleUpdateDay(dayName, { isActive: newIsActive, periods: newPeriods });
+                        }}
                         onUpdatePeriods={(periods) => handleUpdateDay(dayName, { ...dayData, periods, isActive: periods.length > 0 })}
                     />
                 );
