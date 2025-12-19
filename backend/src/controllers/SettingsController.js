@@ -91,13 +91,41 @@ class SettingsController {
       const { unidade_id, id: userId } = req.user;
       let dadosConfiguracao = { ...req.body };
 
-
+      // Converter tipos de string para os tipos corretos (FormData envia tudo como string)
+      if (dadosConfiguracao.duracao_servico_horas !== undefined) {
+        dadosConfiguracao.duracao_servico_horas = parseFloat(dadosConfiguracao.duracao_servico_horas);
+      }
+      if (dadosConfiguracao.tempo_limite_agendar_horas !== undefined) {
+        dadosConfiguracao.tempo_limite_agendar_horas = parseInt(dadosConfiguracao.tempo_limite_agendar_horas, 10);
+      }
+      if (dadosConfiguracao.tempo_limite_cancelar_horas !== undefined) {
+        dadosConfiguracao.tempo_limite_cancelar_horas = parseInt(dadosConfiguracao.tempo_limite_cancelar_horas, 10);
+      }
+      if (dadosConfiguracao.periodo_futuro_dias !== undefined) {
+        dadosConfiguracao.periodo_futuro_dias = parseInt(dadosConfiguracao.periodo_futuro_dias, 10);
+      }
+      if (dadosConfiguracao.permitir_cancelamento !== undefined) {
+        dadosConfiguracao.permitir_cancelamento = dadosConfiguracao.permitir_cancelamento === 'true' || dadosConfiguracao.permitir_cancelamento === true;
+      }
+      // Conversão de campos de pontos
+      if (dadosConfiguracao.pontos_ativo !== undefined) {
+        dadosConfiguracao.pontos_ativo = dadosConfiguracao.pontos_ativo === 'true' || dadosConfiguracao.pontos_ativo === true;
+      }
+      if (dadosConfiguracao.pontos_por_real !== undefined) {
+        dadosConfiguracao.pontos_por_real = parseFloat(dadosConfiguracao.pontos_por_real);
+      }
+      if (dadosConfiguracao.reais_por_pontos !== undefined) {
+        dadosConfiguracao.reais_por_pontos = parseFloat(dadosConfiguracao.reais_por_pontos);
+      }
+      if (dadosConfiguracao.pontos_validade_meses !== undefined) {
+        dadosConfiguracao.pontos_validade_meses = parseInt(dadosConfiguracao.pontos_validade_meses, 10);
+      }
 
       // 1. Processar upload de logo (se houver)
       if (req.file) {
         const logoUrl = `/uploads/logos/${req.file.filename}`;
         dadosConfiguracao.logo_url = logoUrl;
-
+        logger.info('[SettingsController] Logo processada:', logoUrl);
       }
 
       // 2. Processar alteração de senha (se houver)
