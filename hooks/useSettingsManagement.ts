@@ -324,7 +324,12 @@ export const useSettingsManagement = () => {
 
       const result: ApiResponse<SystemSettings> = await response.json();
 
+      // DEBUG: Log da resposta da API
+      console.log('[useSettingsManagement] Resposta da API:', result);
+      console.log('[useSettingsManagement] result.data?.logo_url:', result.data?.logo_url);
+
       if (result.success && result.data) {
+        console.log('[useSettingsManagement] Atualizando settings com:', result.data);
         setSettings(result.data);
         return result.data;
       } else {
