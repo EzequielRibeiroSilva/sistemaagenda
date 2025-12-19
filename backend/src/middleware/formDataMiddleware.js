@@ -2,6 +2,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { compressImageFromPath } = require('./imageCompressionMiddleware');
+const logger = require('../utils/logger');
 
 // Criar diretório de uploads se não existir
 const uploadsDir = path.join(__dirname, '../../uploads/avatars');
@@ -55,7 +56,6 @@ const handleFormDataWithUpload = (req, res, next) => {
 
   // Usar busboy para processar FormData manualmente
   const busboy = require('busboy');
-const logger = require('./../utils/logger');
 
   try {
     const bb = busboy({ headers: req.headers });

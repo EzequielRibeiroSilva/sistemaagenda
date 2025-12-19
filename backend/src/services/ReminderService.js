@@ -343,7 +343,6 @@ class ReminderService {
       let pontosInfo = null;
       try {
         const ClienteModel = require('../models/Cliente');
-const logger = require('./../utils/logger');
         const clienteModel = new ClienteModel(this.db);
         
         // Calcular saldo atual de pontos

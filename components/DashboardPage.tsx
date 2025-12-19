@@ -108,22 +108,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         // 3. ✅ PRIORIDADE 2: Plano Single
         else if (isSinglePlan) {
             newLocationId = backendUnidades[0]?.id.toString() || null;
-
         }
         // 4. ✅ PRIORIDADE 3: ADMIN com unidade padrão
         else if (user?.unidade_id) {
             newLocationId = user.unidade_id.toString();
-
         }
         // 5. ✅ PRIORIDADE 4: ADMIN Multi-Local sem padrão
         else if (userRole === 'ADMIN' && isMultiPlan && backendUnidades.length > 0) {
             newLocationId = backendUnidades[0].id.toString();
-
+        }
+        // 6. ✅ FALLBACK: Se nenhuma condição anterior foi atendida, usar primeira unidade
+        else if (backendUnidades.length > 0) {
+            newLocationId = backendUnidades[0].id.toString();
+            console.log('[DashboardPage] Auto-seleção FALLBACK (plano indefinido):', newLocationId);
         }
 
-        // 6. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
+        // 7. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
         // ✅ CORREÇÃO: Aplicar para AMBAS as seções (Desempenho e Pré-Visualização)
         if (newLocationId && newLocationId !== performanceLocation) {
+            console.log('[DashboardPage] Aplicando auto-seleção:', { newLocationId, performanceLocation, previewLocation });
             setPerformanceLocation(newLocationId);
             setPreviewLocation(newLocationId);
         }

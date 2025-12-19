@@ -1,6 +1,7 @@
 const Agente = require('../models/Agente');
 const bcrypt = require('bcryptjs');
 const { deleteOldAvatar } = require('../middleware/formDataMiddleware');
+const logger = require('../utils/logger');
 
 class AgenteController {
   constructor() {
@@ -639,10 +640,9 @@ class AgenteController {
       let senhaHash = agenteExistente.senha_hash; // Manter existente por padrão
       if (senha && senha.trim() !== '') {
         logger.log(`🔐 [AgenteController] Senha fornecida para atualização - Comprimento: ${senha.length}`);
-        
+
         // ✅ CORREÇÃO 1.9: Validação robusta de senha
         const { validatePasswordStrength } = require('../middleware/passwordValidation');
-const logger = require('./../utils/logger');
         const validation = validatePasswordStrength(senha);
         
         logger.log(`🔐 [AgenteController] Validação de senha - Válida: ${validation.valid}, Erros: ${validation.errors.length}`);

@@ -6,6 +6,7 @@
 
 const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const bcrypt = require('bcrypt');
+const logger = require('../utils/logger');
 
 class SettingsService {
   constructor(db) {
@@ -94,7 +95,6 @@ class SettingsService {
 
       // ✅ CORREÇÃO 1.9: Validação robusta de senha
       const { validatePasswordStrength } = require('../middleware/passwordValidation');
-const logger = require('./../utils/logger');
       const validation = validatePasswordStrength(novaSenha);
       
       if (!validation.valid) {

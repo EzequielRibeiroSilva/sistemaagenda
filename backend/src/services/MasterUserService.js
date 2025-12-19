@@ -4,6 +4,7 @@ const Usuario = require('../models/Usuario');
 const Unidade = require('../models/Unidade');
 const Cliente = require('../models/Cliente');
 const { db: knex } = require('../config/knex');
+const logger = require('../utils/logger');
 
 class MasterUserService {
   constructor() {
@@ -94,7 +95,6 @@ class MasterUserService {
 
       // ✅ CORREÇÃO 1.9: Validação robusta de senha
       const { validatePasswordStrength } = require('../middleware/passwordValidation');
-const logger = require('./../utils/logger');
       const validation = validatePasswordStrength(senha);
       
       if (!validation.valid) {

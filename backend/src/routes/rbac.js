@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 
 // Importar controllers RBAC
 const RBACAgendamentoController = require('../controllers/RBACAgendamentoController');
@@ -202,7 +203,6 @@ router.get('/servicos',
   async (req, res) => {
     try {
       const { ServicoController } = require('../controllers/ServicoController');
-const logger = require('./../utils/logger');
       const servicoController = new ServicoController();
       
       let servicos;

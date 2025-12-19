@@ -32,10 +32,12 @@ interface BackendAgente {
   name?: string;              // ✅ CRÍTICO: Backend retorna 'name' já formatado (nome completo)
   email: string;
   telefone?: string;
-  avatar_url?: string;
+  phone?: string;             // ✅ CORREÇÃO: Backend retorna 'phone' não 'telefone'
+  avatar?: string | null;     // ✅ CORREÇÃO: Backend retorna 'avatar' não 'avatar_url'
   status: string;
   unidade_id?: number;        // ✅ CRÍTICO: ID da unidade principal do agente
   unidades?: string[];        // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
+  nome_exibicao?: string;     // ✅ CORREÇÃO: Nome de exibição personalizado
   comissao_percentual?: number;
 }
 

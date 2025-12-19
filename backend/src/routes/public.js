@@ -201,7 +201,6 @@ router.get('/salao/slug/:slug', async (req, res) => {
 router.get('/whatsapp/test', async (req, res) => {
   try {
     const WhatsAppService = require('../services/WhatsAppService');
-const logger = require('./../utils/logger');
     const whatsAppService = new WhatsAppService();
 
     const result = await whatsAppService.testConnection();

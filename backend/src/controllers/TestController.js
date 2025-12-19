@@ -1,4 +1,5 @@
 const WhatsAppService = require('../services/WhatsAppService');
+const logger = require('../utils/logger');
 
 /**
  * Controller para testes isolados de funcionalidades
@@ -73,7 +74,6 @@ class TestController {
 
       // Buscar dados do agendamento (usando o mesmo método do AgendamentoController)
       const AgendamentoController = require('./AgendamentoController');
-const logger = require('./../utils/logger');
       const agendamentoController = new AgendamentoController();
       
       const dadosCompletos = await agendamentoController.buscarDadosCompletos(agendamento_id);
