@@ -117,12 +117,14 @@ class SettingsController {
       }
 
       // 3. Atualizar configurações (incluindo logo_url se houver)
+      logger.info('[SettingsController] Dados para atualização:', JSON.stringify(dadosConfiguracao));
+
       const configuracaoAtualizada = await this.settingsService.updateConfiguracoes(
         unidade_id,
         dadosConfiguracao
       );
 
-
+      logger.info('[SettingsController] Configuração atualizada retornada:', JSON.stringify(configuracaoAtualizada));
 
       res.json({
         success: true,
