@@ -204,20 +204,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 confirmacao_senha: confirmPassword || undefined
             });
 
+            // DEBUG: Log do resultado
+            console.log('[SettingsPage] Resultado do salvamento:', result);
+            console.log('[SettingsPage] logo_url retornado:', result?.logo_url);
+
             // Atualizar AuthContext se logo foi alterada
             if (logoFile && result && result.logo_url) {
+                console.log('[SettingsPage] Atualizando avatarUrl no AuthContext:', result.logo_url);
                 updateUser({ avatarUrl: result.logo_url });
             }
 
-            // Limpar estados após sucesso
-            if (logoFile) {
-                setLogoFile(null);
-                setLogoPreview(null);
-            }
+            // Limpar estados de formulários após sucesso
             if (currentPassword && newPassword && confirmPassword) {
                 setCurrentPassword('');
                 setNewPassword('');
                 setConfirmPassword('');
+            }
+
+            // Limpar estados de logo APÓS garantir que settings foi atualizado
+            // O result já contém logo_url atualizado, e saveAllSettings já chamou setSettings(result)
+            if (logoFile) {
+                setLogoFile(null);
+                // Usar pequeno delay para garantir que o React processou a atualização do settings
+                setTimeout(() => {
+                    setLogoPreview(null);
+                }, 100);
             }
 
             toast.success('Definições Salvas!', 'Todas as configurações foram atualizadas com sucesso.');
