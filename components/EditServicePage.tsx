@@ -169,12 +169,18 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
     const [checkedAgents, setCheckedAgents] = useState<Record<number, boolean>>({});
     const [checkedExtras, setCheckedExtras] = useState<Record<number, boolean>>({});
 
-    // Carregar dados do serviço
+    // ✅ Estado para armazenar dados do serviço carregado (para configurar seleções depois)
+    const [loadedService, setLoadedService] = useState<Service | null>(null);
+
+    // Carregar dados do serviço - CORRIGIDO: não depende mais de agents e extraServices
     useEffect(() => {
         let isMounted = true;
 
         const loadService = async () => {
-            if (!serviceId) return;
+            if (!serviceId) {
+                setLoadingService(false);
+                return;
+            }
 
             try {
                 setLoadingService(true);
@@ -189,25 +195,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                     setPreco(service.preco);
                     setComissaoPercentual(service.comissao_percentual);
                     setStatus(service.status);
-
-                    // Configurar agentes selecionados
-                    if (agents.length > 0) {
-                        const initialAgentState = agents.reduce((acc, agent) => {
-                            acc[agent.id] = service.agentes_atuais_ids?.includes(agent.id) || false;
-                            return acc;
-                        }, {} as Record<number, boolean>);
-                        setCheckedAgents(initialAgentState);
-                    }
-
-                    // Configurar extras selecionados
-                    if (extraServices.length > 0) {
-                        const initialExtraState = extraServices.reduce((acc, extra) => {
-                            acc[extra.id] = service.extras_atuais_ids?.includes(extra.id) || false;
-                            return acc;
-                        }, {} as Record<number, boolean>);
-                        setCheckedExtras(initialExtraState);
-                    }
-
+                    setLoadedService(service); // Armazenar para usar nos useEffects abaixo
                 }
             } catch (error) {
                 if (isMounted) {
@@ -220,42 +208,34 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
             }
         };
 
-        if (agents.length > 0 && extraServices.length > 0) {
-            loadService();
-        }
+        loadService();
 
         return () => {
             isMounted = false;
         };
-    }, [serviceId, fetchService, agents, extraServices]);
+    }, [serviceId, fetchService]);
 
-    // Atualizar seleções quando os dados carregarem
+    // ✅ CORRIGIDO: Configurar agentes selecionados quando agents E loadedService estiverem prontos
     useEffect(() => {
-        if (agents.length > 0 && !loadingService) {
-            // Manter seleções existentes ou inicializar como false
-            setCheckedAgents(prev => {
-                const newState = agents.reduce((acc, agent) => {
-                    acc[agent.id] = prev[agent.id] || false;
-                    return acc;
-                }, {} as Record<number, boolean>);
-                return newState;
-            });
+        if (agents.length > 0 && loadedService) {
+            const initialAgentState = agents.reduce((acc, agent) => {
+                acc[agent.id] = loadedService.agentes_atuais_ids?.includes(agent.id) || false;
+                return acc;
+            }, {} as Record<number, boolean>);
+            setCheckedAgents(initialAgentState);
         }
-    }, [agents, loadingService]);
+    }, [agents, loadedService]);
 
+    // ✅ CORRIGIDO: Configurar extras selecionados quando extraServices E loadedService estiverem prontos
     useEffect(() => {
-        if (extraServices.length > 0 && !loadingService) {
-            // Manter seleções existentes ou inicializar como false
-            setCheckedExtras(prev => {
-                const newState = extraServices.reduce((acc, extra) => {
-                    acc[extra.id] = prev[extra.id] || false;
-                    return acc;
-                }, {} as Record<number, boolean>);
-                return newState;
-            });
+        if (extraServices.length > 0 && loadedService) {
+            const initialExtraState = extraServices.reduce((acc, extra) => {
+                acc[extra.id] = loadedService.extras_atuais_ids?.includes(extra.id) || false;
+                return acc;
+            }, {} as Record<number, boolean>);
+            setCheckedExtras(initialExtraState);
         }
-    }, [extraServices, loadingService]);
-
+    }, [extraServices, loadedService]);
     const handleAgentCheck = (agentId: number) => {
         setCheckedAgents(prev => ({ ...prev, [agentId]: !prev[agentId] }));
     };

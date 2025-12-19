@@ -416,10 +416,10 @@ class AgenteController {
         biografia,
         nome_exibicao,
         unidade_id: unidadeIdNum,
-        agenda_personalizada: agenda_personalizada === 'true' || agenda_personalizada === true,
+        agenda_personalizada: agenda_personalizada === 'true' || agenda_personalizada === true || agenda_personalizada === '1',
         observacoes,
         data_admissao,
-        comissao_percentual: comissao_percentual || 0,
+        comissao_percentual: comissao_percentual ? parseFloat(comissao_percentual) : 0,
         status: 'Ativo'
       };
 
@@ -591,10 +591,13 @@ class AgenteController {
         });
       }
 
+      // ✅ CORREÇÃO: Converter unidade_id para número (pode vir como string do FormData)
+      const unidadeIdNum = parseInt(unidade_id);
+
       // ✅ CORREÇÃO: AGENTE não pode mudar de unidade, apenas ADMIN pode
       if (userRole === 'AGENTE') {
         // AGENTE: Manter unidade_id atual (não permitir mudança)
-        if (parseInt(unidade_id) !== parseInt(agenteExistente.unidade_id)) {
+        if (unidadeIdNum !== parseInt(agenteExistente.unidade_id)) {
 
           return res.status(403).json({
             success: false,
@@ -605,7 +608,7 @@ class AgenteController {
       } else {
         // ADMIN/MASTER: Verificar se a unidade pertence ao usuário logado
         const unidade = await this.agenteModel.db('unidades')
-          .where('id', unidade_id)
+          .where('id', unidadeIdNum)
           .where('usuario_id', usuarioId)
           .first();
 
@@ -658,6 +661,12 @@ const logger = require('./../utils/logger');
         senhaHash = await bcrypt.hash(senha, 12);
       }
 
+      // ✅ CORREÇÃO: Converter agenda_personalizada de string para boolean corretamente
+      // FormData envia "true"/"false" como strings, não como booleanos
+      const agendaPersonalizadaBool = agenda_personalizada === true ||
+                                       agenda_personalizada === 'true' ||
+                                       agenda_personalizada === '1';
+
       // Preparar dados para atualização
       const agenteData = {
         nome,
@@ -669,11 +678,11 @@ const logger = require('./../utils/logger');
         avatar_url: finalAvatarUrl,
         biografia,
         nome_exibicao,
-        unidade_id,
-        agenda_personalizada: !!agenda_personalizada,
+        unidade_id: unidadeIdNum, // ✅ CORREÇÃO: Usar variável já convertida para número
+        agenda_personalizada: agendaPersonalizadaBool,
         observacoes,
         data_admissao,
-        comissao_percentual: comissao_percentual || 0,
+        comissao_percentual: comissao_percentual ? parseFloat(comissao_percentual) : 0,
         updated_at: new Date()
       };
 
