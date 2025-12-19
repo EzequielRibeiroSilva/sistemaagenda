@@ -300,10 +300,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
       <Card title="Informações do Negócio">
           <FormRow label="Logo do Negócio">
               <div className="flex items-center gap-4">
+                  {/* DEBUG: Log para verificar valores */}
+                  {console.log('[SettingsPage RENDER] logoPreview:', logoPreview, 'settings?.logo_url:', settings?.logo_url, 'computed src:', logoPreview || getAssetUrl(settings?.logo_url) || '/default-logo.png')}
                   <img
                       src={logoPreview || getAssetUrl(settings?.logo_url) || '/default-logo.png'}
                       alt="Logo do Negócio"
                       className="w-16 h-16 rounded-full object-cover bg-gray-200"
+                      onError={(e) => {
+                          console.error('[SettingsPage] Erro ao carregar imagem:', e);
+                      }}
                   />
                   <div className="flex flex-col gap-2">
                       <label htmlFor="logo-upload" className="cursor-pointer bg-white text-gray-700 border border-gray-300 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm">
