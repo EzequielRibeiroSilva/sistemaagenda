@@ -185,31 +185,42 @@ export const usePublicBooking = () => {
   // ✅ CRÍTICO: Adicionado parâmetro excludeAgendamentoId para excluir agendamento atual (reagendamento)
   const getAgenteDisponibilidade = useCallback(async (agenteId: number, data: string, duracaoMinutos?: number, unidadeId?: number, excludeAgendamentoId?: number): Promise<DisponibilidadeData | null> => {
     try {
-      // Construir URL com parâmetro de duração
-      const url = new URL(`${API_BASE_URL}/public/agentes/${agenteId}/disponibilidade`);
-      url.searchParams.set('data', data);
+      // ✅ CORREÇÃO: Construir URL corretamente usando URLSearchParams
+      // A URL relativa /api precisa usar window.location.origin como base
+      const baseUrl = API_BASE_URL.startsWith('http')
+        ? API_BASE_URL
+        : `${window.location.origin}${API_BASE_URL}`;
+
+      const params = new URLSearchParams();
+      params.set('data', data);
       if (duracaoMinutos) {
-        url.searchParams.set('duration', duracaoMinutos.toString());
+        params.set('duration', duracaoMinutos.toString());
       }
-      // Enviar unidade_id para backend filtrar horários corretamente
       if (unidadeId) {
-        url.searchParams.set('unidade_id', unidadeId.toString());
+        params.set('unidade_id', unidadeId.toString());
       }
-      // Enviar exclude_agendamento_id para excluir agendamento atual (reagendamento)
       if (excludeAgendamentoId) {
-        url.searchParams.set('exclude_agendamento_id', excludeAgendamentoId.toString());
+        params.set('exclude_agendamento_id', excludeAgendamentoId.toString());
       }
 
-      const response = await fetch(url.toString());
+      const fullUrl = `${baseUrl}/public/agentes/${agenteId}/disponibilidade?${params.toString()}`;
+      console.log('🌐 [getAgenteDisponibilidade] URL:', fullUrl);
+
+      const response = await fetch(fullUrl);
       const responseData = await response.json();
 
+      console.log('🌐 [getAgenteDisponibilidade] Response status:', response.status);
+      console.log('🌐 [getAgenteDisponibilidade] Response data:', responseData);
+
       if (!response.ok || !responseData.success) {
+        console.error('🌐 [getAgenteDisponibilidade] Erro na resposta:', responseData);
         return null;
       }
 
       return responseData.data;
 
     } catch (err) {
+      console.error('🌐 [getAgenteDisponibilidade] Exceção:', err);
       return null;
     }
   }, []);
