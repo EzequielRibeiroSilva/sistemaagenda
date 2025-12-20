@@ -195,6 +195,23 @@ class AuthService {
 
           if (configuracao && configuracao.logo_url) {
             avatarUrl = configuracao.logo_url;
+          } else {
+            // ✅ CORREÇÃO CRÍTICA: Buscar logo de QUALQUER unidade do usuário (fallback global)
+            // O logo é uma configuração global do negócio, não específica de cada unidade
+            logger.log(`[AuthService] Unidade ${usuario.unidade_id} sem logo, buscando logo global do usuário ${usuario.id}`);
+
+            const todasUnidades = await db('unidades')
+              .where('usuario_id', usuario.id)
+              .orderBy('id', 'asc');
+
+            for (const unidadeAux of todasUnidades) {
+              const configAux = await configuracaoModel.findByUnidade(unidadeAux.id);
+              if (configAux && configAux.logo_url) {
+                logger.log(`[AuthService] ✅ Logo encontrado na unidade ${unidadeAux.id}: ${configAux.logo_url}`);
+                avatarUrl = configAux.logo_url;
+                break;
+              }
+            }
           }
         }
       }
