@@ -828,19 +828,38 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
-      const configuracoes = await trx('configuracoes_sistema')
+      let configuracoes = await trx('configuracoes_sistema')
         .where('unidade_id', unidade_id)
         .select('tempo_limite_agendar_horas')
         .first();
 
+      // ✅ CORREÇÃO: Se não existir configuração, criar uma com valores padrão
       if (!configuracoes) {
-        logger.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${unidade_id}`);
-        await trx.rollback();
-        return res.status(500).json({
-          success: false,
-          error: 'Configuração não encontrada',
-          message: 'Não foi possível verificar as políticas de agendamento'
-        });
+        logger.log(`[PublicBooking] ⚠️ Configurações não encontradas para unidade_id=${unidade_id}, criando configuração padrão...`);
+
+        try {
+          await trx('configuracoes_sistema').insert({
+            unidade_id: unidade_id,
+            nome_negocio: unidade.nome || 'Meu Negócio',
+            logo_url: null,
+            duracao_servico_minutos: 60,
+            tempo_limite_agendar_horas: 2,
+            permitir_cancelamento: true,
+            tempo_limite_cancelar_horas: 4,
+            periodo_futuro_dias: 365,
+            pontos_ativo: false,
+            pontos_por_real: 1.00,
+            reais_por_pontos: 10.00,
+            pontos_validade_meses: 12
+          });
+
+          configuracoes = { tempo_limite_agendar_horas: 2 };
+          logger.log(`[PublicBooking] ✅ Configuração padrão criada para unidade_id=${unidade_id}`);
+        } catch (insertError) {
+          logger.error(`[PublicBooking] ❌ Erro ao criar configuração padrão:`, insertError);
+          // Usar valor padrão mesmo assim
+          configuracoes = { tempo_limite_agendar_horas: 2 };
+        }
       }
 
       logger.log(`[PublicBooking] 🔍 Configurações de agendamento:`, {
@@ -1587,19 +1606,18 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
-      const configuracoes = await this.agendamentoModel.db('configuracoes_sistema')
-        .join('unidades', 'configuracoes_sistema.unidade_id', 'unidades.id')
-        .where('unidades.id', agendamento.unidade_id)
-        .select('configuracoes_sistema.permitir_cancelamento', 'configuracoes_sistema.tempo_limite_cancelar_horas')
+      let configuracoes = await this.agendamentoModel.db('configuracoes_sistema')
+        .where('unidade_id', agendamento.unidade_id)
+        .select('permitir_cancelamento', 'tempo_limite_cancelar_horas')
         .first();
 
+      // ✅ CORREÇÃO: Se não existir configuração, usar valores padrão
       if (!configuracoes) {
-        logger.log(`[PublicBooking] ❌ Configurações não encontradas para unidade_id=${agendamento.unidade_id}`);
-        return res.status(500).json({
-          success: false,
-          error: 'Configuração não encontrada',
-          message: 'Não foi possível verificar as políticas de cancelamento'
-        });
+        logger.log(`[PublicBooking] ⚠️ Configurações não encontradas para unidade_id=${agendamento.unidade_id}, usando padrões`);
+        configuracoes = {
+          permitir_cancelamento: true,
+          tempo_limite_cancelar_horas: 4
+        };
       }
 
       logger.log(`[PublicBooking] 🔍 Configurações de cancelamento:`, {
