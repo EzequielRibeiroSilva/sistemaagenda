@@ -327,27 +327,28 @@ class UnidadeService {
         return false;
       }
 
-      // AGENTE: Verificar se trabalha nesta unidade através da tabela agente_unidades
+      // AGENTE: Verificar se trabalha nesta unidade
       if (userRole === 'AGENTE') {
-
-
         // Buscar o agente_id do usuário
         const agente = await db('agentes').where('usuario_id', userId).first();
 
         if (!agente) {
-
           return false;
         }
 
-        // Verificar se o agente trabalha nesta unidade
+        // ✅ CORREÇÃO CRÍTICA: Verificar TANTO a unidade_id principal QUANTO a tabela agente_unidades
+        // Condição 1: Agente tem esta unidade como unidade_id principal
+        if (agente.unidade_id === unidadeId) {
+          return true;
+        }
+
+        // Condição 2: Agente está associado via tabela agente_unidades (multi-local)
         const agenteUnidade = await db('agente_unidades')
           .where('agente_id', agente.id)
           .where('unidade_id', unidadeId)
           .first();
 
-        const canAccess = !!agenteUnidade;
-
-        return canAccess;
+        return !!agenteUnidade;
       }
 
       // ADMIN só pode acessar suas próprias unidades

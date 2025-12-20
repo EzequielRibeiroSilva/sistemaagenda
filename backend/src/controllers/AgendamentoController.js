@@ -230,14 +230,11 @@ class AgendamentoController extends BaseController {
         }
 
         // Aplicar os mesmos filtros RBAC na contagem total
+        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
+        // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
         let totalQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
-          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades na contagem também
-          .join('agente_unidades', function() {
-            this.on('agentes.id', '=', 'agente_unidades.agente_id')
-                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
-          });
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
 
         // RBAC: Aplicar filtros baseados no role do usuário
         if (req.user?.role === 'AGENTE') {
