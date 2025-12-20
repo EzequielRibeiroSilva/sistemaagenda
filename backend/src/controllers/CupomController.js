@@ -207,18 +207,31 @@ class CupomController {
     } catch (error) {
       logger.error('❌ [CupomController.store] Erro ao criar cupom:', {
         message: error.message,
+        code: error.code,
+        detail: error.detail,
         stack: error.stack
       });
-      
+
       // Erros de validação retornam 400
       if (error.message.startsWith('Dados inválidos:')) {
         return res.status(400).json({
+          success: false,
           error: 'Dados inválidos',
           message: error.message
         });
       }
-      
+
+      // Erro de código duplicado (constraint unique)
+      if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Código duplicado',
+          message: 'Já existe um cupom com este código. Escolha outro código.'
+        });
+      }
+
       return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
         message: error.message
       });
@@ -264,32 +277,47 @@ class CupomController {
     } catch (error) {
       logger.error('❌ [CupomController.update] Erro ao atualizar cupom:', {
         message: error.message,
+        code: error.code,
+        detail: error.detail,
         stack: error.stack
       });
-      
+
       // Erros de validação e permissão retornam 400/403
       if (error.message === 'Cupom não encontrado') {
         return res.status(404).json({
+          success: false,
           error: 'Cupom não encontrado',
           message: error.message
         });
       }
-      
+
       if (error.message.includes('permissão')) {
         return res.status(403).json({
+          success: false,
           error: 'Acesso negado',
           message: error.message
         });
       }
-      
+
       if (error.message.startsWith('Dados inválidos:')) {
         return res.status(400).json({
+          success: false,
           error: 'Dados inválidos',
           message: error.message
         });
       }
-      
+
+      // Erro de código duplicado (constraint unique)
+      if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Código duplicado',
+          message: 'Já existe um cupom com este código. Escolha outro código.'
+        });
+      }
+
       return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
         message: error.message
       });
@@ -304,31 +332,34 @@ class CupomController {
     try {
       const { id } = req.params;
       const usuarioId = req.user?.id;
-      
+
       if (!usuarioId) {
         return res.status(401).json({
+          success: false,
           error: 'Usuário não autenticado'
         });
       }
 
       // Verificar se cupom existe e pertence ao usuário
       const cupom = await this.cupomModel.findById(id);
-      
+
       if (!cupom) {
         return res.status(404).json({
+          success: false,
           error: 'Cupom não encontrado'
         });
       }
 
       if (cupom.usuario_id !== usuarioId) {
         return res.status(403).json({
+          success: false,
           error: 'Acesso negado',
           message: 'Você não tem permissão para deletar este cupom'
         });
       }
 
       const deleted = await this.cupomModel.delete(id);
-      
+
       if (deleted) {
         return res.json({
           success: true,
@@ -336,21 +367,24 @@ class CupomController {
         });
       } else {
         return res.status(500).json({
+          success: false,
           error: 'Erro ao deletar cupom'
         });
       }
     } catch (error) {
       logger.error('[CupomController] Erro ao deletar cupom:', error);
-      
+
       // Erro de constraint (cupom tem usos registrados)
       if (error.code === '23503') {
         return res.status(400).json({
+          success: false,
           error: 'Não é possível deletar',
           message: 'Este cupom possui histórico de uso e não pode ser deletado'
         });
       }
-      
+
       return res.status(500).json({
+        success: false,
         error: 'Erro interno do servidor',
         message: error.message
       });

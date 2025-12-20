@@ -42,8 +42,9 @@ export interface CupomPagination {
 export const useCupomManagement = () => {
   const { token, isAuthenticated } = useAuth();
   const [cupons, setCupons] = useState<Cupom[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Iniciar como true para evitar flash de conteúdo
   const [error, setError] = useState<string | null>(null);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Flag para carregamento inicial
   const [pagination, setPagination] = useState<CupomPagination>({
     page: 1,
     limit: 20,
@@ -61,6 +62,8 @@ export const useCupomManagement = () => {
   ) => {
     if (!isAuthenticated || !token) {
       setCupons([]);
+      setLoading(false);
+      setInitialLoadComplete(true);
       return;
     }
 
@@ -98,6 +101,7 @@ export const useCupomManagement = () => {
       setError(errorMessage);
     } finally {
       setLoading(false);
+      setInitialLoadComplete(true);
     }
   }, [isAuthenticated, token]);
 
@@ -140,15 +144,17 @@ export const useCupomManagement = () => {
   /**
    * Criar novo cupom
    */
-  const createCupom = useCallback(async (cupomData: Partial<Cupom>): Promise<boolean> => {
+  const createCupom = useCallback(async (cupomData: Partial<Cupom>): Promise<{ success: boolean; error?: string }> => {
     if (!isAuthenticated || !token) {
-      return false;
+      return { success: false, error: 'Não autenticado' };
     }
 
     setLoading(true);
     setError(null);
 
     try {
+      console.log('[useCupomManagement] Enviando cupom:', cupomData);
+
       const response = await fetch(`${API_BASE_URL}/cupons`, {
         method: 'POST',
         headers: {
@@ -160,15 +166,20 @@ export const useCupomManagement = () => {
 
       const data = await response.json();
 
+      console.log('[useCupomManagement] Resposta:', data);
+
       if (data.success) {
-        return true;
+        return { success: true };
       } else {
-        throw new Error(data.message || 'Erro ao criar cupom');
+        const errorMessage = data.message || data.error || 'Erro ao criar cupom';
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
       }
     } catch (err: any) {
+      console.error('[useCupomManagement] Erro:', err);
       const errorMessage = err.message || 'Erro ao criar cupom';
       setError(errorMessage);
-      return false;
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -177,15 +188,17 @@ export const useCupomManagement = () => {
   /**
    * Atualizar cupom existente
    */
-  const updateCupom = useCallback(async (id: number, cupomData: Partial<Cupom>): Promise<boolean> => {
+  const updateCupom = useCallback(async (id: number, cupomData: Partial<Cupom>): Promise<{ success: boolean; error?: string }> => {
     if (!isAuthenticated || !token) {
-      return false;
+      return { success: false, error: 'Não autenticado' };
     }
 
     setLoading(true);
     setError(null);
 
     try {
+      console.log('[useCupomManagement] Atualizando cupom:', id, cupomData);
+
       const response = await fetch(`${API_BASE_URL}/cupons/${id}`, {
         method: 'PUT',
         headers: {
@@ -197,15 +210,20 @@ export const useCupomManagement = () => {
 
       const data = await response.json();
 
+      console.log('[useCupomManagement] Resposta atualização:', data);
+
       if (data.success) {
-        return true;
+        return { success: true };
       } else {
-        throw new Error(data.message || 'Erro ao atualizar cupom');
+        const errorMessage = data.message || data.error || 'Erro ao atualizar cupom';
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
       }
     } catch (err: any) {
+      console.error('[useCupomManagement] Erro:', err);
       const errorMessage = err.message || 'Erro ao atualizar cupom';
       setError(errorMessage);
-      return false;
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -302,6 +320,7 @@ export const useCupomManagement = () => {
     loading,
     error,
     pagination,
+    initialLoadComplete,
     fetchCupons,
     fetchCupomById,
     createCupom,

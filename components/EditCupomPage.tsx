@@ -341,13 +341,13 @@ const EditCupomPage: React.FC<EditCupomPageProps> = ({ setActiveView, cupomId })
         status
       };
 
-      const success = await updateCupom(cupomId, cupomData);
+      const result = await updateCupom(cupomId, cupomData);
 
-      if (success) {
+      if (result.success) {
         toast.success('Cupom Atualizado!', `As alterações no cupom "${codigo}" foram salvas com sucesso.`);
         setActiveView('cupons-list');
       } else {
-        toast.error('Erro ao Atualizar Cupom', 'Não foi possível atualizar o cupom. Verifique os dados e tente novamente.');
+        toast.error('Erro ao Atualizar Cupom', result.error || 'Não foi possível atualizar o cupom. Verifique os dados e tente novamente.');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
