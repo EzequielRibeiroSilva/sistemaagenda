@@ -228,26 +228,26 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
   // ✅ NOVO: Filtrar agentes por local selecionado (igual CalendarPage)
   const displayedAgents = useMemo(() => {
-
+    console.log('[PreviewSection] displayedAgents - selectedLocation:', selectedLocation, 'agents:', agents.length, 'agents data:', agents);
 
     // ✅ CORREÇÃO: Não permitir 'all' - sempre filtrar por local específico
     if (!selectedLocation || selectedLocation === 'all' || agents.length === 0) {
-
+      console.log('[PreviewSection] displayedAgents - EARLY RETURN (no location or no agents)');
       return [];
     }
 
     // Filtrar agentes que trabalham no local selecionado
     const locationIdStr = selectedLocation.toString();
     const filtered = agents.filter(agent => {
-      const hasLocation = Array.isArray(agent.unidades) && 
+      const hasLocation = Array.isArray(agent.unidades) &&
                          agent.unidades.includes(locationIdStr);
-      
 
-      
+      console.log(`[PreviewSection] Agent ${agent.id} (${agent.name}): unidades=${JSON.stringify(agent.unidades)}, locationIdStr=${locationIdStr}, hasLocation=${hasLocation}`);
+
       return hasLocation;
     });
 
-
+    console.log('[PreviewSection] displayedAgents - filtered result:', filtered.length, 'agents');
 
     return filtered;
   }, [agents, selectedLocation]);
