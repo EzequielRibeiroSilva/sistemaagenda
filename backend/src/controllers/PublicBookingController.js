@@ -223,14 +223,11 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      // ✅ DEBUG: Log direto para ver erro real
-      console.log('[PublicBooking] ERRO REAL:', error.message, error.stack);
       logger.error('[PublicBooking] Erro ao carregar dados do salão:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
-        message: 'Erro ao carregar dados do salão',
-        debug: process.env.NODE_ENV !== 'production' ? error.message : undefined
+        message: 'Erro ao carregar dados do salão'
       });
     }
   }
