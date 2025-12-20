@@ -476,7 +476,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         {availableAgents.map(agent => (
           <SelectionCard
             key={agent.id}
-            imageUrl={agent.avatar_url ? getAssetUrl(agent.avatar_url) : `https://avatar.iran.liara.run/public/boy?username=${agent.nome}`}
+            imageUrl={agent.avatar_url ? getAssetUrl(agent.avatar_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(agent.nome || 'A')}&background=2563eb&color=fff&size=128`}
             title={agent.nome_exibicao || agent.nome}
             subtitle={agent.biografia}
             onClick={() => setTempSelectedAgentId(agent.id)}
@@ -1293,9 +1293,15 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           )}
           <header className="p-4 text-center bg-white border-b border-gray-200">
             <img
-              src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://avatar.iran.liara.run/public/boy?username=${businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}`}
+              src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
               alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
               className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
+              onError={(e) => {
+                // Fallback para iniciais se a imagem falhar
+                const target = e.target as HTMLImageElement;
+                const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
+                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
+              }}
             />
             <h1 className="text-xl font-bold text-gray-900">{businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}</h1>
             {currentStep === 1 ? (

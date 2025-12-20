@@ -633,6 +633,37 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return day === 0 ? 7 : day; // Mapear 0 (Domingo) para 7
     };
 
+    // 🎯 NOVA FUNÇÃO: Verificar se um agente trabalha em um determinado dia e unidade
+    const isAgentWorkingOnDay = (agent: CalendarAgent, date: Date, unidadeId: string): boolean => {
+        // Se não tem horários de funcionamento, assumir que trabalha (fallback)
+        if (!agent.horarios_funcionamento || agent.horarios_funcionamento.length === 0) {
+            return true;
+        }
+
+        const dayIndex = getDayOfWeekIndex(date);
+
+        // Buscar horário do agente para este dia e unidade
+        const schedule = agent.horarios_funcionamento.find(h => {
+            // Verificar se o dia da semana corresponde
+            const dayMatch = h.dia_semana === dayIndex;
+            // Verificar se a unidade corresponde (se especificada no horário)
+            const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === unidadeId;
+            return dayMatch && unidadeMatch;
+        });
+
+        // Se não encontrou horário para este dia/unidade, o agente não trabalha
+        if (!schedule) {
+            return false;
+        }
+
+        // Se encontrou mas não tem períodos, não trabalha
+        if (!schedule.periodos || schedule.periodos.length === 0) {
+            return false;
+        }
+
+        return true;
+    };
+
     // 🎯 NOVA FUNÇÃO: Calcular Blocos de Intervalo do Local para uma determinada data
     const calculateLocationIntervalBlocks = (date: Date): Array<{ start: string; end: string; id: string; type?: string; description?: string; exceptionType?: string }> => {
         if (!selectedLocationFilter || selectedLocationFilter === 'all') return [];
@@ -1006,7 +1037,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${displayedAgents.length}, minmax(0, 1fr))` }}>
                     {displayedAgents.map(agent => {
                         const dateStr = toISODateString(currentDate);
-                        
+
+                        // 🎯 NOVO: Verificar se o agente trabalha neste dia e unidade
+                        const agentWorksToday = selectedLocationFilter && selectedLocationFilter !== 'all'
+                            ? isAgentWorkingOnDay(agent, currentDate, selectedLocationFilter)
+                            : true;
+
                         // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
                         // Todos os agendamentos do dia devem ser exibidos, mesmo os passados
                         // O usuário pode editar/finalizar agendamentos a qualquer momento
@@ -1072,8 +1108,27 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     ))}
                                 </div>
 
-                                {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais */}
-                                {iterableHours.map(hour => {
+                                {/* 🎯 NOVO: Overlay vermelho quando agente não trabalha neste dia */}
+                                {!agentWorksToday && (
+                                    <div
+                                        className="absolute inset-0 bg-red-100 z-5"
+                                        title={`${agent.name} não trabalha neste dia`}
+                                    >
+                                        <div
+                                            className="w-full h-full flex items-center justify-center"
+                                            style={{
+                                                backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.15) 4px, rgba(255, 0, 0, 0.15) 5px)'
+                                            }}
+                                        >
+                                            <div className="bg-red-400 text-white px-3 py-1.5 rounded text-xs font-medium shadow-sm opacity-90">
+                                                🚫 Não trabalha
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais (apenas se agente trabalha) */}
+                                {agentWorksToday && iterableHours.map(hour => {
                                     const isAvailable = isSlotAvailable(hour);
                                     if (!isAvailable) {
                                         return null; // Não renderiza slot clicável
