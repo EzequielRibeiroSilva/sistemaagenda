@@ -124,7 +124,7 @@ interface CuponsPageProps {
 }
 
 const CuponsPage: React.FC<CuponsPageProps> = ({ setActiveView, onEditCupom }) => {
-  const { cupons, loading, error, pagination, fetchCupons, deleteCupom } = useCupomManagement();
+  const { cupons, loading, error, pagination, initialLoadComplete, fetchCupons, deleteCupom } = useCupomManagement();
   const { units, fetchUnits } = useUnitManagement();
   const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');

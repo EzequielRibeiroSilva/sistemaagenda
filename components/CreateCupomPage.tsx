@@ -278,15 +278,15 @@ const CreateCupomPage: React.FC<CreateCupomPageProps> = ({ setActiveView }) => {
         status
       };
 
-      const success = await createCupom(cupomData);
+      const result = await createCupom(cupomData);
 
-      if (success) {
+      if (result.success) {
         toast.success('Cupom Criado!', `O cupom "${codigo}" foi adicionado com sucesso.`);
         if (setActiveView) {
           setActiveView('cupons-list');
         }
       } else {
-        toast.error('Erro ao Criar Cupom', 'Não foi possível criar o cupom. Verifique os dados e tente novamente.');
+        toast.error('Erro ao Criar Cupom', result.error || 'Não foi possível criar o cupom. Verifique os dados e tente novamente.');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
