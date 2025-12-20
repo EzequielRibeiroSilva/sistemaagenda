@@ -368,18 +368,15 @@ export const useCalendarData = () => {
 
       const url = new URL(`${API_BASE_URL}/agendamentos`);
       
-      // ✅ OTIMIZAÇÃO: Usar filtros do backend para melhor performance
-      // O backend suporta filtro data_agendamento para buscar agendamentos de uma data específica
-
-      if (safeFilters.startDate && safeFilters.endDate && safeFilters.startDate === safeFilters.endDate) {
-        // Se startDate === endDate, usar filtro específico de data do backend
-        url.searchParams.set('data_agendamento', safeFilters.startDate);
-      } else if (safeFilters.startDate && safeFilters.endDate) {
-        // ✅ CORREÇÃO CRÍTICA: Para períodos (startDate !== endDate), usar data_inicio e data_fim
-        // Isso garante que o backend use a query avançada que INCLUI os serviços
+      // ✅ CORREÇÃO CRÍTICA: SEMPRE usar data_inicio e data_fim (mesmo quando iguais)
+      // O endpoint com data_agendamento NÃO aplica filtro de unidade_id corretamente
+      // O endpoint com data_inicio/data_fim usa a query avançada que:
+      // 1. Aplica filtro de unidade_id
+      // 2. Inclui os serviços associados
+      // 3. Funciona corretamente para ADMIN e AGENTE
+      if (safeFilters.startDate && safeFilters.endDate) {
         url.searchParams.set('data_inicio', safeFilters.startDate);
         url.searchParams.set('data_fim', safeFilters.endDate);
-
       }
 
       if (safeFilters.agente_id) {
