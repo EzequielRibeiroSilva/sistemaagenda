@@ -42,13 +42,19 @@ class AgenteController {
       // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
       const agentesComUnidades = await Promise.all(
         agentes.map(async (agente) => {
-          const unidades = await this.agenteModel.db('agente_unidades')
+          const unidadesMultiLocal = await this.agenteModel.db('agente_unidades')
             .where('agente_id', agente.id)
             .select('unidade_id');
-          
+
+          // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para agentes Single/legados
+          let unidadesIds = unidadesMultiLocal.map(u => u.unidade_id);
+          if (agente.unidade_id && !unidadesIds.includes(agente.unidade_id)) {
+            unidadesIds = [agente.unidade_id, ...unidadesIds];
+          }
+
           return {
             ...agente,
-            unidades: unidades.map(u => u.unidade_id) // ✅ Array de números
+            unidades: unidadesIds // ✅ Array de números
           };
         })
       );
@@ -110,9 +116,18 @@ class AgenteController {
       // ✅ CRÍTICO: Buscar unidades e horários de cada agente
       const agentesComUnidades = await Promise.all(
         agentes.map(async (agente) => {
-          const unidades = await this.agenteModel.db('agente_unidades')
+          const unidadesMultiLocal = await this.agenteModel.db('agente_unidades')
             .where('agente_id', agente.id)
             .select('unidade_id');
+
+          // ✅ CORREÇÃO CRÍTICA: Para agentes Single-Plan ou legados que têm unidade_id
+          // mas não têm registro em agente_unidades, incluir a unidade principal
+          let unidadesIds = unidadesMultiLocal.map(u => u.unidade_id.toString());
+
+          // Se o agente tem unidade_id principal E ela não está no array de agente_unidades
+          if (agente.unidade_id && !unidadesIds.includes(agente.unidade_id.toString())) {
+            unidadesIds = [agente.unidade_id.toString(), ...unidadesIds];
+          }
 
           // ✅ NOVO: Buscar horários de funcionamento do agente para cada unidade
           const horarios = await this.agenteModel.db('horarios_funcionamento')
@@ -120,11 +135,11 @@ class AgenteController {
             .where('ativo', true)
             .select('dia_semana', 'periodos', 'unidade_id');
 
-          console.log(`[DEBUG AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidades.map(u => u.unidade_id))}, horarios=${horarios.length}`);
+          console.log(`[DEBUG AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidadesIds)}, horarios=${horarios.length}`);
 
           return {
             ...agente,
-            unidades_ids: unidades.map(u => u.unidade_id.toString()),
+            unidades_ids: unidadesIds,
             horarios_funcionamento: horarios
           };
         })

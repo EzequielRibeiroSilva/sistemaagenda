@@ -116,12 +116,20 @@ class PublicBookingController {
         }
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Buscar agentes usando tabela de associação agente_unidades
-      // Isso garante que apenas agentes REALMENTE associados à unidade sejam retornados
+      // ✅ CORREÇÃO CRÍTICA: Buscar agentes que trabalham na unidade
+      // Verificar TANTO na tabela agente_unidades (multi-local) QUANTO no campo agentes.unidade_id (single/legado)
       const agentes = await db('agentes')
-        .join('agente_unidades', 'agentes.id', 'agente_unidades.agente_id')
-        .where('agente_unidades.unidade_id', unidadeId)
         .where('agentes.status', 'Ativo')
+        .where(function() {
+          // Condição 1: Agente tem a unidade como unidade_id principal
+          this.where('agentes.unidade_id', unidadeId)
+          // OU Condição 2: Agente está associado via tabela agente_unidades (multi-local)
+          .orWhereIn('agentes.id', function() {
+            this.select('agente_id')
+              .from('agente_unidades')
+              .where('unidade_id', unidadeId);
+          });
+        })
         .select('agentes.id', 'agentes.nome', 'agentes.nome_exibicao', 'agentes.biografia', 'agentes.avatar_url')
         .distinct();
 
