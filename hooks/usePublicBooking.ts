@@ -124,26 +124,33 @@ export const usePublicBooking = () => {
   const [availableLocations, setAvailableLocations] = useState<PublicUnidade[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ✅ NOVO: Armazenar usuario_id quando unidade não está disponível (para buscar alternativas)
+  const [unavailableUsuarioId, setUnavailableUsuarioId] = useState<number | null>(null);
 
   // Carregar dados do salão por unidade_id
   const loadSalonData = useCallback(async (unidadeId: number) => {
     setIsLoading(true);
     setError(null);
-    
+    setUnavailableUsuarioId(null);
+
     try {
       const response = await fetch(`${API_BASE_URL}/public/salao/${unidadeId}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
+        // ✅ CORREÇÃO: Capturar usuario_id quando unidade não está disponível
+        if (data.usuario_id) {
+          setUnavailableUsuarioId(data.usuario_id);
+        }
         throw new Error(data.message || 'Erro ao carregar dados do salão');
       }
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Dados do salão não encontrados');
       }
-      
+
       setSalonData(data.data);
-      
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
@@ -287,6 +294,7 @@ export const usePublicBooking = () => {
     availableLocations,
     isLoading,
     error,
+    unavailableUsuarioId, // ✅ NOVO: Permitir buscar alternativas quando unidade não está disponível
     loadSalonData,
     loadAvailableLocations,
     findUnidadeBySlug,
