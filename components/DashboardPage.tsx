@@ -360,18 +360,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {
+        console.log('[DashboardPage] Transformando backendAgentes:', backendAgentes.length, 'agentes', backendAgentes);
 
         return backendAgentes.map(agente => {
             // ✅ CORREÇÃO CRÍTICA: Backend pode retornar 'name' já formatado (igual CalendarPage)
             // Priorizar 'nome_exibicao', depois 'name', senão concatenar 'nome' + 'sobrenome'
             const displayName = agente.nome_exibicao || (agente as any).name || `${agente.nome} ${agente.sobrenome || ''}`.trim();
-            
+
             // ✅ NOVO: Usar avatar real do backend com getAssetUrl (igual CalendarPage)
-            const avatarUrl = agente.avatar 
+            const avatarUrl = agente.avatar
                 ? getAssetUrl(agente.avatar)
                 : `https://i.pravatar.cc/150?u=${agente.id}`;
-            
 
+            console.log(`[DashboardPage] Agente ${agente.id}: unidades=${JSON.stringify(agente.unidades)}`);
 
             return {
                 id: agente.id.toString(),
