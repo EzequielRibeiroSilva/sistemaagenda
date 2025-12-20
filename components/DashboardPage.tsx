@@ -85,42 +85,52 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             return;
         }
 
+        // ✅ CORREÇÃO CRÍTICA: Filtrar apenas unidades ATIVAS para auto-seleção
+        const unidadesAtivas = backendUnidades.filter(u => u.status !== 'Excluido');
+        console.log('[DashboardPage] Auto-seleção - unidadesAtivas:', unidadesAtivas.map(u => ({id: u.id, nome: u.nome, status: u.status})));
+
         let newLocationId: string | null = null;
 
         // 2. ✅ PRIORIDADE 1: Usuário AGENTE (CRÍTICO)
         if (userRole === 'AGENTE' && loggedInAgentId) {
             const agentData = backendAgentes.find(a => a.id.toString() === loggedInAgentId);
-            
 
-            
-            // ✅ CORREÇÃO CRÍTICA: Priorizar unidade principal do agente
+            // ✅ CORREÇÃO CRÍTICA: Priorizar unidade principal do agente (SE ATIVA)
             if (agentData && agentData.unidade_id !== undefined && agentData.unidade_id !== null) {
-                // Caso 1: AGENTE tem unidade principal definida - SEMPRE usar esta
-                newLocationId = agentData.unidade_id.toString();
-
+                const unidadePrincipal = unidadesAtivas.find(u => u.id.toString() === agentData.unidade_id.toString());
+                if (unidadePrincipal) {
+                    newLocationId = agentData.unidade_id.toString();
+                }
             }
             // Se for AGENTE Multi-Local (que não tem unidade_id no agente, mas tem unidades no array 'unidades'):
-            else if (agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
-                // Caso 2: AGENTE sem unidade principal - usar primeira unidade do array
-                newLocationId = agentData.unidades[0];
-
+            if (!newLocationId && agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
+                // Caso 2: AGENTE sem unidade principal - usar primeira unidade ATIVA do array
+                const primeiraUnidadeAtiva = agentData.unidades.find(uid =>
+                    unidadesAtivas.some(u => u.id.toString() === uid)
+                );
+                if (primeiraUnidadeAtiva) {
+                    newLocationId = primeiraUnidadeAtiva;
+                }
             }
         }
-        // 3. ✅ PRIORIDADE 2: Plano Single
-        else if (isSinglePlan) {
-            newLocationId = backendUnidades[0]?.id.toString() || null;
+        // 3. ✅ PRIORIDADE 2: Plano Single - usar primeira unidade ATIVA
+        else if (isSinglePlan && unidadesAtivas.length > 0) {
+            newLocationId = unidadesAtivas[0].id.toString();
         }
-        // 4. ✅ PRIORIDADE 3: ADMIN com unidade padrão
+        // 4. ✅ PRIORIDADE 3: ADMIN com unidade padrão (SE ATIVA)
         else if (user?.unidade_id) {
-            newLocationId = user.unidade_id.toString();
+            const unidadePadrao = unidadesAtivas.find(u => u.id.toString() === user.unidade_id.toString());
+            if (unidadePadrao) {
+                newLocationId = user.unidade_id.toString();
+            }
         }
-        // 5. ✅ PRIORIDADE 4: ADMIN Multi-Local sem padrão
-        else if (userRole === 'ADMIN' && isMultiPlan && backendUnidades.length > 0) {
-            newLocationId = backendUnidades[0].id.toString();
+        // 5. ✅ PRIORIDADE 4: ADMIN Multi-Local sem padrão - usar primeira unidade ATIVA
+        if (!newLocationId && userRole === 'ADMIN' && isMultiPlan && unidadesAtivas.length > 0) {
+            newLocationId = unidadesAtivas[0].id.toString();
         }
-        // 6. ✅ FALLBACK: Se nenhuma condição anterior foi atendida, usar primeira unidade
-        else if (backendUnidades.length > 0) {
-            newLocationId = backendUnidades[0].id.toString();
+        // 6. ✅ FALLBACK: Se nenhuma condição anterior foi atendida, usar primeira unidade ATIVA
+        if (!newLocationId && unidadesAtivas.length > 0) {
+            newLocationId = unidadesAtivas[0].id.toString();
             console.log('[DashboardPage] Auto-seleção FALLBACK (plano indefinido):', newLocationId);
         }
 
@@ -392,11 +402,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         }));
     }, [backendServicos]);
 
+    // ✅ CORREÇÃO CRÍTICA: Filtrar apenas unidades ATIVAS para exibição no dropdown
     const locations: Location[] = useMemo(() => {
-        return backendUnidades.map(unidade => ({
-            id: unidade.id.toString(),
-            name: unidade.nome
-        }));
+        return backendUnidades
+            .filter(unidade => unidade.status !== 'Excluido')
+            .map(unidade => ({
+                id: unidade.id.toString(),
+                name: unidade.nome
+            }));
     }, [backendUnidades]);
 
     // ✅ FILTRAR AGENTES BASEADO NO LOCAL SELECIONADO DA SEÇÃO DESEMPENHO
