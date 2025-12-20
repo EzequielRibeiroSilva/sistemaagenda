@@ -88,10 +88,10 @@ class PublicBookingController {
           };
         }
         
-        // Buscar TODAS as unidades do usuário
+        // Buscar TODAS as unidades do usuário (incluindo excluídas para herança de logo)
+        // ✅ CORREÇÃO CRÍTICA: Remover filtro de status para permitir herança de logo de unidades excluídas
         const unidadesDoUsuario = await db('unidades')
           .where('usuario_id', unidade.usuario_id)
-          .where('status', 'Ativo')
           .orderBy('id', 'asc');
         
         logger.log(`[PublicBooking] Encontradas ${unidadesDoUsuario.length} unidades do usuário ${unidade.usuario_id}`);
