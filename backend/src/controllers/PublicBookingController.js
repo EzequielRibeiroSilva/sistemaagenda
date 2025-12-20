@@ -138,11 +138,12 @@ class PublicBookingController {
         preco: parseFloat(servico.preco || 0)
       }));
 
-      // Buscar serviços extras ativos da unidade
+      // ✅ CORREÇÃO: Buscar serviços extras ativos do USUÁRIO (não da unidade)
+      // A tabela servicos_extras usa usuario_id, não unidade_id
       const servicosExtrasRaw = await db('servicos_extras')
-        .where('unidade_id', unidadeId)
+        .where('usuario_id', unidade.usuario_id)
         .where('status', 'Ativo')
-        .select('id', 'nome', 'descricao', 'preco', 'duracao_minutos', 'categoria');
+        .select('id', 'nome', 'descricao', 'preco', 'duracao_minutos');
 
       // Converter preços para números e formatar para o frontend
       const extras = servicosExtrasRaw.map(extra => ({
@@ -151,7 +152,7 @@ class PublicBookingController {
         description: extra.descricao,
         price: parseFloat(extra.preco),
         duration: extra.duracao_minutos,
-        category: extra.categoria
+        category: null // Coluna categoria não existe na tabela
       }));
 
       // Buscar associações serviço-extra para filtro condicional no frontend
@@ -264,15 +265,25 @@ class PublicBookingController {
 
       logger.log(`[PublicBooking] Serviços processados:`, servicoIds);
 
-      // Buscar extras associados aos serviços selecionados (UNIÃO)
+      // ✅ CORREÇÃO: Buscar usuario_id da unidade para filtrar extras
+      const unidade = await this.unidadeModel.findById(unidadeId);
+      if (!unidade) {
+        return res.status(404).json({
+          success: false,
+          error: 'Unidade não encontrada'
+        });
+      }
+
+      // ✅ CORREÇÃO: Buscar extras associados aos serviços selecionados (UNIÃO)
+      // A tabela servicos_extras usa usuario_id, não unidade_id
       const extrasAssociados = await db('servicos_extras')
         .join('servico_servicos_extras', 'servicos_extras.id', 'servico_servicos_extras.servico_extra_id')
         .whereIn('servico_servicos_extras.servico_id', servicoIds)
-        .where('servicos_extras.unidade_id', unidadeId)
+        .where('servicos_extras.usuario_id', unidade.usuario_id)
         .where('servicos_extras.status', 'Ativo')
         .distinct('servicos_extras.id', 'servicos_extras.nome', 'servicos_extras.descricao',
-                 'servicos_extras.preco', 'servicos_extras.duracao_minutos', 'servicos_extras.categoria')
-        .orderBy('servicos_extras.categoria', 'servicos_extras.nome');
+                 'servicos_extras.preco', 'servicos_extras.duracao_minutos')
+        .orderBy('servicos_extras.nome');
 
       // Formatar para o frontend
       const extras = extrasAssociados.map(extra => ({
@@ -281,7 +292,7 @@ class PublicBookingController {
         description: extra.descricao,
         price: parseFloat(extra.preco),
         duration: extra.duracao_minutos,
-        category: extra.categoria
+        category: null // Coluna categoria não existe na tabela
       }));
 
       logger.log(`[PublicBooking] Encontrados ${extras.length} extras para os serviços selecionados`);
@@ -896,13 +907,14 @@ class PublicBookingController {
         });
       }
 
-      // Buscar serviços extras se fornecidos
+      // ✅ CORREÇÃO: Buscar serviços extras se fornecidos
+      // A tabela servicos_extras usa usuario_id, não unidade_id
       let servicosExtras = [];
       if (servico_extra_ids.length > 0) {
         servicosExtras = await trx('servicos_extras')
           .whereIn('id', servico_extra_ids)
           .where('status', 'Ativo')
-          .where('unidade_id', unidade_id)
+          .where('usuario_id', unidade.usuario_id)
           .select('id', 'nome', 'preco', 'duracao_minutos');
 
         if (servicosExtras.length !== servico_extra_ids.length) {
