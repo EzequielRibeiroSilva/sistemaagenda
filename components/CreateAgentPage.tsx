@@ -104,7 +104,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // ETAPA 3: Hook para gerenciamento de agentes (com adminPlan e availableUnits)
-  const { services, createAgent, loading, error, adminPlan, availableUnits } = useAgentManagement();
+  const { services, createAgent, loading, error, adminPlan, availableUnits, initialLoadComplete } = useAgentManagement();
   const toast = useToast();
 
   const handleInputChange = (field: string, value: string | number) => {
@@ -272,7 +272,8 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
       )}
 
       {/* ✅ ETAPA 3: Validação de pré-condição - Exigir unidade antes de criar agente */}
-      {availableUnits.length === 0 && !loading && (
+      {/* Só exibe a mensagem quando o carregamento inicial foi CONCLUÍDO E não há unidades */}
+      {availableUnits.length === 0 && !loading && initialLoadComplete && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800 font-semibold">⚠️ Nenhuma unidade encontrada</p>
           <p className="text-yellow-700 text-sm mt-1">Você precisa criar pelo menos uma unidade antes de cadastrar agentes.</p>
