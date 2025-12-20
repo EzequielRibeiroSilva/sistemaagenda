@@ -149,11 +149,21 @@ class AgenteController {
         unidades: agente.unidades_ids, // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
         unidade_id: agente.unidade_id, // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para auto-seleção
         // ✅ NOVO: Horários de trabalho por dia da semana e unidade
-        horarios_funcionamento: agente.horarios_funcionamento.map(h => ({
-          dia_semana: h.dia_semana,
-          unidade_id: h.unidade_id,
-          periodos: typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos
-        }))
+        // ✅ CORREÇÃO CRÍTICA: Normalizar períodos para usar "start" e "end" (não "inicio" e "fim")
+        horarios_funcionamento: agente.horarios_funcionamento.map(h => {
+          const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
+          // Normalizar períodos para usar "start" e "end"
+          const periodosNormalizados = Array.isArray(periodos) ? periodos.map(p => ({
+            start: p.start || p.inicio || '09:00',
+            end: p.end || p.fim || '17:00'
+          })) : [];
+
+          return {
+            dia_semana: h.dia_semana,
+            unidade_id: h.unidade_id,
+            periodos: periodosNormalizados
+          };
+        })
       }));
       
       res.status(200).json({
