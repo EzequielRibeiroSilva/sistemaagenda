@@ -84,14 +84,8 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   // Hook para gerenciar serviços
-  const { services, loading, error, fetchServices, deleteService } = useServiceManagement();
-
-  // Carregar serviços quando o componente montar
-  useEffect(() => {
-    if (activeTab === 'Serviços') {
-      fetchServices();
-    }
-  }, [activeTab, fetchServices]);
+  // Os serviços são carregados automaticamente pelo hook quando o componente monta
+  const { services, loading, error, deleteService } = useServiceManagement();
 
   useEffect(() => {
     setActiveTab(initialTab);

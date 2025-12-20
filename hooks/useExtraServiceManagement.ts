@@ -41,8 +41,9 @@ export const useExtraServiceManagement = () => {
   const { token, isAuthenticated } = useAuth();
   const [extraServices, setExtraServices] = useState<ExtraService[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Iniciar como true para evitar flash de conteúdo
   const [error, setError] = useState<string | null>(null);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Flag para carregamento inicial
 
   // Buscar lista leve de serviços extras
   const fetchExtraServices = useCallback(async () => {
@@ -252,10 +253,19 @@ export const useExtraServiceManagement = () => {
     if (isAuthenticated && token) {
       const loadData = async () => {
         try {
+          // Garantir que loading está true no início
+          if (isMounted) setLoading(true);
+
           if (isMounted) await fetchServices();
           if (isMounted) await fetchExtraServices();
         } catch (error) {
           // Erro ao carregar dados iniciais
+        } finally {
+          // Marcar carregamento inicial como concluído
+          if (isMounted) {
+            setLoading(false);
+            setInitialLoadComplete(true);
+          }
         }
       };
       loadData();
@@ -264,6 +274,8 @@ export const useExtraServiceManagement = () => {
         setExtraServices([]);
         setServices([]);
         setError(null);
+        setLoading(false);
+        setInitialLoadComplete(false);
       }
     }
 
@@ -277,6 +289,7 @@ export const useExtraServiceManagement = () => {
     services,
     loading,
     error,
+    initialLoadComplete, // Flag para indicar se o carregamento inicial foi concluído
     fetchExtraServices,
     fetchServices,
     fetchExtraService,
