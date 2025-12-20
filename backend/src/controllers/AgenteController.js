@@ -107,22 +107,29 @@ class AgenteController {
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
       console.log(`[DEBUG AgenteController.index] Agentes encontrados: ${agentes.length}`, agentes.map(a => ({id: a.id, nome: a.nome})));
 
-      // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
+      // ✅ CRÍTICO: Buscar unidades e horários de cada agente
       const agentesComUnidades = await Promise.all(
         agentes.map(async (agente) => {
           const unidades = await this.agenteModel.db('agente_unidades')
             .where('agente_id', agente.id)
             .select('unidade_id');
 
-          console.log(`[DEBUG AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidades.map(u => u.unidade_id))}`);
+          // ✅ NOVO: Buscar horários de funcionamento do agente para cada unidade
+          const horarios = await this.agenteModel.db('horarios_funcionamento')
+            .where('agente_id', agente.id)
+            .where('ativo', true)
+            .select('dia_semana', 'periodos', 'unidade_id');
+
+          console.log(`[DEBUG AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidades.map(u => u.unidade_id))}, horarios=${horarios.length}`);
 
           return {
             ...agente,
-            unidades_ids: unidades.map(u => u.unidade_id.toString())
+            unidades_ids: unidades.map(u => u.unidade_id.toString()),
+            horarios_funcionamento: horarios
           };
         })
       );
-      
+
       // Formatar dados para o frontend
       const agentesFormatados = agentesComUnidades.map(agente => ({
         id: agente.id,
@@ -140,7 +147,13 @@ class AgenteController {
         data_admissao: agente.data_admissao,
         comissao_percentual: agente.comissao_percentual,
         unidades: agente.unidades_ids, // ✅ CRÍTICO: Array de IDs das unidades onde o agente trabalha
-        unidade_id: agente.unidade_id // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para auto-seleção
+        unidade_id: agente.unidade_id, // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para auto-seleção
+        // ✅ NOVO: Horários de trabalho por dia da semana e unidade
+        horarios_funcionamento: agente.horarios_funcionamento.map(h => ({
+          dia_semana: h.dia_semana,
+          unidade_id: h.unidade_id,
+          periodos: typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos
+        }))
       }));
       
       res.status(200).json({

@@ -2,6 +2,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL, getAssetUrl } from '../utils/api';
 
+// ✅ NOVO: Interface para horários de funcionamento do agente
+export interface AgentSchedule {
+  dia_semana: number; // 1=Segunda, 2=Terça, ..., 6=Sábado, 7=Domingo (ou 0=Domingo dependendo do backend)
+  unidade_id: number;
+  periodos: Array<{ start: string; end: string }>;
+}
+
 // Interfaces para dados do backend
 export interface BackendAgente {
   id: number;
@@ -23,6 +30,7 @@ export interface BackendAgente {
   comissao_percentual?: string;
   unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
   unidade_id?: number; // ✅ CORREÇÃO CRÍTICA: ID da unidade principal do agente
+  horarios_funcionamento?: AgentSchedule[]; // ✅ NOVO: Horários de trabalho do agente
 }
 
 export interface BackendServico {
@@ -71,6 +79,7 @@ export interface CalendarAgent {
   avatar: string;
   unidades?: string[]; // ✅ Array de IDs das unidades onde o agente trabalha
   unidade_id?: number; // ✅ CORREÇÃO CRÍTICA: ID da unidade principal do agente
+  horarios_funcionamento?: AgentSchedule[]; // ✅ NOVO: Horários de trabalho do agente
 }
 
 export interface CalendarService {
@@ -177,18 +186,19 @@ export const useCalendarData = () => {
   const transformAgent = useCallback((backendAgent: BackendAgente): CalendarAgent => {
     // Backend já retorna 'name' formatado (igual useAgentManagement)
     const displayName = backendAgent.nome_exibicao || backendAgent.name;
-    
+
     // Backend já retorna 'avatar' com caminho, usar getAssetUrl
-    const avatarUrl = backendAgent.avatar 
+    const avatarUrl = backendAgent.avatar
       ? getAssetUrl(backendAgent.avatar)
       : `https://i.pravatar.cc/150?u=${backendAgent.id}`;
-    
+
     return {
       id: backendAgent.id.toString(),
       name: displayName,
       avatar: avatarUrl,
       unidades: backendAgent.unidades, // ✅ CRÍTICO: Passar array de unidades do backend
-      unidade_id: backendAgent.unidade_id // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal
+      unidade_id: backendAgent.unidade_id, // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal
+      horarios_funcionamento: backendAgent.horarios_funcionamento // ✅ NOVO: Horários de trabalho
     };
   }, []);
 

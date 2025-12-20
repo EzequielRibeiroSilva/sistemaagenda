@@ -85,15 +85,12 @@ class AgendamentoController extends BaseController {
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
         // IMPLEMENTAÇÃO RBAC E ORDENAÇÃO INTELIGENTE
+        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
+        // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
         let baseQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
-          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades para garantir que agente trabalha na unidade
-          .join('agente_unidades', function() {
-            this.on('agentes.id', '=', 'agente_unidades.agente_id')
-                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
-          });
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
 
         // RBAC: Aplicar filtros baseados no role do usuário
         if (req.user?.role === 'AGENTE') {
@@ -345,15 +342,12 @@ class AgendamentoController extends BaseController {
         // ✅ CORREÇÃO CRÍTICA: Implementar filtros de período, agente e serviço
 
         // Construir query base com RBAC
+        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
+        // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
         let baseQuery = this.model.db('agendamentos')
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
-          // ✅ CORREÇÃO CRÍTICA: JOIN com agente_unidades na query sem paginação também
-          .join('agente_unidades', function() {
-            this.on('agentes.id', '=', 'agente_unidades.agente_id')
-                .andOn('agendamentos.unidade_id', '=', 'agente_unidades.unidade_id');
-          });
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
 
         // Aplicar RBAC
         if (userRole === 'AGENTE') {

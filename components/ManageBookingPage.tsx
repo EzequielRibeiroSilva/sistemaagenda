@@ -638,9 +638,14 @@ const ManageBookingPage: React.FC = () => {
             {salonData ? (
               <>
                 <img
-                  src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://avatar.iran.liara.run/public/boy?username=${businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}`}
+                  src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
                   alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
                   className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
+                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
+                  }}
                 />
                 <h1 className="text-xl font-bold text-gray-900">{businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}</h1>
                 {agendamento && (
