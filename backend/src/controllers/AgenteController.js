@@ -91,7 +91,8 @@ class AgenteController {
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
 
-      logger.log(`[AgenteController.index] Iniciando - usuarioId=${usuarioId}, role=${userRole}, agenteId=${userAgenteId}`);
+      // DEBUG: Usar console.log diretamente para evitar sanitização
+      console.log(`[DEBUG AgenteController.index] Iniciando - usuarioId=${usuarioId}, role=${userRole}, agenteId=${userAgenteId}`);
 
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
       if (userRole === 'AGENTE' && userAgenteId) {
@@ -102,9 +103,9 @@ class AgenteController {
         }
       }
 
-      logger.log(`[AgenteController.index] Buscando agentes para usuarioId=${usuarioId}`);
+      console.log(`[DEBUG AgenteController.index] Buscando agentes para usuarioId=${usuarioId}`);
       const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
-      logger.log(`[AgenteController.index] Agentes encontrados: ${agentes.length}`);
+      console.log(`[DEBUG AgenteController.index] Agentes encontrados: ${agentes.length}`, agentes.map(a => ({id: a.id, nome: a.nome})));
 
       // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
       const agentesComUnidades = await Promise.all(
@@ -113,7 +114,7 @@ class AgenteController {
             .where('agente_id', agente.id)
             .select('unidade_id');
 
-          logger.log(`[AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidades.map(u => u.unidade_id))}`);
+          console.log(`[DEBUG AgenteController.index] Agente ${agente.id} (${agente.nome}): unidades=${JSON.stringify(unidades.map(u => u.unidade_id))}`);
 
           return {
             ...agente,
