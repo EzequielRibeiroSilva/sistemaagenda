@@ -57,6 +57,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [viewDate, setViewDate] = useState(new Date());
   const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
 
+  // ✅ CORREÇÃO CRÍTICA: Função utilitária para converter data para string YYYY-MM-DD
+  // Usando formato local (não UTC) para evitar problemas de timezone
+  const formatDateToYYYYMMDD = useCallback((date: Date): string => {
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }, []);
+
   // Efeito para carregar os dados do salão
   useEffect(() => {
     const loadData = async () => {
@@ -341,13 +348,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       // Carregar horários automaticamente
       setIsLoadingSlots(true);
       setAvailableTimeSlots([]);
-      
+
       try {
         const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
-        const dateStr = selectedDate.toISOString().split('T')[0];
-        
+        // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
+        const dateStr = formatDateToYYYYMMDD(selectedDate);
+
         const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
-        
+
         if (disponibilidade && disponibilidade.slots_disponiveis) {
           setAvailableTimeSlots(disponibilidade.slots_disponiveis);
         } else {
@@ -360,9 +368,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         setIsLoadingSlots(false);
       }
     };
-    
+
     autoLoadSlotsOnStep5();
-  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, availableTimeSlots.length]);
+  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, availableTimeSlots.length, formatDateToYYYYMMDD]);
 
   if (isLoading || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -570,7 +578,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   // Função para buscar disponibilidade quando uma data é selecionada
   const handleDateSelect = async (date: Date) => {
-    console.log('🗓️ [BookingPage] Data selecionada:', date.toISOString().split('T')[0]);
+    // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
+    const dateStr = formatDateToYYYYMMDD(date);
+    console.log('🗓️ [BookingPage] Data selecionada:', dateStr);
     setSelectedDate(date);
     setTempSelectedTime('');
     setIsLoadingSlots(true);
@@ -593,7 +603,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
       console.log('⏱️ [BookingPage] Duração total:', totalDuration, 'minutos');
 
-      const dateStr = date.toISOString().split('T')[0];
       console.log('🔍 [BookingPage] Buscando disponibilidade:', {
         agenteId: selectedAgent.id,
         data: dateStr,
@@ -623,18 +632,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   // Função para renderizar a seleção de data e hora com design melhorado e API real
   const renderDateTimeSelection = () => {
-    const toISODateString = (date: Date) => {
-      const pad = (num: number) => num.toString().padStart(2, '0');
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    };
-
     // Função para verificar se um dia tem slots disponíveis (para indicadores visuais)
     const getDayAvailabilityIndicator = async (date: Date): Promise<number> => {
       if (!selectedAgent) return 0;
 
       try {
         const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
-        const dateStr = toISODateString(date);
+        // ✅ Usar formatDateToYYYYMMDD do escopo pai
+        const dateStr = formatDateToYYYYMMDD(date);
         const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration);
 
         if (disponibilidade && disponibilidade.slots_disponiveis) {
