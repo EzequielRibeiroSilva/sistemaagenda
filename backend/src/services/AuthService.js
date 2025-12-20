@@ -148,15 +148,54 @@ class AuthService {
           
           logger.log(`✅ [AuthService] AGENTE encontrado: agente_id=${agenteId}, usuario_id=${usuario.id}, unidade_id=${agente.unidade_id}`);
         }
-      } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
-        // Para admins e masters: buscar logo_url das configurações da unidade
-        const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+      } else if (usuario.role === 'ADMIN' || usuario.role === 'MASTER') {
+        // Para admins e masters: verificar se a unidade_id está ativa
         const { db } = require('../config/knex');
-        const configuracaoModel = new ConfiguracaoSistema(db);
-        const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
 
-        if (configuracao && configuracao.logo_url) {
-          avatarUrl = configuracao.logo_url;
+        // ✅ CORREÇÃO CRÍTICA: Verificar se a unidade do usuário está ATIVA
+        if (usuario.unidade_id) {
+          const unidadeAtual = await db('unidades')
+            .where('id', usuario.unidade_id)
+            .where('status', 'Ativo')
+            .first();
+
+          // Se a unidade não está ativa, buscar a primeira unidade ativa do usuário
+          if (!unidadeAtual) {
+            logger.log(`⚠️ [AuthService] Unidade ${usuario.unidade_id} do usuário ${usuario.id} não está ativa, buscando alternativa...`);
+            const primeiraUnidadeAtiva = await db('unidades')
+              .where('usuario_id', usuario.id)
+              .where('status', 'Ativo')
+              .orderBy('id', 'asc')
+              .first();
+
+            if (primeiraUnidadeAtiva) {
+              logger.log(`✅ [AuthService] Usando unidade ativa ${primeiraUnidadeAtiva.id} (${primeiraUnidadeAtiva.nome}) para o usuário ${usuario.id}`);
+              usuario.unidade_id = primeiraUnidadeAtiva.id;
+            }
+          }
+        } else {
+          // Se não tem unidade_id, buscar a primeira unidade ativa
+          const primeiraUnidadeAtiva = await db('unidades')
+            .where('usuario_id', usuario.id)
+            .where('status', 'Ativo')
+            .orderBy('id', 'asc')
+            .first();
+
+          if (primeiraUnidadeAtiva) {
+            logger.log(`✅ [AuthService] Atribuindo unidade ativa ${primeiraUnidadeAtiva.id} para o usuário ${usuario.id} que não tinha unidade`);
+            usuario.unidade_id = primeiraUnidadeAtiva.id;
+          }
+        }
+
+        // Buscar logo_url das configurações da unidade (se existir)
+        if (usuario.unidade_id) {
+          const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+          const configuracaoModel = new ConfiguracaoSistema(db);
+          const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
+
+          if (configuracao && configuracao.logo_url) {
+            avatarUrl = configuracao.logo_url;
+          }
         }
       }
 
