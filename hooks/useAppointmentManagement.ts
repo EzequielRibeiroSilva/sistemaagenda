@@ -57,7 +57,8 @@ export interface AppointmentResponse {
 export const useAppointmentManagement = () => {
   const { token, isAuthenticated } = useAuth();
   const [appointments, setAppointments] = useState<AppointmentDetail[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // ✅ CORREÇÃO: Inicializar como true para evitar flash
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // ✅ NOVO: Flag para controle de carregamento inicial
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
@@ -252,6 +253,8 @@ export const useAppointmentManagement = () => {
   const fetchAppointments = useCallback(async (filters: AppointmentFilters = {}) => {
     if (!isAuthenticated || !token) {
       setAppointments([]);
+      setIsLoading(false);
+      setInitialLoadComplete(true);
       return;
     }
 
@@ -259,51 +262,56 @@ export const useAppointmentManagement = () => {
       setIsLoading(true);
       setError(null);
 
-      // Construir URL com parâmetros
-      const url = new URL(`${API_BASE_URL}/agendamentos`);
-      
+      // ✅ CORREÇÃO: Construir URL usando URLSearchParams ao invés de new URL()
+      // new URL() falha com URLs relativas como '/api' em produção
+      const params = new URLSearchParams();
+
       // Adicionar parâmetros de paginação
-      url.searchParams.set('page', (filters.page || 1).toString());
-      url.searchParams.set('limit', (filters.limit || 10).toString());
+      params.set('page', (filters.page || 1).toString());
+      params.set('limit', (filters.limit || 10).toString());
 
       // Adicionar filtros
       if (filters.status && filters.status !== 'all') {
-        url.searchParams.set('status', filters.status);
+        params.set('status', filters.status);
       }
       if (filters.data_agendamento) {
-        url.searchParams.set('data_agendamento', filters.data_agendamento);
+        params.set('data_agendamento', filters.data_agendamento);
       }
       if (filters.agente_id) {
-        url.searchParams.set('agente_id', filters.agente_id.toString());
+        params.set('agente_id', filters.agente_id.toString());
       }
       if (filters.cliente_id) {
-        url.searchParams.set('cliente_id', filters.cliente_id.toString());
+        params.set('cliente_id', filters.cliente_id.toString());
       }
-      // ✅ NOVO: Adicionar filtro de unidade_id
+      // Adicionar filtro de unidade_id
       if (filters.unidade_id) {
-        url.searchParams.set('unidade_id', filters.unidade_id.toString());
+        params.set('unidade_id', filters.unidade_id.toString());
       }
-      // ✅ NOVO: Adicionar filtro temporal
+      // Adicionar filtro temporal
       if (filters.time_filter && filters.time_filter !== 'all') {
-        url.searchParams.set('time_filter', filters.time_filter);
+        params.set('time_filter', filters.time_filter);
       }
 
-      const response: AppointmentResponse = await makeAuthenticatedRequest(url.toString());
+      // ✅ CORREÇÃO: Construir URL como string
+      const url = `${API_BASE_URL}/agendamentos?${params.toString()}`;
+
+      const response: AppointmentResponse = await makeAuthenticatedRequest(url);
 
       // Transformar dados do backend para o formato do frontend
       const transformedAppointments = response.data.map(transformBackendToFrontend);
 
       setAppointments(transformedAppointments);
-      
+
       if (response.pagination) {
         setPagination(response.pagination);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar agendamentos';
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar agendamentos';
       setError(errorMessage);
       setAppointments([]);
     } finally {
       setIsLoading(false);
+      setInitialLoadComplete(true); // ✅ NOVO: Marcar carregamento inicial como completo
     }
   }, [isAuthenticated, token, makeAuthenticatedRequest, transformBackendToFrontend]);
 
@@ -411,10 +419,11 @@ export const useAppointmentManagement = () => {
   return {
     appointments,
     isLoading,
+    initialLoadComplete, // ✅ NOVO: Flag para controle de carregamento inicial
     error,
     pagination,
     agentOptions,
-    allAgents, // ✅ NOVO: Exportar agentes completos
+    allAgents, // Exportar agentes completos
     fetchAppointments,
     fetchAppointmentById,
     updateAppointmentStatus,
