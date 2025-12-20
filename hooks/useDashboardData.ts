@@ -87,8 +87,9 @@ export const useDashboardData = () => {
   const [agentes, setAgentes] = useState<BackendAgente[]>([]);
   const [servicos, setServicos] = useState<BackendServico[]>([]);
   const [unidades, setUnidades] = useState<BackendUnidade[]>([]);
-  const [unitSchedules, setUnitSchedules] = useState<Record<string, UnitSchedule[]>>({}); // ✅ NOVO: Horários por unidade
-  const [isLoading, setIsLoading] = useState(false);
+  const [unitSchedules, setUnitSchedules] = useState<Record<string, UnitSchedule[]>>({}); // Horários por unidade
+  const [isLoading, setIsLoading] = useState(true); // ✅ CORREÇÃO: Inicializar como true para evitar flash
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // ✅ NOVO: Flag para controle de carregamento inicial
   const [error, setError] = useState<string | null>(null);
 
   // Helper para fazer requisições autenticadas (IGUAL useCalendarData)
@@ -508,7 +509,11 @@ export const useDashboardData = () => {
 
   // Carregar dados iniciais
   const loadInitialData = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      setInitialLoadComplete(true);
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -524,6 +529,7 @@ export const useDashboardData = () => {
       setError(errorMessage);
     } finally {
       setIsLoading(false);
+      setInitialLoadComplete(true); // ✅ NOVO: Marcar carregamento inicial como completo
     }
   }, [isAuthenticated, fetchUnidades, fetchAgentes, fetchServicos]);
 
@@ -538,15 +544,16 @@ export const useDashboardData = () => {
     agentes,
     servicos,
     unidades,
-    unitSchedules, // ✅ NOVO: Horários de funcionamento por unidade
-    
+    unitSchedules, // Horários de funcionamento por unidade
+
     // Estado
     isLoading,
+    initialLoadComplete, // ✅ NOVO: Flag para controle de carregamento inicial
     error,
-    
+
     // Funções
     fetchAgendamentos,
-    fetchAgendamentosRaw, // ✅ NOVO: Função que retorna dados sem salvar no estado
+    fetchAgendamentosRaw, // Função que retorna dados sem salvar no estado
     calculateMetrics,
     loadInitialData
   };

@@ -26,11 +26,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         agentes: backendAgentes,
         servicos: backendServicos,
         unidades: backendUnidades,
-        unitSchedules, // ✅ NOVO: Horários de funcionamento por unidade
+        unitSchedules, // Horários de funcionamento por unidade
         isLoading,
+        initialLoadComplete, // ✅ NOVO: Flag para controle de carregamento inicial
         error,
         fetchAgendamentos,
-        fetchAgendamentosRaw, // ✅ NOVO: Função que retorna dados sem sobrescrever estado
+        fetchAgendamentosRaw, // Função que retorna dados sem sobrescrever estado
         calculateMetrics
     } = useDashboardData();
 
@@ -434,8 +435,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         return agentSchedules;
     }, []);
 
-    // Loading state
-    if (isLoading && backendUnidades.length === 0) {
+    // ✅ CORREÇÃO: Loading state usando initialLoadComplete para evitar flash
+    if (!initialLoadComplete || (isLoading && backendUnidades.length === 0)) {
         return (
             <div className="flex items-center justify-center h-64">
                 <div className="text-center">
