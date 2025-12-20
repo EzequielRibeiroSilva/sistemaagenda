@@ -366,8 +366,10 @@ export const useCalendarData = () => {
         endDate: todayStr
       };
 
-      const url = new URL(`${API_BASE_URL}/agendamentos`);
-      
+      // ✅ CORREÇÃO CRÍTICA: Usar URLSearchParams ao invés de new URL()
+      // new URL() falha com URLs relativas como '/api' em produção
+      const params = new URLSearchParams();
+
       // ✅ CORREÇÃO CRÍTICA: SEMPRE usar data_inicio e data_fim (mesmo quando iguais)
       // O endpoint com data_agendamento NÃO aplica filtro de unidade_id corretamente
       // O endpoint com data_inicio/data_fim usa a query avançada que:
@@ -375,25 +377,27 @@ export const useCalendarData = () => {
       // 2. Inclui os serviços associados
       // 3. Funciona corretamente para ADMIN e AGENTE
       if (safeFilters.startDate && safeFilters.endDate) {
-        url.searchParams.set('data_inicio', safeFilters.startDate);
-        url.searchParams.set('data_fim', safeFilters.endDate);
+        params.set('data_inicio', safeFilters.startDate);
+        params.set('data_fim', safeFilters.endDate);
       }
 
       if (safeFilters.agente_id) {
-        url.searchParams.set('agente_id', safeFilters.agente_id.toString());
+        params.set('agente_id', safeFilters.agente_id.toString());
       }
       if (safeFilters.unidade_id) {
-        url.searchParams.set('unidade_id', safeFilters.unidade_id.toString());
+        params.set('unidade_id', safeFilters.unidade_id.toString());
       }
       if (safeFilters.status) {
-        url.searchParams.set('status', safeFilters.status);
+        params.set('status', safeFilters.status);
       }
 
       // Adicionar paginação para buscar todos os registros
-      url.searchParams.set('page', '1');
-      url.searchParams.set('limit', '1000'); // Buscar muitos registros
+      params.set('page', '1');
+      params.set('limit', '1000'); // Buscar muitos registros
 
-      const response = await makeAuthenticatedRequest(url.toString());
+      const queryString = params.toString();
+      const requestUrl = `${API_BASE_URL}/agendamentos${queryString ? `?${queryString}` : ''}`;
+      const response = await makeAuthenticatedRequest(requestUrl);
       
       
       const appointmentsData = response.data || [];
