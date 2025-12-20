@@ -37,12 +37,24 @@ class PublicBookingController {
   async getSalaoData(req, res) {
     try {
       const { unidadeId } = req.params;
-      
+
       logger.log(`[PublicBooking] Carregando dados públicos para unidade ${unidadeId}`);
 
       // Buscar unidade
       const unidade = await this.unidadeModel.findById(unidadeId);
+
+      // ✅ CORREÇÃO: Se unidade não está ativa, retornar usuario_id para buscar alternativas
       if (!unidade || unidade.status !== 'Ativo') {
+        // Se a unidade existe mas está excluída, retornar usuario_id para o frontend buscar alternativas
+        if (unidade && unidade.usuario_id) {
+          logger.log(`[PublicBooking] Unidade ${unidadeId} não está ativa (status=${unidade.status}), retornando usuario_id=${unidade.usuario_id} para buscar alternativas`);
+          return res.status(404).json({
+            success: false,
+            error: 'Unidade não disponível',
+            message: 'Esta unidade não está disponível para agendamentos',
+            usuario_id: unidade.usuario_id // ✅ Permite buscar unidades alternativas
+          });
+        }
         return res.status(404).json({
           success: false,
           error: 'Unidade não encontrada',

@@ -13,11 +13,14 @@ interface BookingPageProps {
 }
 
 const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPreview }) => {
-  const { salonData, availableLocations, isLoading, error, loadSalonData, loadAvailableLocations, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento, getExtrasByServices } = usePublicBooking();
+  const { salonData, availableLocations, isLoading, error, unavailableUsuarioId, loadSalonData, loadAvailableLocations, findUnidadeBySlug, getAgenteDisponibilidade, createAgendamento, getExtrasByServices } = usePublicBooking();
 
   const [unidadeId, setUnidadeId] = useState<number | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [tempSelectedLocationId, setTempSelectedLocationId] = useState<number | null>(null);
+  // ✅ NOVO: Estado para alternativas quando unidade não está disponível
+  const [alternativeLocations, setAlternativeLocations] = useState<any[]>([]);
+  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [usuarioId, setUsuarioId] = useState<number | null>(null);
   
   // ✅ CRÍTICO: Preservar configurações iniciais da empresa (logo e nome)
@@ -102,7 +105,28 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     loadData();
   }, [isPreview, loadSalonData, findUnidadeBySlug]);
-  
+
+  // ✅ NOVO: Buscar unidades alternativas quando a unidade atual não está disponível
+  useEffect(() => {
+    const fetchAlternatives = async () => {
+      if (error && unavailableUsuarioId && alternativeLocations.length === 0) {
+        console.log('[BookingPage] Buscando unidades alternativas para usuario_id:', unavailableUsuarioId);
+        setIsLoadingAlternatives(true);
+        try {
+          const alternatives = await loadAvailableLocations(unavailableUsuarioId);
+          console.log('[BookingPage] Unidades alternativas encontradas:', alternatives);
+          setAlternativeLocations(alternatives || []);
+        } catch (err) {
+          console.error('[BookingPage] Erro ao buscar alternativas:', err);
+          setAlternativeLocations([]);
+        } finally {
+          setIsLoadingAlternatives(false);
+        }
+      }
+    };
+    fetchAlternatives();
+  }, [error, unavailableUsuarioId, loadAvailableLocations, alternativeLocations.length]);
+
   // ✅ CRÍTICO: Preservar configurações da empresa na primeira carga
   // Logo e nome do negócio não devem mudar ao trocar de local
   useEffect(() => {
@@ -340,8 +364,47 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     autoLoadSlotsOnStep5();
   }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, availableTimeSlots.length]);
 
-  if (isLoading) {
+  if (isLoading || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
+  }
+
+  // ✅ NOVO: Mostrar alternativas quando unidade não está disponível
+  if (error && alternativeLocations.length > 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="w-8 h-8 text-yellow-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Local Indisponível</h2>
+            <p className="text-gray-600">Este local não está mais disponível para agendamentos.</p>
+            <p className="text-gray-500 text-sm mt-2">Mas você pode escolher outro local abaixo:</p>
+          </div>
+
+          <div className="space-y-3">
+            {alternativeLocations.map(location => (
+              <button
+                key={location.id}
+                onClick={() => {
+                  // Redirecionar para a unidade alternativa
+                  const pathParts = window.location.pathname.split('/').filter(Boolean);
+                  const slug = pathParts[0] || '';
+                  const newUrl = slug ? `/${slug}/booking/${location.id}` : `/booking/${location.id}`;
+                  window.location.href = newUrl;
+                }}
+                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
+              >
+                <div className="font-semibold text-gray-800">{location.nome}</div>
+                {location.endereco && (
+                  <div className="text-sm text-gray-500 mt-1">{location.endereco}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (error || !salonData) {
