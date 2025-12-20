@@ -221,12 +221,12 @@ class CupomController {
         });
       }
 
-      // Erro de código duplicado (constraint unique)
+      // Erro de código duplicado (constraint unique por usuário)
       if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
         return res.status(400).json({
           success: false,
           error: 'Código duplicado',
-          message: 'Já existe um cupom com este código. Escolha outro código.'
+          message: 'Você já possui um cupom com este código. Escolha outro código.'
         });
       }
 
@@ -307,12 +307,12 @@ class CupomController {
         });
       }
 
-      // Erro de código duplicado (constraint unique)
+      // Erro de código duplicado (constraint unique por usuário)
       if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
         return res.status(400).json({
           success: false,
           error: 'Código duplicado',
-          message: 'Já existe um cupom com este código. Escolha outro código.'
+          message: 'Você já possui um cupom com este código. Escolha outro código.'
         });
       }
 
