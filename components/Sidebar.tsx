@@ -72,10 +72,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
       return true;
     }
 
-    // ADMIN (mapeado como 'salon' no frontend) só pode ver LOCAIS se tiver plano Multi
-    // Verificar tanto o role original do userData quanto o role mapeado
+    // ✅ CORREÇÃO: ADMIN sempre pode ver LOCAIS (independente do plano)
+    // Mesmo com plano Single, o ADMIN precisa gerenciar seu local (editar horários, bloquear, etc.)
     const isAdmin = user.role === 'salon' || user.userData?.role === 'ADMIN';
-    if (isAdmin && user.plano === 'Multi') {
+    if (isAdmin) {
       return true;
     }
 
