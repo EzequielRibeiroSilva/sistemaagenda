@@ -116,11 +116,12 @@ export interface UseAgentManagementReturn {
   services: Service[];
   loading: boolean;
   error: string | null;
-  
+  initialLoadComplete: boolean; // Flag para indicar se o carregamento inicial foi concluído
+
   // ✅ ETAPA 1: Novos campos para suporte multi-unidade
   adminPlan: 'Single' | 'Multi';
   availableUnits: UnitData[];
-  
+
   // Ações
   fetchAgents: () => Promise<void>;
   fetchServices: () => Promise<void>;
@@ -128,7 +129,7 @@ export interface UseAgentManagementReturn {
   createAgent: (agentData: CreateAgentData) => Promise<boolean>;
   updateAgent: (id: number, agentData: CreateAgentData) => Promise<any>;
   deleteAgent: (id: number) => Promise<boolean>;
-  
+
   // Utilitários
   clearError: () => void;
 }
@@ -136,11 +137,14 @@ export interface UseAgentManagementReturn {
 export const useAgentManagement = (): UseAgentManagementReturn => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true); // Iniciar como true para evitar flash de "Nenhuma unidade"
   const [error, setError] = useState<string | null>(null);
-  
+
   // ✅ ETAPA 1: Estados para suporte multi-unidade
   const [availableUnits, setAvailableUnits] = useState<UnitData[]>([]);
+
+  // Flag para indicar se o carregamento inicial foi concluído
+  const [initialLoadComplete, setInitialLoadComplete] = useState<boolean>(false);
 
   // Usar AuthContext
   const { token, isAuthenticated, user, logout: authLogout } = useAuth();
@@ -433,6 +437,9 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       // Executar as funções diretamente para evitar dependências circulares
       const loadData = async () => {
         try {
+          // Marcar que estamos carregando
+          if (isMounted) setLoading(true);
+
           // ✅ ETAPA 1: Buscar unidades primeiro (necessário para validação de agendas)
           if (isMounted) await fetchAvailableUnits();
           // Buscar serviços (necessário para criar agentes)
@@ -441,6 +448,12 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
           if (isMounted) await fetchAgents();
         } catch (error) {
           // Erro silencioso - não expor detalhes no console
+        } finally {
+          // Marcar carregamento inicial como concluído
+          if (isMounted) {
+            setLoading(false);
+            setInitialLoadComplete(true);
+          }
         }
       };
 
@@ -452,6 +465,8 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
         setServices([]);
         setAvailableUnits([]);
         setError(null);
+        setLoading(false);
+        setInitialLoadComplete(false);
       }
     }
 
@@ -465,6 +480,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     services,
     loading,
     error,
+    initialLoadComplete, // Flag para indicar se o carregamento inicial foi concluído
     // ✅ ETAPA 1: Expor adminPlan e availableUnits
     adminPlan,
     availableUnits,
