@@ -180,7 +180,7 @@ class UnidadeService {
         // Criar exceções de calendário (se fornecidas)
         if (unidadeData.excecoes_calendario && Array.isArray(unidadeData.excecoes_calendario) && unidadeData.excecoes_calendario.length > 0) {
           logger.log(`📅 [UnidadeService] Criando ${unidadeData.excecoes_calendario.length} exceções de calendário`);
-          
+
           for (const excecao of unidadeData.excecoes_calendario) {
             await ExcecaoCalendario.create({
               unidade_id: novaUnidade.id,
@@ -191,6 +191,24 @@ class UnidadeService {
             }, trx);
           }
         }
+
+        // ✅ CORREÇÃO: Criar configurações padrão para a nova unidade
+        logger.log(`⚙️ [UnidadeService] Criando configurações padrão para unidade ${novaUnidade.id}`);
+        await trx('configuracoes_sistema').insert({
+          unidade_id: novaUnidade.id,
+          nome_negocio: unidadeData.nome,
+          logo_url: null,
+          duracao_servico_minutos: 60,
+          tempo_limite_agendar_horas: 2,
+          permitir_cancelamento: true,
+          tempo_limite_cancelar_horas: 4,
+          periodo_futuro_dias: 365,
+          pontos_ativo: false,
+          pontos_por_real: 1.00,
+          reais_por_pontos: 10.00,
+          pontos_validade_meses: 12
+        });
+        logger.log(`✅ [UnidadeService] Configurações padrão criadas para unidade ${novaUnidade.id}`);
 
         await trx.commit();
 
