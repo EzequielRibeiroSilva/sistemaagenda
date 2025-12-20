@@ -580,7 +580,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const handleDateSelect = async (date: Date) => {
     // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
     const dateStr = formatDateToYYYYMMDD(date);
-    console.log('🗓️ [BookingPage] Data selecionada:', dateStr);
+    console.log('🗓️ [handleDateSelect] INÍCIO - Data selecionada:', dateStr);
+    console.log('🗓️ [handleDateSelect] selectedAgent:', selectedAgent);
+    console.log('🗓️ [handleDateSelect] selectedAgentId:', selectedAgentId);
+    console.log('🗓️ [handleDateSelect] selectedServices:', selectedServices);
+    console.log('🗓️ [handleDateSelect] selectedServiceIds:', selectedServiceIds);
+    console.log('🗓️ [handleDateSelect] unidadeId:', unidadeId);
+
     setSelectedDate(date);
     setTempSelectedTime('');
     setIsLoadingSlots(true);
@@ -588,13 +594,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     try {
       if (!selectedAgent) {
-        console.error('❌ [BookingPage] Nenhum agente selecionado');
+        console.error('❌ [handleDateSelect] Nenhum agente selecionado - selectedAgentId:', selectedAgentId);
         setIsLoadingSlots(false);
         return;
       }
 
       if (!selectedServices || selectedServices.length === 0) {
-        console.error('❌ [BookingPage] Nenhum serviço selecionado');
+        console.error('❌ [handleDateSelect] Nenhum serviço selecionado - selectedServiceIds:', selectedServiceIds);
         setIsLoadingSlots(false);
         return;
       }
@@ -716,7 +722,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                 <button
                   key={day}
                   disabled={!isAvailable}
-                  onClick={() => isAvailable ? handleDateSelect(date) : undefined}
+                  onClick={() => {
+                    console.log('📅 [Calendar] Clique no dia:', day, 'isAvailable:', isAvailable, 'date:', date);
+                    if (isAvailable) {
+                      handleDateSelect(date);
+                    }
+                  }}
                   className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${buttonStyle}`}
                   title={
                     isPastDate ? 'Data já passou' :
