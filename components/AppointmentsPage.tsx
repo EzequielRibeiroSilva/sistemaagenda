@@ -130,10 +130,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     const {
         appointments,
         isLoading,
+        initialLoadComplete, // ✅ NOVO: Flag para controle de carregamento inicial
         error,
         pagination,
         agentOptions,
-        allAgents, // ✅ NOVO: Agentes completos com unidades
+        allAgents, // Agentes completos com unidades
         fetchAppointments,
         updateAppointmentStatus,
         deleteAppointment
