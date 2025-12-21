@@ -240,12 +240,13 @@ class Cupom extends BaseModel {
   /**
    * Buscar cupons ativos e válidos para uso público
    * @param {string} codigo - Código do cupom
+   * @param {number|null} usuarioIdEsperado - ID do usuário esperado (dono da unidade onde o cupom será usado)
    * @returns {Promise<Object|null>} Cupom válido ou null
    */
-  async buscarCupomValidoParaUso(codigo) {
+  async buscarCupomValidoParaUso(codigo, usuarioIdEsperado = null) {
     const now = new Date();
-    
-    return await this.db(this.tableName)
+
+    let query = this.db(this.tableName)
       .where('codigo', codigo.toUpperCase())
       .where('status', 'Ativo')
       .where(function() {
@@ -255,8 +256,16 @@ class Cupom extends BaseModel {
       .where(function() {
         this.whereNull('data_fim')
             .orWhere('data_fim', '>=', now);
-      })
-      .first();
+      });
+
+    // ✅ CORREÇÃO CRÍTICA: Se temos o usuario_id esperado, filtrar pelo usuário correto
+    // Isso resolve o problema quando existem múltiplos cupons com o mesmo código
+    // de usuários diferentes (ex: VERAO2026 do usuario 1 e VERAO2026 do usuario 3)
+    if (usuarioIdEsperado) {
+      query = query.where('usuario_id', usuarioIdEsperado);
+    }
+
+    return await query.first();
   }
 
   /**
