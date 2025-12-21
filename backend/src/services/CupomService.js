@@ -161,24 +161,14 @@ class CupomService {
    * @returns {Promise<Object>} Resultado da validação
    */
   async validarUsoCupom(codigo, clienteId, valorPedido, unidadeId, servicoIds = [], dataAgendamento = null) {
-    // 1. Buscar cupom ativo e válido
-    const cupom = await this.cupomModel.buscarCupomValidoParaUso(codigo);
-    
-    if (!cupom) {
-      return {
-        valido: false,
-        erro: 'Cupom inválido, expirado ou inativo',
-        codigo_erro: 'CUPOM_INVALIDO'
-      };
-    }
-
-    // 2. ✅ CRÍTICO: Verificar se o cupom pertence ao mesmo usuário/empresa da unidade
-    // Buscar usuario_id da unidade
+    // 1. ✅ CORREÇÃO CRÍTICA: Primeiro buscar o usuario_id da unidade
+    // Isso é necessário para buscar o cupom correto quando existem múltiplos
+    // cupons com o mesmo código de usuários diferentes
     const unidade = await this.cupomModel.db('unidades')
       .where('id', unidadeId)
       .select('usuario_id')
       .first();
-    
+
     if (!unidade) {
       return {
         valido: false,
@@ -187,6 +177,19 @@ class CupomService {
       };
     }
 
+    // 2. ✅ CORREÇÃO: Buscar cupom ativo e válido FILTRANDO pelo usuario_id da unidade
+    // Isso garante que pegamos o cupom correto quando existem cupons com mesmo código
+    const cupom = await this.cupomModel.buscarCupomValidoParaUso(codigo, unidade.usuario_id);
+
+    if (!cupom) {
+      return {
+        valido: false,
+        erro: 'Cupom inválido, expirado ou inativo',
+        codigo_erro: 'CUPOM_INVALIDO'
+      };
+    }
+
+    // 3. Validação de segurança extra (já não deve mais ser necessária, mas mantemos por segurança)
     if (cupom.usuario_id !== unidade.usuario_id) {
       return {
         valido: false,
@@ -195,9 +198,9 @@ class CupomService {
       };
     }
 
-    // 3. ✅ Verificar se o cupom é válido para a unidade específica (se houver restrição)
+    // 4. ✅ Verificar se o cupom é válido para a unidade específica (se houver restrição na tabela cupom_unidades)
     const cupomUnidades = await this.cupomModel.buscarUnidades(cupom.id);
-    
+
     if (cupomUnidades.length > 0 && !cupomUnidades.includes(unidadeId)) {
       return {
         valido: false,
@@ -206,13 +209,13 @@ class CupomService {
       };
     }
 
-    // 4. ✅ Verificar se o cupom é válido para os serviços selecionados (se houver restrição)
+    // 5. ✅ Verificar se o cupom é válido para os serviços selecionados (se houver restrição)
     const cupomServicos = await this.cupomModel.buscarServicos(cupom.id);
-    
+
     if (cupomServicos.length > 0) {
       // Se o cupom tem restrição de serviços, pelo menos um serviço selecionado deve estar na lista
       const temServicoValido = servicoIds.some(servicoId => cupomServicos.includes(servicoId));
-      
+
       if (!temServicoValido) {
         return {
           valido: false,
@@ -222,17 +225,17 @@ class CupomService {
       }
     }
 
-    // 5. ✅ NOVO: Verificar se o cupom é válido para o dia da semana do agendamento
+    // 6. ✅ Verificar se o cupom é válido para o dia da semana do agendamento
     if (cupom.dias_semana_permitidos && Array.isArray(cupom.dias_semana_permitidos) && cupom.dias_semana_permitidos.length > 0) {
       // Se dataAgendamento não foi fornecida, usar a data atual
       const dataParaValidar = dataAgendamento ? new Date(dataAgendamento) : new Date();
       const diaSemana = dataParaValidar.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
-      
+
       if (!cupom.dias_semana_permitidos.includes(diaSemana)) {
         // Mapear número do dia para nome em português
         const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
         const diasPermitidos = cupom.dias_semana_permitidos.map(d => diasSemana[d]).join(', ');
-        
+
         return {
           valido: false,
           erro: `Este cupom só pode ser usado nos seguintes dias: ${diasPermitidos}`,
@@ -242,7 +245,7 @@ class CupomService {
       }
     }
 
-    // 6. Verificar valor mínimo do pedido
+    // 7. Verificar valor mínimo do pedido
     if (cupom.valor_minimo_pedido && valorPedido < cupom.valor_minimo_pedido) {
       return {
         valido: false,
@@ -252,7 +255,7 @@ class CupomService {
       };
     }
 
-    // 7. Verificar limite de uso total
+    // 8. Verificar limite de uso total
     if (cupom.limite_uso_total && cupom.uso_atual >= cupom.limite_uso_total) {
       return {
         valido: false,
@@ -261,10 +264,10 @@ class CupomService {
       };
     }
 
-    // 8. Verificar limite de uso por cliente (somente se clienteId for fornecido)
+    // 9. Verificar limite de uso por cliente (somente se clienteId for fornecido)
     if (cupom.limite_uso_por_cliente && clienteId) {
       const usosCliente = await this.cupomModel.contarUsosPorCliente(cupom.id, clienteId);
-      
+
       if (usosCliente >= cupom.limite_uso_por_cliente) {
         return {
           valido: false,
@@ -274,7 +277,7 @@ class CupomService {
       }
     }
 
-    // 9. Calcular desconto
+    // 10. Calcular desconto
     const desconto = this.calcularDesconto(cupom, valorPedido);
 
     return {
