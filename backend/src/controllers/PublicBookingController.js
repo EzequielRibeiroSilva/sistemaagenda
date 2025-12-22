@@ -1002,8 +1002,10 @@ class PublicBookingController {
       }
 
       // Criar ou buscar cliente
+      // ✅ CORREÇÃO: Buscar por telefone_limpo para garantir match correto
+      const telefone_limpo_busca = cliente_telefone.replace(/\D/g, '');
       let cliente = await trx('clientes')
-        .where('telefone', cliente_telefone)
+        .where('telefone_limpo', telefone_limpo_busca)
         .where('unidade_id', unidade_id)
         .first();
 
@@ -1013,10 +1015,14 @@ class PublicBookingController {
         const primeiro_nome = nomePartes[0];
         const ultimo_nome = nomePartes.slice(1).join(' ') || '';
 
+        // ✅ CORREÇÃO: Limpar telefone para preencher telefone_limpo
+        const telefone_limpo = cliente_telefone.replace(/\D/g, '');
+
         const [novoCliente] = await trx('clientes').insert({
           primeiro_nome,
           ultimo_nome,
           telefone: cliente_telefone,
+          telefone_limpo: telefone_limpo, // ✅ CRÍTICO: Necessário para envio de WhatsApp
           unidade_id: unidade_id,
           status: 'Ativo'
         }).returning('*');
