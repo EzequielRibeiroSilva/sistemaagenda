@@ -209,7 +209,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   role="menuitem"
                 >
                   <Cog className="w-4 h-4 mr-3" />
-                  Definições
+                  Configurações
                 </a>
                 <a
                   href="#"

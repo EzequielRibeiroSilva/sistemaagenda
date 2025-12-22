@@ -253,7 +253,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">Definições</h1>
+      <h1 className="text-3xl font-bold text-gray-800">Configurações</h1>
 
       {/* Mostrar erro se houver */}
       {error && (

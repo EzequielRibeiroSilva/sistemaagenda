@@ -194,7 +194,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
             )}
 
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-800">Agentes</h1>
+                <h1 className="text-3xl font-bold text-gray-800">Equipe</h1>
                 <div className="text-sm text-gray-600">
                     {agents.length} agente{agents.length !== 1 ? 's' : ''} encontrado{agents.length !== 1 ? 's' : ''}
                 </div>

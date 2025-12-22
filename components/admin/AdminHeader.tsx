@@ -73,7 +73,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ onLogout, searchQuery, setSea
               role="menuitem"
             >
               <Cog className="w-4 h-4 mr-3" />
-              Definições
+              Configurações
             </a>
             <a
               href="#"
