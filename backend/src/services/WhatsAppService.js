@@ -13,9 +13,23 @@ class WhatsAppService {
     this.evolutionApiKey = process.env.EVO_API_KEY || process.env.EVOLUTION_API_KEY || '';
     this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'PAINEL-DE-AGENDAMENTOS';
     this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
-    this.enabled = process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true' || process.env.WHATSAPP_ENABLED === 'true';
+    this.enabled = process.env.WHATSAPP_ENABLED === 'true' || process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
     this.notificacaoModel = new NotificacaoModel();
+  }
+
+  getFrontendBaseUrl() {
+    const baseUrl = process.env.FRONTEND_URL;
+
+    if (!baseUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FRONTEND_URL não configurada em produção');
+      }
+
+      return 'http://localhost:5173';
+    }
+
+    return baseUrl;
   }
 
   static sleep(ms) {
@@ -173,7 +187,7 @@ class WhatsAppService {
    * Gerar link de gestão de agendamento
    */
   generateManagementLink(agendamentoId) {
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const baseUrl = this.getFrontendBaseUrl();
     return `${baseUrl}/gerenciar-agendamento/${agendamentoId}`;
   }
 
@@ -184,7 +198,7 @@ class WhatsAppService {
    * @returns {string} Link completo de booking
    */
   generateBookingLink(unidadeSlug, unidadeId) {
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const baseUrl = this.getFrontendBaseUrl();
     // Formato: /{slug}/booking/{unidade_id}
     return `${baseUrl}/${unidadeSlug}/booking/${unidadeId}`;
   }
