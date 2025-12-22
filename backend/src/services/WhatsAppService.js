@@ -18,6 +18,27 @@ class WhatsAppService {
     this.notificacaoModel = new NotificacaoModel();
   }
 
+  static sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  static getRandomIntInclusive(min, max) {
+    const minSafe = Math.ceil(min);
+    const maxSafe = Math.floor(max);
+    return Math.floor(Math.random() * (maxSafe - minSafe + 1)) + minSafe;
+  }
+
+  static getSendQueue() {
+    if (!WhatsAppService._sendQueue) {
+      WhatsAppService._sendQueue = Promise.resolve();
+    }
+    return WhatsAppService._sendQueue;
+  }
+
+  static setSendQueue(promise) {
+    WhatsAppService._sendQueue = promise;
+  }
+
   /**
    * Verificar se o serviço está habilitado
    */
@@ -54,72 +75,90 @@ class WhatsAppService {
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
-    // Modo de teste - simula envio bem-sucedido
-    if (this.testMode) {
-      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+    const isDev = process.env.NODE_ENV === 'development';
+    const minDelayMs = parseInt(process.env.WHATSAPP_DEV_MIN_DELAY_MS || '15000');
+    const maxDelayMs = parseInt(process.env.WHATSAPP_DEV_MAX_DELAY_MS || '40000');
 
-      // Simular delay de rede
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    const shouldApplyDevDelay = isDev && minDelayMs > 0 && maxDelayMs >= minDelayMs;
 
-      return {
-        success: true,
-        data: {
-          messageId: `test_${Date.now()}`,
-          phone: formattedPhone,
-          status: 'sent',
-          testMode: true
-        }
-      };
-    }
+    const runInQueue = async () => {
+      if (shouldApplyDevDelay) {
+        const delayMs = WhatsAppService.getRandomIntInclusive(minDelayMs, maxDelayMs);
+        logger.log(`⏳ [WhatsApp] DEV: aguardando ${delayMs}ms antes do envio (delay variável)`);
+        await WhatsAppService.sleep(delayMs);
+      }
 
-    try {
-      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      // Modo de teste - simula envio bem-sucedido
+      if (this.testMode) {
+        const formattedPhone = this.formatPhoneNumber(phoneNumber);
 
-      // Usar instanceName se disponível, senão usar instanceId
-      const instanceIdentifier = this.instanceName || this.instanceId;
+        // Simular delay de rede
+        await WhatsAppService.sleep(1000);
 
-      const payload = {
-        number: formattedPhone,
-        text: message,
-        delay: 1000,
-        linkPreview: false // Desabilitar preview de links
-      };
-
-      const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': this.evolutionApiKey
-        },
-        body: JSON.stringify(payload),
-        timeout: 30000 // 30 segundos de timeout
-      });
-
-      const data = await response.json();
-
-
-
-      if (response.ok) {
-
-        return { success: true, data };
-      } else {
-        logger.error('❌ [WhatsApp] Erro ao enviar mensagem:');
-        logger.error('❌ [WhatsApp] Status:', response.status);
-        logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
         return {
-          success: false,
-          error: {
-            status: response.status,
-            error: response.statusText,
-            response: data
+          success: true,
+          data: {
+            messageId: `test_${Date.now()}`,
+            phone: formattedPhone,
+            status: 'sent',
+            testMode: true
           }
         };
       }
 
-    } catch (error) {
-      logger.error('❌ [WhatsApp] Erro na requisição:', error);
-      return { success: false, error: error.message };
-    }
+      try {
+        const formattedPhone = this.formatPhoneNumber(phoneNumber);
+
+        // Usar instanceName se disponível, senão usar instanceId
+        const instanceIdentifier = this.instanceName || this.instanceId;
+
+        const payload = {
+          number: formattedPhone,
+          text: message,
+          delay: 1000,
+          linkPreview: false // Desabilitar preview de links
+        };
+
+        const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': this.evolutionApiKey
+          },
+          body: JSON.stringify(payload),
+          timeout: 30000 // 30 segundos de timeout
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          return { success: true, data };
+        } else {
+          logger.error('❌ [WhatsApp] Erro ao enviar mensagem:');
+          logger.error('❌ [WhatsApp] Status:', response.status);
+          logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
+          return {
+            success: false,
+            error: {
+              status: response.status,
+              error: response.statusText,
+              response: data
+            }
+          };
+        }
+
+      } catch (error) {
+        logger.error('❌ [WhatsApp] Erro na requisição:', error);
+        return { success: false, error: error.message };
+      }
+    };
+
+    const queuedPromise = WhatsAppService.getSendQueue().then(runInQueue, runInQueue);
+
+    // Garantir que a fila continue mesmo se houver erro
+    WhatsAppService.setSendQueue(queuedPromise.catch(() => {}));
+
+    return queuedPromise;
   }
 
   /**
