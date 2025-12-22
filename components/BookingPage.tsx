@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase, Tag, X } from './Icons';
 import { usePublicBooking, SalonData, PublicAgente, PublicServico, PublicExtra, SlotDisponivel } from '../hooks/usePublicBooking';
 import { useCupomManagement } from '../hooks/useCupomManagement';
@@ -56,6 +56,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // Estados para o novo calendário
   const [viewDate, setViewDate] = useState(new Date());
   const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
+
+  const autoSelectDateRequestRef = useRef(0);
 
   // ✅ CORREÇÃO CRÍTICA: Função utilitária para converter data para string YYYY-MM-DD
   // Usando formato local (não UTC) para evitar problemas de timezone
@@ -332,45 +334,73 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         return;
       }
       
-      // ✅ CORREÇÃO: Verificar se o dia está disponível (interseção unidade + agente)
-      const dayOfWeek = selectedDate.getDay();
-      const isDayAvailable = availableDays.includes(dayOfWeek);
-      
-      if (!isDayAvailable) {
-        return;
-      }
-      
-      // ✅ CORREÇÃO CRÍTICA: Verificar se já carregou horários para evitar loop infinito
-      if (availableTimeSlots.length > 0) {
-        return;
-      }
-      
-      // Carregar horários automaticamente
+      const requestId = ++autoSelectDateRequestRef.current;
+
       setIsLoadingSlots(true);
       setAvailableTimeSlots([]);
+      setTempSelectedTime('');
 
       try {
         const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
-        // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
-        const dateStr = formatDateToYYYYMMDD(selectedDate);
 
-        const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        if (disponibilidade && disponibilidade.slots_disponiveis) {
-          setAvailableTimeSlots(disponibilidade.slots_disponiveis);
-        } else {
-          setAvailableTimeSlots([]);
+        const maxDaysToSearch = (salonData?.configuracoes?.periodo_futuro_dias || 60);
+        let candidate = new Date(selectedDate);
+        candidate.setHours(0, 0, 0, 0);
+
+        if (candidate < today) {
+          candidate = new Date(today);
         }
+
+        for (let i = 0; i <= maxDaysToSearch; i++) {
+          if (autoSelectDateRequestRef.current !== requestId) return;
+
+          const dayOfWeek = candidate.getDay();
+          const isDayAvailable = availableDays.includes(dayOfWeek);
+
+          if (!isDayAvailable) {
+            candidate.setDate(candidate.getDate() + 1);
+            continue;
+          }
+
+          const dateStr = formatDateToYYYYMMDD(candidate);
+          const disponibilidade = await getAgenteDisponibilidade(
+            selectedAgent.id,
+            dateStr,
+            totalDuration,
+            unidadeId || undefined
+          );
+
+          if (autoSelectDateRequestRef.current !== requestId) return;
+
+          const slots = disponibilidade?.slots_disponiveis || [];
+          if (slots.length > 0) {
+            if (selectedDate.toDateString() !== candidate.toDateString()) {
+              const newSelectedDate = new Date(candidate);
+              setSelectedDate(newSelectedDate);
+              setViewDate(new Date(newSelectedDate.getFullYear(), newSelectedDate.getMonth(), 1));
+            }
+            setAvailableTimeSlots(slots);
+            return;
+          }
+
+          candidate.setDate(candidate.getDate() + 1);
+        }
+
+        setAvailableTimeSlots([]);
       } catch (error) {
-        // Erro ao buscar disponibilidade
         setAvailableTimeSlots([]);
       } finally {
-        setIsLoadingSlots(false);
+        if (autoSelectDateRequestRef.current === requestId) {
+          setIsLoadingSlots(false);
+        }
       }
     };
 
     autoLoadSlotsOnStep5();
-  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, availableTimeSlots.length, formatDateToYYYYMMDD]);
+  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
 
   if (isLoading || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;

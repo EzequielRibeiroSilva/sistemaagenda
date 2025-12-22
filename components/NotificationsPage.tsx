@@ -295,7 +295,7 @@ const NotificationsPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Lembretes</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Avisos</h1>
         </div>
         
         {/* Selector de Local (apenas para plano Multi) */}

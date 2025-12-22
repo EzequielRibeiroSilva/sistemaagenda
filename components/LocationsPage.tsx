@@ -182,7 +182,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-gray-800">Locais</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Unidade</h1>
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <span className="ml-3 text-gray-600">Carregando locais...</span>
@@ -194,7 +194,7 @@ const LocationsPage: React.FC<LocationsPageProps> = ({ setActiveView, onEditLoca
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800">Locais</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Unidade</h1>
         {limitInfo && (
           <div className="text-sm text-gray-600">
             <span className="font-medium">{limitInfo.currentCount}</span>

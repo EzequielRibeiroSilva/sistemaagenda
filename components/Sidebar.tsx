@@ -194,21 +194,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         <NavItem 
             icon={<LayoutDashboard className="h-5 w-5" />} 
-            label="DASHBOARD" 
+            label="PAINEL" 
             isCollapsed={isCollapsed}
             isActive={activeView === 'dashboard'}
             onClick={() => handleNavItemClick('dashboard')}
         />
         <NavItem
             icon={<Calendar className="h-5 w-5" />}
-            label="CALENDÁRIO"
+            label="AGENDA"
             isCollapsed={isCollapsed}
             isActive={activeView === 'calendar'}
             onClick={() => handleNavItemClick('calendar')}
         />
         <NavItem
             icon={<Briefcase className="h-5 w-5" />}
-            label="COMPROMISSOS"
+            label="AGENDAMENTOS"
             isCollapsed={isCollapsed}
             isActive={activeView === 'compromissos'}
             onClick={() => handleNavItemClick('compromissos')}
@@ -243,18 +243,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
         )}
         
         {userRole === 'ADMIN' && (
-            <NavItem
-              icon={<Ticket className="h-5 w-5" />}
-              label="CUPONS"
-              isCollapsed={isCollapsed}
-              isActive={activeView.startsWith('cupons')}
-              onClick={() => handleNavItemClick('cupons-list')}
-            />
-        )}
-        
-        {userRole === 'ADMIN' && (
           <>
-            <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Recursos</div>
+            <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Gestão</div>
             <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
 
             <div 
@@ -284,7 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             </div>
             <NavItem
               icon={<Users className="h-5 w-5" />}
-              label="AGENTES"
+              label="EQUIPE"
               isCollapsed={isCollapsed}
               isActive={activeView.startsWith('agents')}
               onClick={() => handleNavItemClick('agents-list')}
@@ -292,22 +282,32 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             {shouldShowLocais() && (
               <NavItem
                 icon={<MapPin className="h-5 w-5" />}
-                label="LOCAIS"
+                label="UNIDADE"
                 isCollapsed={isCollapsed}
                 isActive={activeView.startsWith('locations')}
                 onClick={() => handleNavItemClick('locations-list')}
               />
             )}
+
+            {userRole === 'ADMIN' && (
+                <NavItem
+                  icon={<Ticket className="h-5 w-5" />}
+                  label="CUPONS"
+                  isCollapsed={isCollapsed}
+                  isActive={activeView.startsWith('cupons')}
+                  onClick={() => handleNavItemClick('cupons-list')}
+                />
+            )}
           </>
         )}
 
-        <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Definições</div>
+        <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Ajustes</div>
         <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
 
         {userRole === 'ADMIN' && (
           <NavItem
             icon={<Bell className="h-5 w-5" />}
-            label="LEMBRETES"
+            label="AVISOS"
             isCollapsed={isCollapsed}
             isActive={activeView === 'lembretes'}
             onClick={() => handleNavItemClick('lembretes')}
@@ -316,7 +316,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
 
         <NavItem 
             icon={<Cog className="h-5 w-5" />} 
-            label="DEFINIÇÕES" 
+            label="CONFIGURAÇÕES" 
             isCollapsed={isCollapsed}
             isActive={activeView === 'settings' || (userRole === 'AGENTE' && activeView === 'agents-edit')}
             onClick={() => {
