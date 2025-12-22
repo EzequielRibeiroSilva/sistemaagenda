@@ -11,6 +11,7 @@ const Cliente = require('../models/Cliente');
 const Agendamento = require('../models/Agendamento');
 const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
+const ExcecaoCalendario = require('../models/ExcecaoCalendario');
 const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
 const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
@@ -28,6 +29,43 @@ class PublicBookingController {
     this.whatsAppService = new WhatsAppService();
     this.scheduledReminderService = new ScheduledReminderService(); // ✅ NOVO
     this.publicSessionService = getPublicSessionService(); // ✅ CORREÇÃO 1.2
+  }
+
+  // ===============================
+  // TIMEZONE/DATE HELPERS (PUBLIC)
+  // ===============================
+  getDateStrInTimeZone(tz, date = new Date()) {
+    // en-CA yields YYYY-MM-DD
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  }
+
+  getMinutesInTimeZone(tz, date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(date);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    return hour * 60 + minute;
+  }
+
+  dayNumberFromDateStr(dateStr) {
+    // dateStr: YYYY-MM-DD
+    const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+    return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+  }
+
+  absoluteMinutesFromDateStrAndTime(dateStr, timeStr) {
+    const dayNumber = this.dayNumberFromDateStr(dateStr);
+    const minutes = this.timeToMinutes(timeStr);
+    return dayNumber * 1440 + minutes;
   }
 
   /**
@@ -357,6 +395,29 @@ class PublicBookingController {
       const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
       logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
+      // ✅ CRÍTICO: Bloquear datas com exceções (ex: Manutenção)
+      const excecao = await ExcecaoCalendario.isDataBloqueada(unidadeIdParaUsar, data);
+      if (excecao) {
+        logger.log(`[PublicBooking] 🚫 Data ${data} bloqueada por exceção:`, {
+          unidade_id: unidadeIdParaUsar,
+          tipo: excecao.tipo,
+          descricao: excecao.descricao,
+          periodo: `${excecao.data_inicio} a ${excecao.data_fim}`
+        });
+        return res.json({
+          success: true,
+          data: {
+            agente_id: parseInt(agenteId),
+            data: data,
+            dia_semana: new Date(data + 'T00:00:00').getDay(),
+            duracao_minutos: duracaoMinutos,
+            slots_disponiveis: [],
+            total_slots: 0,
+            message: `Data indisponível: ${excecao.tipo}${excecao.descricao ? ` - ${excecao.descricao}` : ''}`
+          }
+        });
+      }
+
       // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
       const configuracoes = await db('configuracoes_sistema')
         .where('unidade_id', unidadeIdParaUsar)
@@ -514,20 +575,20 @@ class PublicBookingController {
     // CORREÇÃO CRÍTICA: Usar a duração do serviço como intervalo dos slots
     const intervaloSlot = duracaoMinutos; // Slots baseados na duração real do serviço
 
-    // ✅ CRÍTICO: Obter horário atual para bloquear slots passados e aplicar tempo limite
-    const agora = new Date();
-    const dataAgendamentoObj = new Date(dataAgendamento + 'T00:00:00');
-    const isDiaAtual = dataAgendamentoObj.toDateString() === agora.toDateString();
-    const horarioAtualEmMinutos = isDiaAtual ? (agora.getHours() * 60 + agora.getMinutes()) : 0;
-
-    // ✅ NOVO: Calcular horário mínimo baseado em tempo_limite_agendar_horas
-    const horarioMinimoPermitido = new Date(agora.getTime() + (tempoLimiteHoras * 60 * 60 * 1000));
+    // ✅ CRÍTICO: Basear bloqueios no timezone da operação (evita depender do timezone do servidor)
+    const tz = 'America/Sao_Paulo';
+    const hojeStr = this.getDateStrInTimeZone(tz);
+    const isDiaAtual = dataAgendamento === hojeStr;
+    const agoraMinutosHoje = this.getMinutesInTimeZone(tz);
+    const agoraAbsMin = this.dayNumberFromDateStr(hojeStr) * 1440 + agoraMinutosHoje;
+    const limiteAbsMin = agoraAbsMin + (tempoLimiteHoras * 60);
     
     logger.log(`[PublicBooking] Gerando slots para ${dataAgendamento}:`, {
       isDiaAtual,
-      horarioAtual: this.minutesToTime(horarioAtualEmMinutos),
+      hojeStr,
+      horarioAtual: this.minutesToTime(agoraMinutosHoje),
       tempoLimiteHoras,
-      horarioMinimoPermitido: horarioMinimoPermitido.toISOString()
+      limiteAbsMin
     });
 
     for (const periodo of horariosJson) {
@@ -545,19 +606,17 @@ class PublicBookingController {
         }
 
         // ✅ CRÍTICO: Bloquear horários que já passaram (apenas para o dia atual)
-        if (isDiaAtual && minuto < horarioAtualEmMinutos) {
+        if (isDiaAtual && minuto < agoraMinutosHoje) {
           logger.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (já passou)`);
           continue; // Horário já passou, não disponibilizar
         }
 
         // ✅ NOVO: Bloquear horários fora do prazo mínimo (tempo_limite_agendar_horas)
         if (tempoLimiteHoras > 0) {
-          // Criar data/hora do slot para comparação
-          const dataHoraSlot = new Date(`${dataAgendamento}T${horarioSlot}`);
-          
-          if (dataHoraSlot < horarioMinimoPermitido) {
+          const slotAbsMin = this.dayNumberFromDateStr(dataAgendamento) * 1440 + minuto;
+          if (slotAbsMin < limiteAbsMin) {
             logger.log(`[PublicBooking] ⏰ Horário ${horarioSlot} bloqueado (fora do prazo mínimo de ${tempoLimiteHoras}h)`);
-            continue; // Fora do prazo mínimo, não disponibilizar
+            continue;
           }
         }
 
@@ -824,6 +883,24 @@ class PublicBookingController {
         });
       }
 
+      // ✅ CRÍTICO: Bloquear criação se a data estiver coberta por exceção (manutenção/feriado/etc.)
+      const excecao = await ExcecaoCalendario.isDataBloqueada(unidade_id, data_agendamento);
+      if (excecao) {
+        logger.log(`[PublicBooking] 🚫 Tentativa de agendar em data bloqueada por exceção:`, {
+          unidade_id,
+          data: data_agendamento,
+          tipo: excecao.tipo,
+          descricao: excecao.descricao,
+          periodo: `${excecao.data_inicio} a ${excecao.data_fim}`
+        });
+        await trx.rollback();
+        return res.status(403).json({
+          success: false,
+          error: 'Data indisponível',
+          message: `Não é possível agendar nesta data (${excecao.tipo}${excecao.descricao ? ` - ${excecao.descricao}` : ''}).`
+        });
+      }
+
       // Verificar se agente existe e está ativo
       const agente = await trx('agentes').where('id', agente_id).where('status', 'Ativo').first();
       if (!agente) {
@@ -875,14 +952,21 @@ class PublicBookingController {
       });
 
       // ✅ VALIDAÇÃO 2: Verificar se está dentro do prazo mínimo para agendar
-      const agora = new Date();
-      const dataHoraAgendamento = new Date(`${data_agendamento}T${hora_inicio}`);
-      const diferencaMs = dataHoraAgendamento - agora;
-      const diferencaHoras = diferencaMs / (1000 * 60 * 60);
+      // ✅ CRÍTICO: Comparar usando base consistente (America/Sao_Paulo) para evitar bugs de timezone
+      const tz = 'America/Sao_Paulo';
+      const hojeStr = this.getDateStrInTimeZone(tz);
+      const agoraMinutosHoje = this.getMinutesInTimeZone(tz);
+      const agoraAbsMin = this.dayNumberFromDateStr(hojeStr) * 1440 + agoraMinutosHoje;
+      const agendamentoAbsMin = this.absoluteMinutesFromDateStrAndTime(data_agendamento, hora_inicio);
+      const diferencaMin = agendamentoAbsMin - agoraAbsMin;
+      const diferencaHoras = diferencaMin / 60;
 
       logger.log(`[PublicBooking] 🔍 Cálculo de prazo para agendamento:`, {
-        agora: agora.toISOString(),
-        agendamento: dataHoraAgendamento.toISOString(),
+        tz,
+        agora_hoje: hojeStr,
+        agora_hora: this.minutesToTime(agoraMinutosHoje),
+        agendamento_data: data_agendamento,
+        agendamento_hora: hora_inicio,
         diferencaHoras: diferencaHoras.toFixed(2),
         limiteHoras: configuracoes.tempo_limite_agendar_horas
       });
