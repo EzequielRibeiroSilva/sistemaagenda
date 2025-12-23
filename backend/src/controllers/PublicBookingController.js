@@ -915,7 +915,12 @@ class PublicBookingController {
       // ✅ VALIDAÇÃO 1: Buscar configurações da unidade
       let configuracoes = await trx('configuracoes_sistema')
         .where('unidade_id', unidade_id)
-        .select('tempo_limite_agendar_horas')
+        .select(
+          'tempo_limite_agendar_horas',
+          'pontos_ativo',
+          'pontos_por_real',
+          'pontos_validade_meses'
+        )
         .first();
 
       // ✅ CORREÇÃO: Se não existir configuração, criar uma com valores padrão
@@ -948,7 +953,10 @@ class PublicBookingController {
       }
 
       logger.log(`[PublicBooking] 🔍 Configurações de agendamento:`, {
-        tempo_limite_agendar_horas: configuracoes.tempo_limite_agendar_horas
+        tempo_limite_agendar_horas: configuracoes.tempo_limite_agendar_horas,
+        pontos_ativo: configuracoes.pontos_ativo,
+        pontos_por_real: configuracoes.pontos_por_real,
+        pontos_validade_meses: configuracoes.pontos_validade_meses
       });
 
       // ✅ VALIDAÇÃO 2: Verificar se está dentro do prazo mínimo para agendar
@@ -1111,6 +1119,18 @@ class PublicBookingController {
           status: 'Ativo'
         }).returning('*');
         cliente = novoCliente;
+
+        logger.log(`✅ [PublicBooking] Cliente criado automaticamente:`, {
+          cliente_id: cliente?.id,
+          unidade_id,
+          telefone_limpo: telefone_limpo_busca
+        });
+      } else {
+        logger.log(`✅ [PublicBooking] Cliente encontrado por telefone:`, {
+          cliente_id: cliente?.id,
+          unidade_id,
+          telefone_limpo: telefone_limpo_busca
+        });
       }
 
       // Criar agendamento
@@ -1125,6 +1145,53 @@ class PublicBookingController {
         valor_total: valorTotal,
         observacoes: observacoes || null
       }).returning('*');
+
+      // ✅ GATILHO DE PONTOS (BOOKING PÚBLICO): Gerar pontos automaticamente ao criar agendamento
+      // Importante: a regra "só pode usar a partir do 2º agendamento" não impede acumular;
+      // aqui apenas CREDITAMOS pontos se o sistema estiver ativo.
+      try {
+        if (configuracoes && configuracoes.pontos_ativo && valorTotal > 0) {
+          const pontosPorReal = parseFloat(configuracoes.pontos_por_real) || 1.0;
+          const pontosValidade = parseInt(configuracoes.pontos_validade_meses, 10) || 12;
+          const pontosGerados = Math.floor(valorTotal * pontosPorReal);
+
+          if (pontosGerados > 0) {
+            const dataValidade = new Date();
+            dataValidade.setMonth(dataValidade.getMonth() + pontosValidade);
+
+            await trx('pontos_historico').insert({
+              cliente_id: cliente.id,
+              unidade_id: unidade_id,
+              agendamento_id: agendamento.id,
+              tipo: 'CREDITO',
+              pontos: pontosGerados,
+              valor_real: valorTotal,
+              descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
+              data_validade: dataValidade.toISOString().split('T')[0],
+              expirado: false,
+              created_at: new Date()
+            });
+
+            logger.log(`✅ [PublicBooking] Pontos gerados: ${pontosGerados} pts para cliente #${cliente.id} (R$ ${Number(valorTotal).toFixed(2)})`);
+          } else {
+            logger.log(`ℹ️ [PublicBooking] Pontos NÃO gerados (cálculo resultou 0):`, {
+              valorTotal,
+              pontosPorReal,
+              cliente_id: cliente.id,
+              agendamento_id: agendamento.id
+            });
+          }
+        } else {
+          logger.log(`ℹ️ [PublicBooking] Sistema de pontos inativo ou valor_total inválido:`, {
+            pontos_ativo: configuracoes?.pontos_ativo,
+            valorTotal,
+            unidade_id
+          });
+        }
+      } catch (pontosError) {
+        logger.error('❌ [PublicBooking] Erro ao gerar pontos:', pontosError);
+        // Não falhar a criação do agendamento por erro nos pontos
+      }
 
       // Criar relacionamentos com serviços
       const agendamentoServicos = servicos.map(servico => ({
