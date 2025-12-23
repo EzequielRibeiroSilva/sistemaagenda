@@ -1738,7 +1738,36 @@ class PublicBookingController {
 
       // ✅ VALIDAÇÃO 3: Calcular diferença em horas entre agora e o agendamento
       const agora = new Date();
-      const dataHoraAgendamento = new Date(`${agendamento.data_agendamento}T${agendamento.hora_inicio}`);
+
+      // ✅ CORREÇÃO: Formatar data corretamente para evitar "Invalid time value"
+      let dataAgendamentoStr;
+      if (agendamento.data_agendamento instanceof Date) {
+        // Se já é um objeto Date, formatar como YYYY-MM-DD
+        const ano = agendamento.data_agendamento.getFullYear();
+        const mes = String(agendamento.data_agendamento.getMonth() + 1).padStart(2, '0');
+        const dia = String(agendamento.data_agendamento.getDate()).padStart(2, '0');
+        dataAgendamentoStr = `${ano}-${mes}-${dia}`;
+      } else {
+        // Se é string, usar diretamente
+        dataAgendamentoStr = agendamento.data_agendamento;
+      }
+
+      const dataHoraAgendamento = new Date(`${dataAgendamentoStr}T${agendamento.hora_inicio}`);
+
+      // Validar se a data foi criada corretamente
+      if (isNaN(dataHoraAgendamento.getTime())) {
+        logger.error(`[PublicBooking] ❌ Data inválida ao cancelar agendamento #${id}:`, {
+          data_agendamento: agendamento.data_agendamento,
+          hora_inicio: agendamento.hora_inicio,
+          dataAgendamentoStr
+        });
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao processar data do agendamento',
+          message: 'Não foi possível validar o prazo de cancelamento'
+        });
+      }
+
       const diferencaMs = dataHoraAgendamento - agora;
       const diferencaHoras = diferencaMs / (1000 * 60 * 60);
 
