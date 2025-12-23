@@ -151,16 +151,16 @@ const ManageBookingPage: React.FC = () => {
       return;
     }
 
-    const success = await reagendarAgendamento(agendamentoId, {
+    const result = await reagendarAgendamento(agendamentoId, {
       telefone: clientPhone,
       data_agendamento: selectedDate.toISOString().split('T')[0],
       hora_inicio: selectedTime
     });
 
-    if (success) {
+    if (result.success) {
       setCurrentStep(5); // Tela de sucesso
     } else {
-      alert(error || 'Erro ao reagendar');
+      alert(result.error || error || 'Erro ao reagendar');
     }
   };
 
@@ -171,15 +171,15 @@ const ManageBookingPage: React.FC = () => {
     const confirmed = window.confirm('Tem certeza que deseja cancelar este agendamento?');
     if (!confirmed) return;
 
-    const success = await cancelarAgendamento(agendamentoId, {
+    const result = await cancelarAgendamento(agendamentoId, {
       telefone: clientPhone,
       motivo: cancelReason
     });
 
-    if (success) {
+    if (result.success) {
       setCurrentStep(5); // Tela de sucesso
     } else {
-      alert(error || 'Erro ao cancelar');
+      alert(result.error || error || 'Erro ao cancelar');
     }
   };
 

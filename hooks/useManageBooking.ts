@@ -49,6 +49,11 @@ export interface CancelarData {
   motivo?: string;
 }
 
+export interface MutationResult {
+  success: boolean;
+  error?: string;
+}
+
 // Interface para horários de funcionamento da unidade
 export interface HorarioFuncionamentoUnidade {
   dia_semana: number;
@@ -59,6 +64,19 @@ export interface HorarioFuncionamentoUnidade {
 export const useManageBooking = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const parseResponse = async (response: Response): Promise<any> => {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return response.json();
+    }
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  };
 
   // Buscar detalhes do agendamento
   const fetchAgendamento = useCallback(async (id: number, telefone: string): Promise<AgendamentoDetalhes | null> => {
@@ -89,7 +107,7 @@ export const useManageBooking = () => {
   }, []);
 
   // Reagendar agendamento
-  const reagendarAgendamento = useCallback(async (id: number, data: ReagendarData): Promise<boolean> => {
+  const reagendarAgendamento = useCallback(async (id: number, data: ReagendarData): Promise<MutationResult> => {
     setIsLoading(true);
     setError(null);
 
@@ -102,7 +120,7 @@ export const useManageBooking = () => {
         body: JSON.stringify(data),
       });
 
-      const responseData = await response.json();
+      const responseData = await parseResponse(response);
 
       if (!response.ok) {
         throw new Error(responseData.message || 'Erro ao reagendar agendamento');
@@ -112,19 +130,19 @@ export const useManageBooking = () => {
         throw new Error(responseData.message || 'Falha ao reagendar agendamento');
       }
 
-      return true;
+      return { success: true };
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      return false;
+      return { success: false, error: errorMessage };
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   // Cancelar agendamento
-  const cancelarAgendamento = useCallback(async (id: number, data: CancelarData): Promise<boolean> => {
+  const cancelarAgendamento = useCallback(async (id: number, data: CancelarData): Promise<MutationResult> => {
     setIsLoading(true);
     setError(null);
 
@@ -137,7 +155,7 @@ export const useManageBooking = () => {
         body: JSON.stringify(data),
       });
 
-      const responseData = await response.json();
+      const responseData = await parseResponse(response);
 
       if (!response.ok) {
         throw new Error(responseData.message || 'Erro ao cancelar agendamento');
@@ -147,12 +165,12 @@ export const useManageBooking = () => {
         throw new Error(responseData.message || 'Falha ao cancelar agendamento');
       }
 
-      return true;
+      return { success: true };
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      return false;
+      return { success: false, error: errorMessage };
     } finally {
       setIsLoading(false);
     }
