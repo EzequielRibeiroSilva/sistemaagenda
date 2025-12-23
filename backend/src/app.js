@@ -14,6 +14,13 @@ const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware
 
 const app = express();
 
+// ✅ CORREÇÃO: Configurar trust proxy para produção (nginx/proxy reverso)
+// Necessário para express-rate-limit funcionar corretamente com X-Forwarded-For
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Confiar no primeiro proxy (nginx)
+  logger.log('🔒 [App] Trust proxy habilitado para produção');
+}
+
 // Middleware de segurança avançado
 // ✅ FASE 2.3: Content Security Policy (CSP) otimizado
 app.use(helmet({
