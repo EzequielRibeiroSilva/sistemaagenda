@@ -1595,30 +1595,40 @@ class PublicBookingController {
 
       logger.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
 
-      // Enviar notificação de reagendamento (assíncrono)
-      setImmediate(async () => {
-        try {
-          // Buscar dados completos para enviar notificações
-          const dadosCompletos = await this.buscarDadosCompletos(id);
-          
-          if (dadosCompletos) {
-            await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
-            logger.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
-            
-            // Atualizar lembretes programados com nova data/hora
-            await this.scheduledReminderService.atualizarLembretesProgramados({
-              agendamento_id: id,
-              unidade_id: agendamento.unidade_id,
-              data_agendamento,
-              hora_inicio,
-              cliente_telefone: dadosCompletos.cliente_telefone
-            });
-            logger.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
-          }
-        } catch (err) {
-          logger.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
+      // ✅ CORREÇÃO: Enviar notificações de forma síncrona (não usar setImmediate que perde contexto)
+      try {
+        console.error(`[DEBUG] Iniciando envio de notificações de reagendamento para agendamento #${id}`);
+
+        const dadosCompletos = await this.buscarDadosCompletos(id);
+        console.error(`[DEBUG] Dados completos buscados:`, dadosCompletos ? 'OK' : 'NULL');
+
+        if (dadosCompletos) {
+          console.error(`[DEBUG] Enviando notificação de reagendamento via WhatsApp...`);
+          const resultWhatsApp = await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
+          console.error(`[DEBUG] Resultado WhatsApp:`, JSON.stringify(resultWhatsApp));
+          logger.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
+
+          // Atualizar lembretes programados com nova data/hora
+          console.error(`[DEBUG] Atualizando lembretes programados...`);
+          await this.scheduledReminderService.atualizarLembretesProgramados({
+            agendamento_id: id,
+            unidade_id: agendamento.unidade_id,
+            data_agendamento,
+            hora_inicio,
+            cliente_telefone: dadosCompletos.cliente_telefone
+          });
+          logger.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
+        } else {
+          console.error(`[DEBUG] dadosCompletos é NULL - não foi possível enviar notificações`);
         }
-      });
+      } catch (err) {
+        console.error('[DEBUG] ERRO ao enviar notificação de reagendamento:', {
+          message: err.message,
+          stack: err.stack,
+          name: err.name
+        });
+        logger.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
+      }
 
       res.json({
         success: true,
@@ -1834,24 +1844,35 @@ class PublicBookingController {
 
       logger.log(`✅ [PublicBooking] Agendamento #${id} cancelado`);
 
-      // Enviar notificação de cancelamento (assíncrono)
-      setImmediate(async () => {
-        try {
-          // Buscar dados completos para enviar notificações
-          const dadosCompletos = await this.buscarDadosCompletos(id);
-          
-          if (dadosCompletos) {
-            await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-            logger.log(`✅ [PublicBooking] Notificações de cancelamento enviadas para agendamento #${id}`);
-            
-            // Cancelar lembretes programados
-            await this.scheduledReminderService.cancelarLembretesProgramados(id);
-            logger.log(`✅ [PublicBooking] Lembretes programados cancelados para agendamento #${id}`);
-          }
-        } catch (err) {
-          logger.error('❌ [PublicBooking] Erro ao enviar notificação de cancelamento:', err);
+      // ✅ CORREÇÃO: Enviar notificações de forma síncrona (não usar setImmediate que perde contexto)
+      // Buscar dados completos para enviar notificações
+      try {
+        console.error(`[DEBUG] Iniciando envio de notificações de cancelamento para agendamento #${id}`);
+
+        const dadosCompletos = await this.buscarDadosCompletos(id);
+        console.error(`[DEBUG] Dados completos buscados:`, dadosCompletos ? 'OK' : 'NULL');
+
+        if (dadosCompletos) {
+          console.error(`[DEBUG] Enviando notificação de cancelamento via WhatsApp...`);
+          const resultWhatsApp = await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+          console.error(`[DEBUG] Resultado WhatsApp:`, JSON.stringify(resultWhatsApp));
+          logger.log(`✅ [PublicBooking] Notificações de cancelamento enviadas para agendamento #${id}`);
+
+          // Cancelar lembretes programados
+          console.error(`[DEBUG] Cancelando lembretes programados...`);
+          await this.scheduledReminderService.cancelarLembretesProgramados(id);
+          logger.log(`✅ [PublicBooking] Lembretes programados cancelados para agendamento #${id}`);
+        } else {
+          console.error(`[DEBUG] dadosCompletos é NULL - não foi possível enviar notificações`);
         }
-      });
+      } catch (err) {
+        console.error('[DEBUG] ERRO ao enviar notificação de cancelamento:', {
+          message: err.message,
+          stack: err.stack,
+          name: err.name
+        });
+        logger.error('❌ [PublicBooking] Erro ao enviar notificação de cancelamento:', err);
+      }
 
       res.json({
         success: true,
