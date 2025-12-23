@@ -39,6 +39,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [availableSlots, setAvailableSlots] = useState<SlotDisponivel[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+  const [noSlotsMessage, setNoSlotsMessage] = useState<string | null>(null);
   
   // Estados para cupom de desconto
   const [cupomCodigo, setCupomCodigo] = useState('');
@@ -58,6 +59,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
 
   const autoSelectDateRequestRef = useRef(0);
+  const selectedDateRef = useRef<Date | null>(null);
+
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
 
   // ✅ CORREÇÃO CRÍTICA: Função utilitária para converter data para string YYYY-MM-DD
   // Usando formato local (não UTC) para evitar problemas de timezone
@@ -357,7 +363,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         today.setHours(0, 0, 0, 0);
 
         const maxDaysToSearch = (salonData?.configuracoes?.periodo_futuro_dias || 60);
-        let candidate = new Date(selectedDate);
+        let candidate = selectedDateRef.current ? new Date(selectedDateRef.current) : new Date();
         candidate.setHours(0, 0, 0, 0);
 
         if (candidate < today) {
@@ -410,7 +416,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     };
 
     autoLoadSlotsOnStep5();
-  }, [currentStep, selectedAgent, selectedServices, selectedDate, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
+  }, [currentStep, selectedAgent, selectedServices, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
 
   if (isLoading || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -627,10 +633,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     console.log('🗓️ [handleDateSelect] selectedServiceIds:', selectedServiceIds);
     console.log('🗓️ [handleDateSelect] unidadeId:', unidadeId);
 
+    // ✅ IMPORTANTE: Cancelar qualquer auto-seleção em andamento para não sobrescrever o clique do usuário
+    autoSelectDateRequestRef.current++;
+
     setSelectedDate(date);
     setTempSelectedTime('');
     setIsLoadingSlots(true);
     setAvailableTimeSlots([]);
+    setNoSlotsMessage(null);
 
     try {
       if (!selectedAgent) {
@@ -664,13 +674,28 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (disponibilidade && disponibilidade.slots_disponiveis) {
         console.log('✅ [BookingPage] Slots encontrados:', disponibilidade.slots_disponiveis.length);
         setAvailableTimeSlots(disponibilidade.slots_disponiveis);
+
+        if (disponibilidade.slots_disponiveis.length === 0) {
+          const timeLimitHours = salonData?.configuracoes?.tempo_limite_agendar_horas || 0;
+          const isToday = date.toDateString() === new Date().toDateString();
+          if (isToday && timeLimitHours > 0) {
+            setNoSlotsMessage(`Hoje não há horários disponíveis devido ao prazo mínimo de agendamento (${timeLimitHours}h).`);
+          }
+        }
       } else {
         console.warn('⚠️ [BookingPage] Nenhum slot disponível');
         setAvailableTimeSlots([]);
+
+        const timeLimitHours = salonData?.configuracoes?.tempo_limite_agendar_horas || 0;
+        const isToday = date.toDateString() === new Date().toDateString();
+        if (isToday && timeLimitHours > 0) {
+          setNoSlotsMessage(`Hoje não há horários disponíveis devido ao prazo mínimo de agendamento (${timeLimitHours}h).`);
+        }
       }
     } catch (error) {
       console.error('❌ [BookingPage] Erro ao buscar disponibilidade:', error);
       setAvailableTimeSlots([]);
+      setNoSlotsMessage(null);
     } finally {
       setIsLoadingSlots(false);
     }
@@ -833,7 +858,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               {/* Mensagem quando não há slots */}
               {!isLoadingSlots && availableTimeSlots.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  <p>Nenhum horário disponível neste dia.</p>
+                  <p>{noSlotsMessage || 'Nenhum horário disponível neste dia.'}</p>
                   <p className="text-sm mt-1">Tente selecionar outra data.</p>
                 </div>
               )}
