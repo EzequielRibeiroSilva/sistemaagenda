@@ -1646,6 +1646,9 @@ class PublicBookingController {
    * Cancelar um agendamento
    */
   async cancelarAgendamento(req, res) {
+    // ✅ DEBUG: Log sem sanitização para diagnóstico
+    console.error(`[DEBUG] cancelarAgendamento INICIADO - ID: ${req.params.id}, Body:`, JSON.stringify(req.body));
+
     try {
       const { id } = req.params;
       const { telefone, motivo } = req.body;
@@ -1827,6 +1830,14 @@ class PublicBookingController {
       });
 
     } catch (error) {
+      // ✅ DEBUG: Log completo do erro sem sanitização
+      console.error('[DEBUG] ERRO COMPLETO ao cancelar:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        code: error.code
+      });
+
       logger.error('[PublicBooking] Erro ao cancelar agendamento:', error);
       res.status(500).json({
         success: false,
