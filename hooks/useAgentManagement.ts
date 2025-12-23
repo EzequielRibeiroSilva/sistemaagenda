@@ -375,7 +375,8 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Erro HTTP ${response.status}: ${response.statusText}`);
+        const backendMessage = errorData?.message || errorData?.error;
+        throw new Error(backendMessage || `Erro HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -388,7 +389,8 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      return null;
+      // ✅ CRÍTICO: Propagar para o componente exibir toast com mensagem real
+      throw err;
     } finally {
       setLoading(false);
     }

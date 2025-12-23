@@ -86,7 +86,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         isDateBlockedByException
     } = useCalendarData();
 
-    const [currentDate, setCurrentDate] = useState(new Date());
+    const [currentDate, setCurrentDate] = useState(() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d;
+    });
     const [view, setView] = useState('Dia');
     const [isModalOpen, setModalOpen] = useState(false);
     const [modalData, setModalData] = useState<{
@@ -105,6 +109,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 // Adicionar 'T00:00:00' para garantir parsing correto no timezone local
                 const parsedDate = new Date(navigationDate + 'T00:00:00');
                 if (!isNaN(parsedDate.getTime())) {
+                    parsedDate.setHours(0, 0, 0, 0);
                     setCurrentDate(parsedDate);
                 }
             } catch (error) {
@@ -159,6 +164,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             avatar: agent.avatar,
             unidades: agent.unidades // ✅ CRÍTICO: Incluir array de unidades
         }));
+    }, [backendAgents]);
+
+    // ✅ CRÍTICO: Mapa de agentes completos (com horarios_funcionamento) por ID
+    // Necessário para bloquear corretamente dias em que o agente não trabalha.
+    const backendAgentsById = useMemo(() => {
+        const map: Record<string, CalendarAgent> = {};
+        backendAgents.forEach(a => {
+            map[a.id.toString()] = a;
+        });
+        return map;
     }, [backendAgents]);
 
     const services: Service[] = useMemo(() => {
@@ -633,6 +648,15 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return day === 0 ? 7 : day; // Mapear 0 (Domingo) para 7
     };
 
+    // Aceitar ambas convenções para dia_semana:
+    // - 0-6 (0=Domingo ... 6=Sábado)
+    // - 1-7 (1=Segunda ... 7=Domingo)
+    const matchesDiaSemana = (recordDiaSemana: number, date: Date): boolean => {
+        const jsDay = date.getDay(); // 0-6
+        const oneToSeven = getDayOfWeekIndex(date); // 1-7
+        return recordDiaSemana === jsDay || recordDiaSemana === oneToSeven;
+    };
+
     // 🎯 NOVA FUNÇÃO: Verificar se um agente trabalha em um determinado dia e unidade
     const isAgentWorkingOnDay = (agent: CalendarAgent, date: Date, unidadeId: string): boolean => {
         // Se não tem horários de funcionamento, assumir que trabalha (fallback)
@@ -640,12 +664,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             return true;
         }
 
-        const dayIndex = getDayOfWeekIndex(date);
-
         // Buscar horário do agente para este dia e unidade
         const schedule = agent.horarios_funcionamento.find(h => {
             // Verificar se o dia da semana corresponde
-            const dayMatch = h.dia_semana === dayIndex;
+            const dayMatch = matchesDiaSemana(h.dia_semana, date);
             // Verificar se a unidade corresponde (se especificada no horário)
             const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === unidadeId;
             return dayMatch && unidadeMatch;
@@ -673,7 +695,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         
         if (!schedules) return [];
 
-        const daySchedule = schedules.find(s => s.dia_semana === dayIndex);
+        const daySchedule = schedules.find(s => matchesDiaSemana(s.dia_semana, date));
         
         // 🎯 CORREÇÃO CRÍTICA: Usar o parâmetro 'date' ao invés de 'currentDate'
         // Isso garante que a verificação seja feita para a data correta em todas as vistas
@@ -1039,8 +1061,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                         const dateStr = toISODateString(currentDate);
 
                         // 🎯 NOVO: Verificar se o agente trabalha neste dia e unidade
+                        const fullAgent = backendAgentsById[agent.id.toString()];
                         const agentWorksToday = selectedLocationFilter && selectedLocationFilter !== 'all'
-                            ? isAgentWorkingOnDay(agent, currentDate, selectedLocationFilter)
+                            ? isAgentWorkingOnDay((fullAgent || (agent as unknown as CalendarAgent)), currentDate, selectedLocationFilter)
                             : true;
 
                         // ⚠️ IMPORTANTE: NÃO filtrar por horário (startTime/endTime)
@@ -1905,7 +1928,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             const schedules = selectedLocationFilter && selectedLocationFilter !== 'all'
                                 ? unitSchedules[selectedLocationFilter]
                                 : null;
-                            const daySchedule = schedules?.find(s => s.dia_semana === dayIndex);
+                            const daySchedule = schedules?.find(s => matchesDiaSemana(s.dia_semana, day));
 
                             // ✅ NOVO: Verificar se há exceção de calendário para este dia
                             const exception = selectedLocationFilter && selectedLocationFilter !== 'all'

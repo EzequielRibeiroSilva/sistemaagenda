@@ -148,6 +148,14 @@ interface CalendarException {
 export const useCalendarData = () => {
   const { token, isAuthenticated, user } = useAuth();
 
+  // ✅ Helper: Formatar data como YYYY-MM-DD em timezone LOCAL (evita bugs de UTC/toISOString em mobile)
+  const toLocalDateString = useCallback((date: Date): string => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+
   const [agents, setAgents] = useState<CalendarAgent[]>([]);
   const [services, setServices] = useState<CalendarService[]>([]);
   const [locations, setLocations] = useState<CalendarLocation[]>([]);
@@ -471,18 +479,19 @@ export const useCalendarData = () => {
   // ✅ NOVO: Função para verificar se uma data está bloqueada por exceção
   const isDateBlockedByException = useCallback((date: Date, locationId: string): CalendarException | null => {
     const locationExceptions = calendarExceptions[locationId] || [];
-    const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    // ✅ CRÍTICO: Comparar em data local para evitar off-by-one por fuso horário
+    const dateStr = toLocalDateString(date); // YYYY-MM-DD (local)
 
     const foundException = locationExceptions.find(exception => {
       // 🎯 CORREÇÃO CRÍTICA: Converter datas ISO para formato YYYY-MM-DD para comparação
-      const startDate = exception.data_inicio.split('T')[0]; // Remove timezone e hora
-      const endDate = exception.data_fim.split('T')[0]; // Remove timezone e hora
+      const startDate = exception.data_inicio.split('T')[0];
+      const endDate = exception.data_fim.split('T')[0];
       const isInRange = dateStr >= startDate && dateStr <= endDate;
       return isInRange;
     }) || null;
 
     return foundException;
-  }, [calendarExceptions]);
+  }, [calendarExceptions, toLocalDateString]);
 
   // Carregar todos os dados iniciais (APENAS dados estáticos)
   // ✅ CORREÇÃO: CalendarPage é responsável por buscar agendamentos com filtros corretos
