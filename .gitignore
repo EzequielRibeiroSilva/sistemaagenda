@@ -46,3 +46,19 @@ backend/pids
 backend/*.pid
 backend/*.seed
 backend/*.pid.lock
+
+# Environment files (production)
+.env.prod
+.env.production
+*.env.prod
+*.env.production
+
+# Uploads (user-generated content)
+backend/uploads/
+uploads/
+
+# Backups (database dumps)
+backups/
+*.sql
+*.sql.gz
+*.dump
