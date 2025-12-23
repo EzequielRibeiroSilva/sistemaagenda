@@ -5,6 +5,14 @@ import { ChevronDown, Check, MoreHorizontal, Plus } from './Icons';
 import DatePicker from './DatePicker';
 import { getAssetUrl } from '../utils/api';
 
+// ✅ Helper: Formatar data como YYYY-MM-DD em timezone LOCAL (evita bugs de UTC/toISOString em mobile)
+const toLocalDateString = (date: Date): string => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 // ✅ CORRIGIDO: Popover igual ao CalendarPage.tsx
 const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['details']> }> = ({ appointment }) => {
     const name = appointment.agentName || 'Agente';
@@ -263,8 +271,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
   const agentAppointmentCards = useMemo(() => {
 
-
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    // ✅ CORREÇÃO CRÍTICA: Usar toLocalDateString ao invés de toISOString para evitar off-by-one em mobile
+    const dateStr = toLocalDateString(selectedDate);
     const cardsByAgent: Record<string, Array<{
       id: number;
       startTime: string;
@@ -631,7 +639,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return displayedAgents.map((agent, agentIndex) => {
       // Buscar agendamentos deste agente no dia selecionado
       // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      // ✅ CORREÇÃO CRÍTICA: Usar toLocalDateString ao invés de toISOString para evitar off-by-one em mobile
+      const dateStr = toLocalDateString(selectedDate);
       const agentAppointments = appointments.filter(apt => {
         const aptDateStr = apt.data_agendamento.split('T')[0];
         const agentMatch = apt.agente_id === parseInt(agent.id);
@@ -759,7 +768,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 {(() => {
                   // Filtrar agendamentos deste agente no dia selecionado
                   // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
-                  const dateStr = selectedDate.toISOString().split('T')[0];
+                  // ✅ CORREÇÃO CRÍTICA: Usar toLocalDateString ao invés de toISOString para evitar off-by-one em mobile
+                  const dateStr = toLocalDateString(selectedDate);
                   const agentAppointments = appointments.filter(apt => {
                     const aptDateStr = apt.data_agendamento.split('T')[0];
                     const agentMatch = apt.agente_id === parseInt(agent.id);
