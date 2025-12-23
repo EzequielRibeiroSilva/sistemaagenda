@@ -67,6 +67,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   }, []);
 
   // Efeito para carregar os dados do salão
+  // ✅ CORREÇÃO: Agora usa usuario_id ao invés de unidade_id na URL
   useEffect(() => {
     const loadData = async () => {
       if (isPreview) {
@@ -76,44 +77,53 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         return;
       }
 
-      // Extrair unidade_id da URL: /booking/:unidadeId ou /:slug/booking/:unidadeId
+      // Extrair usuario_id da URL: /booking/:usuarioId
       const pathParts = window.location.pathname.split('/').filter(Boolean);
 
-      if (pathParts.length >= 2 && pathParts[pathParts.length - 2] === 'booking') {
-        // Formato: /booking/:unidadeId
-        const id = parseInt(pathParts[pathParts.length - 1]);
-        if (!isNaN(id)) {
-          setUnidadeId(id);
-          await loadSalonData(id);
+      if (pathParts.length >= 2 && pathParts[0] === 'booking') {
+        // Formato: /booking/:usuarioId
+        const userId = parseInt(pathParts[1]);
+        if (!isNaN(userId)) {
+          setUsuarioId(userId);
+
+          // Buscar unidades ativas do usuário
+          try {
+            const response = await fetch(`${API_BASE_URL}/public/usuario/${userId}/unidades`);
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+              console.error('Erro ao buscar unidades do usuário:', data.message);
+              return;
+            }
+
+            const { nome_negocio, logo_url, unidades } = data.data;
+
+            // Salvar configurações do negócio (logo e nome)
+            setBusinessConfig({ logo_url, nome_negocio });
+
+            // Se tiver apenas 1 unidade ativa, selecionar automaticamente
+            if (unidades.length === 1) {
+              setUnidadeId(unidades[0].id);
+              setSelectedLocationId(unidades[0].id);
+              await loadSalonData(unidades[0].id);
+              setCurrentStep(2); // Pular para seleção de agente
+            } else {
+              // Se tiver múltiplas unidades, mostrar step de seleção
+              setAlternativeLocations(unidades);
+              setCurrentStep(1); // Mostrar seleção de local
+            }
+          } catch (err) {
+            console.error('Erro ao carregar unidades do usuário:', err);
+          }
           return;
         }
       }
 
-      if (pathParts.length >= 3 && pathParts[pathParts.length - 2] === 'booking') {
-        // Formato: /:slug/booking/:unidadeId
-        const slug = pathParts[pathParts.length - 3];
-        const id = parseInt(pathParts[pathParts.length - 1]);
-
-        if (!isNaN(id)) {
-          setUnidadeId(id);
-          await loadSalonData(id);
-          return;
-        }
-
-        // Se não conseguir extrair ID, tentar buscar por slug
-        const unidadeData = await findUnidadeBySlug(slug);
-        if (unidadeData) {
-          setUnidadeId(unidadeData.unidade_id);
-          await loadSalonData(unidadeData.unidade_id);
-          return;
-        }
-      }
-
-      // Não foi possível extrair unidade_id da URL
+      // Não foi possível extrair usuario_id da URL
     };
 
     loadData();
-  }, [isPreview, loadSalonData, findUnidadeBySlug]);
+  }, [isPreview, loadSalonData]);
 
   // ✅ NOVO: Buscar unidades alternativas quando a unidade atual não está disponível
   useEffect(() => {

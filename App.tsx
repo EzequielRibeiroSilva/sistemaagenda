@@ -225,14 +225,8 @@ const App: React.FC = () => {
     return <ManageBookingPage />;
   }
 
-  // Rota de agendamento: /booking/:unidadeId
+  // ✅ CORREÇÃO: Rota de agendamento agora usa usuario_id: /booking/:usuarioId
   if (path.startsWith('/booking/')) {
-    return <BookingPage />;
-  }
-
-  // Rota de agendamento com slug: /:slug/booking/:unidadeId
-  const slugBookingMatch = path.match(/^\/([^\/]+)\/booking\/(\d+)$/);
-  if (slugBookingMatch) {
     return <BookingPage />;
   }
 

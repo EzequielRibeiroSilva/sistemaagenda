@@ -195,6 +195,89 @@ router.get('/salao/slug/:slug', async (req, res) => {
 });
 
 /**
+ * GET /api/public/usuario/:usuarioId/unidades
+ * Buscar unidades ativas de um usuário ADMIN (para booking público)
+ * ✅ CORREÇÃO: Link de booking usa usuario_id ao invés de unidade_id
+ */
+router.get('/usuario/:usuarioId/unidades', async (req, res) => {
+  try {
+    const { usuarioId } = req.params;
+    const { db } = require('../config/knex');
+    const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+    const configuracaoModel = new ConfiguracaoSistema(db);
+
+    logger.log(`[Public] Buscando unidades ativas do usuário ${usuarioId}`);
+
+    // Verificar se usuário existe e é ADMIN
+    const usuario = await db('usuarios')
+      .where('id', usuarioId)
+      .where('role', 'ADMIN')
+      .where('status', 'Ativo')
+      .first();
+
+    if (!usuario) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado',
+        message: 'Este usuário não foi encontrado ou não está ativo'
+      });
+    }
+
+    // Buscar unidades ativas do usuário
+    const unidades = await db('unidades')
+      .where('usuario_id', usuarioId)
+      .where('status', 'Ativo')
+      .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
+      .orderBy('id', 'asc');
+
+    if (unidades.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhuma unidade ativa',
+        message: 'Este usuário não possui unidades ativas para agendamento'
+      });
+    }
+
+    // Buscar configurações da primeira unidade (para logo e nome do negócio)
+    let configuracoes = await configuracaoModel.findByUnidade(unidades[0].id);
+
+    // Se não encontrou configurações na primeira unidade, buscar em outras
+    if (!configuracoes || !configuracoes.nome_negocio) {
+      for (const unidade of unidades) {
+        const configAux = await configuracaoModel.findByUnidade(unidade.id);
+        if (configAux && configAux.nome_negocio) {
+          configuracoes = configAux;
+          break;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        usuario_id: parseInt(usuarioId),
+        nome_negocio: configuracoes?.nome_negocio || usuario.nome,
+        logo_url: configuracoes?.logo_url || null,
+        unidades: unidades.map(u => ({
+          id: u.id,
+          nome: u.nome,
+          endereco: u.endereco,
+          telefone: u.telefone,
+          slug_url: u.slug_url
+        }))
+      }
+    });
+  } catch (error) {
+    logger.error('[Public] Erro ao buscar unidades do usuário:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: 'Erro ao buscar unidades'
+    });
+  }
+});
+
+/**
  * GET /api/public/whatsapp/test
  * Testar conexão com Evolution API
  */
