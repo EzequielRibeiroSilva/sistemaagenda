@@ -217,23 +217,15 @@ export const useSettingsManagement = () => {
   }, [user, authenticatedFetch]);
 
   // Gerar link de agendamento
+  // ✅ CORREÇÃO: Link usa usuario_id (ADMIN) ao invés de unidade_id
   const generateBookingLink = useCallback(() => {
-    if (!user?.unidade_id || !settings?.nome_negocio) {
+    if (!user?.id) {
       return '';
     }
 
-    // Gerar slug do nome do negócio
-    const slug = settings.nome_negocio
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-      .replace(/[^a-z0-9\s-]/g, '') // Remove caracteres especiais
-      .replace(/\s+/g, '-') // Substitui espaços por hífens
-      .replace(/-+/g, '-') // Remove hífens duplicados
-      .trim('-'); // Remove hífens do início e fim
-
-    return `${window.location.origin}/${slug}/booking/${user.unidade_id}`;
-  }, [user?.unidade_id, settings?.nome_negocio]);
+    // Link baseado no ID do usuário ADMIN
+    return `${window.location.origin}/booking/${user.id}`;
+  }, [user?.id]);
 
   // Copiar link para clipboard
   const copyBookingLink = useCallback(async () => {
