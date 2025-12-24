@@ -204,23 +204,17 @@ export const usePublicBooking = () => {
       }
 
       const fullUrl = `${baseUrl}/public/agentes/${agenteId}/disponibilidade?${params.toString()}`;
-      console.log('🌐 [getAgenteDisponibilidade] URL:', fullUrl);
 
       const response = await fetch(fullUrl);
       const responseData = await response.json();
 
-      console.log('🌐 [getAgenteDisponibilidade] Response status:', response.status);
-      console.log('🌐 [getAgenteDisponibilidade] Response data:', responseData);
-
       if (!response.ok || !responseData.success) {
-        console.error('🌐 [getAgenteDisponibilidade] Erro na resposta:', responseData);
         return null;
       }
 
       return responseData.data;
 
     } catch (err) {
-      console.error('🌐 [getAgenteDisponibilidade] Exceção:', err);
       return null;
     }
   }, []);
