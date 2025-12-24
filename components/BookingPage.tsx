@@ -58,6 +58,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [viewDate, setViewDate] = useState(new Date());
   const [availableTimeSlots, setAvailableTimeSlots] = useState<{hora_inicio: string; hora_fim: string; disponivel: boolean}[]>([]);
 
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
   const autoSelectDateRequestRef = useRef(0);
   const selectedDateRef = useRef<Date | null>(null);
 
@@ -291,6 +294,70 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     return salonData.servicos;
   }, [salonData]);
 
+  const bookingProgress = useMemo(() => {
+    const getStage = (step: number) => {
+      if (step <= 1) return 1;
+      if (step === 2) return 2;
+      if (step === 3 || step === 4) return 3;
+      if (step === 5) return 4;
+      if (step === 6) return 5;
+      return 6;
+    };
+
+    const stage = getStage(currentStep);
+    const totalStages = 6;
+    const percent = Math.min(100, Math.max(0, (stage / totalStages) * 100));
+
+    let stageLabel = 'Unidade';
+    if (currentStep === 2) stageLabel = 'Serviços';
+    else if (currentStep === 3) stageLabel = 'Profissional';
+    else if (currentStep === 4) stageLabel = 'Extras';
+    else if (currentStep === 5) stageLabel = 'Data e Hora';
+    else if (currentStep === 6) stageLabel = 'Seus Dados';
+    else if (currentStep === 7) stageLabel = 'Revisão';
+    else if (currentStep === 8) stageLabel = 'Concluído';
+
+    return { stage, totalStages, percent, stageLabel };
+  }, [currentStep]);
+
+  const bookingHeaderSummary = useMemo(() => {
+    const parts: string[] = [];
+
+    if (currentStep === 1) {
+      parts.push('Escolha uma unidade');
+      return parts.join(' • ');
+    }
+
+    if (selectedLocationId) {
+      parts.push(salonData?.unidade?.nome || 'Unidade selecionada');
+    }
+
+    if (selectedAgent) {
+      parts.push(`Profissional: ${selectedAgent.nome_exibicao || selectedAgent.nome}`);
+    }
+
+    const maxNames = 2;
+    const serviceNames = (selectedServices || []).map(s => s.nome).filter(Boolean);
+    const servicesPreview = serviceNames.slice(0, maxNames).join(', ');
+    const servicesRemaining = Math.max(0, serviceNames.length - maxNames);
+
+    if (selectedServiceIds.length > 0) {
+      const suffix = servicesRemaining > 0 ? ` +${servicesRemaining}` : '';
+      parts.push(`Serviços: ${servicesPreview}${suffix}`);
+    }
+
+    const extrasSelected = filteredExtras.filter(e => selectedExtraServiceIds.includes(e.id));
+    if (extrasSelected.length > 0) {
+      parts.push(`Extras: ${extrasSelected.length}`);
+    }
+
+    if (selectedDate && selectedTime) {
+      parts.push(`${selectedDate.toLocaleDateString('pt-BR')} ${selectedTime}`);
+    }
+
+    return parts.join(' • ');
+  }, [currentStep, selectedLocationId, salonData?.unidade?.nome, selectedAgent, selectedServices, selectedServiceIds.length, filteredExtras, selectedExtraServiceIds, selectedDate, selectedTime]);
+
   const handleToggleService = (serviceId: number) => {
     setTempSelectedServiceIds(prev => {
       if (prev.includes(serviceId)) {
@@ -469,9 +536,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const renderLocationSelection = () => {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         <StepHeader title="Escolha um local" />
-        <div className="p-4 space-y-3 overflow-y-auto">
+        <div className="p-4 space-y-3">
           {availableLocations.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-500">Carregando locais disponíveis...</p>
@@ -516,9 +583,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   };
 
   const renderAgentSelection = () => (
-     <div className="flex flex-col h-full">
+     <div className="flex flex-col">
       <StepHeader title="Escolha um profissional" onBack={() => resetToStep(2)} />
-      <div className="p-4 space-y-3 overflow-y-auto">
+      <div className="p-4 space-y-3">
         {availableAgents.map(agent => (
           <SelectionCard
             key={agent.id}
@@ -552,9 +619,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   );
   
   const renderServiceSelection = () => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       <StepHeader title="Escolha um ou mais serviços" onBack={() => resetToStep(1)} />
-      <div className="p-4 space-y-3 overflow-y-auto">
+      <div className="p-4 space-y-3">
         {availableServices.map(service => (
           <SelectionCard
             key={service.id}
@@ -582,9 +649,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     const hasSelection = tempSelectedExtraServiceIds.length > 0;
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col">
             <StepHeader title="Deseja adicionar algum extra?" onBack={() => resetToStep(3)} />
-            <div className="p-4 space-y-3 overflow-y-auto">
+            <div className="p-4 space-y-3">
                 {isLoadingExtras ? (
                     <div className="text-center py-8">
                         <p className="text-gray-500">Carregando extras disponíveis...</p>
@@ -812,7 +879,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     };
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         <StepHeader title="Escolha data e hora" onBack={() => {
           // ✅ CRÍTICO: Voltar para Step 4 se houver extras, senão voltar para Step 3
           if (filteredExtras.length > 0) {
@@ -821,7 +888,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             resetToStep(3);
           }
         }} />
-        <div className="p-4 overflow-y-auto space-y-4">
+        <div className="p-4 space-y-4">
           <Calendar />
           {selectedDate && (
             <div>
@@ -882,19 +949,19 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   };
 
   const renderClientDetails = () => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       <StepHeader title="Seus dados" onBack={() => resetToStep(5)} />
-      <div className="p-4 space-y-4 overflow-y-auto">
+      <div className="p-4 space-y-4">
         {/* Título da seção */}
         <h3 className="text-base font-semibold text-gray-800">Informações do Cliente</h3>
         
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Nome Completo</label>
-          <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
+          <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Telefone (WhatsApp)</label>
-          <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(85) 99999-9999" className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
+          <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(85) 99999-9999" className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
           <p className="text-xs text-gray-500 mt-1">Você receberá a confirmação do agendamento neste número.</p>
         </div>
       </div>
@@ -1085,10 +1152,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                          selectedExtraServices.reduce((total, e) => total + e.duracao_minutos, 0);
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         <StepHeader title="Detalhes da Reserva" onBack={() => resetToStep(6)} />
         
-        <div className="p-4 space-y-4 overflow-y-auto">
+        <div className="p-4 space-y-4">
           {/* Mensagem informativa */}
           <p className="text-sm text-gray-600">
             Revise os detalhes abaixo. Você pode voltar para editar ou confirmar sua reserva.
@@ -1333,14 +1400,14 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const mainContainerClass = isPreview 
     ? "w-full max-w-none bg-gray-50 flex flex-col flex-1 h-full overflow-hidden"
-    : "min-h-screen bg-gray-100 flex flex-col items-center";
+    : "bg-gray-100 flex flex-col items-center";
   
   const contentWrapperClass = isPreview 
     ? "h-full flex flex-col" 
     : "w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg";
 
   return (
-    <div className={mainContainerClass}>
+    <div className={mainContainerClass} style={!isPreview ? { minHeight: '100dvh' } : undefined}>
       <div className={contentWrapperClass}>
         <div className="sticky top-0 z-20 shrink-0">
           {isPreview && (
@@ -1356,41 +1423,88 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               </div>
             </div>
           )}
-          <header className="p-4 text-center bg-white border-b border-gray-200">
-            <img
-              src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
-              alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
-              className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
-              onError={(e) => {
-                // Fallback para iniciais se a imagem falhar
-                const target = e.target as HTMLImageElement;
-                const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
-                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
-              }}
-            />
-            <h1 className="text-xl font-bold text-gray-900">{businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}</h1>
-            {currentStep === 1 ? (
-              <p className="text-sm text-gray-600 mt-1">Escolha um local para continuar</p>
-            ) : selectedLocationId ? (
-              <div className="mt-1">
-                <p className="text-sm font-semibold text-gray-700">{salonData.unidade.nome}</p>
-                {salonData.unidade.endereco && (
-                  <p className="text-sm text-gray-600">{salonData.unidade.endereco}</p>
-                )}
-                {/* ✅ NOVO: Mostrar nome do agente selecionado no Step 5 (Data/Hora) */}
-                {currentStep === 5 && selectedAgent && (
-                  <p className="text-xs text-blue-600 mt-1 font-medium">
-                    Profissional: {selectedAgent.nome_exibicao || selectedAgent.nome}
-                  </p>
-                )}
-              </div>
-            ) : null}
+          <header className="bg-gray-100 border-b border-gray-200">
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (mainScrollRef.current) {
+                    mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                  } else {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+                className="w-full text-left bg-white rounded-xl shadow-sm border border-gray-200 px-3 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <img
+                    src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
+                    alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
+                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
+                      target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
+                    }}
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight truncate">
+                      {businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
+                    </h1>
+                    <p className="text-sm text-gray-600 leading-snug truncate">
+                      {bookingHeaderSummary}
+                    </p>
+                    {salonData.unidade.endereco && currentStep !== 1 && (
+                      <p className="text-xs text-gray-500 leading-snug truncate">
+                        {salonData.unidade.endereco}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 rounded-full transition-all"
+                      style={{ width: `${bookingProgress.percent}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-center text-sm font-medium text-gray-700">
+                    {bookingProgress.stageLabel}
+                  </div>
+                </div>
+              </button>
+            </div>
           </header>
         </div>
 
-        <main className="flex-1 flex flex-col overflow-y-hidden">
+        <main
+          ref={(el) => { mainScrollRef.current = el; }}
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            setShowBackToTop(target.scrollTop > 240);
+          }}
+          className="flex-1 flex flex-col overflow-y-auto"
+        >
           {renderStep()}
         </main>
+
+        {showBackToTop && (
+          <button
+            type="button"
+            onClick={() => {
+              if (mainScrollRef.current) {
+                mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            className="fixed bottom-5 right-5 z-30 bg-blue-600 text-white font-semibold px-4 py-3 rounded-full shadow-lg hover:bg-blue-700"
+          >
+            Voltar ao topo
+          </button>
+        )}
       </div>
     </div>
   );
