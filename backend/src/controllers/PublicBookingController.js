@@ -409,7 +409,7 @@ class PublicBookingController {
           data: {
             agente_id: parseInt(agenteId),
             data: data,
-            dia_semana: new Date(data + 'T00:00:00').getDay(),
+            dia_semana: diaSemana,
             duracao_minutos: duracaoMinutos,
             slots_disponiveis: [],
             total_slots: 0,
@@ -428,8 +428,14 @@ class PublicBookingController {
       logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
 
       // Calcular dia da semana (0 = Domingo, 6 = Sábado)
-      const dataObj = new Date(data + 'T00:00:00');
-      const diaSemana = dataObj.getDay();
+      // ✅ CORREÇÃO CRÍTICA: Tornar timezone-aware (America/Sao_Paulo) para evitar bugs perto da meia-noite
+      // Ex: servidor em UTC pode interpretar "YYYY-MM-DDT00:00:00" como dia anterior no fuso local
+      const tz = 'America/Sao_Paulo';
+      const [y, m, d] = data.split('-').map(n => parseInt(n, 10));
+      const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
+      const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
 
       // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
       // ✅ CORREÇÃO: Usar unidadeIdParaUsar ao invés de agente.unidade_id

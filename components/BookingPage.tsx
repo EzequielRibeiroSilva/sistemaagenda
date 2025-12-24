@@ -48,6 +48,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [isValidatingCupom, setIsValidatingCupom] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
 
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+
   // Estados temporários para seleções
   const [tempSelectedAgentId, setTempSelectedAgentId] = useState<number | null>(null);
   const [tempSelectedServiceIds, setTempSelectedServiceIds] = useState<number[]>([]);
@@ -79,10 +81,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // ✅ CORREÇÃO: Agora usa usuario_id ao invés de unidade_id na URL
   useEffect(() => {
     const loadData = async () => {
+      setIsBootstrapping(true);
       if (isPreview) {
         // Para preview, usar unidade_id 4 (dados de teste)
         setUnidadeId(4);
         await loadSalonData(4);
+        setIsBootstrapping(false);
         return;
       }
 
@@ -101,7 +105,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-              console.error('Erro ao buscar unidades do usuário:', data.message);
+              setIsBootstrapping(false);
               return;
             }
 
@@ -116,19 +120,22 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               setSelectedLocationId(unidades[0].id);
               await loadSalonData(unidades[0].id);
               setCurrentStep(2); // Pular para seleção de agente
+              setIsBootstrapping(false);
             } else {
               // Se tiver múltiplas unidades, mostrar step de seleção
               setAlternativeLocations(unidades);
               setCurrentStep(1); // Mostrar seleção de local
+              setIsBootstrapping(false);
             }
           } catch (err) {
-            console.error('Erro ao carregar unidades do usuário:', err);
+            setIsBootstrapping(false);
           }
           return;
         }
       }
 
       // Não foi possível extrair usuario_id da URL
+      setIsBootstrapping(false);
     };
 
     loadData();
@@ -138,14 +145,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   useEffect(() => {
     const fetchAlternatives = async () => {
       if (error && unavailableUsuarioId && alternativeLocations.length === 0) {
-        console.log('[BookingPage] Buscando unidades alternativas para usuario_id:', unavailableUsuarioId);
         setIsLoadingAlternatives(true);
         try {
           const alternatives = await loadAvailableLocations(unavailableUsuarioId);
-          console.log('[BookingPage] Unidades alternativas encontradas:', alternatives);
           setAlternativeLocations(alternatives || []);
         } catch (err) {
-          console.error('[BookingPage] Erro ao buscar alternativas:', err);
           setAlternativeLocations([]);
         } finally {
           setIsLoadingAlternatives(false);
@@ -485,7 +489,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     autoLoadSlotsOnStep5();
   }, [currentStep, selectedAgent, selectedServices, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
 
-  if (isLoading || isLoadingAlternatives) {
+  if (isBootstrapping || isLoading || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
   }
 
@@ -528,7 +532,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     );
   }
 
-  if (error || !salonData) {
+  if (!salonData) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4">{error || "Não foi possível carregar os dados do salão."}</div>;
   }
 
@@ -693,12 +697,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const handleDateSelect = async (date: Date) => {
     // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
     const dateStr = formatDateToYYYYMMDD(date);
-    console.log('🗓️ [handleDateSelect] INÍCIO - Data selecionada:', dateStr);
-    console.log('🗓️ [handleDateSelect] selectedAgent:', selectedAgent);
-    console.log('🗓️ [handleDateSelect] selectedAgentId:', selectedAgentId);
-    console.log('🗓️ [handleDateSelect] selectedServices:', selectedServices);
-    console.log('🗓️ [handleDateSelect] selectedServiceIds:', selectedServiceIds);
-    console.log('🗓️ [handleDateSelect] unidadeId:', unidadeId);
 
     // ✅ IMPORTANTE: Cancelar qualquer auto-seleção em andamento para não sobrescrever o clique do usuário
     autoSelectDateRequestRef.current++;
@@ -711,35 +709,22 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     try {
       if (!selectedAgent) {
-        console.error('❌ [handleDateSelect] Nenhum agente selecionado - selectedAgentId:', selectedAgentId);
         setIsLoadingSlots(false);
         return;
       }
 
       if (!selectedServices || selectedServices.length === 0) {
-        console.error('❌ [handleDateSelect] Nenhum serviço selecionado - selectedServiceIds:', selectedServiceIds);
         setIsLoadingSlots(false);
         return;
       }
 
       // Calcular duração total dos serviços selecionados
       const totalDuration = selectedServices.reduce((sum, service) => sum + service.duracao_minutos, 0);
-      console.log('⏱️ [BookingPage] Duração total:', totalDuration, 'minutos');
-
-      console.log('🔍 [BookingPage] Buscando disponibilidade:', {
-        agenteId: selectedAgent.id,
-        data: dateStr,
-        duracao: totalDuration,
-        unidadeId: unidadeId
-      });
 
       // Passar unidadeId para filtrar horários do agente multi-unidade
       const disponibilidade = await getAgenteDisponibilidade(selectedAgent.id, dateStr, totalDuration, unidadeId || undefined);
 
-      console.log('📊 [BookingPage] Disponibilidade retornada:', disponibilidade);
-
       if (disponibilidade && disponibilidade.slots_disponiveis) {
-        console.log('✅ [BookingPage] Slots encontrados:', disponibilidade.slots_disponiveis.length);
         setAvailableTimeSlots(disponibilidade.slots_disponiveis);
 
         if (disponibilidade.slots_disponiveis.length === 0) {
@@ -750,7 +735,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           }
         }
       } else {
-        console.warn('⚠️ [BookingPage] Nenhum slot disponível');
         setAvailableTimeSlots([]);
 
         const timeLimitHours = salonData?.configuracoes?.tempo_limite_agendar_horas || 0;
@@ -760,7 +744,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         }
       }
     } catch (error) {
-      console.error('❌ [BookingPage] Erro ao buscar disponibilidade:', error);
       setAvailableTimeSlots([]);
       setNoSlotsMessage(null);
     } finally {
@@ -855,7 +838,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                   key={day}
                   disabled={!isAvailable}
                   onClick={() => {
-                    console.log('📅 [Calendar] Clique no dia:', day, 'isAvailable:', isAvailable, 'date:', date);
                     if (isAvailable) {
                       handleDateSelect(date);
                     }
