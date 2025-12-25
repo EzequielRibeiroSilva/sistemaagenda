@@ -1668,41 +1668,8 @@ class PublicBookingController {
 
       logger.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
 
-      // ✅ CORREÇÃO: Enviar notificações de forma síncrona (não usar setImmediate que perde contexto)
-      try {
-        console.error(`[DEBUG] Iniciando envio de notificações de reagendamento para agendamento #${id}`);
-
-        const dadosCompletos = await this.buscarDadosCompletos(id);
-        console.error(`[DEBUG] Dados completos buscados:`, dadosCompletos ? 'OK' : 'NULL');
-
-        if (dadosCompletos) {
-          console.error(`[DEBUG] Enviando notificação de reagendamento via WhatsApp...`);
-          const resultWhatsApp = await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
-          console.error(`[DEBUG] Resultado WhatsApp:`, JSON.stringify(resultWhatsApp));
-          logger.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
-
-          // Atualizar lembretes programados com nova data/hora
-          console.error(`[DEBUG] Atualizando lembretes programados...`);
-          await this.scheduledReminderService.atualizarLembretesProgramados({
-            agendamento_id: id,
-            unidade_id: agendamento.unidade_id,
-            data_agendamento,
-            hora_inicio,
-            cliente_telefone: dadosCompletos.cliente_telefone
-          });
-          logger.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
-        } else {
-          console.error(`[DEBUG] dadosCompletos é NULL - não foi possível enviar notificações`);
-        }
-      } catch (err) {
-        console.error('[DEBUG] ERRO ao enviar notificação de reagendamento:', {
-          message: err.message,
-          stack: err.stack,
-          name: err.name
-        });
-        logger.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
-      }
-
+      // ✅ IMPORTANTE: Responder imediatamente para evitar travar o frontend (loading infinito)
+      // Notificações e lembretes rodam em background.
       res.json({
         success: true,
         message: 'Agendamento reagendado com sucesso',
@@ -1713,6 +1680,43 @@ class PublicBookingController {
           hora_fim
         }
       });
+
+      // Executar notificações/lembretes em background (não bloquear a resposta HTTP)
+      (async () => {
+        try {
+          console.error(`[DEBUG] Iniciando envio de notificações de reagendamento para agendamento #${id}`);
+
+          const dadosCompletos = await this.buscarDadosCompletos(id);
+          console.error(`[DEBUG] Dados completos buscados:`, dadosCompletos ? 'OK' : 'NULL');
+
+          if (!dadosCompletos) {
+            console.error(`[DEBUG] dadosCompletos é NULL - não foi possível enviar notificações`);
+            return;
+          }
+
+          console.error(`[DEBUG] Enviando notificação de reagendamento via WhatsApp...`);
+          const resultWhatsApp = await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
+          console.error(`[DEBUG] Resultado WhatsApp:`, JSON.stringify(resultWhatsApp));
+          logger.log(`✅ [PublicBooking] Notificações de reagendamento enviadas para agendamento #${id}`);
+
+          console.error(`[DEBUG] Atualizando lembretes programados...`);
+          await this.scheduledReminderService.atualizarLembretesProgramados({
+            agendamento_id: id,
+            unidade_id: agendamento.unidade_id,
+            data_agendamento,
+            hora_inicio,
+            cliente_telefone: dadosCompletos.cliente_telefone
+          });
+          logger.log(`✅ [PublicBooking] Lembretes programados atualizados para agendamento #${id}`);
+        } catch (err) {
+          console.error('[DEBUG] ERRO ao enviar notificação de reagendamento:', {
+            message: err?.message,
+            stack: err?.stack,
+            name: err?.name
+          });
+          logger.error('❌ [PublicBooking] Erro ao enviar notificação de reagendamento:', err);
+        }
+      })();
 
     } catch (error) {
       logger.error('[PublicBooking] Erro ao reagendar agendamento:', error);
