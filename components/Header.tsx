@@ -1,7 +1,5 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Cog, LogOut, MessageSquare, Inbox, FaUser } from './Icons';
+import { Search, Plus, MessageSquare, Inbox, FaUser } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
@@ -89,7 +87,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                     <Search className="h-5 w-5 text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Comece a digitar para localizar reservas, clientes, agentes ou serviços..."
+                        placeholder="Buscar reservas, clientes, equipe ou serviços"
                         className="ml-3 w-full bg-transparent focus:outline-none text-sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -194,6 +192,13 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 aria-orientation="vertical"
                 aria-labelledby="user-menu-button"
               >
+                <div
+                  className="px-4 py-2 text-sm text-gray-500 border-b border-gray-100 truncate"
+                  role="presentation"
+                  title={user.email || ''}
+                >
+                  {user.email}
+                </div>
                 <a
                   href="#"
                   onClick={(e) => {
@@ -208,7 +213,6 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   role="menuitem"
                 >
-                  <Cog className="w-4 h-4 mr-3" />
                   Configurações
                 </a>
                 <a
@@ -221,7 +225,6 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   role="menuitem"
                 >
-                  <LogOut className="w-4 h-4 mr-3" />
                   Sair
                 </a>
               </div>
