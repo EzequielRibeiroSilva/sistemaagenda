@@ -123,38 +123,7 @@ router.post('/cupons/validar', couponValidationRateLimit, async (req, res) => {
  * GET /api/public/usuario/:usuarioId/unidades
  * Buscar todas as unidades ativas de um usuário (para seleção de local)
  */
-router.get('/usuario/:usuarioId/unidades', async (req, res) => {
-  try {
-    const { usuarioId } = req.params;
-    const Unidade = require('../models/Unidade');
-    const unidadeModel = new Unidade();
-
-    logger.log(`[Public] Buscando unidades para usuario_id ${usuarioId}`);
-
-    // Buscar todas as unidades ativas do usuário
-    const unidades = await unidadeModel.db('unidades')
-      .where('usuario_id', parseInt(usuarioId))
-      .where('status', 'Ativo')
-      .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
-      .orderBy('nome', 'asc');
-
-    logger.log(`[Public] Encontradas ${unidades.length} unidades ativas`);
-
-    res.json({
-      success: true,
-      data: unidades
-    });
-
-  } catch (error) {
-    logger.error('[Public] Erro ao buscar unidades do usuário:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: 'Erro ao buscar locais disponíveis'
-    });
-  }
-});
-
+ 
 /**
  * GET /api/public/salao/slug/:slug
  * Buscar unidade por slug (URL amigável)
