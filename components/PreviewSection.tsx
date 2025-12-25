@@ -162,6 +162,11 @@ interface BackendAgente {
   telefone?: string;
   avatar?: string;
   avatar_url?: string;        // ✅ CRÍTICO: URL do avatar
+  horarios_funcionamento?: Array<{
+    dia_semana: number;
+    unidade_id?: number | null;
+    periodos?: Array<{ inicio: string; fim: string }>;
+  }>;
 }
 
 // ✅ NOVO: Interface para exceções de calendário
@@ -267,6 +272,47 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }
     return isDateBlockedByException(selectedDate, selectedLocation);
   }, [isDateBlockedByException, selectedDate, selectedLocation]);
+
+  const backendAgentesById = useMemo(() => {
+    const map: Record<string, BackendAgente> = {};
+    backendAgentes.forEach(a => {
+      map[a.id.toString()] = a;
+    });
+    return map;
+  }, [backendAgentes]);
+
+  const getDayOfWeekIndex = useCallback((date: Date): number => {
+    const day = date.getDay();
+    return day === 0 ? 7 : day;
+  }, []);
+
+  const matchesDiaSemana = useCallback((recordDiaSemana: number, date: Date): boolean => {
+    const jsDay = date.getDay();
+    const oneToSeven = getDayOfWeekIndex(date);
+    return recordDiaSemana === jsDay || recordDiaSemana === oneToSeven;
+  }, [getDayOfWeekIndex]);
+
+  const isAgentWorkingOnDay = useCallback((agent: BackendAgente, date: Date, unidadeId: string): boolean => {
+    if (!agent.horarios_funcionamento || agent.horarios_funcionamento.length === 0) {
+      return true;
+    }
+
+    const schedule = agent.horarios_funcionamento.find(h => {
+      const dayMatch = matchesDiaSemana(h.dia_semana, date);
+      const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === unidadeId;
+      return dayMatch && unidadeMatch;
+    });
+
+    if (!schedule) {
+      return false;
+    }
+
+    if (!schedule.periodos || schedule.periodos.length === 0) {
+      return false;
+    }
+
+    return true;
+  }, [matchesDiaSemana]);
 
   // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
   const agentAppointmentCards = useMemo(() => {
@@ -700,7 +746,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Dia de Pré-Visualização</h2>
+          <h2 className="text-2xl font-bold">Programação do Dia</h2>
           <div className="hidden lg:flex items-center gap-2 mt-2 flex-wrap">
             <DatePicker 
                 mode="single" 
@@ -764,12 +810,49 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                 
 
 
+                {(() => {
+                  if (!selectedLocation || selectedLocation === 'all') {
+                    return null;
+                  }
+
+                  const backendAgent = backendAgentesById[agent.id];
+                  const agentWorksToday = backendAgent
+                    ? isAgentWorkingOnDay(backendAgent, selectedDate, selectedLocation)
+                    : true;
+
+                  if (!agentWorksToday) {
+                    return (
+                      <div
+                        className="absolute inset-0 bg-red-100 z-10"
+                        title={`${agent.name} não trabalha neste dia`}
+                      >
+                        <div
+                          className="w-full h-full flex items-center justify-center"
+                          style={{
+                            backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.15) 4px, rgba(255, 0, 0, 0.15) 5px)'
+                          }}
+                        >
+                          <div className="bg-red-400 text-white px-3 py-1.5 rounded text-xs font-medium shadow-sm opacity-90">
+                            🚫 Não trabalha
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
+
                 {/* ✅ SLOTS CLICÁVEIS: Implementação idêntica à CalendarPage - SEMPRE RENDERIZADOS */}
                 {(() => {
                   // Filtrar agendamentos deste agente no dia selecionado
                   // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
                   // ✅ CORREÇÃO CRÍTICA: Usar toLocalDateString ao invés de toISOString para evitar off-by-one em mobile
                   const dateStr = toLocalDateString(selectedDate);
+                  const backendAgent = selectedLocation && selectedLocation !== 'all' ? backendAgentesById[agent.id] : undefined;
+                  const agentWorksToday = selectedLocation && selectedLocation !== 'all' && backendAgent
+                    ? isAgentWorkingOnDay(backendAgent, selectedDate, selectedLocation)
+                    : true;
                   const agentAppointments = appointments.filter(apt => {
                     const aptDateStr = apt.data_agendamento.split('T')[0];
                     const agentMatch = apt.agente_id === parseInt(agent.id);
@@ -816,7 +899,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     const isAvailable = isSlotAvailable(hour);
 
                     // ✅ NOVO: Bloquear slots se há exceção de calendário
-                    if (dayException || !isAvailable) {
+                    if (dayException || !agentWorksToday || !isAvailable) {
                       return null; // Não renderiza slot clicável
                     }
 
