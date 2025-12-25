@@ -61,7 +61,7 @@ const MobileSearchOverlay: React.FC<MobileSearchOverlayProps> = ({
           </div>
           <input
             type="text"
-            placeholder="Comece a digitar para pesquisar..."
+            placeholder="Buscar reservas, clientes, equipe ou serviços"
             className="w-full bg-gray-100 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
