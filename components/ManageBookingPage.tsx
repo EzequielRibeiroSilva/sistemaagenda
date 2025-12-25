@@ -631,7 +631,7 @@ const ManageBookingPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center">
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center" style={{ minHeight: '100dvh' }}>
       <div className="w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg">
         <div className="sticky top-0 z-20 shrink-0">
           <header className="p-4 text-center bg-white border-b border-gray-200">

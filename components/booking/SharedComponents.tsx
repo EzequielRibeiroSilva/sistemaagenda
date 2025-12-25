@@ -69,7 +69,7 @@ export const InfoCard: React.FC<{
 );
 
 export const LoadingSpinner: React.FC<{ message?: string }> = ({ message = 'Carregando...' }) => (
-  <div className="flex items-center justify-center min-h-screen bg-gray-50">
+  <div className="flex items-center justify-center min-h-screen bg-gray-50" style={{ minHeight: '100dvh' }}>
     <div className="text-center">
       <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
       <p className="text-gray-600">{message}</p>
@@ -78,7 +78,7 @@ export const LoadingSpinner: React.FC<{ message?: string }> = ({ message = 'Carr
 );
 
 export const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
-  <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4">
+  <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4" style={{ minHeight: '100dvh' }}>
     {message}
   </div>
 );

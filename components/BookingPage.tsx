@@ -490,13 +490,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   }, [currentStep, selectedAgent, selectedServices, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
 
   if (isBootstrapping || isLoading || isLoadingAlternatives) {
-    return <div className="flex items-center justify-center min-h-screen bg-gray-50"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
+    return <div className="flex items-center justify-center min-h-screen bg-gray-50" style={{ minHeight: '100dvh' }}><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
   }
 
   // ✅ NOVO: Mostrar alternativas quando unidade não está disponível
   if (error && alternativeLocations.length > 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4" style={{ minHeight: '100dvh' }}>
         <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
           <div className="text-center mb-6">
             <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -533,7 +533,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   }
 
   if (!salonData) {
-    return <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4">{error || "Não foi possível carregar os dados do salão."}</div>;
+    return <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4" style={{ minHeight: '100dvh' }}>{error || "Não foi possível carregar os dados do salão."}</div>;
   }
 
   // Render Steps
