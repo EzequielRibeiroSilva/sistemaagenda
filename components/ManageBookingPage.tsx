@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, X, CheckCircle, AlertCircle } from './Icons';
 import { useManageBooking, AgendamentoDetalhes, HorarioFuncionamentoUnidade } from '../hooks/useManageBooking';
 import { usePublicBooking, SalonData } from '../hooks/usePublicBooking';
@@ -8,10 +8,15 @@ import { StepHeader, ActionButton, InfoCard, LoadingSpinner, ErrorMessage } from
 const ManageBookingPage: React.FC = () => {
   // Estados principais
   const [currentStep, setCurrentStep] = useState(1); // 1=Validar, 2=Escolher Ação, 3=Reagendar, 4=Cancelar, 5=Sucesso
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [agendamentoId, setAgendamentoId] = useState<number | null>(null);
   const [clientPhone, setClientPhone] = useState('');
+  const [phoneValidationError, setPhoneValidationError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [agendamento, setAgendamento] = useState<AgendamentoDetalhes | null>(null);
   const [action, setAction] = useState<'reagendar' | 'cancelar' | null>(null);
+
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
   
   // ✅ CRÍTICO: Preservar configurações iniciais da empresa (logo e nome)
   // Essas configurações não devem mudar
@@ -36,6 +41,49 @@ const ManageBookingPage: React.FC = () => {
   const { isLoading, error, fetchAgendamento, reagendarAgendamento, cancelarAgendamento, fetchHorariosUnidade } = useManageBooking();
   const { salonData, getAgenteDisponibilidade, loadSalonData } = usePublicBooking();
 
+  const headerSummary = useMemo(() => {
+    if (!agendamentoId) {
+      return 'Agendamento';
+    }
+
+    if (!agendamento) {
+      return `Agendamento #${agendamentoId}`;
+    }
+
+    const dateLabel = new Date(agendamento.data_agendamento).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+
+    return `${agendamento.unidade.nome} • ${dateLabel} ${agendamento.hora_inicio}`;
+  }, [agendamento, agendamentoId]);
+
+  const manageProgress = useMemo(() => {
+    if (currentStep === 1) {
+      return { percent: 25, stageLabel: 'Validação' };
+    }
+    if (currentStep === 2) {
+      return { percent: 50, stageLabel: 'Ações' };
+    }
+    if (currentStep === 3) {
+      return { percent: 75, stageLabel: 'Reagendamento' };
+    }
+    if (currentStep === 4) {
+      return { percent: 75, stageLabel: 'Cancelamento' };
+    }
+    if (currentStep === 5) {
+      return { percent: 100, stageLabel: 'Concluído' };
+    }
+    return { percent: 25, stageLabel: 'Validação' };
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (actionError) {
+      setActionError(null);
+    }
+  }, [currentStep]);
+
   // ✅ CRÍTICO: Preservar configurações da empresa na primeira carga
   // Logo e nome do negócio não devem mudar
   useEffect(() => {
@@ -50,18 +98,22 @@ const ManageBookingPage: React.FC = () => {
   // Extrair ID da URL e carregar dados básicos do agendamento
   useEffect(() => {
     const loadInitialData = async () => {
-      const pathParts = window.location.pathname.split('/').filter(Boolean);
-      if (pathParts.length >= 2 && pathParts[0] === 'gerenciar-agendamento') {
-        const id = parseInt(pathParts[1]);
+      try {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+
+        const manageIndex = pathParts.indexOf('gerenciar-agendamento');
+        const idPart = manageIndex >= 0 ? pathParts[manageIndex + 1] : null;
+        const id = idPart ? parseInt(idPart) : NaN;
+
         if (!isNaN(id)) {
           setAgendamentoId(id);
-          
+
           // Buscar dados básicos do agendamento sem validação de telefone
           // para carregar o logo da unidade
           try {
             const response = await fetch(`${API_BASE_URL}/public/agendamento/${id}/preview`);
             const data = await response.json();
-            
+
             if (data.success && data.data.unidade_id) {
               // Carregar dados da unidade para exibir logo
               await loadSalonData(data.data.unidade_id);
@@ -70,6 +122,8 @@ const ManageBookingPage: React.FC = () => {
             // Erro silencioso - não expor detalhes no console
           }
         }
+      } finally {
+        setIsBootstrapping(false);
       }
     };
     
@@ -78,8 +132,30 @@ const ManageBookingPage: React.FC = () => {
 
   // Validar telefone e buscar agendamento
   const handleValidatePhone = async () => {
-    if (!agendamentoId || !clientPhone) {
-      alert('Por favor, informe seu telefone');
+    setPhoneValidationError(null);
+
+    if (!agendamentoId) {
+      setPhoneValidationError('ID do agendamento inválido. Recarregue a página.');
+      return;
+    }
+
+    if (!clientPhone) {
+      setPhoneValidationError('Por favor, informe seu telefone.');
+      return;
+    }
+
+    let telefoneLimpo = clientPhone.trim().replace(/\D/g, '');
+    if (telefoneLimpo.startsWith('55') && telefoneLimpo.length >= 12) {
+      telefoneLimpo = telefoneLimpo.substring(2);
+    }
+
+    if (telefoneLimpo.length !== 11) {
+      setPhoneValidationError('Informe um número válido com DDD + 9 + 8 dígitos (ex: (85) 9 9999-9999)');
+      return;
+    }
+
+    if (telefoneLimpo[2] !== '9') {
+      setPhoneValidationError('O número deve ser um celular com 9 dígitos após o DDD (ex: (85) 9 9999-9999)');
       return;
     }
 
@@ -93,7 +169,7 @@ const ManageBookingPage: React.FC = () => {
       
       setCurrentStep(2); // Ir para escolha de ação
     } else {
-      alert(error || 'Não foi possível validar o agendamento');
+      setPhoneValidationError(error || 'Não foi possível validar o agendamento.');
     }
   };
 
@@ -101,6 +177,9 @@ const ManageBookingPage: React.FC = () => {
   const handleDateSelect = async (date: Date) => {
     if (!agendamento) return;
 
+    if (actionError) {
+      setActionError(null);
+    }
     setSelectedDate(date);
     setSelectedTime(null);
     setIsLoadingSlots(true);
@@ -147,7 +226,7 @@ const ManageBookingPage: React.FC = () => {
   // Confirmar reagendamento
   const handleConfirmReschedule = async () => {
     if (!agendamentoId || !selectedDate || !selectedTime || !clientPhone) {
-      alert('Selecione data e horário');
+      setActionError('Selecione data e horário');
       return;
     }
 
@@ -160,7 +239,7 @@ const ManageBookingPage: React.FC = () => {
     if (result.success) {
       setCurrentStep(5); // Tela de sucesso
     } else {
-      alert(result.error || error || 'Erro ao reagendar');
+      setActionError(result.error || error || 'Erro ao reagendar');
     }
   };
 
@@ -179,7 +258,7 @@ const ManageBookingPage: React.FC = () => {
     if (result.success) {
       setCurrentStep(5); // Tela de sucesso
     } else {
-      alert(result.error || error || 'Erro ao cancelar');
+      setActionError(result.error || error || 'Erro ao cancelar');
     }
   };
 
@@ -203,10 +282,18 @@ const ManageBookingPage: React.FC = () => {
           <input
             type="tel"
             value={clientPhone}
-            onChange={e => setClientPhone(e.target.value)}
+            onChange={e => {
+              setClientPhone(e.target.value);
+              if (phoneValidationError) {
+                setPhoneValidationError(null);
+              }
+            }}
             placeholder="(85) 99999-9999"
             className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
           />
+          {phoneValidationError && (
+            <p className="text-sm text-red-600 mt-2 font-medium">{phoneValidationError}</p>
+          )}
           <p className="text-xs text-gray-500 mt-2">
             Você pode digitar com ou sem DDD e com ou sem código do país. Ex: +5585985502643, 85985502643, 985502643 ou 85502643
           </p>
@@ -410,6 +497,11 @@ const ManageBookingPage: React.FC = () => {
       <div className="flex flex-col h-full">
         <StepHeader title="Escolha nova data e hora" onBack={() => setCurrentStep(2)} />
         <div className="p-4 overflow-y-auto space-y-4 flex-1">
+          {actionError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-700 font-medium">{actionError}</p>
+            </div>
+          )}
           <Calendar />
           {selectedDate && (
             <div>
@@ -429,7 +521,12 @@ const ManageBookingPage: React.FC = () => {
                   {availableTimeSlots.map(slot => (
                     <button
                       key={slot.hora_inicio}
-                      onClick={() => setSelectedTime(slot.hora_inicio)}
+                      onClick={() => {
+                        if (actionError) {
+                          setActionError(null);
+                        }
+                        setSelectedTime(slot.hora_inicio);
+                      }}
                       className={`p-3 rounded-lg border font-semibold text-center transition-colors ${
                         selectedTime === slot.hora_inicio ? 'bg-[#2663EB] text-white border-[#2663EB]' :
                         'bg-lime-100/60 border-lime-200 text-gray-800 hover:border-lime-500'
@@ -470,6 +567,11 @@ const ManageBookingPage: React.FC = () => {
       <div className="flex flex-col h-full">
         <StepHeader title="Cancelar Agendamento" onBack={() => setCurrentStep(2)} />
         <div className="p-6 space-y-6 overflow-y-auto flex-1">
+          {actionError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-700 font-medium">{actionError}</p>
+            </div>
+          )}
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
@@ -504,7 +606,12 @@ const ManageBookingPage: React.FC = () => {
             </label>
             <textarea
               value={cancelReason}
-              onChange={e => setCancelReason(e.target.value)}
+              onChange={e => {
+                if (actionError) {
+                  setActionError(null);
+                }
+                setCancelReason(e.target.value);
+              }}
               placeholder="Nos ajude a melhorar informando o motivo..."
               rows={4}
               className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
@@ -622,6 +729,10 @@ const ManageBookingPage: React.FC = () => {
     }
   };
 
+  if (isBootstrapping) {
+    return <LoadingSpinner message="Carregando..." />;
+  }
+
   if (isLoading && currentStep === 1) {
     return <LoadingSpinner message="Carregando agendamento..." />;
   }
@@ -634,39 +745,67 @@ const ManageBookingPage: React.FC = () => {
     <div className="min-h-screen bg-gray-100 flex flex-col items-center" style={{ minHeight: '100dvh' }}>
       <div className="w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg">
         <div className="sticky top-0 z-20 shrink-0">
-          <header className="p-4 text-center bg-white border-b border-gray-200">
-            {salonData ? (
-              <>
-                <img
-                  src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
-                  alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
-                  className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
-                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
-                  }}
-                />
-                <h1 className="text-xl font-bold text-gray-900">{businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}</h1>
-                {agendamento && (
-                  <div className="mt-1">
-                    <p className="text-sm font-semibold text-gray-700">{agendamento.unidade.nome}</p>
-                    {agendamento.unidade.endereco && (
-                      <p className="text-sm text-gray-600">{agendamento.unidade.endereco}</p>
+          <header className="bg-gray-100 border-b border-gray-200">
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (mainScrollRef.current) {
+                    mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                  } else {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+                className="w-full text-left bg-white rounded-xl shadow-sm border border-gray-200 px-3 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  {salonData ? (
+                    <img
+                      src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
+                      alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
+                      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
+                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gray-200 flex-shrink-0" />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight truncate">
+                      {salonData ? (businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio) : 'Gerenciar Agendamento'}
+                    </h1>
+                    <p className="text-sm text-gray-600 leading-snug truncate">
+                      {headerSummary}
+                    </p>
+                    {agendamento?.unidade?.endereco && currentStep !== 1 && (
+                      <p className="text-xs text-gray-500 leading-snug truncate">
+                        {agendamento.unidade.endereco}
+                      </p>
                     )}
                   </div>
-                )}
-              </>
-            ) : (
-              <>
-                <h1 className="text-xl font-bold text-gray-900">Gerenciar Agendamento</h1>
-                <p className="text-sm text-gray-600 mt-1">#{agendamentoId}</p>
-              </>
-            )}
+                </div>
+
+                <div className="mt-3">
+                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 rounded-full transition-all"
+                      style={{ width: `${manageProgress.percent}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-center text-sm font-medium text-gray-700">
+                    {manageProgress.stageLabel}
+                  </div>
+                </div>
+              </button>
+            </div>
           </header>
         </div>
 
-        <main className="flex-1 flex flex-col overflow-y-hidden">
+        <main ref={(el) => { mainScrollRef.current = el; }} className="flex-1 flex flex-col overflow-y-hidden">
           {renderStep()}
         </main>
       </div>

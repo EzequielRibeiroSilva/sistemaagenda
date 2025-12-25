@@ -36,6 +36,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [bookingSubmitError, setBookingSubmitError] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<SlotDisponivel[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
@@ -69,6 +70,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (bookingSubmitError) {
+      setBookingSubmitError(null);
+    }
+  }, [currentStep]);
 
   // ✅ CORREÇÃO CRÍTICA: Função utilitária para converter data para string YYYY-MM-DD
   // Usando formato local (não UTC) para evitar problemas de timezone
@@ -939,17 +946,59 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Nome Completo</label>
-          <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
+          <input
+            type="text"
+            value={clientName}
+            onChange={e => {
+              if (bookingSubmitError) {
+                setBookingSubmitError(null);
+              }
+              setClientName(e.target.value);
+            }}
+            className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         <div>
           <label className="text-sm font-medium text-gray-600 mb-1 block">Telefone (WhatsApp)</label>
-          <input type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="(85) 99999-9999" className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" />
+          <input
+            type="tel"
+            value={clientPhone}
+            onChange={e => {
+              if (bookingSubmitError) {
+                setBookingSubmitError(null);
+              }
+              setClientPhone(e.target.value);
+            }}
+            placeholder="(85) 99999-9999"
+            className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
+          />
+          {bookingSubmitError && (
+            <p className="text-sm text-red-600 mt-2 font-medium">{bookingSubmitError}</p>
+          )}
           <p className="text-xs text-gray-500 mt-1">Você receberá a confirmação do agendamento neste número.</p>
         </div>
       </div>
        <div className="p-4 mt-auto border-t border-gray-200 bg-white">
         <button 
           onClick={async () => {
+            // ✅ Validação de telefone já na etapa "Seus dados" (mais profissional)
+            // Regra: DDD (2 dígitos) + 9 + 8 dígitos (11 dígitos no total)
+            let telefoneLimpo = clientPhone.trim().replace(/\D/g, '');
+            if (telefoneLimpo.startsWith('55') && telefoneLimpo.length >= 12) {
+              telefoneLimpo = telefoneLimpo.substring(2);
+            }
+
+            if (telefoneLimpo.length !== 11) {
+              setBookingSubmitError('Informe um número válido com DDD + 9 + 8 dígitos (ex: (85) 9 9999-9999)');
+              return;
+            }
+
+            // Terceiro dígito (após DDD) deve ser 9
+            if (telefoneLimpo[2] !== '9') {
+              setBookingSubmitError('O número deve ser um celular com 9 dígitos após o DDD (ex: (85) 9 9999-9999)');
+              return;
+            }
+
             // Buscar cliente existente antes de ir para revisão
             await buscarClienteExistente(clientPhone);
             setCurrentStep(7);
@@ -966,17 +1015,20 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // Função para criar o agendamento
   const handleCreateAppointment = async () => {
     if (!unidadeId || !selectedAgentId || !selectedServiceIds.length || !selectedDate || !selectedTime || !clientName || !clientPhone) {
-      alert('Dados incompletos para criar o agendamento');
+      setBookingSubmitError('Dados incompletos para criar o agendamento');
       return;
     }
 
     // Validar formato do telefone
     const phoneRegex = /^(\+55\s?)?(\(?\d{2}\)?\s?)?\d{4,5}-?\d{4}$/;
     if (!phoneRegex.test(clientPhone.trim())) {
-      alert('Por favor, insira um número de telefone válido (ex: (85) 99999-9999)');
+      setBookingSubmitError('Por favor, insira um número de telefone válido (ex: (85) 99999-9999)');
       return;
     }
 
+    if (bookingSubmitError) {
+      setBookingSubmitError(null);
+    }
     setIsCreatingAppointment(true);
 
     try {
@@ -1025,7 +1077,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         errorMessage = 'Erro ao processar seus dados. Verifique as informações e tente novamente.';
       }
 
-      alert(errorMessage);
+      setBookingSubmitError(errorMessage);
     } finally {
       setIsCreatingAppointment(false);
     }
@@ -1142,6 +1194,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <p className="text-sm text-gray-600">
             Revise os detalhes abaixo. Você pode voltar para editar ou confirmar sua reserva.
           </p>
+
+          {bookingSubmitError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-700 font-medium">{bookingSubmitError}</p>
+            </div>
+          )}
 
           {/* Serviço Principal */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
