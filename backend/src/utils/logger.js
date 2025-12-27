@@ -104,7 +104,7 @@ function sanitizeValue(value, key = '') {
  * @returns {Array} Argumentos sanitizados
  */
 function sanitizeArgs(...args) {
-  return args.map((arg, index) => sanitizeValue(arg, `arg${index}`));
+  return args.map((arg) => sanitizeValue(arg, ''));
 }
 
 /**

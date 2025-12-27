@@ -175,6 +175,8 @@ interface CalendarException {
   unidade_id: number;
   data_inicio: string;
   data_fim: string;
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
   tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
   descricao: string;
 }
@@ -272,6 +274,24 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }
     return isDateBlockedByException(selectedDate, selectedLocation);
   }, [isDateBlockedByException, selectedDate, selectedLocation]);
+
+  // ✅ NOVO: Exceções parciais por horário (não bloqueiam o dia inteiro)
+  const dayPartialExceptions = useMemo(() => {
+    if (!selectedLocation || selectedLocation === 'all') {
+      return [] as CalendarException[];
+    }
+
+    const dateStr = toLocalDateString(selectedDate);
+    const locationExceptions = calendarExceptions[selectedLocation] || [];
+
+    return locationExceptions.filter(exception => {
+      const startDate = exception.data_inicio.split('T')[0];
+      const endDate = exception.data_fim.split('T')[0];
+      const inRange = dateStr >= startDate && dateStr <= endDate;
+      const isPartial = !!exception.hora_inicio && !!exception.hora_fim;
+      return inRange && isPartial;
+    });
+  }, [calendarExceptions, selectedDate, selectedLocation, toLocalDateString]);
 
   const backendAgentesById = useMemo(() => {
     const map: Record<string, BackendAgente> = {};
@@ -531,8 +551,15 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }
 
 
-    return intervals;
-  }, [selectedLocation, unitSchedules, startHour, endHour]);
+    // ✅ NOVO: Adicionar exceções parciais como blocos de intervalo (impede clique + renderiza bloqueio)
+    const exceptionBlocks = dayPartialExceptions.map(exc => ({
+      start: (exc.hora_inicio as string).toString().substring(0, 5),
+      end: (exc.hora_fim as string).toString().substring(0, 5),
+      id: `exception-${selectedLocation}-${exc.id}`
+    }));
+
+    return [...intervals, ...exceptionBlocks];
+  }, [selectedLocation, unitSchedules, startHour, endHour, dayPartialExceptions]);
 
   // ✅ NOVO: Calcular intervalos do local para o dia selecionado
   const locationIntervals = useMemo(() => {

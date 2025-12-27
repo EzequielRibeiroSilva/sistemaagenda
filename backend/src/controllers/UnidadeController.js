@@ -261,21 +261,11 @@ class UnidadeController extends BaseController {
 
       if (req.body.servicos_ids !== undefined) {
         updateData.servicos_ids = req.body.servicos_ids;
-        logger.log(`🔗 [UnidadeController] servicos_ids recebidos:`, {
-          isArray: Array.isArray(req.body.servicos_ids),
-          length: req.body.servicos_ids?.length,
-          ids: req.body.servicos_ids
-        });
       }
 
       // Suporte para exceções de calendário
       if (req.body.excecoes_calendario !== undefined) {
         updateData.excecoes_calendario = req.body.excecoes_calendario;
-        logger.log(`📅 [UnidadeController] excecoes_calendario recebidas:`, {
-          isArray: Array.isArray(req.body.excecoes_calendario),
-          length: req.body.excecoes_calendario?.length,
-          data: req.body.excecoes_calendario
-        });
       }
 
       // Usar service para atualizar com verificação de permissões
@@ -294,7 +284,13 @@ class UnidadeController extends BaseController {
         message: 'Unidade atualizada com sucesso'
       });
     } catch (error) {
-      logger.error('❌ [UnidadeController] Erro ao atualizar unidade:', error.message);
+      logger.error('❌ [UnidadeController] Erro ao atualizar unidade:', {
+        unidadeId: req.params?.id,
+        usuarioId: req.user?.id,
+        role: req.user?.role,
+        message: error?.message,
+        stack: error?.stack
+      });
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -436,7 +432,7 @@ class UnidadeController extends BaseController {
       }
 
       // Validar dados obrigatórios
-      const { data_inicio, data_fim, tipo, descricao } = req.body;
+      const { data_inicio, data_fim, hora_inicio, hora_fim, tipo, descricao } = req.body;
 
       if (!data_inicio || !data_fim) {
         return res.status(400).json({
@@ -448,6 +444,8 @@ class UnidadeController extends BaseController {
       const excecaoData = {
         data_inicio,
         data_fim,
+        hora_inicio: hora_inicio || null,
+        hora_fim: hora_fim || null,
         tipo: tipo || 'Outro',
         descricao: descricao || null
       };
@@ -560,6 +558,12 @@ class UnidadeController extends BaseController {
       }
       if (req.body.data_fim !== undefined) {
         excecaoData.data_fim = req.body.data_fim;
+      }
+      if (req.body.hora_inicio !== undefined) {
+        excecaoData.hora_inicio = req.body.hora_inicio || null;
+      }
+      if (req.body.hora_fim !== undefined) {
+        excecaoData.hora_fim = req.body.hora_fim || null;
       }
       if (req.body.tipo !== undefined) {
         excecaoData.tipo = req.body.tipo;

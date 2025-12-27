@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { CalendarException } from './useUnitManagement';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
@@ -129,6 +130,11 @@ export interface UseAgentManagementReturn {
   createAgent: (agentData: CreateAgentData) => Promise<boolean>;
   updateAgent: (id: number, agentData: CreateAgentData) => Promise<any>;
   deleteAgent: (id: number) => Promise<boolean>;
+
+  // Exceções de Calendário (AGENTE)
+  fetchAgentExceptions: (agentId: number) => Promise<CalendarException[]>;
+  createAgentException: (agentId: number, exception: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>) => Promise<CalendarException>;
+  deleteAgentException: (agentId: number, exceptionId: number) => Promise<boolean>;
 
   // Utilitários
   clearError: () => void;
@@ -340,6 +346,50 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     }
   }, [isAuthenticated, token, fetchAgents]);
 
+  // ========================================
+  // EXCEÇÕES DE CALENDÁRIO DO AGENTE
+  // ========================================
+
+  const fetchAgentExceptions = useCallback(async (agentId: number): Promise<CalendarException[]> => {
+    if (!isAuthenticated || !token) {
+      return [];
+    }
+
+    try {
+      const response = await authenticatedFetch(`/agentes/${agentId}/excecoes`);
+      if (response.success && Array.isArray(response.data)) {
+        return response.data;
+      }
+      return [];
+    } catch (err) {
+      return [];
+    }
+  }, [authenticatedFetch, isAuthenticated, token]);
+
+  const createAgentException = useCallback(async (
+    agentId: number,
+    exception: Omit<CalendarException, 'id' | 'unidade_id' | 'created_at' | 'updated_at'>
+  ): Promise<CalendarException> => {
+    const response = await authenticatedFetch(`/agentes/${agentId}/excecoes`, {
+      method: 'POST',
+      body: JSON.stringify(exception)
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || response.error || 'Erro ao criar exceção');
+    }
+
+    return response.data;
+  }, [authenticatedFetch]);
+
+  const deleteAgentException = useCallback(async (agentId: number, exceptionId: number): Promise<boolean> => {
+    const response = await authenticatedFetch(`/agentes/${agentId}/excecoes/${exceptionId}`, {
+      method: 'DELETE'
+    });
+
+    return !!response.success;
+  }, [authenticatedFetch]);
+
   // Atualizar agente
   const updateAgent = useCallback(async (id: number, agentData: CreateAgentData): Promise<any> => {
     if (!isAuthenticated || !token) {
@@ -492,6 +542,11 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     createAgent,
     updateAgent,
     deleteAgent,
+
+    // Exceções do Agente
+    fetchAgentExceptions,
+    createAgentException,
+    deleteAgentException,
     clearError,
   };
 };

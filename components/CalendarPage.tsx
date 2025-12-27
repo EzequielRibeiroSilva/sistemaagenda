@@ -6,6 +6,7 @@ import NewAppointmentModal from './NewAppointmentModal';
 import { useCalendarData } from '../hooks/useCalendarData';
 import type { CalendarAgent, CalendarService, CalendarLocation, CalendarAppointment } from '../hooks/useCalendarData';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../utils/api';
 
 // Dados mock removidos - agora usando dados reais do backend via useCalendarData hook
 
@@ -68,7 +69,7 @@ interface CalendarPageProps {
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }) => {
     // Hook de autenticação para acessar dados do usuário
-    const { user } = useAuth();
+    const { user, token, isAuthenticated } = useAuth();
     
     // Hook para buscar dados reais do backend (LÓGICA DIÁRIA APLICADA NA SEMANAL)
     const {
@@ -83,7 +84,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         error,
         loadAllData,
         fetchAppointments,
-        isDateBlockedByException
+        isDateBlockedByException,
+        getExceptionsForDate
     } = useCalendarData();
 
     const [currentDate, setCurrentDate] = useState(() => {
@@ -100,6 +102,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
     const [selectedLocationFilter, setSelectedLocationFilter] = useState('all');
+
+    // ✅ NOVO: Exceções de calendário por AGENTE (para bloquear apenas a coluna do agente)
+    const [agentCalendarExceptions, setAgentCalendarExceptions] = useState<Record<string, any[]>>({});
 
     // ✅ NOVO: Verificar se há uma data de navegação no localStorage (vindo da busca)
     useEffect(() => {
@@ -162,7 +167,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             id: agent.id,
             name: agent.name,
             avatar: agent.avatar,
-            unidades: agent.unidades // ✅ CRÍTICO: Incluir array de unidades
+            // ✅ CRÍTICO: Normalizar unidades para string[] (backend pode retornar number[] em alguns endpoints)
+            unidades: Array.isArray(agent.unidades) ? agent.unidades.map((u: any) => u?.toString?.() ?? String(u)) : []
         }));
     }, [backendAgents]);
 
@@ -300,12 +306,33 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         // 1. ✅ FILTRO POR LOCAL (UNIDADE): Se um local estiver selecionado, filtrar agentes
         // Apenas agentes que trabalham na unidade selecionada devem ser exibidos no grid
         if (selectedLocationFilter !== 'all') {
-            agentsToDisplay = allAgents.filter(agent =>
-                // Garante que a propriedade 'unidades' existe e é um array
-                Array.isArray(agent.unidades) && 
-                // Verifica se o ID do local selecionado está no array de unidades do agente
-                agent.unidades.includes(selectedLocationFilter)
-            );
+            agentsToDisplay = allAgents.filter(agent => {
+                // ✅ Parte 1: associação à unidade (M:N) ou unidade principal
+                const unidades = Array.isArray(agent.unidades) ? agent.unidades.map((u: any) => u?.toString?.() ?? String(u)) : [];
+                const isAssociatedToUnit = unidades.includes(selectedLocationFilter);
+
+                if (!isAssociatedToUnit) {
+                    return false;
+                }
+
+                // ✅ Parte 2: se temos horarios_funcionamento carregado, e o agente NÃO tem nenhum horário
+                // nesta unidade, não exibir no grid.
+                // (Fallback: se não temos horarios_funcionamento, mantém o agente visível.)
+                const fullAgent = backendAgentsById[agent.id.toString()];
+                const hf = fullAgent?.horarios_funcionamento;
+                if (!Array.isArray(hf)) {
+                    return true;
+                }
+
+                const hasAnyScheduleInUnit = hf.some((h: any) => {
+                    const unidadeMatch = h?.unidade_id?.toString?.() === selectedLocationFilter;
+                    const periodos = Array.isArray(h?.periodos) ? h.periodos : [];
+                    return unidadeMatch && periodos.length > 0;
+                });
+
+                // Se o agente não tem nenhum horário cadastrado nesta unidade, consideramos que ele não trabalha nela
+                return hasAnyScheduleInUnit;
+            });
 
         }
 
@@ -318,6 +345,77 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return agentsToDisplay;
 
     }, [allAgents, selectedLocationFilter, selectedAgentFilter, view]); // ✅ CRÍTICO: Adicionar selectedLocationFilter às dependências
+
+    // ✅ NOVO: Buscar exceções de calendário por agente (para bloquear somente a coluna do agente)
+    useEffect(() => {
+        const loadAgentExceptionsForRange = async () => {
+            if (!isAuthenticated || !token) {
+                setAgentCalendarExceptions({});
+                return;
+            }
+
+            if (!selectedLocationFilter || selectedLocationFilter === 'all') {
+                setAgentCalendarExceptions({});
+                return;
+            }
+
+            if (!displayedAgents || displayedAgents.length === 0) {
+                setAgentCalendarExceptions({});
+                return;
+            }
+
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const toYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+            let startDate = currentDate;
+            let endDate = currentDate;
+            if (view === 'Semana') {
+                const { start, end } = getWeekRange(currentDate);
+                startDate = start;
+                endDate = end;
+            } else if (view === 'Mês') {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                startDate = new Date(year, month, 1);
+                endDate = new Date(year, month + 1, 0);
+            }
+
+            const dataInicio = toYmd(startDate);
+            const dataFim = toYmd(endDate);
+
+            try {
+                const results = await Promise.all(
+                    displayedAgents.map(async (agent) => {
+                        const url = `${API_BASE_URL}/agentes/${agent.id}/excecoes?dataInicio=${encodeURIComponent(dataInicio)}&dataFim=${encodeURIComponent(dataFim)}`;
+                        const resp = await fetch(url, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        if (!resp.ok) {
+                            return { agentId: agent.id.toString(), data: [] as any[] };
+                        }
+
+                        const json = await resp.json().catch(() => ({}));
+                        const data = Array.isArray(json?.data) ? json.data : [];
+                        return { agentId: agent.id.toString(), data };
+                    })
+                );
+
+                const map: Record<string, any[]> = {};
+                results.forEach(r => {
+                    map[r.agentId] = Array.isArray(r.data) ? r.data : [];
+                });
+                setAgentCalendarExceptions(map);
+            } catch (e) {
+                setAgentCalendarExceptions({});
+            }
+        };
+
+        loadAgentExceptionsForRange();
+    }, [isAuthenticated, token, displayedAgents, currentDate, view, selectedLocationFilter]);
     
     const [selectedAgentId, setSelectedAgentId] = useState('');
     
@@ -697,26 +795,37 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
 
         const daySchedule = schedules.find(s => matchesDiaSemana(s.dia_semana, date));
         
-        // 🎯 CORREÇÃO CRÍTICA: Usar o parâmetro 'date' ao invés de 'currentDate'
-        // Isso garante que a verificação seja feita para a data correta em todas as vistas
-        const exception = isDateBlockedByException(date, selectedLocationFilter);
-        if (exception) {
-            // ✅ BLOQUEIO POR EXCEÇÃO: Bloquear o dia inteiro (8h-21h para Vista Dia)
-            // Usar START_HOUR_DAY e END_HOUR_DAY para Vista Dia (mais amplo que WEEK)
+        // 🎯 Exceções de calendário (dia inteiro ou intervalos)
+        const exceptions = selectedLocationFilter && getExceptionsForDate
+            ? getExceptionsForDate(date, selectedLocationFilter)
+            : [];
+
+        const fullDayException = exceptions.find(e => !e.hora_inicio && !e.hora_fim);
+        if (fullDayException) {
+            // ✅ BLOQUEIO POR EXCEÇÃO (DIA INTEIRO)
             const startTime = `${START_HOUR_DAY.toString().padStart(2, '0')}:00`;
             const endTime = `${(END_HOUR_DAY + 1).toString().padStart(2, '0')}:00`;
-
-            // Exceção de calendário detectada
 
             return [{
                 start: startTime,
                 end: endTime,
-                id: `exception-${selectedLocationFilter}-${exception.id}`,
+                id: `exception-${selectedLocationFilter}-${fullDayException.id}`,
                 type: 'exception',
-                description: exception.descricao,
-                exceptionType: exception.tipo
+                description: fullDayException.descricao,
+                exceptionType: fullDayException.tipo
             }];
         }
+
+        const partialBlocks = exceptions
+            .filter(e => e.hora_inicio && e.hora_fim)
+            .map(e => ({
+                start: (e.hora_inicio as string).toString().substring(0, 5),
+                end: (e.hora_fim as string).toString().substring(0, 5),
+                id: `exception-${selectedLocationFilter}-${e.id}`,
+                type: 'exception',
+                description: e.descricao,
+                exceptionType: e.tipo
+            }));
 
         // 🎯 CORREÇÃO CRÍTICA: Se a unidade está FECHADA neste dia, bloquear o DIA INTEIRO
         if (!daySchedule || !daySchedule.is_aberto) {
@@ -730,6 +839,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                 end: endTime,
                 id: `closed-${selectedLocationFilter}-${dayIndex}`
             }];
+        }
+
+        // ✅ Exceções parciais: bloquear apenas os intervalos
+        if (partialBlocks.length > 0) {
+            return partialBlocks;
         }
         
         // Se não tem horários ou tem apenas 1 período, não há intervalo (mas o dia está aberto)
@@ -760,22 +874,65 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         return intervals;
     };
 
-    const timeToPercentageDay = (time: string) => {
-        const [h, m] = time.split(':').map(Number);
-        // Calcular minutos totais desde START_HOUR_DAY
-        const totalMinutes = (h - START_HOUR_DAY) * 60 + m;
-        
-        // ✅ CORREÇÃO CRÍTICA: O grid visual tem (END_HOUR_DAY - START_HOUR_DAY + 1) slots
-        // Exemplo: Se START=8 e END=21, temos 14 slots [8h, 9h, ..., 21h]
-        // O vão total vai do início de START_HOUR_DAY (8:00) até o FIM de END_HOUR_DAY (22:00)
-        // Portanto: totalDuration = (END_HOUR_DAY + 1) - START_HOUR_DAY = 14 horas
-        const totalDurationMinutes = ((END_HOUR_DAY + 1) - START_HOUR_DAY) * 60;
-        
-        return (totalMinutes / totalDurationMinutes) * 100;
+    // 🎯 NOVO: Calcular blocos de exceção do AGENTE para uma data (dia inteiro ou intervalos)
+    const calculateAgentExceptionBlocks = (
+        agentId: string,
+        date: Date
+    ): Array<{ start: string; end: string; id: string; type?: string; description?: string; exceptionType?: string }> => {
+        const agentExceptions = agentCalendarExceptions[agentId?.toString?.() ?? String(agentId)] || [];
+        if (!Array.isArray(agentExceptions) || agentExceptions.length === 0) return [];
+
+        const dateStr = toISODateString(date);
+        const exceptionsForDay = agentExceptions.filter((e: any) => {
+            const start = (e.data_inicio || '').toString().split('T')[0];
+            const end = (e.data_fim || '').toString().split('T')[0];
+            return !!start && !!end && dateStr >= start && dateStr <= end;
+        });
+
+        if (exceptionsForDay.length === 0) return [];
+
+        const fullDay = exceptionsForDay.find((e: any) => !e.hora_inicio && !e.hora_fim);
+        if (fullDay) {
+            const startTime = `${START_HOUR_DAY.toString().padStart(2, '0')}:00`;
+            const endTime = `${(END_HOUR_DAY + 1).toString().padStart(2, '0')}:00`;
+            return [{
+                start: startTime,
+                end: endTime,
+                id: `agent-exception-${agentId}-${fullDay.id}`,
+                type: 'agent_exception',
+                description: fullDay.descricao,
+                exceptionType: fullDay.tipo
+            }];
+        }
+
+        return exceptionsForDay
+            .filter((e: any) => e.hora_inicio && e.hora_fim)
+            .map((e: any) => ({
+                start: (e.hora_inicio as string).toString().substring(0, 5),
+                end: (e.hora_fim as string).toString().substring(0, 5),
+                id: `agent-exception-${agentId}-${e.id}`,
+                type: 'agent_exception',
+                description: e.descricao,
+                exceptionType: e.tipo
+            }));
     };
+
+const timeToPercentageDay = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    // Calcular minutos totais desde START_HOUR_DAY
+    const totalMinutes = (h - START_HOUR_DAY) * 60 + m;
     
-    const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: string | null | undefined) => {
-        // ✅ Log de Entrada + Validação
+    // ✅ CORREÇÃO CRÍTICA: O grid visual tem (END_HOUR_DAY - START_HOUR_DAY + 1) slots
+    // Exemplo: Se START=8 e END=21, temos 14 slots [8h, 9h, ..., 21h]
+    // O vão total vai do início de START_HOUR_DAY (8:00) até o FIM de END_HOUR_DAY (22:00)
+    // Portanto: totalDuration = (END_HOUR_DAY + 1) - START_HOUR_DAY = 14 horas
+    const totalDurationMinutes = ((END_HOUR_DAY + 1) - START_HOUR_DAY) * 60;
+    
+    return (totalMinutes / totalDurationMinutes) * 100;
+};
+    
+const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: string | null | undefined) => {
+    // ✅ Log de Entrada + Validação
                 if (!startTime || !endTime || typeof startTime !== 'string' || typeof endTime !== 'string' || !startTime.includes(':') || !endTime.includes(':')) {
                         return { top: '0%', height: '0%', display: 'none' }; // Ocultar se inválido
         }
@@ -1087,41 +1244,24 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                             return agentIdMatch && dateMatch && serviceMatch && locationMatch && notCancelled;
                         });
                         
-                        // 🔍 DEBUG DETALHADO: Log para TODOS os agentes
-                                                
-                        if (agent.id === '23' || agent.id === '25' || agent.id === '27') {
-                                                    }
-                        
                         const agentUnavailable = unavailableBlocks.filter(b => b.agentId === agent.id && (b.date === dateStr || !b.date));
-                        
+
                         // 🎯 NOVO: Adicionar os intervalos do local
                         const locationIntervals = calculateLocationIntervalBlocks(currentDate);
-                        
+
+                        // 🎯 NOVO: Adicionar exceções do AGENTE (bloqueio individual)
+                        const agentExceptionIntervals = calculateAgentExceptionBlocks(agent.id.toString(), currentDate);
+
                         const busySlots = [
                             ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
                             ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                            ...agentExceptionIntervals.map(i => ({ start: i.start, end: i.end, type: 'agent_exception', id: i.id, description: i.description, exceptionType: i.exceptionType })),
                             // 🎯 NOVO: Adicionar intervalos do local como busySlots
-                            ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
+                            ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id, description: i.description, exceptionType: i.exceptionType }))
                         ].sort((a, b) => a.start.localeCompare(b.start));
 
-                        // ✅ NOVA LÓGICA: Iterar sobre as horas do dia para slots individuais
-                        // Se o grid vai de 8h a 21h, os slots clicáveis são 8h, 9h, ..., 20h
+                        // ✅ Slots clicáveis são as horas que INICIAM slots (ex: 8h-20h se o grid vai até 21h)
                         const iterableHours = Array.from({ length: END_HOUR_DAY - START_HOUR_DAY }, (_, i) => i + START_HOUR_DAY);
-
-                        // ✅ NOVA LÓGICA: Helper para checar se a hora está livre
-                        const isSlotAvailable = (hour: number) => {
-                            const slotStart = `${hour.toString().padStart(2, '0')}:00`;
-                            const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
-
-                            // Checa colisão com qualquer slot ocupado
-                            for (const busy of busySlots) {
-                                // (InícioOcupado < FimSlot) E (FimOcupado > InícioSlot)
-                                if (busy.start < slotEnd && busy.end > slotStart) {
-                                    return false; // Slot está ocupado
-                                }
-                            }
-                            return true; // Slot está livre
-                        };
 
                         return (
                             <div key={agent.id} className="relative border-l border-gray-200">
@@ -1150,9 +1290,34 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                     </div>
                                 )}
 
+                                {/* 🎯 NOVO: Renderizar exceções do AGENTE (bloqueio individual) */}
+                                {agentExceptionIntervals.map(block => {
+                                    const isException = block.type === 'agent_exception';
+                                    const top = timeToPercentageDay(block.start);
+                                    const height = timeToPercentageDay(block.end) - top;
+                                    return (
+                                        <div
+                                            key={block.id}
+                                            className="absolute w-full bg-red-50 rounded-lg z-5"
+                                            style={{ top: `${top}%`, height: `${height}%` }}
+                                            title={isException ? `${block.exceptionType}: ${block.description}` : 'Bloqueio'}
+                                        >
+                                            <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}>
+                                                {isException && (
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <div className="bg-red-400 text-white px-2 py-1 rounded text-xs font-medium shadow-sm opacity-90">
+                                                            🚫 {block.exceptionType}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
                                 {/* ✅ NOVA LÓGICA: Renderizar slots de 1 hora individuais (apenas se agente trabalha) */}
                                 {agentWorksToday && iterableHours.map(hour => {
-                                    const isAvailable = isSlotAvailable(hour);
+                                    const isAvailable = busySlots.every(slot => !(slot.start < `${(hour + 1).toString().padStart(2, '0')}:00` && slot.end > `${hour.toString().padStart(2, '0')}:00`));
                                     if (!isAvailable) {
                                         return null; // Não renderiza slot clicável
                                     }
@@ -1431,10 +1596,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 
                                 // 🎯 NOVO: Adicionar os intervalos do local para o dia atual
                                 const locationIntervals = calculateLocationIntervalBlocks(day);
+
+                                // 🎯 NOVO: Adicionar exceções do AGENTE (bloqueio individual)
+                                const agentExceptionIntervals = calculateAgentExceptionBlocks(selectedAgentId.toString(), day);
                                 
                                 const busySlots = [
                                     ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
                                     ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                                    ...agentExceptionIntervals.map(i => ({ start: i.start, end: i.end, type: 'agent_exception', id: i.id })),
                                     // 🎯 NOVO: Adicionar intervalos do local como busySlots
                                     ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));
@@ -1595,6 +1764,15 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                             </div>
                                         )
                                     })}
+
+                                    {/* 🎯 NOVO: Renderizar exceções do AGENTE (bloqueio individual) */}
+                                    {agentExceptionIntervals.map(block => {
+                                        return (
+                                            <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-5" style={timeToPositionStyleWeek(block.start, block.end)}>
+                                                <div className="w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)' }}></div>
+                                            </div>
+                                        )
+                                    })}
                                     {agentUnavailable.map(block => {
                                         return (
                                             <div key={block.id} className="absolute w-full bg-red-50 rounded-lg z-5" style={timeToPositionStyleWeek(block.startTime, block.endTime)}>
@@ -1677,10 +1855,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
                                 
                                 // 🎯 NOVO: Adicionar os intervalos do local para o dia atual
                                 const locationIntervals = calculateLocationIntervalBlocks(day);
+
+                                // 🎯 NOVO: Adicionar exceções do AGENTE (bloqueio individual)
+                                const agentExceptionIntervals = calculateAgentExceptionBlocks(agent.id.toString(), day);
                                 
                                 const busySlots = [
                                     ...agentAppointments.map(a => ({ start: a.startTime, end: a.endTime, type: 'appointment' })),
                                     ...agentUnavailable.map(u => ({ start: u.startTime, end: u.endTime, type: 'unavailable', id: u.id })),
+                                    ...agentExceptionIntervals.map(i => ({ start: i.start, end: i.end, type: 'agent_exception', id: i.id })),
                                     // 🎯 NOVO: Adicionar intervalos do local como busySlots
                                     ...locationIntervals.map(i => ({ start: i.start, end: i.end, type: 'interval', id: i.id }))
                                 ].sort((a, b) => a.start.localeCompare(b.start));

@@ -12,6 +12,7 @@ const Agendamento = require('../models/Agendamento');
 const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const ExcecaoCalendario = require('../models/ExcecaoCalendario');
+const AgenteExcecaoCalendario = require('../models/AgenteExcecaoCalendario');
 const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
 const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
@@ -395,14 +396,42 @@ class PublicBookingController {
       const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
       logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
-      // ✅ CRÍTICO: Bloquear datas com exceções (ex: Manutenção)
-      const excecao = await ExcecaoCalendario.isDataBloqueada(unidadeIdParaUsar, data);
-      if (excecao) {
-        logger.log(`[PublicBooking] 🚫 Data ${data} bloqueada por exceção:`, {
+      // Calcular dia da semana (0 = Domingo, 6 = Sábado)
+      // ✅ CORREÇÃO CRÍTICA: Tornar timezone-aware (America/Sao_Paulo) para evitar bugs perto da meia-noite
+      // Ex: servidor em UTC pode interpretar "YYYY-MM-DDT00:00:00" como dia anterior no fuso local
+      const tz = 'America/Sao_Paulo';
+      const [y, m, d] = data.split('-').map(n => parseInt(n, 10));
+      const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
+      const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
+
+      // ✅ CRÍTICO: Bloquear datas com exceções do AGENTE (DIA INTEIRO)
+      const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(parseInt(agenteId), data);
+      if (excecaoAgenteDiaInteiro) {
+        return res.json({
+          success: true,
+          data: {
+            agente_id: parseInt(agenteId),
+            data: data,
+            dia_semana: diaSemana,
+            duracao_minutos: duracaoMinutos,
+            slots_disponiveis: [],
+            total_slots: 0,
+            message: `Agente indisponível: ${excecaoAgenteDiaInteiro.tipo}${excecaoAgenteDiaInteiro.descricao ? ` - ${excecaoAgenteDiaInteiro.descricao}` : ''}`
+          }
+        });
+      }
+
+      // ✅ CRÍTICO: Bloquear datas com exceções de DIA INTEIRO
+      // Exceções parciais por horário serão aplicadas filtrando slots (mais abaixo)
+      const excecaoDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidadeIdParaUsar, data);
+      if (excecaoDiaInteiro) {
+        logger.log(`[PublicBooking] 🚫 Data ${data} bloqueada por exceção (dia inteiro):`, {
           unidade_id: unidadeIdParaUsar,
-          tipo: excecao.tipo,
-          descricao: excecao.descricao,
-          periodo: `${excecao.data_inicio} a ${excecao.data_fim}`
+          tipo: excecaoDiaInteiro.tipo,
+          descricao: excecaoDiaInteiro.descricao,
+          periodo: `${excecaoDiaInteiro.data_inicio} a ${excecaoDiaInteiro.data_fim}`
         });
         return res.json({
           success: true,
@@ -413,7 +442,7 @@ class PublicBookingController {
             duracao_minutos: duracaoMinutos,
             slots_disponiveis: [],
             total_slots: 0,
-            message: `Data indisponível: ${excecao.tipo}${excecao.descricao ? ` - ${excecao.descricao}` : ''}`
+            message: `Data indisponível: ${excecaoDiaInteiro.tipo}${excecaoDiaInteiro.descricao ? ` - ${excecaoDiaInteiro.descricao}` : ''}`
           }
         });
       }
@@ -426,16 +455,6 @@ class PublicBookingController {
 
       const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
       logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
-
-      // Calcular dia da semana (0 = Domingo, 6 = Sábado)
-      // ✅ CORREÇÃO CRÍTICA: Tornar timezone-aware (America/Sao_Paulo) para evitar bugs perto da meia-noite
-      // Ex: servidor em UTC pode interpretar "YYYY-MM-DDT00:00:00" como dia anterior no fuso local
-      const tz = 'America/Sao_Paulo';
-      const [y, m, d] = data.split('-').map(n => parseInt(n, 10));
-      const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-      const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
-      const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
 
       // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
       // ✅ CORREÇÃO: Usar unidadeIdParaUsar ao invés de agente.unidade_id
@@ -533,13 +552,69 @@ class PublicBookingController {
       // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
       // ✅ CRÍTICO: Passar data para bloquear horários passados
       // ✅ NOVO: Passar tempo_limite_agendar_horas para filtrar horários
-      const slotsDisponiveis = this.generateAvailableSlots(
+      let slotsDisponiveis = this.generateAvailableSlots(
         horariosParaUsar,
         agendamentosExistentes,
         duracaoMinutos,
         data, // ✅ Passa a data para verificar se é dia atual e bloquear horários passados
         tempoLimiteHoras // ✅ Passa tempo limite para agendar
       );
+
+      // ✅ NOVO: Aplicar exceções parciais por horário do AGENTE
+      const excecoesAgenteDoDia = await AgenteExcecaoCalendario.findByAgenteAndDate(parseInt(agenteId), data);
+      const bloqueiosAgenteParciais = (Array.isArray(excecoesAgenteDoDia) ? excecoesAgenteDoDia : [])
+        .filter(e => e.hora_inicio && e.hora_fim)
+        .map(e => ({
+          inicio: e.hora_inicio.toString().substring(0, 5),
+          fim: e.hora_fim.toString().substring(0, 5)
+        }));
+
+      if (bloqueiosAgenteParciais.length > 0) {
+        const timeToMinutes = (time) => {
+          const [hours, minutes] = time.split(':').map(Number);
+          return hours * 60 + minutes;
+        };
+
+        slotsDisponiveis = slotsDisponiveis.filter(slot => {
+          const slotStart = timeToMinutes(slot.hora_inicio);
+          const slotEnd = timeToMinutes(slot.hora_fim);
+
+          return !bloqueiosAgenteParciais.some(b => {
+            const bStart = timeToMinutes(b.inicio);
+            const bEnd = timeToMinutes(b.fim);
+            return slotStart < bEnd && slotEnd > bStart;
+          });
+        });
+      }
+
+      // ✅ NOVO: Aplicar exceções parciais por horário (bloqueios de intervalos no dia)
+      const excecoesDoDia = await ExcecaoCalendario.findByUnidadeAndDate(unidadeIdParaUsar, data);
+      const bloqueiosParciais = (Array.isArray(excecoesDoDia) ? excecoesDoDia : [])
+        .filter(e => e.hora_inicio && e.hora_fim)
+        .map(e => ({
+          inicio: e.hora_inicio.toString().substring(0, 5),
+          fim: e.hora_fim.toString().substring(0, 5),
+          tipo: e.tipo,
+          descricao: e.descricao
+        }));
+
+      if (bloqueiosParciais.length > 0) {
+        const timeToMinutes = (time) => {
+          const [hours, minutes] = time.split(':').map(Number);
+          return hours * 60 + minutes;
+        };
+
+        slotsDisponiveis = slotsDisponiveis.filter(slot => {
+          const slotStart = timeToMinutes(slot.hora_inicio);
+          const slotEnd = timeToMinutes(slot.hora_fim);
+
+          return !bloqueiosParciais.some(b => {
+            const bStart = timeToMinutes(b.inicio);
+            const bEnd = timeToMinutes(b.fim);
+            return slotStart < bEnd && slotEnd > bStart;
+          });
+        });
+      }
 
       // Retornar slots completos com hora_inicio, hora_fim e disponivel
       const horariosDisponiveis = slotsDisponiveis;
@@ -558,8 +633,10 @@ class PublicBookingController {
       });
 
     } catch (error) {
-      logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error);
-      logger.error('[PublicBooking] Stack trace:', error.stack);
+      logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error?.message);
+      if (process.env.NODE_ENV === 'development') {
+        logger.error('[PublicBooking] Stack trace:', error?.stack);
+      }
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -890,20 +967,20 @@ class PublicBookingController {
       }
 
       // ✅ CRÍTICO: Bloquear criação se a data estiver coberta por exceção (manutenção/feriado/etc.)
-      const excecao = await ExcecaoCalendario.isDataBloqueada(unidade_id, data_agendamento);
-      if (excecao) {
-        logger.log(`[PublicBooking] 🚫 Tentativa de agendar em data bloqueada por exceção:`, {
+      const excecaoDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidade_id, data_agendamento);
+      if (excecaoDiaInteiro) {
+        logger.log(`[PublicBooking] 🚫 Tentativa de agendar em data bloqueada por exceção (dia inteiro):`, {
           unidade_id,
           data: data_agendamento,
-          tipo: excecao.tipo,
-          descricao: excecao.descricao,
-          periodo: `${excecao.data_inicio} a ${excecao.data_fim}`
+          tipo: excecaoDiaInteiro.tipo,
+          descricao: excecaoDiaInteiro.descricao,
+          periodo: `${excecaoDiaInteiro.data_inicio} a ${excecaoDiaInteiro.data_fim}`
         });
         await trx.rollback();
         return res.status(403).json({
           success: false,
           error: 'Data indisponível',
-          message: `Não é possível agendar nesta data (${excecao.tipo}${excecao.descricao ? ` - ${excecao.descricao}` : ''}).`
+          message: `Não é possível agendar nesta data (${excecaoDiaInteiro.tipo}${excecaoDiaInteiro.descricao ? ` - ${excecaoDiaInteiro.descricao}` : ''}).`
         });
       }
 
@@ -1062,6 +1139,79 @@ class PublicBookingController {
       const horaInicioMinutos = this.timeToMinutes(hora_inicio);
       const horaFimMinutos = horaInicioMinutos + duracaoTotalMinutos;
       const hora_fim = this.minutesToTime(horaFimMinutos);
+
+      // ✅ CRÍTICO: Bloquear criação se a data estiver coberta por exceção do AGENTE (dia inteiro)
+      const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(agente_id, data_agendamento);
+      if (excecaoAgenteDiaInteiro) {
+        await trx.rollback();
+        return res.status(403).json({
+          success: false,
+          error: 'Horário indisponível',
+          message: `Não é possível agendar neste dia (Agente indisponível: ${excecaoAgenteDiaInteiro.tipo}${excecaoAgenteDiaInteiro.descricao ? ` - ${excecaoAgenteDiaInteiro.descricao}` : ''}).`
+        });
+      }
+
+      // ✅ CRÍTICO: Bloquear criação se houver exceção parcial do AGENTE que colida com o agendamento
+      const excecoesAgenteDoDia = await AgenteExcecaoCalendario.findByAgenteAndDate(agente_id, data_agendamento, trx);
+      const bloqueiosAgenteParciais = (Array.isArray(excecoesAgenteDoDia) ? excecoesAgenteDoDia : [])
+        .filter(e => e.hora_inicio && e.hora_fim)
+        .map(e => ({
+          inicio: e.hora_inicio.toString().substring(0, 5),
+          fim: e.hora_fim.toString().substring(0, 5),
+          tipo: e.tipo,
+          descricao: e.descricao
+        }));
+
+      if (bloqueiosAgenteParciais.length > 0) {
+        const startMin = this.timeToMinutes(hora_inicio);
+        const endMin = this.timeToMinutes(hora_fim);
+
+        const blocked = bloqueiosAgenteParciais.find(b => {
+          const bStart = this.timeToMinutes(b.inicio);
+          const bEnd = this.timeToMinutes(b.fim);
+          return startMin < bEnd && endMin > bStart;
+        });
+
+        if (blocked) {
+          await trx.rollback();
+          return res.status(403).json({
+            success: false,
+            error: 'Horário indisponível',
+            message: `Não é possível agendar neste horário (Agente indisponível: ${blocked.tipo}${blocked.descricao ? ` - ${blocked.descricao}` : ''}).`
+          });
+        }
+      }
+
+      // ✅ NOVO: Bloquear criação se houver exceção parcial por horário que colida com o agendamento
+      const excecoesDoDia = await ExcecaoCalendario.findByUnidadeAndDate(unidade_id, data_agendamento, trx);
+      const bloqueiosParciais = (Array.isArray(excecoesDoDia) ? excecoesDoDia : [])
+        .filter(e => e.hora_inicio && e.hora_fim)
+        .map(e => ({
+          inicio: e.hora_inicio.toString().substring(0, 5),
+          fim: e.hora_fim.toString().substring(0, 5),
+          tipo: e.tipo,
+          descricao: e.descricao
+        }));
+
+      if (bloqueiosParciais.length > 0) {
+        const startMin = this.timeToMinutes(hora_inicio);
+        const endMin = this.timeToMinutes(hora_fim);
+
+        const blocked = bloqueiosParciais.find(b => {
+          const bStart = this.timeToMinutes(b.inicio);
+          const bEnd = this.timeToMinutes(b.fim);
+          return startMin < bEnd && endMin > bStart;
+        });
+
+        if (blocked) {
+          await trx.rollback();
+          return res.status(403).json({
+            success: false,
+            error: 'Horário indisponível',
+            message: `Não é possível agendar neste horário (${blocked.tipo}${blocked.descricao ? ` - ${blocked.descricao}` : ''}).`
+          });
+        }
+      }
 
       // ✅ CORREÇÃO CRÍTICA: Adquirir advisory lock para prevenir race condition
       // Isso serializa todas as operações de criação para o mesmo agente/data

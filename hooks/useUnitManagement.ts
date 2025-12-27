@@ -43,6 +43,8 @@ export interface CalendarException {
   unidade_id?: number;
   data_inicio: string;
   data_fim: string;
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
   tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
   descricao: string;
   created_at?: string;
