@@ -74,6 +74,58 @@ router.put('/:id',
   }
 );
 
+/**
+ * GET /api/agentes/:id/excecoes
+ * Lista exceções de calendário de um agente
+ * Roles: ADMIN, MASTER, AGENTE (AGENTE apenas seu próprio)
+ */
+router.get('/:id/excecoes',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  rbacMiddleware.auditLog('LISTAR_EXCECOES_CALENDARIO_AGENTE'),
+  async (req, res) => {
+    await agenteController.listExcecoes(req, res);
+  }
+);
+
+/**
+ * POST /api/agentes/:id/excecoes
+ * Cria exceção de calendário de um agente
+ * Roles: ADMIN, MASTER, AGENTE (AGENTE apenas seu próprio)
+ */
+router.post('/:id/excecoes',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  rbacMiddleware.auditLog('CRIAR_EXCECAO_CALENDARIO_AGENTE'),
+  async (req, res) => {
+    await agenteController.createExcecao(req, res);
+  }
+);
+
+/**
+ * PUT /api/agentes/:id/excecoes/:excecaoId
+ * Atualiza exceção de calendário de um agente
+ * Roles: ADMIN, MASTER, AGENTE (AGENTE apenas seu próprio)
+ */
+router.put('/:id/excecoes/:excecaoId',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  rbacMiddleware.auditLog('ATUALIZAR_EXCECAO_CALENDARIO_AGENTE'),
+  async (req, res) => {
+    await agenteController.updateExcecao(req, res);
+  }
+);
+
+/**
+ * DELETE /api/agentes/:id/excecoes/:excecaoId
+ * Deleta exceção de calendário de um agente
+ * Roles: ADMIN, MASTER, AGENTE (AGENTE apenas seu próprio)
+ */
+router.delete('/:id/excecoes/:excecaoId',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  rbacMiddleware.auditLog('DELETAR_EXCECAO_CALENDARIO_AGENTE'),
+  async (req, res) => {
+    await agenteController.deleteExcecao(req, res);
+  }
+);
+
 // ✅ Middleware para exigir role ADMIN APENAS em operações de criação e exclusão
 router.use(rbacMiddleware.requireRole('ADMIN'));
 

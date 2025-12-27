@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
 import { AgentUnitScheduleState } from '../types';
+import CalendarExceptionsEditor from './CalendarExceptionsEditor';
+import { CalendarException } from '../hooks/useUnitManagement';
 
  class ScheduleErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
      declare props: { children: React.ReactNode };
@@ -101,11 +103,14 @@ interface EditAgentPageProps {
 }
 
 const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId }) => {
-    const { fetchAgentById, updateAgent, loading, error, availableUnits } = useAgentManagement();
+    const { fetchAgentById, updateAgent, loading, error, availableUnits, fetchAgentExceptions, createAgentException, deleteAgentException } = useAgentManagement();
     const { user, updateUser } = useAuth();
     const toast = useToast();
     const [agentData, setAgentData] = useState<AgentDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    const [calendarExceptions, setCalendarExceptions] = useState<CalendarException[]>([]);
+    const [isLoadingExceptions, setIsLoadingExceptions] = useState(false);
 
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -172,6 +177,79 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             isMounted = false; // Cleanup para evitar memory leaks
         };
     }, [agentId]); // Removido fetchAgentById das dependências
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadExceptions = async () => {
+            if (!agentId) return;
+            try {
+                setIsLoadingExceptions(true);
+                const exceptions = await fetchAgentExceptions(parseInt(agentId));
+                if (isMounted) {
+                    setCalendarExceptions(exceptions || []);
+                }
+            } catch (e) {
+                if (isMounted) {
+                    setCalendarExceptions([]);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoadingExceptions(false);
+                }
+            }
+        };
+
+        loadExceptions();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [agentId, fetchAgentExceptions]);
+
+    const handleAgentExceptionsChange = async (nextExceptions: CalendarException[]) => {
+        if (!agentId) return;
+
+        try {
+            // Adição
+            if (nextExceptions.length > calendarExceptions.length) {
+                const added = nextExceptions[nextExceptions.length - 1];
+
+                const created = await createAgentException(parseInt(agentId), {
+                    data_inicio: added.data_inicio,
+                    data_fim: added.data_fim,
+                    hora_inicio: (added as any).hora_inicio ?? null,
+                    hora_fim: (added as any).hora_fim ?? null,
+                    tipo: added.tipo,
+                    descricao: added.descricao
+                });
+
+                // Trocar o item temporário pelo retornado do backend
+                setCalendarExceptions(prev => prev.concat(created));
+                return;
+            }
+
+            // Remoção
+            if (nextExceptions.length < calendarExceptions.length) {
+                const removed = calendarExceptions.filter(prev => !nextExceptions.some(n => n.id === prev.id));
+
+                if (removed.length > 0) {
+                    // Em geral será 1 por clique
+                    await Promise.all(
+                        removed.map(r => deleteAgentException(parseInt(agentId), r.id as number))
+                    );
+                }
+
+                setCalendarExceptions(nextExceptions);
+                return;
+            }
+
+            // Edição não suportada no componente (sem ação)
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+            toast.error('Não foi possível salvar a exceção', errorMessage);
+        }
+    };
 
     // ✅ NOVO: useEffect para inicializar agendas multi-unidade quando availableUnits e agentData estiverem prontos
     useEffect(() => {
@@ -587,6 +665,20 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     </div>
                 </FormCard>
             )}
+
+            <FormCard title="Calendário de Exceções">
+                {isLoadingExceptions ? (
+                    <div className="text-center py-8 text-gray-500">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p>Carregando exceções...</p>
+                    </div>
+                ) : (
+                    <CalendarExceptionsEditor
+                        exceptions={calendarExceptions}
+                        onExceptionsChange={handleAgentExceptionsChange}
+                    />
+                )}
+            </FormCard>
 
             <div className="pt-2 flex items-center gap-4">
                 <button

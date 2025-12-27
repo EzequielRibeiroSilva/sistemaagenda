@@ -186,6 +186,8 @@ class UnidadeService {
               unidade_id: novaUnidade.id,
               data_inicio: excecao.data_inicio,
               data_fim: excecao.data_fim,
+              hora_inicio: excecao.hora_inicio || null,
+              hora_fim: excecao.hora_fim || null,
               tipo: excecao.tipo,
               descricao: excecao.descricao
             }, trx);
@@ -491,41 +493,24 @@ class UnidadeService {
         }
 
         // Atualizar exceções de calendário (se fornecidas)
-        logger.log(`🔍 [UnidadeService] updateData.excecoes_calendario:`, updateData.excecoes_calendario);
-        
         if (updateData.excecoes_calendario !== undefined) {
-          logger.log(`📅 [UnidadeService] Atualizando exceções de calendário para unidade ${unidadeId}`);
-          logger.log(`📅 [UnidadeService] Tipo: ${typeof updateData.excecoes_calendario}, É Array: ${Array.isArray(updateData.excecoes_calendario)}`);
-          logger.log(`📅 [UnidadeService] Quantidade: ${updateData.excecoes_calendario?.length || 0}`);
-          
           // Remover exceções existentes
-          const deletedCount = await ExcecaoCalendario.deleteByUnidade(unidadeId, trx);
-          logger.log(`🗑️ [UnidadeService] ${deletedCount} exceções antigas removidas`);
-          
+          await ExcecaoCalendario.deleteByUnidade(unidadeId, trx);
+
           // Criar novas exceções
           if (Array.isArray(updateData.excecoes_calendario) && updateData.excecoes_calendario.length > 0) {
-            logger.log(`📅 [UnidadeService] Criando ${updateData.excecoes_calendario.length} novas exceções...`);
-            
             for (const excecao of updateData.excecoes_calendario) {
-              logger.log(`   ➕ Criando exceção:`, excecao);
-              
-              const excecaoCriada = await ExcecaoCalendario.create({
+              await ExcecaoCalendario.create({
                 unidade_id: unidadeId,
                 data_inicio: excecao.data_inicio,
                 data_fim: excecao.data_fim,
+                hora_inicio: excecao.hora_inicio || null,
+                hora_fim: excecao.hora_fim || null,
                 tipo: excecao.tipo,
                 descricao: excecao.descricao
               }, trx);
-              
-              logger.log(`   ✅ Exceção criada com ID: ${excecaoCriada.id}`);
             }
-            
-            logger.log(`✅ [UnidadeService] Todas as ${updateData.excecoes_calendario.length} exceções foram criadas`);
-          } else {
-            logger.log(`⚠️ [UnidadeService] Nenhuma exceção para criar (array vazio ou inválido)`);
           }
-        } else {
-          logger.log(`⚠️ [UnidadeService] excecoes_calendario não foi fornecido no updateData`);
         }
 
         await trx.commit();
@@ -535,7 +520,10 @@ class UnidadeService {
         return unidadeCompleta;
       } catch (transactionError) {
         await trx.rollback();
-        logger.error('❌ [UnidadeService] Rollback executado. Erro:', transactionError.message);
+        logger.error('❌ [UnidadeService] Rollback executado. Erro:', {
+          message: transactionError?.message,
+          stack: transactionError?.stack
+        });
         throw transactionError;
       }
     } catch (error) {

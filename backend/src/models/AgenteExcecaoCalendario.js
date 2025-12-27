@@ -2,46 +2,21 @@ const BaseModel = require('./BaseModel');
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 
-/**
- * Modelo para gerenciar exceções de calendário das unidades
- *
- * Estrutura dos dados:
- * - unidade_id: ID da unidade/local
- * - data_inicio: Data de início do bloqueio (inclusivo)
- * - data_fim: Data de fim do bloqueio (inclusivo)
- * - tipo: Categoria da exceção ('Feriado', 'Férias', 'Evento Especial', 'Manutenção', 'Outro')
- * - descricao: Descrição opcional da exceção
- * 
- * Casos de uso:
- * - Bloquear feriados nacionais/municipais
- * - Definir períodos de férias coletivas
- * - Marcar eventos especiais ou manutenções
- * - Fechamentos temporários
- */
-class ExcecaoCalendario extends BaseModel {
+class AgenteExcecaoCalendario extends BaseModel {
   constructor() {
-    super('unidade_excecoes_calendario');
+    super('agente_excecoes_calendario');
   }
 
   static get tableName() {
-    return 'unidade_excecoes_calendario';
+    return 'agente_excecoes_calendario';
   }
 
-  /**
-   * Buscar todas as exceções de uma unidade específica
-   * @param {number} unidadeId - ID da unidade
-   * @param {Object} options - Opções de filtro
-   * @param {Date} options.dataInicio - Filtrar exceções a partir desta data
-   * @param {Date} options.dataFim - Filtrar exceções até esta data
-   * @returns {Promise<Array>} Array com exceções da unidade
-   */
-  static async findByUnidade(unidadeId, options = {}) {
+  static async findByAgente(agenteId, options = {}) {
     try {
-      let query = db('unidade_excecoes_calendario')
-        .where('unidade_id', unidadeId)
+      let query = db('agente_excecoes_calendario')
+        .where('agente_id', agenteId)
         .orderBy('data_inicio', 'asc');
 
-      // Filtrar por período se fornecido
       if (options.dataInicio) {
         query = query.where('data_fim', '>=', options.dataInicio);
       }
@@ -50,43 +25,32 @@ class ExcecaoCalendario extends BaseModel {
       }
 
       const excecoes = await query;
-      return excecoes;
+      return Array.isArray(excecoes) ? excecoes : [];
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao buscar exceções da unidade:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao buscar exceções do agente:', error);
       throw error;
     }
   }
 
-  /**
-   * Buscar exceção por ID
-   * @param {number} id - ID da exceção
-   * @returns {Promise<Object|null>} Exceção encontrada ou null
-   */
   static async findById(id) {
     try {
-      const excecao = await db('unidade_excecoes_calendario')
+      const excecao = await db('agente_excecoes_calendario')
         .where('id', id)
         .first();
 
       return excecao || null;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao buscar exceção por ID:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao buscar exceção por ID:', error);
       throw error;
     }
   }
 
-  /**
-   * Verificar se uma data específica está bloqueada por exceção
-   * @param {number} unidadeId - ID da unidade
-   * @param {Date|string} data - Data a verificar (formato YYYY-MM-DD)
-   * @returns {Promise<Object|null>} Exceção que bloqueia a data ou null
-   */
-  static async isDataBloqueada(unidadeId, data) {
+  static async isDataBloqueada(agenteId, data) {
     try {
       const dataStr = typeof data === 'string' ? data : data.toISOString().split('T')[0];
 
-      const excecao = await db('unidade_excecoes_calendario')
-        .where('unidade_id', unidadeId)
+      const excecao = await db('agente_excecoes_calendario')
+        .where('agente_id', agenteId)
         .where('data_inicio', '<=', dataStr)
         .where('data_fim', '>=', dataStr)
         .whereNull('hora_inicio')
@@ -95,63 +59,43 @@ class ExcecaoCalendario extends BaseModel {
 
       return excecao || null;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao verificar se data está bloqueada:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao verificar se data está bloqueada:', error);
       throw error;
     }
   }
 
-  /**
-   * Buscar todas as exceções que cobrem uma data específica (incluindo bloqueios parciais por horário)
-   * @param {number} unidadeId
-   * @param {Date|string} data - formato YYYY-MM-DD
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<Array>} Array de exceções
-   */
-  static async findByUnidadeAndDate(unidadeId, data, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+  static async findByAgenteAndDate(agenteId, data, trx = null) {
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
       const dataStr = typeof data === 'string' ? data : data.toISOString().split('T')[0];
 
       const excecoes = await query
-        .where('unidade_id', unidadeId)
+        .where('agente_id', agenteId)
         .where('data_inicio', '<=', dataStr)
         .where('data_fim', '>=', dataStr)
         .orderBy([{ column: 'data_inicio', order: 'asc' }, { column: 'hora_inicio', order: 'asc' }]);
 
       return Array.isArray(excecoes) ? excecoes : [];
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao buscar exceções por data:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao buscar exceções por data:', error);
       throw error;
     }
   }
 
-  /**
-   * Criar nova exceção de calendário
-   * @param {Object} excecaoData - Dados da exceção
-   * @param {number} excecaoData.unidade_id - ID da unidade
-   * @param {Date|string} excecaoData.data_inicio - Data de início
-   * @param {Date|string} excecaoData.data_fim - Data de fim
-   * @param {string} excecaoData.tipo - Tipo da exceção
-   * @param {string} excecaoData.descricao - Descrição opcional
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<Object>} Exceção criada
-   */
   static async create(excecaoData, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
-      // Validar dados
       this.validateExcecaoData(excecaoData);
 
-      // Verificar sobreposição com exceções existentes
       const sobreposicao = await this.checkSobreposicao(
-        excecaoData.unidade_id,
+        excecaoData.agente_id,
         excecaoData.data_inicio,
         excecaoData.data_fim,
         excecaoData.hora_inicio,
         excecaoData.hora_fim,
-        null, // id null para criação
+        null,
         trx
       );
 
@@ -163,8 +107,24 @@ class ExcecaoCalendario extends BaseModel {
         throw error;
       }
 
+      const conflitoAgendamento = await this.checkConflitoComAgendamentos(
+        excecaoData.agente_id,
+        excecaoData.data_inicio,
+        excecaoData.data_fim,
+        excecaoData.hora_inicio || null,
+        excecaoData.hora_fim || null,
+        trx
+      );
+
+      if (conflitoAgendamento) {
+        const error = new Error('Não é possível criar este bloqueio porque há um agendamento dentro do período. Contate o ADMIN para ajustar o agendamento.');
+        error.code = 'AGENDAMENTO_CONFLITANTE';
+        error.details = conflitoAgendamento;
+        throw error;
+      }
+
       const dadosParaInserir = {
-        unidade_id: excecaoData.unidade_id,
+        agente_id: excecaoData.agente_id,
         data_inicio: excecaoData.data_inicio,
         data_fim: excecaoData.data_fim,
         hora_inicio: excecaoData.hora_inicio || null,
@@ -178,23 +138,15 @@ class ExcecaoCalendario extends BaseModel {
       const [excecaoCriada] = await query.insert(dadosParaInserir).returning('*');
       return excecaoCriada;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao criar exceção:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao criar exceção:', error);
       throw error;
     }
   }
 
-  /**
-   * Atualizar exceção existente
-   * @param {number} id - ID da exceção
-   * @param {Object} excecaoData - Dados para atualização
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<Object>} Exceção atualizada
-   */
   static async update(id, excecaoData, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
-      // Buscar exceção existente
       const excecaoExistente = await this.findById(id);
       if (!excecaoExistente) {
         const error = new Error('Exceção não encontrada');
@@ -202,7 +154,6 @@ class ExcecaoCalendario extends BaseModel {
         throw error;
       }
 
-      // Validar dados se fornecidos
       if (
         excecaoData.data_inicio !== undefined ||
         excecaoData.data_fim !== undefined ||
@@ -216,14 +167,13 @@ class ExcecaoCalendario extends BaseModel {
 
         this.validateExcecaoData({ data_inicio: dataInicio, data_fim: dataFim, hora_inicio: horaInicio, hora_fim: horaFim });
 
-        // Verificar sobreposição com outras exceções
         const sobreposicao = await this.checkSobreposicao(
-          excecaoExistente.unidade_id,
+          excecaoExistente.agente_id,
           dataInicio,
           dataFim,
           horaInicio,
           horaFim,
-          id, // excluir a própria exceção da verificação
+          id,
           trx
         );
 
@@ -234,6 +184,22 @@ class ExcecaoCalendario extends BaseModel {
           error.code = 'EXCECAO_SOBREPOSTA';
           throw error;
         }
+
+        const conflitoAgendamento = await this.checkConflitoComAgendamentos(
+          excecaoExistente.agente_id,
+          dataInicio,
+          dataFim,
+          horaInicio || null,
+          horaFim || null,
+          trx
+        );
+
+        if (conflitoAgendamento) {
+          const error = new Error('Não é possível atualizar este bloqueio porque há um agendamento dentro do período. Contate o ADMIN para ajustar o agendamento.');
+          error.code = 'AGENDAMENTO_CONFLITANTE';
+          error.details = conflitoAgendamento;
+          throw error;
+        }
       }
 
       const dadosParaAtualizar = {
@@ -241,7 +207,6 @@ class ExcecaoCalendario extends BaseModel {
         updated_at: new Date()
       };
 
-      // Remover campos undefined
       Object.keys(dadosParaAtualizar).forEach(key => {
         if (dadosParaAtualizar[key] === undefined) {
           delete dadosParaAtualizar[key];
@@ -255,68 +220,42 @@ class ExcecaoCalendario extends BaseModel {
 
       return excecaoAtualizada;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao atualizar exceção:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao atualizar exceção:', error);
       throw error;
     }
   }
 
-  /**
-   * Deletar exceção
-   * @param {number} id - ID da exceção
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<boolean>} True se deletado com sucesso
-   */
   static async delete(id, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
       const deletedCount = await query.where('id', id).del();
       return deletedCount > 0;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao deletar exceção:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao deletar exceção:', error);
       throw error;
     }
   }
 
-  /**
-   * Deletar todas as exceções de uma unidade
-   * @param {number} unidadeId - ID da unidade
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<number>} Número de exceções deletadas
-   */
-  static async deleteByUnidade(unidadeId, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+  static async deleteByAgente(agenteId, trx = null) {
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
-      const deletedCount = await query.where('unidade_id', unidadeId).del();
+      const deletedCount = await query.where('agente_id', agenteId).del();
       return deletedCount;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao deletar exceções da unidade:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao deletar exceções do agente:', error);
       throw error;
     }
   }
 
-  /**
-   * Verificar sobreposição de datas com exceções existentes
-   * @param {number} unidadeId - ID da unidade
-   * @param {Date|string} dataInicio - Data de início
-   * @param {Date|string} dataFim - Data de fim
-   * @param {string|null} horaInicio - Hora de início (HH:MM) para bloqueios parciais
-   * @param {string|null} horaFim - Hora de fim (HH:MM) para bloqueios parciais
-   * @param {number|null} excludeId - ID da exceção a excluir da verificação (para updates)
-   * @param {Object} trx - Transação Knex (opcional)
-   * @returns {Promise<Object|null>} Exceção sobreposta ou null
-   */
-  static async checkSobreposicao(unidadeId, dataInicio, dataFim, horaInicio = null, horaFim = null, excludeId = null, trx = null) {
-    const query = trx ? trx('unidade_excecoes_calendario') : db('unidade_excecoes_calendario');
+  static async checkSobreposicao(agenteId, dataInicio, dataFim, horaInicio = null, horaFim = null, excludeId = null, trx = null) {
+    const query = trx ? trx('agente_excecoes_calendario') : db('agente_excecoes_calendario');
 
     try {
-      const realQuery = query;
-
-      let candidatosQuery = realQuery
-        .where('unidade_id', unidadeId)
+      let candidatosQuery = query
+        .where('agente_id', agenteId)
         .where(function() {
-          // sobreposição de datas (intervalos inclusivos)
           this.where(function() {
             this.where('data_inicio', '<=', dataInicio)
               .where('data_fim', '>=', dataInicio);
@@ -359,12 +298,10 @@ class ExcecaoCalendario extends BaseModel {
         const existingEnd = normalizeTime(existing.hora_fim);
         const existingIsFullDay = !existingStart && !existingEnd;
 
-        // Se qualquer um for dia inteiro, conflita com qualquer outro no range de datas
         if (newIsFullDay || existingIsFullDay) {
           return existing;
         }
 
-        // Ambos têm horários: checar sobreposição de intervalo
         if (newStart && newEnd && existingStart && existingEnd) {
           const aStart = timeToMinutes(newStart);
           const aEnd = timeToMinutes(newEnd);
@@ -379,16 +316,68 @@ class ExcecaoCalendario extends BaseModel {
 
       return null;
     } catch (error) {
-      logger.error('❌ [ExcecaoCalendario] Erro ao verificar sobreposição:', error);
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao verificar sobreposição:', error);
       throw error;
     }
   }
 
-  /**
-   * Validar dados da exceção
-   * @param {Object} excecaoData - Dados para validar
-   * @throws {Error} Se dados inválidos
-   */
+  static async checkConflitoComAgendamentos(agenteId, dataInicio, dataFim, horaInicio = null, horaFim = null, trx = null) {
+    const query = trx ? trx('agendamentos') : db('agendamentos');
+
+    try {
+      const agendamentos = await query
+        .where('agente_id', agenteId)
+        .whereIn('status', ['Aprovado', 'Confirmado'])
+        .where('data_agendamento', '>=', dataInicio)
+        .where('data_agendamento', '<=', dataFim)
+        .select('id', 'data_agendamento', 'hora_inicio', 'hora_fim');
+
+      if (!Array.isArray(agendamentos) || agendamentos.length === 0) {
+        return null;
+      }
+
+      const normalizeTime = (t) => {
+        if (!t) return null;
+        const s = typeof t === 'string' ? t : String(t);
+        return s.length >= 5 ? s.slice(0, 5) : s;
+      };
+      const timeToMinutes = (t) => {
+        const [hh, mm] = t.split(':').map(Number);
+        return (hh * 60) + mm;
+      };
+
+      const excStart = normalizeTime(horaInicio);
+      const excEnd = normalizeTime(horaFim);
+      const isFullDay = !excStart && !excEnd;
+
+      for (const appt of agendamentos) {
+        if (isFullDay) {
+          return { agendamento_id: appt.id, data_agendamento: appt.data_agendamento };
+        }
+
+        const apptStart = normalizeTime(appt.hora_inicio);
+        const apptEnd = normalizeTime(appt.hora_fim);
+        if (!apptStart || !apptEnd || !excStart || !excEnd) {
+          continue;
+        }
+
+        const aStart = timeToMinutes(excStart);
+        const aEnd = timeToMinutes(excEnd);
+        const bStart = timeToMinutes(apptStart);
+        const bEnd = timeToMinutes(apptEnd);
+
+        if (aStart < bEnd && aEnd > bStart) {
+          return { agendamento_id: appt.id, data_agendamento: appt.data_agendamento };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('❌ [AgenteExcecaoCalendario] Erro ao verificar conflito com agendamentos:', error);
+      throw error;
+    }
+  }
+
   static validateExcecaoData(excecaoData) {
     if (!excecaoData.data_inicio || !excecaoData.data_fim) {
       throw new Error('data_inicio e data_fim são obrigatórios');
@@ -408,7 +397,6 @@ class ExcecaoCalendario extends BaseModel {
     const horaInicio = excecaoData.hora_inicio || null;
     const horaFim = excecaoData.hora_fim || null;
 
-    // Se um horário foi fornecido, exigir ambos e validar ordem
     if ((horaInicio && !horaFim) || (!horaInicio && horaFim)) {
       throw new Error('hora_inicio e hora_fim devem ser informados juntos');
     }
@@ -438,4 +426,4 @@ class ExcecaoCalendario extends BaseModel {
   }
 }
 
-module.exports = ExcecaoCalendario;
+module.exports = AgenteExcecaoCalendario;

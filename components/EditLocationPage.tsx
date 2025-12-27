@@ -333,6 +333,8 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
             excecoes_calendario: calendarExceptions.map(exc => ({
                 data_inicio: exc.data_inicio,
                 data_fim: exc.data_fim,
+                hora_inicio: (exc as any).hora_inicio ?? null,
+                hora_fim: (exc as any).hora_fim ?? null,
                 tipo: exc.tipo,
                 descricao: exc.descricao
             }))

@@ -16,9 +16,13 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
     const [newException, setNewException] = useState<Omit<CalendarException, 'id'>>({
         data_inicio: '',
         data_fim: '',
+        hora_inicio: null,
+        hora_fim: null,
         tipo: 'Feriado',
         descricao: ''
     });
+
+    const [blockType, setBlockType] = useState<'full_day' | 'time_range'>('full_day');
 
     const [selectedRange, setSelectedRange] = useState<{ startDate: Date | null; endDate: Date | null }>({
         startDate: null,
@@ -49,6 +53,30 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
             return;
         }
 
+        if (blockType === 'time_range') {
+            const start = (newException.hora_inicio || '').toString().substring(0, 5);
+            const end = (newException.hora_fim || '').toString().substring(0, 5);
+            if (!start || !end) {
+                alert('Por favor, informe hora de início e fim');
+                return;
+            }
+
+            const isValidTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+            if (!isValidTime(start) || !isValidTime(end)) {
+                alert('Horários inválidos. Use o formato HH:MM');
+                return;
+            }
+
+            if (end <= start) {
+                alert('A hora de fim deve ser maior que a hora de início');
+                return;
+            }
+        } else {
+            // Dia inteiro: limpar horários
+            newException.hora_inicio = null;
+            newException.hora_fim = null;
+        }
+
         const exceptionToAdd: CalendarException = {
             ...newException,
             id: Date.now() // Temporary ID for new exceptions
@@ -60,9 +88,12 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
         setNewException({
             data_inicio: '',
             data_fim: '',
+            hora_inicio: null,
+            hora_fim: null,
             tipo: 'Feriado',
             descricao: ''
         });
+        setBlockType('full_day');
         setSelectedRange({ startDate: null, endDate: null });
         setIsAddingException(false);
     };
@@ -125,9 +156,12 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                                 setNewException({
                                     data_inicio: '',
                                     data_fim: '',
+                                    hora_inicio: null,
+                                    hora_fim: null,
                                     tipo: 'Feriado',
                                     descricao: ''
                                 });
+                                setBlockType('full_day');
                                 setSelectedRange({ startDate: null, endDate: null });
                             }}
                             className="text-gray-500 hover:text-gray-700"
@@ -173,6 +207,60 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                         </div>
                     </div>
 
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Bloqueio
+                        </label>
+                        <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="radio"
+                                    checked={blockType === 'full_day'}
+                                    onChange={() => {
+                                        setBlockType('full_day');
+                                        setNewException(prev => ({ ...prev, hora_inicio: null, hora_fim: null }));
+                                    }}
+                                />
+                                Dia inteiro
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="radio"
+                                    checked={blockType === 'time_range'}
+                                    onChange={() => setBlockType('time_range')}
+                                />
+                                Horário específico
+                            </label>
+                        </div>
+                    </div>
+
+                    {blockType === 'time_range' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                    Hora início <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="time"
+                                    value={(newException.hora_inicio || '') as string}
+                                    onChange={(e) => setNewException(prev => ({ ...prev, hora_inicio: e.target.value }))}
+                                    className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                    Hora fim <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="time"
+                                    value={(newException.hora_fim || '') as string}
+                                    onChange={(e) => setNewException(prev => ({ ...prev, hora_fim: e.target.value }))}
+                                    className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     {/* Descrição */}
                     <div>
                         <label className="text-sm font-medium text-gray-700 mb-2 block">
@@ -180,7 +268,7 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                         </label>
                         <input
                             type="text"
-                            placeholder="Ex: Natal, Férias Coletivas, Reforma do Espaço..."
+                            placeholder="Ex: Manutenção, Evento interno, Indisponibilidade..."
                             value={newException.descricao}
                             onChange={(e) => setNewException(prev => ({ ...prev, descricao: e.target.value }))}
                             className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
@@ -203,9 +291,12 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                                 setNewException({
                                     data_inicio: '',
                                     data_fim: '',
+                                    hora_inicio: null,
+                                    hora_fim: null,
                                     tipo: 'Feriado',
                                     descricao: ''
                                 });
+                                setBlockType('full_day');
                                 setSelectedRange({ startDate: null, endDate: null });
                             }}
                             className="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm"
@@ -244,6 +335,11 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                                             )}
                                         </span>
                                     </div>
+                                    {(exception as any).hora_inicio && (exception as any).hora_fim && (
+                                        <div className="text-xs text-gray-600 mt-1">
+                                            {(exception as any).hora_inicio} - {(exception as any).hora_fim}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <button

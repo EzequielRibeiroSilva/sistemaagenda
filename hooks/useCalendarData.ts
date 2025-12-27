@@ -139,6 +139,8 @@ interface CalendarException {
   unidade_id: number;
   data_inicio: string;
   data_fim: string;
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
   tipo: 'Feriado' | 'Férias' | 'Evento Especial' | 'Manutenção' | 'Outro';
   descricao: string;
   created_at: string;
@@ -476,22 +478,24 @@ export const useCalendarData = () => {
     }
   }, []);
 
-  // ✅ NOVO: Função para verificar se uma data está bloqueada por exceção
-  const isDateBlockedByException = useCallback((date: Date, locationId: string): CalendarException | null => {
+  // ✅ NOVO: Listar exceções de calendário que cobrem uma data (inclui parciais por horário)
+  const getExceptionsForDate = useCallback((date: Date, locationId: string): CalendarException[] => {
     const locationExceptions = calendarExceptions[locationId] || [];
-    // ✅ CRÍTICO: Comparar em data local para evitar off-by-one por fuso horário
     const dateStr = toLocalDateString(date); // YYYY-MM-DD (local)
 
-    const foundException = locationExceptions.find(exception => {
-      // 🎯 CORREÇÃO CRÍTICA: Converter datas ISO para formato YYYY-MM-DD para comparação
+    return locationExceptions.filter(exception => {
       const startDate = exception.data_inicio.split('T')[0];
       const endDate = exception.data_fim.split('T')[0];
-      const isInRange = dateStr >= startDate && dateStr <= endDate;
-      return isInRange;
-    }) || null;
-
-    return foundException;
+      return dateStr >= startDate && dateStr <= endDate;
+    });
   }, [calendarExceptions, toLocalDateString]);
+
+  // ✅ Compatibilidade: verificar se uma data está bloqueada por exceção de DIA INTEIRO
+  // (hora_inicio e hora_fim nulos). Exceções parciais devem ser tratadas como intervalos.
+  const isDateBlockedByException = useCallback((date: Date, locationId: string): CalendarException | null => {
+    const exceptions = getExceptionsForDate(date, locationId);
+    return exceptions.find(e => !e.hora_inicio && !e.hora_fim) || null;
+  }, [getExceptionsForDate]);
 
   // Carregar todos os dados iniciais (APENAS dados estáticos)
   // ✅ CORREÇÃO: CalendarPage é responsável por buscar agendamentos com filtros corretos
@@ -654,6 +658,7 @@ export const useCalendarData = () => {
 
     // Utilitários
     setError,
-    isDateBlockedByException
+    isDateBlockedByException,
+    getExceptionsForDate
   };
 };

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, Plus, ImagePlaceholder, Check, Cog, CheckCircle, ArrowLeft, Save, AlertCircle, FaUser } from './Icons';
 import AgentScheduleEditor from './AgentScheduleEditor';
-import CalendarExceptionsEditor, { CalendarException } from './CalendarExceptionsEditor';
-import { useUnitManagement } from '../hooks/useUnitManagement';
+import CalendarExceptionsEditor from './CalendarExceptionsEditor';
+import { useUnitManagement, CalendarException } from '../hooks/useUnitManagement';
 import { getAssetUrl } from '../utils/api';
 import { getDefaultSchedule } from '../utils/schedule';
 import { useToast } from '../contexts/ToastContext';
@@ -255,6 +255,8 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
             excecoes_calendario: calendarExceptions.map(exc => ({
                 data_inicio: exc.data_inicio,
                 data_fim: exc.data_fim,
+                hora_inicio: (exc as any).hora_inicio ?? null,
+                hora_fim: (exc as any).hora_fim ?? null,
                 tipo: exc.tipo,
                 descricao: exc.descricao
             }))

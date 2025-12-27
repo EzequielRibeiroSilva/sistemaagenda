@@ -1,4 +1,5 @@
 const Agente = require('../models/Agente');
+const AgenteExcecaoCalendario = require('../models/AgenteExcecaoCalendario');
 const bcrypt = require('bcryptjs');
 const { deleteOldAvatar } = require('../middleware/formDataMiddleware');
 const logger = require('../utils/logger');
@@ -6,6 +7,286 @@ const logger = require('../utils/logger');
 class AgenteController {
   constructor() {
     this.agenteModel = new Agente();
+  }
+
+  // ========================================
+  // MÉTODOS PARA EXCEÇÕES DE CALENDÁRIO (AGENTE)
+  // ========================================
+
+  // POST /api/agentes/:id/excecoes - Criar exceção de calendário
+  async createExcecao(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Permissões
+      if (userRole === 'AGENTE') {
+        if (!userAgenteId || parseInt(id) !== parseInt(userAgenteId)) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você só pode gerenciar as exceções do seu próprio calendário'
+          });
+        }
+      } else if (userRole === 'ADMIN') {
+        const agente = await this.agenteModel.findByIdComplete(id);
+        if (!agente || agente.unidade_usuario_id !== usuarioId) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para editar este agente'
+          });
+        }
+      }
+
+      const { data_inicio, data_fim, hora_inicio, hora_fim, tipo, descricao } = req.body;
+
+      if (!data_inicio || !data_fim) {
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          message: 'data_inicio e data_fim são obrigatórios'
+        });
+      }
+
+      const excecao = await AgenteExcecaoCalendario.create({
+        agente_id: parseInt(id),
+        data_inicio,
+        data_fim,
+        hora_inicio: hora_inicio || null,
+        hora_fim: hora_fim || null,
+        tipo: tipo || 'Outro',
+        descricao: descricao || null
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: excecao,
+        message: 'Exceção de calendário criada com sucesso'
+      });
+    } catch (error) {
+      logger.error('❌ [AgenteController] Erro ao criar exceção do agente:', error?.message);
+
+      if (error.code === 'EXCECAO_SOBREPOSTA') {
+        return res.status(400).json({
+          error: 'Conflito de datas',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'AGENDAMENTO_CONFLITANTE') {
+        return res.status(409).json({
+          error: 'Conflito com agendamento',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // GET /api/agentes/:id/excecoes - Listar exceções de calendário
+  async listExcecoes(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (userRole === 'AGENTE') {
+        if (!userAgenteId || parseInt(id) !== parseInt(userAgenteId)) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você só pode acessar as exceções do seu próprio calendário'
+          });
+        }
+      } else if (userRole === 'ADMIN') {
+        const agente = await this.agenteModel.findByIdComplete(id);
+        if (!agente || agente.unidade_usuario_id !== usuarioId) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para acessar este agente'
+          });
+        }
+      }
+
+      const filters = {};
+      if (req.query.dataInicio) {
+        filters.dataInicio = req.query.dataInicio;
+      }
+      if (req.query.dataFim) {
+        filters.dataFim = req.query.dataFim;
+      }
+
+      const excecoes = await AgenteExcecaoCalendario.findByAgente(parseInt(id), filters);
+
+      return res.json({
+        success: true,
+        data: excecoes
+      });
+    } catch (error) {
+      logger.error('❌ [AgenteController] Erro ao listar exceções do agente:', error?.message);
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // PUT /api/agentes/:id/excecoes/:excecaoId - Atualizar exceção
+  async updateExcecao(req, res) {
+    try {
+      const { id, excecaoId } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (userRole === 'AGENTE') {
+        if (!userAgenteId || parseInt(id) !== parseInt(userAgenteId)) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você só pode gerenciar as exceções do seu próprio calendário'
+          });
+        }
+      } else if (userRole === 'ADMIN') {
+        const agente = await this.agenteModel.findByIdComplete(id);
+        if (!agente || agente.unidade_usuario_id !== usuarioId) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para editar este agente'
+          });
+        }
+      }
+
+      const excecaoData = {};
+      if (req.body.data_inicio !== undefined) {
+        excecaoData.data_inicio = req.body.data_inicio;
+      }
+      if (req.body.data_fim !== undefined) {
+        excecaoData.data_fim = req.body.data_fim;
+      }
+      if (req.body.hora_inicio !== undefined) {
+        excecaoData.hora_inicio = req.body.hora_inicio || null;
+      }
+      if (req.body.hora_fim !== undefined) {
+        excecaoData.hora_fim = req.body.hora_fim || null;
+      }
+      if (req.body.tipo !== undefined) {
+        excecaoData.tipo = req.body.tipo;
+      }
+      if (req.body.descricao !== undefined) {
+        excecaoData.descricao = req.body.descricao;
+      }
+
+      const excecaoAtualizada = await AgenteExcecaoCalendario.update(parseInt(excecaoId), excecaoData);
+
+      return res.json({
+        success: true,
+        data: excecaoAtualizada,
+        message: 'Exceção de calendário atualizada com sucesso'
+      });
+    } catch (error) {
+      logger.error('❌ [AgenteController] Erro ao atualizar exceção do agente:', error?.message);
+
+      if (error.code === 'EXCECAO_NAO_ENCONTRADA') {
+        return res.status(404).json({
+          error: 'Exceção não encontrada',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'EXCECAO_SOBREPOSTA') {
+        return res.status(400).json({
+          error: 'Conflito de datas',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'AGENDAMENTO_CONFLITANTE') {
+        return res.status(409).json({
+          error: 'Conflito com agendamento',
+          message: error.message
+        });
+      }
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // DELETE /api/agentes/:id/excecoes/:excecaoId - Deletar exceção
+  async deleteExcecao(req, res) {
+    try {
+      const { id, excecaoId } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (userRole === 'AGENTE') {
+        if (!userAgenteId || parseInt(id) !== parseInt(userAgenteId)) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você só pode gerenciar as exceções do seu próprio calendário'
+          });
+        }
+      } else if (userRole === 'ADMIN') {
+        const agente = await this.agenteModel.findByIdComplete(id);
+        if (!agente || agente.unidade_usuario_id !== usuarioId) {
+          return res.status(403).json({
+            error: 'Acesso negado',
+            message: 'Você não tem permissão para editar este agente'
+          });
+        }
+      }
+
+      const deleted = await AgenteExcecaoCalendario.delete(parseInt(excecaoId));
+
+      if (!deleted) {
+        return res.status(404).json({
+          error: 'Exceção não encontrada'
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Exceção de calendário deletada com sucesso'
+      });
+    } catch (error) {
+      logger.error('❌ [AgenteController] Erro ao deletar exceção do agente:', error?.message);
+
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
   }
 
   /**
