@@ -236,9 +236,14 @@ export const useAppointmentManagement = () => {
         avatar: `https://i.pravatar.cc/150?u=${backendData.cliente_id}` // Avatar placeholder
       },
       status: backendData.status,
-      paymentStatus: backendData.status_pagamento || 'Não Pago', // ✅ CORREÇÃO: Mapear status_pagamento do backend
+      // ✅ REGRA DE NEGÓCIO (FINANCEIRO): pagamento só existe quando status === 'Concluído'
+      paymentStatus: backendData.status === 'Concluído'
+        ? (backendData.status_pagamento || 'Pago')
+        : 'Não aplicável',
       createdAt,
-      paymentMethod: backendData.metodo_pagamento || 'Não definido', // ✅ CORREÇÃO: Mapear metodo_pagamento do backend
+      paymentMethod: backendData.status === 'Concluído'
+        ? (backendData.metodo_pagamento || 'Não definido')
+        : '—',
       observacoes: backendData.observacoes || undefined, // ✅ NOVO: Mapear observações do backend
       // ✅ CRÍTICO: Campos necessários para edição no modal
       serviceId: backendData.servicos && backendData.servicos.length > 0 ? backendData.servicos[0].id : undefined, // ✅ CORREÇÃO: Usar primeiro serviço do array

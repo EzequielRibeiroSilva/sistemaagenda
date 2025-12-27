@@ -325,8 +325,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         }
     }, [selectedLocationFilter, filteredAgentOptions, filters.agent]);
     
-    const paymentStatusOptions = useMemo(() => [...new Set(appointments.map(a => a.paymentStatus))], [appointments]);
-    const paymentMethodOptions = ['Não definido', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'PIX'];
+    const paymentStatusOptions = useMemo(() => {
+        const unique = new Set(appointments.map(a => a.paymentStatus));
+        unique.add('Não aplicável');
+        return [...unique];
+    }, [appointments]);
+    const paymentMethodOptions = ['—', 'Não definido', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'PIX'];
 
     const getRemainingTimeClass = (status: AppointmentDetail['timeRemainingStatus']) => {
         switch (status) {

@@ -19,7 +19,7 @@ router.use(authenticate());
  * @returns { success: boolean, data: Array<{id: number, nome: string}>, message: string }
  */
 router.get('/list',
-  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.requireAnyRole(['ADMIN', 'MASTER', 'AGENTE']),
   async (req, res) => {
     await agenteController.list(req, res);
   }
@@ -33,7 +33,7 @@ router.get('/list',
  * @returns { success: boolean, data: Array<Agent>, message: string }
  */
 router.get('/',
-  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.requireAnyRole(['ADMIN', 'MASTER', 'AGENTE']),
   async (req, res) => {
     await agenteController.index(req, res);
   }

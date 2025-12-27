@@ -382,33 +382,45 @@ _Mensagem automática do Tally_`;
 
       const results = { cliente: null, agente: null };
 
+      const clienteTelefone = agendamentoData?.cliente_telefone;
+      const agenteTelefone = agendamentoData?.agente_telefone;
+
+      if (!clienteTelefone && !agenteTelefone) {
+        logger.log('⚠️ [WhatsApp] Nenhum telefone disponível para envio de confirmação (cliente/agente)');
+        return { success: false, error: 'Nenhum telefone disponível' };
+      }
+
       // Enviar para o cliente
-      const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
-      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
+      if (clienteTelefone) {
+        const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
+        results.cliente = await this.sendMessage(clienteTelefone, messageCliente);
 
-      // ✅ Registrar notificação para o cliente
-      await this.registrarNotificacao({
-        agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
-        unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
-        tipo_notificacao: 'confirmacao',
-        status: results.cliente.success ? 'enviado' : 'falha',
-        tentativas: 1,
-        telefone_destino: agendamentoData.cliente_telefone,
-        mensagem_enviada: results.cliente.success ? messageCliente : null,
-        whatsapp_message_id: results.cliente.data?.messageId || results.cliente.data?.key?.id || null,
-        erro_detalhes: results.cliente.success ? null : JSON.stringify(results.cliente.error)
-      });
+        // ✅ Registrar notificação para o cliente
+        await this.registrarNotificacao({
+          agendamento_id: agendamentoData.agendamento_id || agendamentoData.id,
+          unidade_id: agendamentoData.unidade_id || agendamentoData.unidade?.id,
+          tipo_notificacao: 'confirmacao',
+          status: results.cliente.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: clienteTelefone,
+          mensagem_enviada: results.cliente.success ? messageCliente : null,
+          whatsapp_message_id: results.cliente.data?.messageId || results.cliente.data?.key?.id || null,
+          erro_detalhes: results.cliente.success ? null : JSON.stringify(results.cliente.error)
+        });
 
-      if (!results.cliente.success) {
-        logger.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente.nome}:`, results.cliente.error);
+        if (!results.cliente.success) {
+          logger.error(`❌ [WhatsApp] Falha ao enviar confirmação para cliente ${agendamentoData.cliente?.nome || ''}:`, results.cliente.error);
+        } else {
+          logger.log(`✅ [WhatsApp] Confirmação enviada para cliente ${agendamentoData.cliente?.nome || ''}`);
+        }
       } else {
-        logger.log(`✅ [WhatsApp] Confirmação enviada para cliente ${agendamentoData.cliente.nome}`);
+        logger.log('⚠️ [WhatsApp] Cliente sem telefone - pulando envio de confirmação para cliente');
       }
 
       // Enviar para o agente
-      if (agendamentoData.agente_telefone) {
+      if (agenteTelefone) {
         const messageAgente = this.generateAppointmentConfirmationAgent(agendamentoData);
-        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+        results.agente = await this.sendMessage(agenteTelefone, messageAgente);
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({
@@ -417,7 +429,7 @@ _Mensagem automática do Tally_`;
           tipo_notificacao: 'confirmacao',
           status: results.agente.success ? 'enviado' : 'falha',
           tentativas: 1,
-          telefone_destino: agendamentoData.agente_telefone,
+          telefone_destino: agenteTelefone,
           mensagem_enviada: results.agente.success ? messageAgente : null,
           whatsapp_message_id: results.agente.data?.messageId || results.agente.data?.key?.id || null,
           erro_detalhes: results.agente.success ? null : JSON.stringify(results.agente.error)
@@ -428,6 +440,8 @@ _Mensagem automática do Tally_`;
         } else {
           logger.log(`✅ [WhatsApp] Confirmação enviada para agente ${agendamentoData.agente.nome}`);
         }
+      } else {
+        logger.log('⚠️ [WhatsApp] Agente sem telefone - pulando envio de confirmação para agente');
       }
 
       return results;

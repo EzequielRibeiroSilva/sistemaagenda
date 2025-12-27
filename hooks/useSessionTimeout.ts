@@ -57,7 +57,8 @@ export const useSessionTimeout = (config: SessionTimeoutConfig = {}) => {
   // Log de debug
   const debugLog = useCallback((message: string, data?: any) => {
     if (finalConfig.debug) {
-      console.log(`🕐 [SessionTimeout] ${message}`, data || '');
+      void message;
+      void data;
     }
   }, [finalConfig.debug]);
 

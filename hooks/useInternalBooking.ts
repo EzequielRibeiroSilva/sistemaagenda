@@ -26,6 +26,8 @@ export interface InternalAgente {
   id: number;
   nome: string;
   avatar_url?: string;
+  unidades?: Array<number | string | { id: number }>; // ✅ usado para filtrar por unidade no modal
+  unidade_id?: number | string; // ✅ fallback legado
 }
 
 export interface InternalCliente {

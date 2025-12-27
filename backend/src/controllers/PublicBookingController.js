@@ -380,110 +380,235 @@ class PublicBookingController {
       // Duração em minutos (padrão: 60 min)
       const duracaoMinutos = parseInt(duration) || 60;
 
-      logger.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min, exclude: ${exclude_agendamento_id || 'nenhum'})`);
+      const disponibilidade = await this.buildAgenteDisponibilidadeData({
+        agenteId,
+        data,
+        duracaoMinutos,
+        unidade_id,
+        exclude_agendamento_id
+      });
 
-      // Verificar se agente existe e está ativo
-      const agente = await this.agenteModel.findById(agenteId);
-      if (!agente || agente.status !== 'Ativo') {
-        return res.status(404).json({
+      return res.json({
+        success: true,
+        data: disponibilidade
+      });
+
+    } catch (error) {
+      logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error?.message);
+      if (process.env.NODE_ENV === 'development') {
+        logger.error('[PublicBooking] Stack trace:', error?.stack);
+      }
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao buscar disponibilidade',
+        debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /api/public/agentes/:id/disponibilidade-range?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD&duration=90&unidade_id=1&exclude_agendamento_id=123
+   * Buscar disponibilidade de um agente em um intervalo de datas (1 request para 30 dias)
+   */
+  async getAgenteDisponibilidadeRange(req, res) {
+    try {
+      const { id: agenteId } = req.params;
+      const { data_inicio, data_fim, duration, unidade_id, exclude_agendamento_id } = req.query;
+
+      if (!data_inicio || !data_fim) {
+        return res.status(400).json({
           success: false,
-          error: 'Agente não encontrado',
-          message: 'Este agente não está disponível'
+          error: 'Parâmetros obrigatórios',
+          message: 'Parâmetros data_inicio e data_fim são obrigatórios (formato: YYYY-MM-DD)'
         });
       }
 
-      // ✅ CORREÇÃO: Usar unidade_id do parâmetro se fornecido, senão usar do agente
-      const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
-      logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
+      const duracaoMinutos = parseInt(duration) || 60;
+
+      const parseDateStr = (dateStr) => {
+        const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+        if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+        return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      };
+
+      const toDateStr = (dt) => {
+        const y = dt.getUTCFullYear();
+        const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(dt.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      };
+
+      const start = parseDateStr(data_inicio);
+      const end = parseDateStr(data_fim);
+      if (!start || !end) {
+        return res.status(400).json({
+          success: false,
+          error: 'Datas inválidas',
+          message: 'data_inicio e data_fim devem estar no formato YYYY-MM-DD'
+        });
+      }
+
+      if (end.getTime() < start.getTime()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Intervalo inválido',
+          message: 'data_fim não pode ser menor que data_inicio'
+        });
+      }
+
+      const maxDays = 62;
+      const results = {};
+      let cursor = new Date(start.getTime());
+      let count = 0;
+
+      while (cursor.getTime() <= end.getTime()) {
+        count += 1;
+        if (count > maxDays) {
+          return res.status(400).json({
+            success: false,
+            error: 'Intervalo muito grande',
+            message: `Intervalo máximo permitido é de ${maxDays} dias`
+          });
+        }
+
+        const dateStr = toDateStr(cursor);
+        const disponibilidade = await this.buildAgenteDisponibilidadeData({
+          agenteId,
+          data: dateStr,
+          duracaoMinutos,
+          unidade_id,
+          exclude_agendamento_id
+        });
+
+        results[dateStr] = (Array.isArray(disponibilidade?.slots_disponiveis)
+          ? disponibilidade.slots_disponiveis.map(s => s.hora_inicio)
+          : []);
+
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          agente_id: parseInt(agenteId),
+          data_inicio,
+          data_fim,
+          duracao_minutos: duracaoMinutos,
+          disponibilidades: results
+        }
+      });
+
+    } catch (error) {
+      logger.error('[PublicBooking] Erro ao buscar disponibilidade (range):', error?.message);
+      if (process.env.NODE_ENV === 'development') {
+        logger.error('[PublicBooking] Stack trace:', error?.stack);
+      }
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao buscar disponibilidade',
+        debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  async buildAgenteDisponibilidadeData({ agenteId, data, duracaoMinutos, unidade_id, exclude_agendamento_id }) {
+    logger.log(`[PublicBooking] Buscando disponibilidade do agente ${agenteId} para ${data} (duração: ${duracaoMinutos}min, exclude: ${exclude_agendamento_id || 'nenhum'})`);
+
+    // Verificar se agente existe e está ativo
+    const agente = await this.agenteModel.findById(agenteId);
+    if (!agente || agente.status !== 'Ativo') {
+      const err = new Error('Agente não encontrado');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // ✅ CORREÇÃO: Usar unidade_id do parâmetro se fornecido, senão usar do agente
+    const unidadeIdParaUsar = unidade_id ? parseInt(unidade_id) : agente.unidade_id;
+    logger.log(`[PublicBooking] Usando unidade_id: ${unidadeIdParaUsar} (parâmetro: ${unidade_id}, agente: ${agente.unidade_id})`);
 
       // Calcular dia da semana (0 = Domingo, 6 = Sábado)
       // ✅ CORREÇÃO CRÍTICA: Tornar timezone-aware (America/Sao_Paulo) para evitar bugs perto da meia-noite
       // Ex: servidor em UTC pode interpretar "YYYY-MM-DDT00:00:00" como dia anterior no fuso local
-      const tz = 'America/Sao_Paulo';
-      const [y, m, d] = data.split('-').map(n => parseInt(n, 10));
-      const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-      const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
-      const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
+    const tz = 'America/Sao_Paulo';
+    const [y, m, d] = data.split('-').map(n => parseInt(n, 10));
+    const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
+    const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
 
       // ✅ CRÍTICO: Bloquear datas com exceções do AGENTE (DIA INTEIRO)
-      const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(parseInt(agenteId), data);
-      if (excecaoAgenteDiaInteiro) {
-        return res.json({
-          success: true,
-          data: {
-            agente_id: parseInt(agenteId),
-            data: data,
-            dia_semana: diaSemana,
-            duracao_minutos: duracaoMinutos,
-            slots_disponiveis: [],
-            total_slots: 0,
-            message: `Agente indisponível: ${excecaoAgenteDiaInteiro.tipo}${excecaoAgenteDiaInteiro.descricao ? ` - ${excecaoAgenteDiaInteiro.descricao}` : ''}`
-          }
-        });
-      }
+    const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(parseInt(agenteId), data);
+    if (excecaoAgenteDiaInteiro) {
+      return {
+        agente_id: parseInt(agenteId),
+        data: data,
+        dia_semana: diaSemana,
+        duracao_minutos: duracaoMinutos,
+        slots_disponiveis: [],
+        total_slots: 0,
+        message: `Agente indisponível: ${excecaoAgenteDiaInteiro.tipo}${excecaoAgenteDiaInteiro.descricao ? ` - ${excecaoAgenteDiaInteiro.descricao}` : ''}`
+      };
+    }
 
       // ✅ CRÍTICO: Bloquear datas com exceções de DIA INTEIRO
       // Exceções parciais por horário serão aplicadas filtrando slots (mais abaixo)
-      const excecaoDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidadeIdParaUsar, data);
-      if (excecaoDiaInteiro) {
-        logger.log(`[PublicBooking] 🚫 Data ${data} bloqueada por exceção (dia inteiro):`, {
-          unidade_id: unidadeIdParaUsar,
-          tipo: excecaoDiaInteiro.tipo,
-          descricao: excecaoDiaInteiro.descricao,
-          periodo: `${excecaoDiaInteiro.data_inicio} a ${excecaoDiaInteiro.data_fim}`
-        });
-        return res.json({
-          success: true,
-          data: {
-            agente_id: parseInt(agenteId),
-            data: data,
-            dia_semana: diaSemana,
-            duracao_minutos: duracaoMinutos,
-            slots_disponiveis: [],
-            total_slots: 0,
-            message: `Data indisponível: ${excecaoDiaInteiro.tipo}${excecaoDiaInteiro.descricao ? ` - ${excecaoDiaInteiro.descricao}` : ''}`
-          }
-        });
-      }
+    const excecaoDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidadeIdParaUsar, data);
+    if (excecaoDiaInteiro) {
+      logger.log(`[PublicBooking] 🚫 Data ${data} bloqueada por exceção (dia inteiro):`, {
+        unidade_id: unidadeIdParaUsar,
+        tipo: excecaoDiaInteiro.tipo,
+        descricao: excecaoDiaInteiro.descricao,
+        periodo: `${excecaoDiaInteiro.data_inicio} a ${excecaoDiaInteiro.data_fim}`
+      });
+      return {
+        agente_id: parseInt(agenteId),
+        data: data,
+        dia_semana: diaSemana,
+        duracao_minutos: duracaoMinutos,
+        slots_disponiveis: [],
+        total_slots: 0,
+        message: `Data indisponível: ${excecaoDiaInteiro.tipo}${excecaoDiaInteiro.descricao ? ` - ${excecaoDiaInteiro.descricao}` : ''}`
+      };
+    }
 
       // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
-      const configuracoes = await db('configuracoes_sistema')
-        .where('unidade_id', unidadeIdParaUsar)
-        .select('tempo_limite_agendar_horas')
-        .first();
+    const configuracoes = await db('configuracoes_sistema')
+      .where('unidade_id', unidadeIdParaUsar)
+      .select('tempo_limite_agendar_horas')
+      .first();
 
-      const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
-      logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
+    const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
+    logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
 
       // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
       // ✅ CORREÇÃO: Usar unidadeIdParaUsar ao invés de agente.unidade_id
-      const horarioUnidade = await db('horarios_funcionamento_unidade')
-        .where('unidade_id', unidadeIdParaUsar)
-        .where('dia_semana', diaSemana)
-        .where('is_aberto', true)
-        .first();
+    const horarioUnidade = await db('horarios_funcionamento_unidade')
+      .where('unidade_id', unidadeIdParaUsar)
+      .where('dia_semana', diaSemana)
+      .where('is_aberto', true)
+      .first();
 
-      if (!horarioUnidade || !horarioUnidade.horarios_json || horarioUnidade.horarios_json.length === 0) {
-        return res.json({
-          success: true,
-          data: {
-            agente_id: agenteId,
-            data: data,
-            dia_semana: diaSemana,
-            slots_disponiveis: [],
-            message: 'Unidade fechada neste dia'
-          }
-        });
-      }
+    if (!horarioUnidade || !horarioUnidade.horarios_json || horarioUnidade.horarios_json.length === 0) {
+      return {
+        agente_id: parseInt(agenteId),
+        data: data,
+        dia_semana: diaSemana,
+        duracao_minutos: duracaoMinutos,
+        slots_disponiveis: [],
+        total_slots: 0,
+        message: 'Unidade fechada neste dia'
+      };
+    }
 
       // 2. HIERARQUIA: Buscar horários específicos do AGENTE (ativo ou inativo)
       // ✅ CORREÇÃO CRÍTICA: SEMPRE filtrar por unidade_id para agentes multi-unidade
-      const horarioAgente = await db('horarios_funcionamento')
-        .where('agente_id', agenteId)
-        .where('dia_semana', diaSemana)
-        .where('unidade_id', unidadeIdParaUsar) // ✅ SEMPRE filtrar por unidade
-        .first();
+    const horarioAgente = await db('horarios_funcionamento')
+      .where('agente_id', agenteId)
+      .where('dia_semana', diaSemana)
+      .where('unidade_id', unidadeIdParaUsar) // ✅ SEMPRE filtrar por unidade
+      .first();
 
       logger.log(`[PublicBooking] Horário do agente para dia ${diaSemana} na unidade ${unidadeIdParaUsar}:`, horarioAgente);
 
@@ -517,57 +642,54 @@ class PublicBookingController {
       }
 
       // Verificar se há horários para trabalhar (se vazio = folga)
-      if (!horariosParaUsar || horariosParaUsar.length === 0) {
-        return res.json({
-          success: true,
-          data: {
-            agente_id: parseInt(agenteId),
-            data: data,
-            dia_semana: diaSemana,
-            duracao_minutos: duracaoMinutos,
-            slots_disponiveis: [],
-            total_slots: 0,
-            message: 'Agente não trabalha neste dia'
-          }
-        });
-      }
+    if (!horariosParaUsar || horariosParaUsar.length === 0) {
+      return {
+        agente_id: parseInt(agenteId),
+        data: data,
+        dia_semana: diaSemana,
+        duracao_minutos: duracaoMinutos,
+        slots_disponiveis: [],
+        total_slots: 0,
+        message: 'Agente não trabalha neste dia'
+      };
+    }
 
       // 3. HIERARQUIA: Buscar agendamentos existentes do agente nesta data
       // ✅ CORREÇÃO CRÍTICA: Excluir agendamento atual da verificação (reagendamento)
-      let queryAgendamentos = db('agendamentos')
-        .where('agente_id', agenteId)
-        .where('data_agendamento', data)
-        .whereIn('status', ['Aprovado', 'Confirmado']);
+    let queryAgendamentos = db('agendamentos')
+      .where('agente_id', agenteId)
+      .where('data_agendamento', data)
+      .whereIn('status', ['Aprovado', 'Confirmado']);
 
       // Se exclude_agendamento_id foi fornecido, excluir da verificação
-      if (exclude_agendamento_id) {
-        queryAgendamentos = queryAgendamentos.whereNot('id', parseInt(exclude_agendamento_id));
-        logger.log(`[PublicBooking] ✅ Excluindo agendamento #${exclude_agendamento_id} da verificação de conflitos`);
-      }
+    if (exclude_agendamento_id) {
+      queryAgendamentos = queryAgendamentos.whereNot('id', parseInt(exclude_agendamento_id));
+      logger.log(`[PublicBooking] ✅ Excluindo agendamento #${exclude_agendamento_id} da verificação de conflitos`);
+    }
 
-      const agendamentosExistentes = await queryAgendamentos.select('hora_inicio', 'hora_fim');
+    const agendamentosExistentes = await queryAgendamentos.select('hora_inicio', 'hora_fim');
 
       logger.log(`[PublicBooking] Agendamentos existentes: ${agendamentosExistentes.length}`);
 
       // 4. CALCULAR: Gerar slots disponíveis respeitando todas as restrições
       // ✅ CRÍTICO: Passar data para bloquear horários passados
       // ✅ NOVO: Passar tempo_limite_agendar_horas para filtrar horários
-      let slotsDisponiveis = this.generateAvailableSlots(
-        horariosParaUsar,
-        agendamentosExistentes,
-        duracaoMinutos,
-        data, // ✅ Passa a data para verificar se é dia atual e bloquear horários passados
-        tempoLimiteHoras // ✅ Passa tempo limite para agendar
-      );
+    let slotsDisponiveis = this.generateAvailableSlots(
+      horariosParaUsar,
+      agendamentosExistentes,
+      duracaoMinutos,
+      data,
+      tempoLimiteHoras
+    );
 
       // ✅ NOVO: Aplicar exceções parciais por horário do AGENTE
-      const excecoesAgenteDoDia = await AgenteExcecaoCalendario.findByAgenteAndDate(parseInt(agenteId), data);
-      const bloqueiosAgenteParciais = (Array.isArray(excecoesAgenteDoDia) ? excecoesAgenteDoDia : [])
-        .filter(e => e.hora_inicio && e.hora_fim)
-        .map(e => ({
-          inicio: e.hora_inicio.toString().substring(0, 5),
-          fim: e.hora_fim.toString().substring(0, 5)
-        }));
+    const excecoesAgenteDoDia = await AgenteExcecaoCalendario.findByAgenteAndDate(parseInt(agenteId), data);
+    const bloqueiosAgenteParciais = (Array.isArray(excecoesAgenteDoDia) ? excecoesAgenteDoDia : [])
+      .filter(e => e.hora_inicio && e.hora_fim)
+      .map(e => ({
+        inicio: e.hora_inicio.toString().substring(0, 5),
+        fim: e.hora_fim.toString().substring(0, 5)
+      }));
 
       if (bloqueiosAgenteParciais.length > 0) {
         const timeToMinutes = (time) => {
@@ -588,15 +710,15 @@ class PublicBookingController {
       }
 
       // ✅ NOVO: Aplicar exceções parciais por horário (bloqueios de intervalos no dia)
-      const excecoesDoDia = await ExcecaoCalendario.findByUnidadeAndDate(unidadeIdParaUsar, data);
-      const bloqueiosParciais = (Array.isArray(excecoesDoDia) ? excecoesDoDia : [])
-        .filter(e => e.hora_inicio && e.hora_fim)
-        .map(e => ({
-          inicio: e.hora_inicio.toString().substring(0, 5),
-          fim: e.hora_fim.toString().substring(0, 5),
-          tipo: e.tipo,
-          descricao: e.descricao
-        }));
+    const excecoesDoDia = await ExcecaoCalendario.findByUnidadeAndDate(unidadeIdParaUsar, data);
+    const bloqueiosParciais = (Array.isArray(excecoesDoDia) ? excecoesDoDia : [])
+      .filter(e => e.hora_inicio && e.hora_fim)
+      .map(e => ({
+        inicio: e.hora_inicio.toString().substring(0, 5),
+        fim: e.hora_fim.toString().substring(0, 5),
+        tipo: e.tipo,
+        descricao: e.descricao
+      }));
 
       if (bloqueiosParciais.length > 0) {
         const timeToMinutes = (time) => {
@@ -616,34 +738,17 @@ class PublicBookingController {
         });
       }
 
-      // Retornar slots completos com hora_inicio, hora_fim e disponivel
-      const horariosDisponiveis = slotsDisponiveis;
+    const horariosDisponiveis = slotsDisponiveis;
 
-      res.json({
-        success: true,
-        data: {
-          agente_id: parseInt(agenteId),
-          data: data,
-          dia_semana: diaSemana,
-          duracao_minutos: duracaoMinutos,
-          slots_disponiveis: horariosDisponiveis,
-          total_slots: horariosDisponiveis.length,
-          message: horariosDisponiveis.length === 0 ? 'Nenhum horário disponível neste dia' : `${horariosDisponiveis.length} horários disponíveis`
-        }
-      });
-
-    } catch (error) {
-      logger.error('[PublicBooking] Erro ao buscar disponibilidade:', error?.message);
-      if (process.env.NODE_ENV === 'development') {
-        logger.error('[PublicBooking] Stack trace:', error?.stack);
-      }
-      res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: 'Erro ao buscar disponibilidade',
-        debug: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
+    return {
+      agente_id: parseInt(agenteId),
+      data: data,
+      dia_semana: diaSemana,
+      duracao_minutos: duracaoMinutos,
+      slots_disponiveis: horariosDisponiveis,
+      total_slots: horariosDisponiveis.length,
+      message: horariosDisponiveis.length === 0 ? 'Nenhum horário disponível neste dia' : `${horariosDisponiveis.length} horários disponíveis`
+    };
   }
 
   /**

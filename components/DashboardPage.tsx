@@ -87,7 +87,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         // ✅ CORREÇÃO CRÍTICA: Filtrar apenas unidades ATIVAS para auto-seleção
         const unidadesAtivas = backendUnidades.filter(u => u.status !== 'Excluido');
-        console.log('[DashboardPage] Auto-seleção - unidadesAtivas:', unidadesAtivas.map(u => ({id: u.id, nome: u.nome, status: u.status})));
 
         let newLocationId: string | null = null;
 
@@ -131,13 +130,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         // 6. ✅ FALLBACK: Se nenhuma condição anterior foi atendida, usar primeira unidade ATIVA
         if (!newLocationId && unidadesAtivas.length > 0) {
             newLocationId = unidadesAtivas[0].id.toString();
-            console.log('[DashboardPage] Auto-seleção FALLBACK (plano indefinido):', newLocationId);
         }
 
         // 7. Aplica a nova seleção se for diferente da atual E se for uma seleção válida
         // ✅ CORREÇÃO: Aplicar para AMBAS as seções (Desempenho e Pré-Visualização)
         if (newLocationId && newLocationId !== performanceLocation) {
-            console.log('[DashboardPage] Aplicando auto-seleção:', { newLocationId, performanceLocation, previewLocation });
             setPerformanceLocation(newLocationId);
             setPreviewLocation(newLocationId);
         }
@@ -370,8 +367,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
     // ✅ TRANSFORMAR DADOS DO BACKEND PARA FORMATO DO COMPONENTE
     const agents: Agent[] = useMemo(() => {
-        console.log('[DashboardPage] Transformando backendAgentes:', backendAgentes.length, 'agentes', backendAgentes);
-
         return backendAgentes.map(agente => {
             // ✅ CORREÇÃO CRÍTICA: Backend pode retornar 'name' já formatado (igual CalendarPage)
             // Priorizar 'nome_exibicao', depois 'name', senão concatenar 'nome' + 'sobrenome'
@@ -381,8 +376,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             const avatarUrl = agente.avatar
                 ? getAssetUrl(agente.avatar)
                 : `https://i.pravatar.cc/150?u=${agente.id}`;
-
-            console.log(`[DashboardPage] Agente ${agente.id}: unidades=${JSON.stringify(agente.unidades)}`);
 
             return {
                 id: agente.id.toString(),

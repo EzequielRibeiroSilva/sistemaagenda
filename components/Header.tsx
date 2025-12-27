@@ -115,7 +115,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors "
               >
                 <Plus className="h-5 w-5 mr-2" />
-                Novas Reservas
+                Criar Agendamento
               </button>
               
               {/* Avatar will be rendered outside this div but reuse the logic */}

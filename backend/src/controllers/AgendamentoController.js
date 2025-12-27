@@ -753,63 +753,39 @@ class AgendamentoController extends BaseController {
 
       // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
-      try {
-        logger.log(`📱 [AgendamentoController] Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
-
-        // Buscar dados completos para a mensagem
-        const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
-        
-        if (!dadosCompletos) {
-          logger.error('❌ [AgendamentoController] Dados completos não encontrados para agendamento #' + agendamento.id);
-          return res.status(201).json({
-            success: true,
-            data: agendamentoCompleto,
-            message: 'Agendamento criado com sucesso (WhatsApp: dados incompletos)'
-          });
-        }
-        
-        logger.log('✅ [AgendamentoController] Dados completos obtidos:', {
-          cliente_telefone: dadosCompletos.cliente_telefone,
-          agente_telefone: dadosCompletos.agente_telefone,
-          unidade_telefone: dadosCompletos.unidade_telefone,
-          agendamento_id: dadosCompletos.agendamento_id
-        });
-
-        if (dadosCompletos && dadosCompletos.cliente_telefone) {
-          logger.log(`📤 [AgendamentoController] Enviando confirmação para cliente: ${dadosCompletos.cliente.nome}`);
-          
-          // ✅ CORREÇÃO: Usar WhatsAppService.sendAppointmentConfirmation
-          const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
-
-          logger.log('📊 [AgendamentoController] Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
-
-          if (resultadoWhatsApp.cliente && resultadoWhatsApp.cliente.success) {
-            logger.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o cliente');
-          } else {
-            logger.error('❌ [AgendamentoController] Falha ao enviar mensagem para o cliente:', resultadoWhatsApp.cliente?.error);
-          }
-
-          if (resultadoWhatsApp.agente && resultadoWhatsApp.agente.success) {
-            logger.log('✅ [AgendamentoController] Mensagem enviada com sucesso para o agente');
-          } else if (resultadoWhatsApp.agente) {
-            logger.error('❌ [AgendamentoController] Falha ao enviar mensagem para o agente:', resultadoWhatsApp.agente?.error);
-          }
-        } else {
-          logger.error('❌ [AgendamentoController] Telefone do cliente não encontrado nos dados completos');
-        }
-        
-        
-      } catch (whatsappError) {
-        logger.error('❌ [AgendamentoController] Erro no envio de WhatsApp:', whatsappError);
-        logger.error('❌ [AgendamentoController] Stack:', whatsappError.stack);
-        // Não falhar a criação do agendamento por erro no WhatsApp
-      }
-
-      return res.status(201).json({
+      // ✅ OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
+      // Em DEV pode haver delay proposital (15-40s) e fila, causando "Salvando..." por muito tempo.
+      // Responder imediatamente e disparar envio em background.
+      res.status(201).json({
         success: true,
         data: agendamentoCompleto,
         message: 'Agendamento criado com sucesso'
       });
+
+      setImmediate(async () => {
+        try {
+          logger.log(`📱 [AgendamentoController] (bg) Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
+
+          const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
+
+          if (!dadosCompletos) {
+            logger.error('❌ [AgendamentoController] (bg) Dados completos não encontrados para agendamento #' + agendamento.id);
+            return;
+          }
+
+          if (dadosCompletos?.cliente_telefone || dadosCompletos?.agente_telefone) {
+            logger.log(`📤 [AgendamentoController] (bg) Enviando confirmação WhatsApp (cliente/agente) para agendamento #${agendamento.id}`);
+            const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
+            logger.log('📊 [AgendamentoController] (bg) Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
+          } else {
+            logger.error('❌ [AgendamentoController] (bg) Nenhum telefone encontrado (cliente/agente) nos dados completos');
+          }
+        } catch (whatsappError) {
+          logger.error('❌ [AgendamentoController] (bg) Erro no envio de WhatsApp:', whatsappError);
+        }
+      });
+
+      return;
     } catch (error) {
       logger.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
 
@@ -893,6 +869,11 @@ class AgendamentoController extends BaseController {
         unidade_id
       } = req.body;
 
+      // ✅ REGRA DE NEGÓCIO (FINANCEIRO):
+      // - Concluído: exige método de pagamento e força status_pagamento = 'Pago'
+      // - Aprovado/Cancelado/Não Compareceu: NÃO pode ter pagamento (limpar metodo_pagamento/status_pagamento)
+      const statusFinal = status !== undefined ? status : agendamento.status;
+
       // ✅ CORREÇÃO: Mapear forma_pagamento para metodo_pagamento (nome correto na tabela)
       const dadosParaAtualizar = {};
 
@@ -908,7 +889,34 @@ class AgendamentoController extends BaseController {
       
       if (data_agendamento !== undefined) dadosParaAtualizar.data_agendamento = data_agendamento;
       if (status !== undefined) dadosParaAtualizar.status = status;
-      if (forma_pagamento !== undefined) dadosParaAtualizar.metodo_pagamento = forma_pagamento; // ✅ CORREÇÃO
+
+      // ✅ REGRA DE NEGÓCIO: Pagamento só existe quando status = 'Concluído'
+      if (statusFinal === 'Concluído') {
+        const metodoPagamentoFinal = (forma_pagamento !== undefined ? forma_pagamento : agendamento.metodo_pagamento);
+
+        // Concluído exige método de pagamento definido
+        if (!metodoPagamentoFinal) {
+          return res.status(400).json({
+            success: false,
+            error: 'Pagamento obrigatório',
+            message: 'Para finalizar como Concluído, é obrigatório definir a forma de pagamento.'
+          });
+        }
+
+        if (forma_pagamento !== undefined) {
+          dadosParaAtualizar.metodo_pagamento = forma_pagamento; // ✅ CORREÇÃO
+        }
+
+        // Concluído implica pagamento confirmado
+        dadosParaAtualizar.status_pagamento = 'Pago';
+      } else {
+        // Para qualquer status diferente de Concluído, pagamento é inválido
+        // Importante: o schema legado usa defaults e pode não aceitar NULL
+        // e pode não ter colunas de pontos/cupom. Manter compatível.
+        dadosParaAtualizar.metodo_pagamento = 'Não definido';
+        dadosParaAtualizar.status_pagamento = 'Não Pago';
+      }
+
       if (observacoes !== undefined) dadosParaAtualizar.observacoes = observacoes;
       if (cliente_id !== undefined) dadosParaAtualizar.cliente_id = cliente_id;
       if (unidade_id !== undefined) dadosParaAtualizar.unidade_id = unidade_id;
@@ -947,44 +955,35 @@ class AgendamentoController extends BaseController {
       // ✅ PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
       const foiCancelado = (status === 'Cancelado' && agendamento.status !== 'Cancelado');
 
-      if (foiCancelado) {
-        // Buscar dados completos para enviar notificações de cancelamento
-        const dadosCompletos = await this.buscarDadosCompletos(id);
+      // ✅ OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
+      // O envio pode ter delay em DEV e fila, causando "Salvando..." por muito tempo.
+      // Disparar em background para manter UX rápida.
+      const houveReagendamento = !foiCancelado && (
+        (hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
+        (hora_fim && hora_fim !== agendamento.hora_fim) ||
+        (data_agendamento && data_agendamento !== agendamento.data_agendamento)
+      );
 
-        if (dadosCompletos) {
+      if (foiCancelado || houveReagendamento) {
+        setImmediate(async () => {
           try {
-            await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-            logger.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
-          } catch (whatsappError) {
-            logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
-          }
-        }
-      } else {
-        // ✅ PRIORIDADE 2: Verificar se houve mudança de data/hora para enviar notificação de reagendamento
-        const houveReagendamento = (
-          (hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
-          (hora_fim && hora_fim !== agendamento.hora_fim) ||
-          (data_agendamento && data_agendamento !== agendamento.data_agendamento)
-        );
+            const dadosCompletos = await this.buscarDadosCompletos(id);
+            if (!dadosCompletos) return;
 
-        if (houveReagendamento) {
-          // Buscar dados completos para enviar notificações
-          const dadosCompletos = await this.buscarDadosCompletos(id);
-
-          if (dadosCompletos) {
-            // Enviar notificações de reagendamento para cliente e agente
-            try {
+            if (foiCancelado) {
+              await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+              logger.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
+            } else if (houveReagendamento) {
               await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
               logger.log(`✅ [AgendamentoController] Notificações de REAGENDAMENTO enviadas para agendamento #${id}`);
-            } catch (whatsappError) {
-              logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de reagendamento:`, whatsappError);
-              // Não falhar a requisição se o WhatsApp falhar
             }
+          } catch (whatsappError) {
+            logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações em background:`, whatsappError);
           }
-        }
+        });
       }
-      
-      return res.json({ 
+
+      return res.json({
         success: true,
         data,
         message: 'Agendamento atualizado com sucesso' 

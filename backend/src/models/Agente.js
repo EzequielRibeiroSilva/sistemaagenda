@@ -38,7 +38,7 @@ class Agente extends BaseModel {
             .orWhere('unidades.usuario_id', usuarioId);  // Agentes através de unidades
       })
       // .where('agentes.status', 'Ativo')  // ❌ REMOVIDO: Agentes bloqueados também podem ser associados
-      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url')
+      .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url', 'agentes.unidade_id')
       .orderBy('agentes.nome');
   }
 

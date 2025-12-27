@@ -333,9 +333,16 @@ class AgenteController {
             unidadesIds = [agente.unidade_id, ...unidadesIds];
           }
 
+          // ✅ NOVO: Buscar horários de funcionamento do agente (por unidade)
+          const horarios = await this.agenteModel.db('horarios_funcionamento')
+            .where('agente_id', agente.id)
+            .where('ativo', true)
+            .select('dia_semana', 'periodos', 'unidade_id');
+
           return {
             ...agente,
-            unidades: unidadesIds // ✅ Array de números
+            unidades: unidadesIds, // ✅ Array de números
+            horarios_funcionamento: horarios
           };
         })
       );
@@ -346,7 +353,22 @@ class AgenteController {
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
         avatar_url: agente.avatar_url || null,
         unidades: agente.unidades || [], // ✅ CRÍTICO: Incluir array de unidades
-        unidade_id: agente.unidade_id // ✅ Incluir unidade_id principal (fallback)
+        unidade_id: agente.unidade_id, // ✅ Incluir unidade_id principal (fallback)
+        // ✅ NOVO: Horários por unidade para filtro de disponibilidade no Novo Agendamento
+        horarios_funcionamento: Array.isArray(agente.horarios_funcionamento)
+          ? agente.horarios_funcionamento.map(h => {
+              const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
+              const periodosNormalizados = Array.isArray(periodos) ? periodos.map(p => ({
+                start: p.start || p.inicio || '09:00',
+                end: p.end || p.fim || '17:00'
+              })) : [];
+              return {
+                dia_semana: h.dia_semana,
+                unidade_id: h.unidade_id,
+                periodos: periodosNormalizados
+              };
+            })
+          : []
       }));
 
 

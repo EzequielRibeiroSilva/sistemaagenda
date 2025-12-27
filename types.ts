@@ -1,5 +1,7 @@
 export type AppointmentStatus = 'Aprovado' | 'Concluído' | 'Cancelado' | 'Não Compareceu';
 
+export type PaymentStatus = 'Pago' | 'Não Pago' | 'Não aplicável';
+
 export interface Agent {
     id: string;
     name: string;
@@ -106,7 +108,7 @@ export interface AppointmentDetail {
     avatar: string;
   };
   status: AppointmentStatus;
-  paymentStatus: 'Não Pago' | 'Pago';
+  paymentStatus: PaymentStatus;
   createdAt: string;
   paymentMethod?: string;
   observacoes?: string; // Observações sobre o serviço realizado

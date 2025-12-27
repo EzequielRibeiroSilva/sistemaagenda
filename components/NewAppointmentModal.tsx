@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Search, Plus, RotateCw, ChevronDown, Check, Tag } from './Icons';
 import type { ScheduleSlot, Agent, AppointmentStatus } from '../types';
@@ -281,6 +281,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [selectedServices, setSelectedServices] = useState<number[]>([]);
     const [selectedExtras, setSelectedExtras] = useState<number[]>([]);
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
 
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
     const [date, setDate] = useState('');
@@ -290,7 +292,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [clientLastName, setClientLastName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
     const [status, setStatus] = useState<AppointmentStatus>('Aprovado');
-    const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+    const [paymentMethod, setPaymentMethod] = useState('');
     const [observacoes, setObservacoes] = useState('');
 
     const [isSearchingClient, setIsSearchingClient] = useState(false);
@@ -323,7 +325,22 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const pontosAtivo = settings?.pontos_ativo || false;
     const reaisPorPontos = settings?.reais_por_pontos || 10;
 
+    const isConcluido = status === 'Concluído';
+
     const isEditing = !!appointmentData;
+
+    const durationMinutes = useMemo(() => {
+        let total = 0;
+        selectedServices.forEach(id => {
+            const s = allServices.find(x => x.id === id);
+            if (s?.duracao_minutos) total += Number(s.duracao_minutos) || 0;
+        });
+        selectedExtras.forEach(id => {
+            const e = allExtras.find(x => x.id === id);
+            if (e?.duracao_minutos) total += Number(e.duracao_minutos) || 0;
+        });
+        return total > 0 ? total : 60;
+    }, [selectedServices, selectedExtras, allServices, allExtras]);
     
     // Verificar dados recebidos ao abrir modal
     useEffect(() => {
@@ -434,20 +451,76 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             return;
         }
 
+        const locationIdNumber = parseInt(effectiveLocationId);
+        const locationIdStr = String(effectiveLocationId);
+
         // Filtrar agentes que trabalham na unidade selecionada
         const agentesNaUnidade = allAgents.filter(agente => {
             // Verificar se o agente tem a propriedade unidades (array de IDs)
             // Ou se tem unidade_id (ID único)
-            const agenteUnidades = (agente as any).unidades || [];
-            const agenteUnidadeId = (agente as any).unidade_id;
-            
-            // ✅ CORREÇÃO CRÍTICA: Converter effectiveLocationId para número para comparação
-            const locationIdNumber = parseInt(effectiveLocationId);
+            const agenteUnidadesRaw = (agente as any).unidades || (agente as any).unidades_ids || [];
+            const agenteUnidades = Array.isArray(agenteUnidadesRaw)
+                ? agenteUnidadesRaw
+                    .map((u: any) => {
+                        if (u === null || u === undefined) return NaN;
+                        if (typeof u === 'object') {
+                            const id = (u as any).id ?? (u as any).unidade_id;
+                            return parseInt(id);
+                        }
+                        return parseInt(u);
+                    })
+                    .filter((n: number) => Number.isFinite(n))
+                : [];
+
+            const agenteUnidadesStr = new Set(
+                (Array.isArray(agenteUnidadesRaw) ? agenteUnidadesRaw : [])
+                    .map((u: any) => {
+                        if (u === null || u === undefined) return null;
+                        if (typeof u === 'object') {
+                            const id = (u as any).id ?? (u as any).unidade_id;
+                            return id !== undefined && id !== null ? String(id) : null;
+                        }
+                        return String(u);
+                    })
+                    .filter(Boolean)
+            );
+
+            const agenteUnidadeIdRaw = (agente as any).unidade_id;
+            const agenteUnidadeId = agenteUnidadeIdRaw !== undefined && agenteUnidadeIdRaw !== null
+                ? parseInt(agenteUnidadeIdRaw)
+                : undefined;
+            const agenteUnidadeIdStr = agenteUnidadeIdRaw !== undefined && agenteUnidadeIdRaw !== null
+                ? String(agenteUnidadeIdRaw)
+                : undefined;
             
             // Verificar se o agente trabalha nesta unidade
-            return agenteUnidades.includes(locationIdNumber) || 
-                   agenteUnidadeId === locationIdNumber;
+            const isAssociatedToUnit = (
+                agenteUnidades.includes(locationIdNumber) ||
+                agenteUnidadesStr.has(locationIdStr) ||
+                agenteUnidadeId === locationIdNumber ||
+                agenteUnidadeIdStr === locationIdStr
+            );
+
+            if (!isAssociatedToUnit) {
+                return false;
+            }
+
+            // ✅ Regra: se o agente NÃO tem nenhum horário cadastrado nesta unidade, não deve aparecer.
+            // (mesma lógica aplicada no CalendarPage)
+            const hf = (agente as any).horarios_funcionamento;
+            if (!Array.isArray(hf)) {
+                return true;
+            }
+
+            const hasAnyScheduleInUnit = hf.some((h: any) => {
+                const unidadeMatch = h?.unidade_id?.toString?.() === locationIdStr;
+                const periodos = Array.isArray(h?.periodos) ? h.periodos : [];
+                return unidadeMatch && periodos.length > 0;
+            });
+
+            return hasAnyScheduleInUnit;
         });
+
 
         setFilteredAgents(agentesNaUnidade);
 
@@ -836,6 +909,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             if (details.cliente && details.cliente.id) {
                                 setClienteId(details.cliente.id);
                             }
+
+                            // ✅ REGRA DE NEGÓCIO (FINANCEIRO): preencher pagamento apenas se Concluído
+                            // (backend pode usar nomenclatura diferente: payment_method ou metodo_pagamento)
+                            const metodo = (details as any).metodo_pagamento || (details as any).payment_method;
+                            if ((details as any).status === 'Concluído') {
+                                setPaymentMethod(metodo || '');
+                            } else {
+                                setPaymentMethod('');
+                            }
                         }
                     } catch (error) {
                         // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
@@ -851,6 +933,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
         loadAppointmentDetails();
     }, [isOpen, isEditing, appointmentData, fetchAgendamentoDetalhes, allServices]);
+
+    // ✅ REGRA DE NEGÓCIO (FINANCEIRO): ao trocar status para NÃO Concluído, limpar campos financeiros
+    useEffect(() => {
+        if (!isEditing) return;
+
+        if (!isConcluido) {
+            setPaymentMethod('');
+            setPontosUsados(0);
+            setCupomAplicado(null);
+            setCupomCodigo('');
+            setCupomErro(null);
+        }
+    }, [isEditing, isConcluido]);
 
 
 
@@ -1031,8 +1126,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         e.stopPropagation();
     };
     
-    const modalTitle = isEditing ? 'Editar Agendamento' : 'Novo Agendamento';
-    const submitButtonText = isEditing ? 'Salvar Alterações' : 'Criar Compromisso';
+    const modalTitle = isEditing ? 'Editar Agendamento' : 'Criar Agendamento';
+    const submitButtonText = isEditing ? 'Salvar Alterações' : 'Criar Agendamento';
 
     const handleSelectClient = async (client: InternalCliente) => {
         setSelectedClient(client);
@@ -1085,6 +1180,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     }
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             // Validações básicas
             if (!selectedAgentId) {
@@ -1123,6 +1220,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 return;
             }
 
+            // ✅ REGRA DE NEGÓCIO (FINANCEIRO): Concluído exige forma de pagamento
+            if (isEditing && isConcluido && !paymentMethod) {
+                toast.warning('Pagamento Obrigatório', 'Para finalizar como Concluído, selecione a forma de pagamento.');
+                return;
+            }
+
             const agendamentoData = {
                 agente_id: selectedAgentId,
                 servico_ids: selectedServices,
@@ -1151,12 +1254,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     hora_inicio: startTime,
                     hora_fim: endTime,
                     status: status,
-                    forma_pagamento: paymentMethod,
+                    ...(isConcluido ? { forma_pagamento: paymentMethod } : {}),
                     observacoes: observacoes.trim() || '',
                     // ✅ NOVO: Incluir pontos usados se houver
-                    ...(pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
+                    ...(isConcluido && pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
                     // ✅ NOVO: Incluir cupom_id se houver cupom aplicado
-                    ...(cupomAplicado ? { cupom_id: cupomAplicado.cupom_id, desconto_cupom: cupomAplicado.desconto_calculado } : {}),
+                    ...(isConcluido && cupomAplicado ? { cupom_id: cupomAplicado.cupom_id, desconto_cupom: cupomAplicado.desconto_calculado } : {}),
                     ...(selectedClient
                         ? { cliente_id: selectedClient.id }
                         : {
@@ -1200,6 +1303,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Salvar', `Não foi possível salvar o agendamento: ${errorMessage}`);
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -1358,11 +1463,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                 placeholder="Clique para selecionar..."
                             />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField label="Selecionado" className={!isEditing ? 'md:col-span-2' : ''}>
+                                <FormField label="Equipe" className={!isEditing ? 'md:col-span-2' : ''}>
                                     <Select
                                         value={selectedAgentId || ''}
                                         onChange={e => setSelectedAgentId(e.target.value ? parseInt(e.target.value) : null)}
-                                        disabled={user?.role === 'AGENTE'} // ✅ AGENTE não pode trocar de agente
+                                        disabled={user?.role === 'AGENTE' || (!isEditing && !effectiveLocationId)} // ✅ exigir local na criação
                                     >
                                         <option value="">Selecione um agente...</option>
                                         {/* ✅ CORREÇÃO: Usar filteredAgents ao invés de allAgents */}
@@ -1372,9 +1477,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                     </Select>
                                     {user?.role === 'AGENTE' && (
                                         <p className="text-xs text-gray-500 mt-1">Você só pode criar agendamentos para si mesmo</p>
-                                    )}
-                                    {!effectiveLocationId && (
-                                        <p className="text-xs text-yellow-600 mt-1">⚠️ Selecione um local primeiro para ver os agentes disponíveis</p>
                                     )}
                                 </FormField>
                                 {isEditing && (
@@ -1486,7 +1588,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                     </div>
                                     
                                     {/* ✅ NOVO: Sistema de Pontos */}
-                                    {pontosAtivo && clienteId && (
+                                    {isConcluido && pontosAtivo && clienteId && (
                                         <>
                                             <div className="border-t border-gray-200 my-3"></div>
                                             
@@ -1551,114 +1653,119 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         </>
                                     )}
 
-                                    {/* ✅ NOVO: Cupom de Desconto */}
-                                    <div className="border-t border-gray-200 my-3"></div>
+                                    {isConcluido && (
+                                        <>
+                                            {/* ✅ NOVO: Cupom de Desconto */}
+                                            <div className="border-t border-gray-200 my-3"></div>
 
-                                    <div className="bg-white border border-gray-200 rounded-lg p-4">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Cupom de Desconto</h4>
+                                            <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Cupom de Desconto</h4>
 
-                                        {!cupomAplicado ? (
-                                            <div className="space-y-2">
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        type="text"
-                                                        value={cupomCodigo}
-                                                        onChange={(e) => {
-                                                            setCupomCodigo(e.target.value.toUpperCase());
-                                                            setCupomErro(null);
-                                                        }}
-                                                        placeholder="Digite o código do cupom"
-                                                        className="flex-1 uppercase"
-                                                        disabled={isValidatingCupom}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleValidarCupom}
-                                                        disabled={isValidatingCupom || !cupomCodigo.trim()}
-                                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
-                                                    >
-                                                        {isValidatingCupom ? 'Validando...' : 'Aplicar'}
-                                                    </button>
-                                                </div>
-                                                {cupomErro && (
-                                                    <p className="text-xs text-red-600 flex items-center gap-1">
-                                                        <X className="w-3 h-3" />
-                                                        {cupomErro}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="bg-blue-50 border border-[#2663EB] rounded-lg p-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <Tag className="w-4 h-4 text-[#2663EB]" />
-                                                        <div>
-                                                            <p className="text-sm font-semibold text-[#2663EB]">{cupomAplicado.codigo}</p>
-                                                            <p className="text-xs text-[#2663EB]">
-                                                                {cupomAplicado.tipo_desconto === 'percentual'
-                                                                    ? `${cupomAplicado.valor_desconto}% de desconto`
-                                                                    : `R$ ${cupomAplicado.valor_desconto.toFixed(2).replace('.', ',')} de desconto`
-                                                                }
+                                                {!cupomAplicado ? (
+                                                    <div className="space-y-2">
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                type="text"
+                                                                value={cupomCodigo}
+                                                                onChange={(e) => {
+                                                                    setCupomCodigo(e.target.value.toUpperCase());
+                                                                    setCupomErro(null);
+                                                                }}
+                                                                placeholder="Digite o código do cupom"
+                                                                className="flex-1 uppercase"
+                                                                disabled={isValidatingCupom}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleValidarCupom}
+                                                                disabled={isValidatingCupom || !cupomCodigo.trim()}
+                                                                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                                                            >
+                                                                {isValidatingCupom ? 'Validando...' : 'Aplicar'}
+                                                            </button>
+                                                        </div>
+                                                        {cupomErro && (
+                                                            <p className="text-xs text-red-600 flex items-center gap-1">
+                                                                <X className="w-3 h-3" />
+                                                                {cupomErro}
                                                             </p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-blue-50 border border-[#2663EB] rounded-lg p-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <Tag className="w-4 h-4 text-[#2663EB]" />
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-[#2663EB]">{cupomAplicado.codigo}</p>
+                                                                    <p className="text-xs text-[#2663EB]">
+                                                                        {cupomAplicado.tipo_desconto === 'percentual'
+                                                                            ? `${cupomAplicado.valor_desconto}% de desconto`
+                                                                            : `R$ ${cupomAplicado.valor_desconto.toFixed(2).replace('.', ',')} de desconto`
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleRemoverCupom}
+                                                                className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                                                            >
+                                                                <X className="w-4 h-4 text-[#2663EB]" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-2 pt-2 border-t border-[#2663EB]/30">
+                                                            <div className="flex justify-between text-sm">
+                                                                <span className="text-[#2663EB]">Desconto do cupom:</span>
+                                                                <span className="font-bold text-[#2663EB]">- R$ {cupomAplicado.desconto_calculado.toFixed(2).replace('.', ',')}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleRemoverCupom}
-                                                        className="p-1 hover:bg-blue-100 rounded-full transition-colors"
-                                                    >
-                                                        <X className="w-4 h-4 text-[#2663EB]" />
-                                                    </button>
-                                                </div>
-                                                <div className="mt-2 pt-2 border-t border-[#2663EB]/30">
-                                                    <div className="flex justify-between text-sm">
-                                                        <span className="text-[#2663EB]">Desconto do cupom:</span>
-                                                        <span className="font-bold text-[#2663EB]">- R$ {cupomAplicado.desconto_calculado.toFixed(2).replace('.', ',')}</span>
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
 
-                                    {/* ✅ NOVO: Resumo de Descontos e Valor Final */}
-                                    {(pontosUsados > 0 || cupomAplicado) && (
-                                        <>
-                                            <div className="border-t border-gray-200 my-3"></div>
-                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-gray-600">Valor Original:</span>
-                                                    <span className="text-gray-800">R$ {totalPrice.toFixed(2).replace('.', ',')}</span>
-                                                </div>
-                                                {pontosUsados > 0 && (
-                                                    <div className="flex justify-between text-sm">
-                                                        <span className="text-green-600">Desconto (Pontos):</span>
-                                                        <span className="text-green-600">- R$ {descontoCalculado.toFixed(2).replace('.', ',')}</span>
+                                            {/* ✅ NOVO: Resumo de Descontos e Valor Final */}
+                                            {(pontosUsados > 0 || cupomAplicado) && (
+                                                <>
+                                                    <div className="border-t border-gray-200 my-3"></div>
+                                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                                                        <div className="flex justify-between text-sm">
+                                                            <span className="text-gray-600">Valor Original:</span>
+                                                            <span className="text-gray-800">R$ {totalPrice.toFixed(2).replace('.', ',')}</span>
+                                                        </div>
+                                                        {pontosUsados > 0 && (
+                                                            <div className="flex justify-between text-sm">
+                                                                <span className="text-green-600">Desconto (Pontos):</span>
+                                                                <span className="text-green-600">- R$ {descontoCalculado.toFixed(2).replace('.', ',')}</span>
+                                                            </div>
+                                                        )}
+                                                        {cupomAplicado && (
+                                                            <div className="flex justify-between text-sm">
+                                                                <span className="text-[#2663EB]">Desconto (Cupom):</span>
+                                                                <span className="text-[#2663EB]">- R$ {cupomAplicado.desconto_calculado.toFixed(2).replace('.', ',')}</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="pt-2 border-t border-blue-300">
+                                                            <div className="flex justify-between text-lg font-bold">
+                                                                <span className="text-gray-800">Valor Final:</span>
+                                                                <span className="text-blue-600">R$ {valorFinal.toFixed(2).replace('.', ',')}</span>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                )}
-                                                {cupomAplicado && (
-                                                    <div className="flex justify-between text-sm">
-                                                        <span className="text-[#2663EB]">Desconto (Cupom):</span>
-                                                        <span className="text-[#2663EB]">- R$ {cupomAplicado.desconto_calculado.toFixed(2).replace('.', ',')}</span>
-                                                    </div>
-                                                )}
-                                                <div className="pt-2 border-t border-blue-300">
-                                                    <div className="flex justify-between text-lg font-bold">
-                                                        <span className="text-gray-800">Valor Final:</span>
-                                                        <span className="text-blue-600">R$ {valorFinal.toFixed(2).replace('.', ',')}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                </>
+                                            )}
+
+                                            <FormField label="Forma de Pagamento">
+                                                <Select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                                                    <option value="">Selecione...</option>
+                                                    <option value="Dinheiro">Dinheiro</option>
+                                                    <option value="Cartão Crédito">Cartão Crédito</option>
+                                                    <option value="Cartão Débito">Cartão Débito</option>
+                                                    <option value="PIX">PIX</option>
+                                                </Select>
+                                            </FormField>
                                         </>
                                     )}
-
-                                    <FormField label="Forma de Pagamento">
-                                        <Select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                                            <option value="Dinheiro">Dinheiro</option>
-                                            <option value="Cartão Crédito">Cartão Crédito</option>
-                                            <option value="Cartão Débito">Cartão Débito</option>
-                                            <option value="PIX">PIX</option>
-                                        </Select>
-                                    </FormField>
                                     
                                     <FormField label="Observações">
                                         <textarea
@@ -1680,10 +1787,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
                         <button
                             onClick={handleSubmit}
-                            disabled={isLoading}
+                            disabled={isSubmitting}
                             className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors text-base disabled:bg-blue-400 disabled:cursor-not-allowed"
                         >
-                            {isLoading ? 'Salvando...' : submitButtonText}
+                            {isSubmitting ? 'Salvando...' : submitButtonText}
                         </button>
                     </div>
                 </div>
@@ -1694,7 +1801,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 onSelect={handleDateTimeSelect}
                 agentName={filteredAgents.find(a => a.id === selectedAgentId)?.nome || ''}
                 agentId={selectedAgentId} // ✅ PASSAR ID DO AGENTE PARA BUSCAR DISPONIBILIDADE REAL
-                unidadeId={selectedLocationId ? parseInt(selectedLocationId) : undefined} // ✅ PASSAR ID DA UNIDADE
+                unidadeId={effectiveLocationId ? parseInt(effectiveLocationId) : undefined} // ✅ PASSAR ID DA UNIDADE
+                durationMinutes={durationMinutes}
             />
         </>
     , portalRoot);

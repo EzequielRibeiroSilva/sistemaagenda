@@ -153,8 +153,6 @@ export const useCupomManagement = () => {
     setError(null);
 
     try {
-      console.log('[useCupomManagement] Enviando cupom:', cupomData);
-
       const response = await fetch(`${API_BASE_URL}/cupons`, {
         method: 'POST',
         headers: {
@@ -166,8 +164,6 @@ export const useCupomManagement = () => {
 
       const data = await response.json();
 
-      console.log('[useCupomManagement] Resposta:', data);
-
       if (data.success) {
         return { success: true };
       } else {
@@ -176,7 +172,6 @@ export const useCupomManagement = () => {
         return { success: false, error: errorMessage };
       }
     } catch (err: any) {
-      console.error('[useCupomManagement] Erro:', err);
       const errorMessage = err.message || 'Erro ao criar cupom';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -197,8 +192,6 @@ export const useCupomManagement = () => {
     setError(null);
 
     try {
-      console.log('[useCupomManagement] Atualizando cupom:', id, cupomData);
-
       const response = await fetch(`${API_BASE_URL}/cupons/${id}`, {
         method: 'PUT',
         headers: {
@@ -210,8 +203,6 @@ export const useCupomManagement = () => {
 
       const data = await response.json();
 
-      console.log('[useCupomManagement] Resposta atualização:', data);
-
       if (data.success) {
         return { success: true };
       } else {
@@ -220,7 +211,6 @@ export const useCupomManagement = () => {
         return { success: false, error: errorMessage };
       }
     } catch (err: any) {
-      console.error('[useCupomManagement] Erro:', err);
       const errorMessage = err.message || 'Erro ao atualizar cupom';
       setError(errorMessage);
       return { success: false, error: errorMessage };

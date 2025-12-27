@@ -204,13 +204,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 confirmacao_senha: confirmPassword || undefined
             });
 
-            // DEBUG: Log do resultado
-            console.log('[SettingsPage] Resultado do salvamento:', result);
-            console.log('[SettingsPage] logo_url retornado:', result?.logo_url);
-
             // Atualizar AuthContext se logo foi alterada
             if (logoFile && result && result.logo_url) {
-                console.log('[SettingsPage] Atualizando avatarUrl no AuthContext:', result.logo_url);
                 updateUser({ avatarUrl: result.logo_url });
             }
 
@@ -300,14 +295,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
       <Card title="Informações do Negócio">
           <FormRow label="Logo do Negócio">
               <div className="flex items-center gap-4">
-                  {/* DEBUG: Log para verificar valores */}
-                  {console.log('[SettingsPage RENDER] logoPreview:', logoPreview, 'settings?.logo_url:', settings?.logo_url, 'computed src:', logoPreview || getAssetUrl(settings?.logo_url) || '/default-logo.png')}
                   <img
                       src={logoPreview || getAssetUrl(settings?.logo_url) || '/default-logo.png'}
                       alt="Logo do Negócio"
                       className="w-16 h-16 rounded-full object-cover bg-gray-200"
                       onError={(e) => {
-                          console.error('[SettingsPage] Erro ao carregar imagem:', e);
                       }}
                   />
                   <div className="flex flex-col gap-2">

@@ -59,6 +59,14 @@ router.get('/agentes/:id/disponibilidade', async (req, res) => {
 });
 
 /**
+ * GET /api/public/agentes/:id/disponibilidade-range?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD
+ * Buscar disponibilidade de um agente em um intervalo de datas
+ */
+router.get('/agentes/:id/disponibilidade-range', async (req, res) => {
+  await publicBookingController.getAgenteDisponibilidadeRange(req, res);
+});
+
+/**
  * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y&session_token=ZZZ
  * Buscar cliente por telefone (para pré-preencher dados)
  * ✅ CORREÇÃO 1.2: Rate limiting agressivo (3 tentativas / 5 min) + validação de sessão

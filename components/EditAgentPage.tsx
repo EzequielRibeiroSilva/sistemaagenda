@@ -9,9 +9,9 @@ import { AgentUnitScheduleState } from '../types';
 import CalendarExceptionsEditor from './CalendarExceptionsEditor';
 import { CalendarException } from '../hooks/useUnitManagement';
 
- class ScheduleErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
+ class ScheduleErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
      declare props: { children: React.ReactNode };
-     declare state: { hasError: boolean; error?: Error };
+     declare state: { hasError: boolean };
 
      constructor(props: { children: React.ReactNode }) {
          super(props);
@@ -19,11 +19,12 @@ import { CalendarException } from '../hooks/useUnitManagement';
      }
 
      static getDerivedStateFromError(error: Error) {
-         return { hasError: true, error };
+         return { hasError: true };
      }
 
      componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-         console.error('❌ [EditAgentPage] Erro ao renderizar agenda personalizada:', error, errorInfo);
+         void error;
+         void errorInfo;
      }
 
      render() {
@@ -33,9 +34,6 @@ import { CalendarException } from '../hooks/useUnitManagement';
                      <h3 className="font-semibold text-red-800">Erro ao exibir a agenda personalizada</h3>
                      <p className="text-sm text-red-700 mt-1">
                          Abra o console do navegador (F12) para ver o stack trace e me envie o erro.
-                     </p>
-                     <p className="text-xs text-red-700 mt-2 font-mono break-words">
-                         {this.state.error?.message}
                      </p>
                  </div>
              );
@@ -605,20 +603,8 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             {/* ✅ NOVO: Renderizar uma seção de agenda para cada unidade */}
             {agentSchedules.length > 0 ? (
                 agentSchedules.map((agentUnitSchedule) => {
-                    console.log('🟢 [EditAgentPage] Renderizando unidade:', {
-                        unidade_id: agentUnitSchedule.unidade_id,
-                        unidade_nome: agentUnitSchedule.unidade_nome,
-                        agenda_personalizada: agentUnitSchedule.agenda_personalizada,
-                        schedule_keys: Object.keys(agentUnitSchedule.schedule || {})
-                    });
-                    
                     const unitData = availableUnits.find(u => u.id === agentUnitSchedule.unidade_id);
                     const unitLimits = unitData?.horarios_funcionamento;
-                    
-                    console.log('🟢 [EditAgentPage] unitData encontrado:', {
-                        found: !!unitData,
-                        unitLimits_length: unitLimits?.length || 0
-                    });
                     
                     return (
                         <FormCard 
