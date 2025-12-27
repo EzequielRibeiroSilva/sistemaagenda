@@ -50,6 +50,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [clienteId, setClienteId] = useState<number | null>(null);
 
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isSelectingLocation, setIsSelectingLocation] = useState(false);
 
   // Estados temporários para seleções
   const [tempSelectedAgentId, setTempSelectedAgentId] = useState<number | null>(null);
@@ -112,7 +113,15 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-              setIsBootstrapping(false);
+              // Fallback: suportar links antigos onde /booking/:id era unidade_id
+              try {
+                setUnidadeId(userId);
+                setSelectedLocationId(userId);
+                await loadSalonData(userId);
+                setCurrentStep(2);
+              } finally {
+                setIsBootstrapping(false);
+              }
               return;
             }
 
@@ -135,7 +144,15 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               setIsBootstrapping(false);
             }
           } catch (err) {
-            setIsBootstrapping(false);
+            // Fallback: suportar links antigos onde /booking/:id era unidade_id
+            try {
+              setUnidadeId(userId);
+              setSelectedLocationId(userId);
+              await loadSalonData(userId);
+              setCurrentStep(2);
+            } finally {
+              setIsBootstrapping(false);
+            }
           }
           return;
         }
@@ -496,7 +513,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     autoLoadSlotsOnStep5();
   }, [currentStep, selectedAgent, selectedServices, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
 
-  if (isBootstrapping || isLoading || isLoadingAlternatives) {
+  if (isBootstrapping || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50" style={{ minHeight: '100dvh' }}><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
   }
 
@@ -539,23 +556,23 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     );
   }
 
-  if (!salonData) {
-    return <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4" style={{ minHeight: '100dvh' }}>{error || "Não foi possível carregar os dados do salão."}</div>;
-  }
-
   // Render Steps
+
+  const locationsToShow = (availableLocations && availableLocations.length > 0)
+    ? availableLocations
+    : alternativeLocations;
 
   const renderLocationSelection = () => {
     return (
       <div className="flex flex-col">
         <StepHeader title="Escolha um local" />
         <div className="p-4 space-y-3">
-          {availableLocations.length === 0 ? (
+          {locationsToShow.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-500">Carregando locais disponíveis...</p>
             </div>
           ) : (
-            availableLocations.map(location => (
+            locationsToShow.map(location => (
               <SelectionCard
                 key={location.id}
                 title={location.nome}
@@ -570,6 +587,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <button
             onClick={async () => {
               if (!tempSelectedLocationId) return;
+              if (isSelectingLocation) return;
               
               // Confirmar seleção do local
               setSelectedLocationId(tempSelectedLocationId);
@@ -578,15 +596,20 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               setUnidadeId(tempSelectedLocationId);
               
               // Carregar dados do local selecionado
-              await loadSalonData(tempSelectedLocationId);
-              
-              // Avançar para seleção de serviços
-              setCurrentStep(2);
+              setIsSelectingLocation(true);
+              try {
+                await loadSalonData(tempSelectedLocationId);
+                
+                // Avançar para seleção de serviços
+                setCurrentStep(2);
+              } finally {
+                setIsSelectingLocation(false);
+              }
             }}
-            disabled={!tempSelectedLocationId || availableLocations.length === 0}
+            disabled={isSelectingLocation || !tempSelectedLocationId || locationsToShow.length === 0}
             className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
           >
-            Próximo
+            {isSelectingLocation ? 'Carregando...' : 'Próximo'}
           </button>
         </div>
       </div>
@@ -1425,6 +1448,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
 
   const renderStep = () => {
+    if (!salonData && currentStep !== 1) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 text-red-500 font-semibold p-4" style={{ minHeight: '100dvh' }}>
+          {error || "Não foi possível carregar os dados do salão."}
+        </div>
+      );
+    }
     switch(currentStep) {
       case 1: return renderLocationSelection();
       case 2: return renderServiceSelection();
@@ -1478,24 +1508,24 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               >
                 <div className="flex items-center gap-3">
                   <img
-                    src={(businessConfig?.logo_url || salonData.configuracoes.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData.configuracoes.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
-                    alt={businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
+                    src={(businessConfig?.logo_url || salonData?.configuracoes?.logo_url) ? getAssetUrl(businessConfig?.logo_url || salonData?.configuracoes?.logo_url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(businessConfig?.nome_negocio || salonData?.configuracoes?.nome_negocio || 'Negócio')}&background=2563eb&color=fff&size=128`}
+                    alt={businessConfig?.nome_negocio || salonData?.configuracoes?.nome_negocio || 'Agendamento'}
                     className="w-12 h-12 rounded-full object-cover flex-shrink-0"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      const name = businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio || 'N';
+                      const name = businessConfig?.nome_negocio || salonData?.configuracoes?.nome_negocio || 'N';
                       target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563eb&color=fff&size=128`;
                     }}
                   />
 
                   <div className="min-w-0 flex-1">
                     <h1 className="text-lg font-bold text-gray-900 leading-tight truncate">
-                      {businessConfig?.nome_negocio || salonData.configuracoes.nome_negocio}
+                      {businessConfig?.nome_negocio || salonData?.configuracoes?.nome_negocio || 'Agendamento'}
                     </h1>
                     <p className="text-sm text-gray-600 leading-snug truncate">
                       {bookingHeaderSummary}
                     </p>
-                    {salonData.unidade.endereco && currentStep !== 1 && (
+                    {salonData?.unidade?.endereco && currentStep !== 1 && (
                       <p className="text-xs text-gray-500 leading-snug truncate">
                         {salonData.unidade.endereco}
                       </p>
