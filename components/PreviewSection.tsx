@@ -241,6 +241,49 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
+  const backendAgentesById = useMemo(() => {
+    const map: Record<string, BackendAgente> = {};
+    backendAgentes.forEach(a => {
+      map[a.id.toString()] = a;
+    });
+    return map;
+  }, [backendAgentes]);
+
+  const getDayOfWeekIndex = useCallback((date: Date): number => {
+    const day = date.getDay();
+    return day === 0 ? 7 : day;
+  }, []);
+
+  const matchesDiaSemana = useCallback((recordDiaSemana: number, date: Date): boolean => {
+    const jsDay = date.getDay();
+    const oneToSeven = getDayOfWeekIndex(date);
+    return recordDiaSemana === jsDay || recordDiaSemana === oneToSeven;
+  }, [getDayOfWeekIndex]);
+
+  const isAgentWorkingOnDay = useCallback((agent: BackendAgente, date: Date, unidadeId: string): boolean => {
+    // ✅ REGRA (Programação do Dia): só considera que trabalha se houver horários configurados
+    // para o agente (sem fallback para "agenda padrão da unidade").
+    if (!agent.horarios_funcionamento || agent.horarios_funcionamento.length === 0) {
+      return false;
+    }
+
+    const schedule = agent.horarios_funcionamento.find(h => {
+      const dayMatch = matchesDiaSemana(h.dia_semana, date);
+      const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === unidadeId;
+      return dayMatch && unidadeMatch;
+    });
+
+    if (!schedule) {
+      return false;
+    }
+
+    if (!schedule.periodos || schedule.periodos.length === 0) {
+      return false;
+    }
+
+    return true;
+  }, [matchesDiaSemana]);
+
   // ✅ NOVO: Filtrar agentes por local selecionado (igual CalendarPage)
   const displayedAgents = useMemo(() => {
     console.log('[PreviewSection] displayedAgents - selectedLocation:', selectedLocation, 'agents:', agents.length, 'agents data:', agents);
@@ -253,19 +296,48 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     // Filtrar agentes que trabalham no local selecionado
     const locationIdStr = selectedLocation.toString();
+    const locationIdNum = parseInt(locationIdStr);
     const filtered = agents.filter(agent => {
-      const hasLocation = Array.isArray(agent.unidades) &&
-                         agent.unidades.includes(locationIdStr);
+      const unidadesRaw: any[] = Array.isArray(agent.unidades) ? (agent.unidades as any[]) : [];
+      const unidadesStr = unidadesRaw.map(u => u?.toString?.() ?? String(u));
+      const hasUnidadesArray = unidadesStr.length > 0;
 
-      console.log(`[PreviewSection] Agent ${agent.id} (${agent.name}): unidades=${JSON.stringify(agent.unidades)}, locationIdStr=${locationIdStr}, hasLocation=${hasLocation}`);
+      const hasLocation = unidadesStr.includes(locationIdStr) ||
+        (!Number.isNaN(locationIdNum) && unidadesStr.includes(locationIdNum.toString()));
 
-      return hasLocation;
+      // Compatibilidade com formato legado (agente.unidade_id)
+      const legacyUnidadeId = (agent as any).unidade_id;
+      // ✅ IMPORTANTE: só confiar no legado quando NÃO há array de unidades
+      const hasLegacyLocation = !hasUnidadesArray && legacyUnidadeId != null && legacyUnidadeId.toString() === locationIdStr;
+
+      const backendAgent = backendAgentesById[agent.id];
+      // ✅ Regra: além de pertencer à unidade, precisa ter ao menos 1 horário configurado para ela
+      const hasAnyScheduleForUnit = (() => {
+        if (!backendAgent?.horarios_funcionamento || backendAgent.horarios_funcionamento.length === 0) {
+          return false;
+        }
+
+        return backendAgent.horarios_funcionamento.some(h => {
+          const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === locationIdStr;
+          const hasPeriods = Array.isArray(h.periodos) && h.periodos.length > 0;
+          return unidadeMatch && hasPeriods;
+        });
+      })();
+
+      // ✅ Regra (Programação do Dia): só exibir quem trabalha HOJE nesta unidade
+      const worksTodayInUnit = backendAgent
+        ? isAgentWorkingOnDay(backendAgent, selectedDate, locationIdStr)
+        : false;
+
+      console.log(`[PreviewSection] Agent ${agent.id} (${agent.name}): unidades=${JSON.stringify(agent.unidades)}, locationIdStr=${locationIdStr}, hasLocation=${hasLocation}, hasLegacyLocation=${hasLegacyLocation}, hasAnyScheduleForUnit=${hasAnyScheduleForUnit}, worksTodayInUnit=${worksTodayInUnit}`);
+
+      return (hasLocation || hasLegacyLocation) && hasAnyScheduleForUnit && worksTodayInUnit;
     });
 
     console.log('[PreviewSection] displayedAgents - filtered result:', filtered.length, 'agents');
 
     return filtered;
-  }, [agents, selectedLocation]);
+  }, [agents, selectedLocation, selectedDate, backendAgentesById, isAgentWorkingOnDay]);
 
   // ✅ NOVO: Verificar se o dia está bloqueado por exceção de calendário
   const dayException = useMemo(() => {
@@ -292,47 +364,6 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       return inRange && isPartial;
     });
   }, [calendarExceptions, selectedDate, selectedLocation, toLocalDateString]);
-
-  const backendAgentesById = useMemo(() => {
-    const map: Record<string, BackendAgente> = {};
-    backendAgentes.forEach(a => {
-      map[a.id.toString()] = a;
-    });
-    return map;
-  }, [backendAgentes]);
-
-  const getDayOfWeekIndex = useCallback((date: Date): number => {
-    const day = date.getDay();
-    return day === 0 ? 7 : day;
-  }, []);
-
-  const matchesDiaSemana = useCallback((recordDiaSemana: number, date: Date): boolean => {
-    const jsDay = date.getDay();
-    const oneToSeven = getDayOfWeekIndex(date);
-    return recordDiaSemana === jsDay || recordDiaSemana === oneToSeven;
-  }, [getDayOfWeekIndex]);
-
-  const isAgentWorkingOnDay = useCallback((agent: BackendAgente, date: Date, unidadeId: string): boolean => {
-    if (!agent.horarios_funcionamento || agent.horarios_funcionamento.length === 0) {
-      return true;
-    }
-
-    const schedule = agent.horarios_funcionamento.find(h => {
-      const dayMatch = matchesDiaSemana(h.dia_semana, date);
-      const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === unidadeId;
-      return dayMatch && unidadeMatch;
-    });
-
-    if (!schedule) {
-      return false;
-    }
-
-    if (!schedule.periodos || schedule.periodos.length === 0) {
-      return false;
-    }
-
-    return true;
-  }, [matchesDiaSemana]);
 
   // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
   const agentAppointmentCards = useMemo(() => {
