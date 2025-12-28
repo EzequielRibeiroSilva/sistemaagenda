@@ -501,24 +501,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 agenteUnidadeIdStr === locationIdStr
             );
 
-            if (!isAssociatedToUnit) {
-                return false;
-            }
-
-            // ✅ Regra: se o agente NÃO tem nenhum horário cadastrado nesta unidade, não deve aparecer.
-            // (mesma lógica aplicada no CalendarPage)
-            const hf = (agente as any).horarios_funcionamento;
-            if (!Array.isArray(hf)) {
-                return true;
-            }
-
-            const hasAnyScheduleInUnit = hf.some((h: any) => {
-                const unidadeMatch = h?.unidade_id?.toString?.() === locationIdStr;
-                const periodos = Array.isArray(h?.periodos) ? h.periodos : [];
-                return unidadeMatch && periodos.length > 0;
-            });
-
-            return hasAnyScheduleInUnit;
+            // ✅ CORREÇÃO: No modal de agendamento, mostrar TODOS os agentes associados à unidade
+            // A validação de horários será feita no momento de buscar disponibilidade
+            return isAssociatedToUnit;
         });
 
 
