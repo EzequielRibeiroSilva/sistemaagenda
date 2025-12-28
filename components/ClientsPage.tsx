@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Plus, CheckCircle } from './Icons';
 import { useClientManagement, type ClientFilters } from '../hooks/useClientManagement';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
@@ -21,6 +21,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(12); // ✅ 12 itens por página
 
+    const hasLoadedInitialDataRef = useRef(false);
+
     // Hook de gerenciamento de clientes
     const {
         clients,
@@ -39,39 +41,45 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     const { settings, loadSettings } = useSettingsManagement();
     const pontosAtivo = settings?.pontos_ativo || false;
 
-    // ✅ CORREÇÃO: Carregar dados iniciais APENAS UMA VEZ
+    // ✅ Carregar configurações (não deve disparar reload da lista)
     useEffect(() => {
-        applyFilters({ page: 1, limit: itemsPerPage });
-        loadSettings(); // Carregar configurações para verificar se pontos está ativo
+        loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Array vazio = executa apenas uma vez
+    }, []);
 
-    // ✅ Aplicar filtros com debounce otimizado
+    // ✅ Aplicar filtros: 1a carga imediata, mudanças com debounce
     useEffect(() => {
+        const apiFilters: ClientFilters = {
+            page: currentPage,
+            limit: itemsPerPage
+        };
+
+        if (filters.id) {
+            apiFilters.id = parseInt(filters.id);
+        }
+
+        if (filters.name) {
+            apiFilters.nome = filters.name;
+        }
+
+        if (filters.phone) {
+            apiFilters.telefone = filters.phone;
+        }
+
+        // Primeira carga: sem debounce (evita double fetch + flicker)
+        if (!hasLoadedInitialDataRef.current) {
+            hasLoadedInitialDataRef.current = true;
+            applyFilters(apiFilters);
+            return;
+        }
+
         const timeoutId = setTimeout(() => {
-            const apiFilters: ClientFilters = {
-                page: currentPage,
-                limit: itemsPerPage
-            };
-
-            if (filters.id) {
-                apiFilters.id = parseInt(filters.id);
-            }
-
-            if (filters.name) {
-                apiFilters.nome = filters.name;
-            }
-
-            if (filters.phone) {
-                apiFilters.telefone = filters.phone;
-            }
-
             applyFilters(apiFilters);
         }, 300); // ✅ Debounce de 300ms para resposta mais rápida (igual COMPROMISSOS)
 
         return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters, currentPage]); // ✅ Incluir currentPage
+    }, [filters, currentPage]);
 
     // ✅ Handlers compatíveis com BaseTable
     const handleFilterChange = useCallback((filterKey: string, value: string) => {
@@ -102,13 +110,54 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         return `Mostrando ${clients.length} de ${totalCount}`;
     }, [loading, clients.length, totalCount]);
 
+    const getWhatsAppWebLink = useCallback((phone?: string) => {
+        if (!phone) return null;
+        // WhatsApp espera DDI+DDD+Número sem caracteres especiais
+        // Ex: 5585999999999
+        let digits = phone.toString().trim().replace(/\D/g, '');
+        if (!digits) return null;
+        if (!digits.startsWith('55')) {
+            digits = `55${digits}`;
+        }
+        return `https://web.whatsapp.com/send?phone=${digits}`;
+    }, []);
+
+    const formatBirthDate = useCallback((birthDate?: any) => {
+        if (!birthDate) return '-';
+
+        // Pode vir como Date (dependendo do parser do PG/Knex)
+        if (birthDate instanceof Date) {
+            if (Number.isNaN(birthDate.getTime())) return '-';
+            return birthDate.toLocaleDateString('pt-BR');
+        }
+
+        // Pode vir como string (YYYY-MM-DD) ou ISO completo
+        if (typeof birthDate === 'string') {
+            const trimmed = birthDate.trim();
+            if (!trimmed) return '-';
+            const candidate = trimmed.includes('T') ? trimmed : `${trimmed}T12:00:00`;
+            const parsed = new Date(candidate);
+            if (Number.isNaN(parsed.getTime())) return '-';
+            return parsed.toLocaleDateString('pt-BR');
+        }
+
+        // Fallback defensivo
+        try {
+            const parsed = new Date(birthDate);
+            if (Number.isNaN(parsed.getTime())) return '-';
+            return parsed.toLocaleDateString('pt-BR');
+        } catch {
+            return '-';
+        }
+    }, []);
+
     // ✅ NOVO: Definir colunas da tabela dinamicamente
     const tableColumns: TableColumn[] = useMemo(() => {
         const columns: TableColumn[] = [
             {
                 key: 'id',
                 label: 'ID',
-                width: 'w-20',
+                width: 'w-32 min-w-[120px]',
                 filterType: 'text',
                 filterPlaceholder: 'ID',
                 render: (client: any) => (
@@ -129,7 +178,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 e.preventDefault();
                                 onEditClient(client.id);
                             }}
-                            className="text-blue-600 hover:underline font-medium"
+                            className="text-blue-600 hover:underline font-bold"
                         >
                             {client.name}
                         </a>
@@ -147,8 +196,32 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 width: 'w-1/5',
                 filterType: 'text',
                 filterPlaceholder: 'Telefone...',
+                render: (client: any) => {
+                    const whatsappLink = getWhatsAppWebLink(client.phone);
+                    if (!whatsappLink) {
+                        return <span className="text-blue-600 font-bold">{client.phone || '-'}</span>;
+                    }
+                    return (
+                        <a
+                            href={whatsappLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline font-bold"
+                            title="Abrir conversa no WhatsApp"
+                        >
+                            {client.phone}
+                        </a>
+                    );
+                },
+            },
+            {
+                key: 'birthDate',
+                label: 'ANIVERSÁRIO',
+                width: 'w-40',
+                align: 'center',
+                filterType: 'none',
                 render: (client: any) => (
-                    <span className="text-gray-600">{client.phone}</span>
+                    <span className="text-gray-600">{formatBirthDate(client.birthDate)}</span>
                 ),
             },
         ];
@@ -197,7 +270,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink]);
 
     return (
         <div className="space-y-6">

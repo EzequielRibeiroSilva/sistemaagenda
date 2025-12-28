@@ -48,9 +48,9 @@ class ReminderJob {
       const results = await this.reminderService.processAllReminders();
 
       // Atualizar estatísticas
-      this.stats.totalProcessed += results.reminders24h.processed + results.reminders2h.processed;
-      this.stats.totalSent += results.reminders24h.sent + results.reminders2h.sent;
-      this.stats.totalFailed += results.reminders24h.failed + results.reminders2h.failed;
+      this.stats.totalProcessed += (results.reminders24h.processed + results.reminders2h.processed + (results.birthdays?.processed || 0));
+      this.stats.totalSent += (results.reminders24h.sent + results.reminders2h.sent + (results.birthdays?.sent || 0));
+      this.stats.totalFailed += (results.reminders24h.failed + results.reminders2h.failed + (results.birthdays?.failed || 0));
       this.stats.totalSkipped += results.reminders24h.skipped + results.reminders2h.skipped;
 
       this.lastExecution = new Date();
@@ -61,6 +61,9 @@ class ReminderJob {
       logger.log(`⏱️ Duração: ${duration}s`);
       logger.log(`📊 Lembretes 24h: ${results.reminders24h.sent}/${results.reminders24h.processed} enviados`);
       logger.log(`📊 Lembretes 1h: ${results.reminders2h.sent}/${results.reminders2h.processed} enviados`);
+      if (results.birthdays) {
+        logger.log(`🎂 Aniversários: ${results.birthdays.sent}/${results.birthdays.processed} enviados`);
+      }
       logger.log('='.repeat(80) + '\n');
 
     } catch (error) {

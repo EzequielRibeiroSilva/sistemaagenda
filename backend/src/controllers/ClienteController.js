@@ -127,6 +127,7 @@ class ClienteController {
         firstName: cliente.primeiro_nome,
         lastName: cliente.ultimo_nome,
         phone: cliente.telefone,
+        birthDate: cliente.data_nascimento,
         isSubscriber: cliente.is_assinante,
         subscriptionStartDate: cliente.data_inicio_assinatura,
         status: cliente.status,
@@ -215,6 +216,7 @@ class ClienteController {
           firstName: novoCliente.primeiro_nome,
           lastName: novoCliente.ultimo_nome,
           phone: novoCliente.telefone,
+          birthDate: novoCliente.data_nascimento,
           isSubscriber: novoCliente.is_assinante,
           subscriptionStartDate: novoCliente.data_inicio_assinatura,
           status: novoCliente.status
@@ -280,6 +282,7 @@ class ClienteController {
           firstName: cliente.primeiro_nome,
           lastName: cliente.ultimo_nome,
           phone: cliente.telefone,
+          birthDate: cliente.data_nascimento,
           isSubscriber: cliente.is_assinante,
           subscriptionStartDate: cliente.data_inicio_assinatura,
           status: cliente.status,
@@ -333,6 +336,7 @@ class ClienteController {
           firstName: clienteAtualizado.primeiro_nome,
           lastName: clienteAtualizado.ultimo_nome,
           phone: clienteAtualizado.telefone,
+          birthDate: clienteAtualizado.data_nascimento,
           isSubscriber: clienteAtualizado.is_assinante,
           subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
           status: clienteAtualizado.status
@@ -435,6 +439,7 @@ class ClienteController {
           id: cliente.id,
           name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
           phone: cliente.telefone,
+          birthDate: cliente.data_nascimento,
           isSubscriber: cliente.is_assinante
         },
         message: 'Cliente encontrado/criado para agendamento'

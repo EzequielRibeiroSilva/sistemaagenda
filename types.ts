@@ -23,6 +23,7 @@ export interface Appointment {
     locationId: string;
     startTime: string; // "HH:mm"
     endTime: string;   // "HH:mm"
+    clientBirthDate?: string; // "YYYY-MM-DD"
 }
 
 export interface UpcomingAppointment {

@@ -15,6 +15,7 @@ interface BackendAgendamento {
   hora_fim: string;
   status: 'Pendente' | 'Aprovado' | 'Cancelado' | 'Concluído' | 'Não Compareceu';
   valor_total: number;
+  cliente_data_nascimento?: string;
   metodo_pagamento?: string;
   status_pagamento?: 'Pago' | 'Não Pago';
   servicos?: Array<{

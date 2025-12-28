@@ -62,6 +62,7 @@ export interface BackendAgendamento {
   observacoes?: string;
   cliente_nome: string;
   cliente_telefone: string;
+  cliente_data_nascimento?: string;
   agente_nome: string;
   agente_avatar_url?: string;
   unidade_nome: string;
@@ -104,6 +105,7 @@ export interface CalendarAppointment {
   date: string;
   clientName?: string;
   clientPhone?: string;
+  clientBirthDate?: string;
   status?: string;
 }
 
@@ -235,6 +237,9 @@ export const useCalendarData = () => {
   const transformAppointment = useCallback((backendAgendamento: BackendAgendamento): CalendarAppointment => {
     // Extrair apenas a data (YYYY-MM-DD)
     const dateString = backendAgendamento.data_agendamento.split('T')[0];
+    const birthDateString = backendAgendamento.cliente_data_nascimento
+      ? backendAgendamento.cliente_data_nascimento.split('T')[0]
+      : undefined;
     
     // Determinar serviceId baseado nos serviços do agendamento
     // IMPORTANTE: Não usar services aqui para evitar loop infinito de re-renders
@@ -253,6 +258,7 @@ export const useCalendarData = () => {
       date: dateString,
       clientName: backendAgendamento.cliente_nome,
       clientPhone: backendAgendamento.cliente_telefone,
+      clientBirthDate: birthDateString,
       status: backendAgendamento.status
     };
   }, []); // ← SEM DEPENDÊNCIAS para evitar loop infinito

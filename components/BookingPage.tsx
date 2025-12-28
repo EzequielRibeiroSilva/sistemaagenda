@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ChevronLeft, CheckCircle, Calendar, Users, Briefcase, Tag, X } from './Icons';
 import { usePublicBooking, SalonData, PublicAgente, PublicServico, PublicExtra, SlotDisponivel } from '../hooks/usePublicBooking';
@@ -36,6 +34,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [clientBirthDate, setClientBirthDate] = useState<Date | null>(null);
+  const [clientBirthDateText, setClientBirthDateText] = useState('');
   const [bookingSubmitError, setBookingSubmitError] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<SlotDisponivel[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -83,6 +83,52 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const formatDateToYYYYMMDD = useCallback((date: Date): string => {
     const pad = (num: number) => num.toString().padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }, []);
+
+  const formatDateToDDMMYYYY = useCallback((date: Date): string => {
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  }, []);
+
+  const parseDDMMYYYYToDate = useCallback((value: string): Date | null => {
+    const m = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+
+    if (year < 1900) return null;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    if (year > currentYear) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+
+    const date = new Date(year, month - 1, day);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    // Não permitir datas futuras
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const selected = new Date(year, month - 1, day);
+    if (selected > today) return null;
+
+    return date;
+  }, []);
+
+  const maskBirthDate = useCallback((value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    const d = digits.slice(0, 2);
+    const m = digits.slice(2, 4);
+    const y = digits.slice(4, 8);
+    if (digits.length <= 2) return d;
+    if (digits.length <= 4) return `${d}/${m}`;
+    return `${d}/${m}/${y}`;
   }, []);
 
   // Efeito para carregar os dados do salão
@@ -264,7 +310,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     if (step <= 3) { setSelectedAgentId(null); setTempSelectedAgentId(null); }
     if (step <= 4) { setSelectedExtraServiceIds([]); setTempSelectedExtraServiceIds([]); }
     if (step <= 5) { setSelectedDate(new Date()); setSelectedTime(null); setTempSelectedTime(null); setAvailableSlots([]); }
-    if (step <= 6) { setClientName(''); setClientPhone(''); }
+    if (step <= 6) { setClientName(''); setClientPhone(''); setClientBirthDate(null); }
   };
 
   // Função para avançar da seleção de serviços (passo 2) para próximo passo
@@ -328,12 +374,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (step === 2) return 2;
       if (step === 3 || step === 4) return 3;
       if (step === 5) return 4;
-      if (step === 6) return 5;
-      return 6;
+      if (step === 6 || step === 7) return 5;
+      if (step === 8) return 6;
+      return 7;
     };
 
     const stage = getStage(currentStep);
-    const totalStages = 6;
+    const totalStages = 7;
     const percent = Math.min(100, Math.max(0, (stage / totalStages) * 100));
 
     let stageLabel = 'Unidade';
@@ -342,8 +389,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     else if (currentStep === 4) stageLabel = 'Extras';
     else if (currentStep === 5) stageLabel = 'Data e Hora';
     else if (currentStep === 6) stageLabel = 'Seus Dados';
-    else if (currentStep === 7) stageLabel = 'Revisão';
-    else if (currentStep === 8) stageLabel = 'Concluído';
+    else if (currentStep === 7) stageLabel = 'Data de Nascimento';
+    else if (currentStep === 8) stageLabel = 'Revisão';
+    else if (currentStep === 9) stageLabel = 'Concluído';
 
     return { stage, totalStages, percent, stageLabel };
   }, [currentStep]);
@@ -1023,13 +1071,71 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             }
 
             // Buscar cliente existente antes de ir para revisão
-            await buscarClienteExistente(clientPhone);
-            setCurrentStep(7);
+            const clienteInfo = await buscarClienteExistente(clientPhone);
+
+            if (clienteInfo && clienteInfo.hasBirthDate) {
+              setClientBirthDate(clienteInfo.birthDate);
+              setClientBirthDateText(formatDateToDDMMYYYY(clienteInfo.birthDate));
+              setCurrentStep(8);
+            } else {
+              setClientBirthDate(null);
+              setClientBirthDateText('');
+              setCurrentStep(7);
+            }
           }} 
           disabled={!clientName || !clientPhone} 
           className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
         >
             Continuar para Revisão
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderBirthDateStep = () => (
+    <div className="flex flex-col">
+      <StepHeader title="Data de nascimento" onBack={() => resetToStep(6)} />
+      <div className="p-4 space-y-4">
+        <h3 className="text-base font-semibold text-gray-800">Confirme sua data de nascimento</h3>
+
+        <div>
+          <label className="text-sm font-medium text-gray-600 mb-1 block">Data de nascimento</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={clientBirthDateText}
+            onChange={(e) => {
+              if (bookingSubmitError) {
+                setBookingSubmitError(null);
+              }
+              const masked = maskBirthDate(e.target.value);
+              setClientBirthDateText(masked);
+              const parsed = parseDDMMYYYYToDate(masked);
+              setClientBirthDate(parsed);
+            }}
+            placeholder="DD/MM/AAAA"
+            className="w-full bg-white border border-gray-300 text-gray-800 text-base rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
+          />
+          {bookingSubmitError && (
+            <p className="text-sm text-red-600 mt-2 font-medium">{bookingSubmitError}</p>
+          )}
+        </div>
+      </div>
+      <div className="p-4 mt-auto border-t border-gray-200 bg-white">
+        <button
+          onClick={() => {
+            const parsed = clientBirthDate || parseDDMMYYYYToDate(clientBirthDateText);
+            if (!parsed) {
+              setBookingSubmitError('Informe uma data válida (DD/MM/AAAA).');
+              return;
+            }
+            setClientBirthDate(parsed);
+            setCurrentStep(8);
+          }}
+          disabled={!clientBirthDateText || !parseDDMMYYYYToDate(clientBirthDateText)}
+          className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+        >
+          Continuar
         </button>
       </div>
     </div>
@@ -1074,6 +1180,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         hora_inicio: selectedTime,
         cliente_nome: clientName.trim(),
         cliente_telefone: formattedPhone,
+        data_nascimento: clientBirthDate ? formatDateToYYYYMMDD(clientBirthDate) : null,
         observacoes: ''
       };
 
@@ -1086,7 +1193,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           setClientName(agendamentoCriado.cliente.nome);
         }
         
-        setCurrentStep(8); // Ir para tela de sucesso
+        setCurrentStep(9); // Ir para tela de sucesso
       }
 
     } catch (error) {
@@ -1118,15 +1225,30 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.cliente) {
+          if (data.cliente.id) {
+            setClienteId(data.cliente.id);
+          }
+
           // Cliente encontrado - atualizar nome completo
           const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
           if (nomeCompleto && nomeCompleto !== clientName) {
             setClientName(nomeCompleto);
           }
+
+          const birthDate = data.cliente.data_nascimento ? new Date(`${data.cliente.data_nascimento}T12:00:00`) : null;
+          return {
+            found: true,
+            hasBirthDate: Boolean(data.cliente.data_nascimento),
+            birthDate
+          };
         }
       }
+
+      setClienteId(null);
+      return { found: false, hasBirthDate: false, birthDate: null };
     } catch (error) {
       // Não bloquear o fluxo se houver erro
+      return null;
     }
   };
 
@@ -1462,8 +1584,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       case 4: return renderExtraServiceSelection();
       case 5: return renderDateTimeSelection();
       case 6: return renderClientDetails();
-      case 7: return renderCheckout();
-      case 8: return renderSuccess();
+      case 7: return renderBirthDateStep();
+      case 8: return renderCheckout();
+      case 9: return renderSuccess();
       default: return renderLocationSelection();
     }
   }

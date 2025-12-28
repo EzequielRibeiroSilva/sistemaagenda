@@ -1,5 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+
+let lastClientsRequestKey: string | null = null;
+let lastClientsRequestAt = 0;
 
 // Tipos para o módulo de clientes
 export interface Client {
@@ -8,6 +11,7 @@ export interface Client {
   firstName: string;
   lastName: string;
   phone: string;
+  birthDate?: string;
   isSubscriber: boolean;
   subscriptionStartDate?: string;
   status: 'Ativo' | 'Bloqueado';
@@ -51,6 +55,7 @@ export interface CreateClientData {
   primeiro_nome: string;
   ultimo_nome?: string;
   telefone: string;
+  data_nascimento?: string;
   is_assinante?: boolean;
   data_inicio_assinatura?: string;
   status?: 'Ativo' | 'Bloqueado';
@@ -85,6 +90,8 @@ export const useClientManagement = () => {
     total: 0,
     pages: 0
   }); // ✅ NOVO: Estado de paginação
+
+  const inFlightKeyRef = useRef<string | null>(null);
 
   // Hook de autenticação
   const { token, isAuthenticated } = useAuth();
@@ -129,6 +136,30 @@ export const useClientManagement = () => {
 
       // ✅ CORREÇÃO: Usar filtros fornecidos (não depender do estado)
       const currentFilters = newFilters !== undefined ? newFilters : filters;
+
+      const requestKey = JSON.stringify({
+        page: currentFilters.page || 1,
+        limit: currentFilters.limit || 12,
+        nome: currentFilters.nome || '',
+        telefone: currentFilters.telefone || '',
+        id: currentFilters.id || '',
+        is_assinante: typeof currentFilters.is_assinante === 'boolean' ? currentFilters.is_assinante : null,
+        status: currentFilters.status || ''
+      });
+
+      // ✅ DEDUPE GLOBAL (DEV/StrictMode): evitar 2 requests idênticos em sequência
+      // Mesmo que o componente seja montado 2x no StrictMode, essa janela corta o request duplicado.
+      const now = Date.now();
+      if (lastClientsRequestKey === requestKey && now - lastClientsRequestAt < 1000) {
+        return;
+      }
+      lastClientsRequestKey = requestKey;
+      lastClientsRequestAt = now;
+
+      if (inFlightKeyRef.current === requestKey) {
+        return;
+      }
+      inFlightKeyRef.current = requestKey;
 
       // Construir query string
       const queryParams = new URLSearchParams();
@@ -191,6 +222,9 @@ export const useClientManagement = () => {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar clientes';
       setError(errorMessage);
     } finally {
+      if (inFlightKeyRef.current) {
+        inFlightKeyRef.current = null;
+      }
       setLoading(false);
     }
   }, [authenticatedFetch]);

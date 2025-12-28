@@ -16,6 +16,183 @@ class ReminderService {
     this.allowedEndHour = 23; // 23:00
   }
 
+  getNowInSaoPaulo() {
+    const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+    return new Date(nowSP);
+  }
+
+  getTodayStrInSaoPaulo() {
+    const nowDate = this.getNowInSaoPaulo();
+    return nowDate.toLocaleDateString('en-CA');
+  }
+
+  getBirthdaySendAtForToday() {
+    const nowDate = this.getNowInSaoPaulo();
+    const sendAt = new Date(nowDate);
+    sendAt.setHours(9, 0, 0, 0);
+    return sendAt;
+  }
+
+  async scheduleBirthdayMessages() {
+    try {
+      const todayStr = this.getTodayStrInSaoPaulo();
+      const [yearStr, monthStr, dayStr] = todayStr.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr);
+      const day = parseInt(dayStr);
+      const sendAt = this.getBirthdaySendAtForToday();
+
+      const clientes = await db('clientes as c')
+        .join('unidades as u', 'c.unidade_id', 'u.id')
+        .leftJoin('configuracoes_sistema as cs', 'cs.unidade_id', 'u.id')
+        .whereNotNull('c.data_nascimento')
+        .where('c.status', 'Ativo')
+        .whereRaw('EXTRACT(MONTH FROM c.data_nascimento) = ?', [month])
+        .whereRaw('EXTRACT(DAY FROM c.data_nascimento) = ?', [day])
+        .select(
+          'c.id as cliente_id',
+          'c.unidade_id as unidade_id',
+          db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
+          'c.telefone as cliente_telefone',
+          'cs.nome_negocio as nome_negocio',
+          'u.nome as unidade_nome'
+        );
+
+      if (!clientes || clientes.length === 0) {
+        return { scheduled: 0 };
+      }
+
+      let scheduled = 0;
+      for (const c of clientes) {
+        const nomeNegocio = c.nome_negocio || c.unidade_nome || 'Nosso Negócio';
+
+        const row = {
+          cliente_id: c.cliente_id,
+          unidade_id: c.unidade_id,
+          ano: year,
+          status: 'programado',
+          tentativas: 0,
+          telefone_destino: c.cliente_telefone,
+          mensagem_enviada: this.whatsappService.generateBirthdayMessage({
+            clienteNome: c.cliente_nome,
+            nomeNegocio
+          }),
+          enviar_em: sendAt,
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+
+        const inserted = await db('aniversarios_enviados')
+          .insert(row)
+          .onConflict(['cliente_id', 'unidade_id', 'ano'])
+          .ignore();
+
+        if (inserted) {
+          scheduled++;
+        }
+      }
+
+      return { scheduled };
+    } catch (error) {
+      logger.error('❌ [ReminderService] Erro ao programar aniversários:', error);
+      return { scheduled: 0, error: error.message };
+    }
+  }
+
+  async updateBirthdayStatus(id, status, details = {}) {
+    const updateData = {
+      status,
+      updated_at: new Date()
+    };
+
+    if (details.whatsappMessageId) updateData.whatsapp_message_id = details.whatsappMessageId;
+    if (details.erro) updateData.erro_detalhes = typeof details.erro === 'string' ? details.erro : JSON.stringify(details.erro);
+    if (details.mensagem) updateData.mensagem_enviada = details.mensagem;
+    if (details.ultima_tentativa) updateData.ultima_tentativa = details.ultima_tentativa;
+    if (details.enviado_em) updateData.enviado_em = details.enviado_em;
+
+    await db('aniversarios_enviados')
+      .where('id', id)
+      .update(updateData);
+  }
+
+  async processBirthdayMessages() {
+    try {
+      const nowDate = this.getNowInSaoPaulo();
+
+      const messages = await db('aniversarios_enviados as ae')
+        .join('clientes as c', 'ae.cliente_id', 'c.id')
+        .join('unidades as u', 'ae.unidade_id', 'u.id')
+        .leftJoin('configuracoes_sistema as cs', 'cs.unidade_id', 'u.id')
+        .where('ae.status', 'programado')
+        .whereNotNull('ae.enviar_em')
+        .where('ae.enviar_em', '<=', nowDate)
+        .select(
+          'ae.id',
+          'ae.cliente_id',
+          'ae.unidade_id',
+          'ae.tentativas',
+          'ae.telefone_destino',
+          'ae.mensagem_enviada',
+          'c.primeiro_nome',
+          'c.ultimo_nome',
+          'cs.nome_negocio as nome_negocio',
+          'u.nome as unidade_nome'
+        )
+        .orderBy('ae.enviar_em', 'asc')
+        .limit(200);
+
+      if (!messages || messages.length === 0) {
+        return { processed: 0, sent: 0, failed: 0 };
+      }
+
+      let sent = 0;
+      let failed = 0;
+
+      for (const msg of messages) {
+        const clienteNome = `${msg.primeiro_nome || ''} ${msg.ultimo_nome || ''}`.trim() || 'Cliente';
+        const nomeNegocio = msg.nome_negocio || msg.unidade_nome || 'Nosso Negócio';
+        const texto = msg.mensagem_enviada || this.whatsappService.generateBirthdayMessage({ clienteNome, nomeNegocio });
+
+        try {
+          const result = await this.whatsappService.sendMessage(msg.telefone_destino, texto);
+
+          if (result.success) {
+            await this.updateBirthdayStatus(msg.id, 'enviado', {
+              whatsappMessageId: result.data?.messageId || result.data?.key?.id,
+              enviado_em: new Date(),
+              mensagem: texto
+            });
+            sent++;
+          } else {
+            const nextTentativas = (msg.tentativas || 0) + 1;
+            const isPermanent = nextTentativas >= this.maxRetries;
+            await this.updateBirthdayStatus(msg.id, isPermanent ? 'falha_permanente' : 'falha', {
+              erro: result.error,
+              ultima_tentativa: new Date()
+            });
+            failed++;
+          }
+        } catch (error) {
+          const nextTentativas = (msg.tentativas || 0) + 1;
+          const isPermanent = nextTentativas >= this.maxRetries;
+          await this.updateBirthdayStatus(msg.id, isPermanent ? 'falha_permanente' : 'falha', {
+            erro: error.message,
+            ultima_tentativa: new Date()
+          });
+          failed++;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      return { processed: messages.length, sent, failed };
+    } catch (error) {
+      logger.error('❌ [ReminderService] Erro ao processar aniversários:', error);
+      return { processed: 0, sent: 0, failed: 0, error: error.message };
+    }
+  }
+
   /**
    * Verificar se está dentro do horário permitido para envio
    * Não enviar entre 23:00 e 06:00
@@ -705,8 +882,13 @@ class ReminderService {
       logger.log('\n🎯 [ReminderService] ========== INICIANDO CRON JOB DE LEMBRETES ==========');
       logger.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}`);
 
+      const birthdaysScheduled = await this.scheduleBirthdayMessages();
+      const birthdays = await this.processBirthdayMessages();
+
       const results = {
         timestamp: new Date().toISOString(),
+        birthdaysScheduled,
+        birthdays,
         scheduled: await this.processScheduledReminders(), // ✅ NOVO: Processar lembretes programados
         reminders24h: await this.process24hReminders(),
         reminders2h: await this.process2hReminders()

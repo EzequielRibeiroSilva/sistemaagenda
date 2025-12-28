@@ -187,6 +187,7 @@ const NotificationsPage: React.FC = () => {
         { value: 'lembrete_24h', label: 'Lembrete 24h' },
         { value: 'lembrete_1h', label: 'Lembrete 1h' },
         { value: 'convite_retorno', label: 'Convite de Retorno' },
+        { value: 'feliz_aniversario', label: 'Feliz Aniversário' },
       ],
       render: (notification: any) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTipoBadgeColor(notification.tipo)}`}>
@@ -201,12 +202,16 @@ const NotificationsPage: React.FC = () => {
       filterType: 'text',
       filterPlaceholder: 'ID...',
       render: (notification: any) => (
-        <button
-          onClick={() => handleAgendamentoClick(notification.agendamentoId)}
-          className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
-        >
-          #{notification.agendamentoId}
-        </button>
+        notification.agendamentoId ? (
+          <button
+            onClick={() => handleAgendamentoClick(notification.agendamentoId)}
+            className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+          >
+            #{notification.agendamentoId}
+          </button>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )
       ),
     },
     {
@@ -288,6 +293,8 @@ const NotificationsPage: React.FC = () => {
         return 'bg-amber-100 text-amber-800';
       case 'convite_retorno':
         return 'bg-emerald-100 text-emerald-800';
+      case 'feliz_aniversario':
+        return 'bg-pink-100 text-pink-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }

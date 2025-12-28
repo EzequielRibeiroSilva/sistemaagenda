@@ -18,6 +18,37 @@ class WhatsAppService {
     this.notificacaoModel = new NotificacaoModel();
   }
 
+  generateBirthdayMessage({ clienteNome, nomeNegocio }) {
+    return `Feliz aniversário, ${clienteNome}! 🎂🎉
+
+Desejamos muita saúde, paz e sucesso no seu novo ciclo. Esperamos te ver em breve para comemorar com o visual renovado!
+
+Um abraço da equipe ${nomeNegocio}! 🤗`;
+  }
+
+  async sendBirthdayMessage({ clienteTelefone, clienteNome, nomeNegocio }) {
+    try {
+      if (!this.isEnabled()) {
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const message = this.generateBirthdayMessage({ clienteNome, nomeNegocio });
+      const result = await this.sendMessage(clienteTelefone, message);
+
+      if (!result.success) {
+        logger.error(`❌ [WhatsApp] Falha ao enviar feliz aniversário para ${clienteNome}:`, result.error);
+      } else {
+        logger.log(`✅ [WhatsApp] Feliz aniversário enviado para ${clienteNome}`);
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('❌ [WhatsApp] Erro ao enviar feliz aniversário:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   getFrontendBaseUrl() {
     const baseUrl = process.env.FRONTEND_URL;
 

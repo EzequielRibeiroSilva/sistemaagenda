@@ -1009,7 +1009,8 @@ class PublicBookingController {
             id: cliente.id,
             primeiro_nome: cliente.primeiro_nome,
             ultimo_nome: cliente.ultimo_nome,
-            telefone: cliente.telefone
+            telefone: cliente.telefone,
+            data_nascimento: cliente.data_nascimento
           }
         });
       } else {
@@ -1045,6 +1046,7 @@ class PublicBookingController {
         hora_inicio,
         cliente_nome,
         cliente_telefone,
+        data_nascimento,
         observacoes
       } = req.body;
 
@@ -1376,6 +1378,7 @@ class PublicBookingController {
           ultimo_nome,
           telefone: cliente_telefone,
           telefone_limpo: telefone_limpo, // ✅ CRÍTICO: Necessário para envio de WhatsApp
+          data_nascimento: data_nascimento || null,
           unidade_id: unidade_id,
           status: 'Ativo'
         }).returning('*');
@@ -1392,6 +1395,17 @@ class PublicBookingController {
           unidade_id,
           telefone_limpo: telefone_limpo_busca
         });
+
+        if (!cliente.data_nascimento && data_nascimento) {
+          const [clienteAtualizado] = await trx('clientes')
+            .where('id', cliente.id)
+            .where('unidade_id', unidade_id)
+            .update({ data_nascimento: data_nascimento, updated_at: new Date() })
+            .returning('*');
+          if (clienteAtualizado) {
+            cliente = clienteAtualizado;
+          }
+        }
       }
 
       // Criar agendamento

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
-import { ChevronDown, Check, MoreHorizontal, Plus } from './Icons';
+import { ChevronDown, Check, MoreHorizontal, Plus, Cake } from './Icons';
 import DatePicker from './DatePicker';
 import { getAssetUrl } from '../utils/api';
 
@@ -144,6 +144,7 @@ interface BackendAgendamento {
   valor_total: number;
   cliente_nome?: string;
   cliente_telefone?: string;
+  cliente_data_nascimento?: string;
   servicos?: Array<{
     id: number;
     nome: string;
@@ -260,6 +261,15 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return recordDiaSemana === jsDay || recordDiaSemana === oneToSeven;
   }, [getDayOfWeekIndex]);
 
+  const isClientBirthday = useCallback((clientBirthDate: string | undefined, appointmentDate: string): boolean => {
+    if (!clientBirthDate) return false;
+    const normalizedBirthDate = clientBirthDate.includes('T') ? clientBirthDate.split('T')[0] : clientBirthDate;
+    const normalizedAppointmentDate = appointmentDate.includes('T') ? appointmentDate.split('T')[0] : appointmentDate;
+    const [, birthMonth, birthDay] = normalizedBirthDate.split('-');
+    const [, apptMonth, apptDay] = normalizedAppointmentDate.split('-');
+    return birthMonth === apptMonth && birthDay === apptDay;
+  }, []);
+
   const isAgentWorkingOnDay = useCallback((agent: BackendAgente, date: Date, unidadeId: string): boolean => {
     // ✅ REGRA (Programação do Dia): só considera que trabalha se houver horários configurados
     // para o agente (sem fallback para "agenda padrão da unidade").
@@ -374,6 +384,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       agentAvatar?: string;
       agentEmail: string;
       agentPhone?: string;
+      clientBirthDate?: string;
       // ✅ CRÍTICO: Campos necessários para o modal de edição
       agentId: number;
       serviceId?: number;
@@ -445,6 +456,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
         agentAvatar,
         agentEmail,
         agentPhone: backendAgent?.telefone,
+        clientBirthDate: apt.cliente_data_nascimento ? apt.cliente_data_nascimento.split('T')[0] : undefined,
         // ✅ CRÍTICO: Campos necessários para o modal de edição
         agentId: apt.agente_id,
         serviceId: apt.servico_id,
@@ -1016,10 +1028,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
                   const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
 
+                  const isBirthday = isClientBirthday(card.clientBirthDate, card.dateISO);
+
                   return (
                     <div
                       key={card.id}
-                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-20 flex flex-col justify-center`}
+                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-20 flex flex-col justify-center relative`}
                       style={{
                         ...getAppointmentCardStyle(card.startTime, card.endTime),
                         backgroundColor
@@ -1057,6 +1071,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                         onAppointmentClick(details);
                       }}
                     >
+                      {isBirthday && (
+                        <div className="absolute top-0 right-0 bg-amber-400 rounded-full p-1 shadow-md border border-amber-400">
+                          <Cake className="w-3 h-3 text-white" />
+                        </div>
+                      )}
                       <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}</p>
                       {/* Horário e ID na mesma linha (PreviewSection) */}
                       <div className="flex items-center gap-1.5">

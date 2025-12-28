@@ -3,15 +3,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 
 // Tipos de notificação
-export type TipoNotificacao = 'confirmacao' | 'cancelamento' | 'reagendamento' | 'lembrete_24h' | 'lembrete_1h' | 'convite_retorno';
+export type TipoNotificacao = 'confirmacao' | 'cancelamento' | 'reagendamento' | 'lembrete_24h' | 'lembrete_1h' | 'convite_retorno' | 'feliz_aniversario';
 export type StatusNotificacao = 'programado' | 'pendente' | 'enviado' | 'falha' | 'falha_permanente'; // ✅ NOVO: 'programado'
 
 // Interface para dados do backend
 export interface BackendNotificacao {
   id: number;
-  agendamento_id: number;
+  agendamento_id: number | null;
   unidade_id: number;
-  tipo_notificacao: TipoNotificacao;
+  tipo_notificacao: TipoNotificacao | '24h' | '2h';
   status: StatusNotificacao;
   tentativas: number;
   telefone_destino: string;
@@ -38,7 +38,7 @@ export interface BackendNotificacao {
 // Interface para notificação no frontend
 export interface NotificationDetail {
   id: string;
-  agendamentoId: string;
+  agendamentoId?: string;
   unidadeId: string;
   tipo: TipoNotificacao;
   tipoLabel: string; // Label formatado para exibição
@@ -150,7 +150,8 @@ export const useNotificationManagement = () => {
       'reagendamento': 'Reagendamento',
       'lembrete_24h': 'Lembrete 24h',
       'lembrete_1h': 'Lembrete 1h',
-      'convite_retorno': 'Convite de Retorno'
+      'convite_retorno': 'Convite de Retorno',
+      'feliz_aniversario': 'Feliz Aniversário'
     };
     return labels[tipo] || tipo;
   };
@@ -169,12 +170,20 @@ export const useNotificationManagement = () => {
 
   // Função para converter dados do backend para o formato do frontend
   const transformBackendToFrontend = useCallback((backendData: BackendNotificacao): NotificationDetail => {
+    const normalizeTipo = (tipo: BackendNotificacao['tipo_notificacao']): TipoNotificacao => {
+      if (tipo === '24h') return 'lembrete_24h';
+      if (tipo === '2h') return 'lembrete_1h';
+      return tipo as TipoNotificacao;
+    };
+
+    const tipo = normalizeTipo(backendData.tipo_notificacao);
+
     return {
       id: backendData.id.toString(),
-      agendamentoId: backendData.agendamento_id.toString(),
+      agendamentoId: backendData.agendamento_id ? backendData.agendamento_id.toString() : undefined,
       unidadeId: backendData.unidade_id.toString(),
-      tipo: backendData.tipo_notificacao,
-      tipoLabel: formatTipoLabel(backendData.tipo_notificacao),
+      tipo,
+      tipoLabel: formatTipoLabel(tipo),
       status: backendData.status,
       statusLabel: formatStatusLabel(backendData.status),
       tentativas: backendData.tentativas,

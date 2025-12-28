@@ -7,6 +7,8 @@
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 
+const BIRTHDAY_TIPO = 'feliz_aniversario';
+
 class NotificacaoModel {
   constructor() {
     this.tableName = 'lembretes_enviados';
@@ -25,46 +27,54 @@ class NotificacaoModel {
       const offset = (page - 1) * limit;
 
       // Query base
-      let query = db(this.tableName)
+      let queryLembretes = db(this.tableName)
         .leftJoin('agendamentos as a', `${this.tableName}.agendamento_id`, 'a.id')
         .leftJoin('clientes as c', 'a.cliente_id', 'c.id')
         .leftJoin('agentes as ag', 'a.agente_id', 'ag.id')
         .leftJoin('unidades as u', `${this.tableName}.unidade_id`, 'u.id');
 
+      let queryAniversarios = db('aniversarios_enviados as ae')
+        .leftJoin('clientes as c2', 'ae.cliente_id', 'c2.id')
+        .leftJoin('unidades as u2', 'ae.unidade_id', 'u2.id');
+
       // Aplicar filtros
       if (filters.unidade_id) {
-        query = query.where(`${this.tableName}.unidade_id`, filters.unidade_id);
+        queryLembretes = queryLembretes.where(`${this.tableName}.unidade_id`, filters.unidade_id);
+        queryAniversarios = queryAniversarios.where('ae.unidade_id', filters.unidade_id);
       }
 
       // ✅ CORREÇÃO: Filtro por tipo considerando ambos os campos (tipo_notificacao e tipo_lembrete)
       if (filters.tipo_notificacao) {
         logger.log(`🔍 [NotificacaoModel] Aplicando filtro de tipo: ${filters.tipo_notificacao}`);
-        
-        // Mapear valores do frontend para os valores do banco
-        // Frontend: 'lembrete_24h' → Backend: tipo_lembrete='24h' OU tipo_notificacao='lembrete_24h'
-        // Frontend: 'lembrete_1h' → Backend: tipo_lembrete='2h' OU tipo_notificacao='lembrete_1h'
+
         const tipoLembreteMap = {
           'lembrete_24h': '24h',
           'lembrete_1h': '2h'
         };
-        
+
         const tableName = this.tableName; // ✅ CORREÇÃO CRÍTICA: Salvar referência antes do callback
-        
-        query = query.where(function() {
-          // Sempre verificar tipo_notificacao
-          this.where(`${tableName}.tipo_notificacao`, filters.tipo_notificacao);
-          
-          // Se for um lembrete, também verificar tipo_lembrete com o valor mapeado
-          if (tipoLembreteMap[filters.tipo_notificacao]) {
-            this.orWhere(`${tableName}.tipo_lembrete`, tipoLembreteMap[filters.tipo_notificacao]);
-          }
-        });
-        
-        logger.log(`✅ [NotificacaoModel] Filtro aplicado com mapeamento: ${filters.tipo_notificacao} → tipo_lembrete=${tipoLembreteMap[filters.tipo_notificacao] || 'N/A'}`);
+        const requestedTipo = filters.tipo_notificacao;
+
+        if (requestedTipo === BIRTHDAY_TIPO) {
+          queryLembretes = queryLembretes.whereRaw('1=0');
+          queryAniversarios = queryAniversarios.whereRaw('1=1');
+        } else {
+          queryAniversarios = queryAniversarios.whereRaw('1=0');
+
+          queryLembretes = queryLembretes.where(function() {
+            this.where(`${tableName}.tipo_notificacao`, requestedTipo);
+            if (tipoLembreteMap[requestedTipo]) {
+              this.orWhere(`${tableName}.tipo_lembrete`, tipoLembreteMap[requestedTipo]);
+            }
+          });
+        }
+
+        logger.log(`✅ [NotificacaoModel] Filtro aplicado: ${requestedTipo}`);
       }
 
       if (filters.status) {
-        query = query.where(`${this.tableName}.status`, filters.status);
+        queryLembretes = queryLembretes.where(`${this.tableName}.status`, filters.status);
+        queryAniversarios = queryAniversarios.where('ae.status', filters.status);
       }
 
       // ✅ CORREÇÃO: Busca parcial por ID (LIKE) ao invés de busca exata (=)
@@ -72,64 +82,99 @@ class NotificacaoModel {
         // Converter para string para usar LIKE
         const idSearch = filters.agendamento_id.toString();
         // ✅ CRÍTICO: Usar CAST para converter INTEGER para TEXT antes do LIKE
-        query = query.whereRaw(`CAST(${this.tableName}.agendamento_id AS TEXT) LIKE ?`, [`${idSearch}%`]);
+        queryLembretes = queryLembretes.whereRaw(`CAST(${this.tableName}.agendamento_id AS TEXT) LIKE ?`, [`${idSearch}%`]);
+        // aniversários não possuem agendamento_id
+        queryAniversarios = queryAniversarios.whereRaw('1=0');
         logger.log(`🔍 [NotificacaoModel] Busca parcial por agendamento_id iniciando com: ${idSearch}`);
       }
 
       if (filters.data_inicio && filters.data_fim) {
-        query = query.whereBetween(`${this.tableName}.created_at`, [filters.data_inicio, filters.data_fim]);
+        queryLembretes = queryLembretes.whereBetween(`${this.tableName}.created_at`, [filters.data_inicio, filters.data_fim]);
+        queryAniversarios = queryAniversarios.whereBetween('ae.created_at', [filters.data_inicio, filters.data_fim]);
       }
 
       // Contar total de registros
-      const countQuery = query.clone();
-      const [{ count }] = await countQuery.count('* as count');
-      const total = parseInt(count);
+      const countLembretesQuery = queryLembretes.clone();
+      const countAniversariosQuery = queryAniversarios.clone();
+      const [[{ count: countLembretes }], [{ count: countAniversarios }]] = await Promise.all([
+        countLembretesQuery.count('* as count'),
+        countAniversariosQuery.count('* as count')
+      ]);
+      const total = (parseInt(countLembretes) || 0) + (parseInt(countAniversarios) || 0);
 
       // Buscar dados com paginação
-      const notificacoes = await query
-        .select(
-          `${this.tableName}.id`,
-          `${this.tableName}.agendamento_id`,
-          `${this.tableName}.unidade_id`,
-          // Usar COALESCE para pegar tipo_notificacao ou tipo_lembrete
-          db.raw(`COALESCE(${this.tableName}.tipo_notificacao, ${this.tableName}.tipo_lembrete) as tipo_notificacao`),
-          `${this.tableName}.status`,
-          `${this.tableName}.tentativas`,
-          `${this.tableName}.telefone_destino`,
-          `${this.tableName}.mensagem_enviada`,
-          `${this.tableName}.whatsapp_message_id`,
-          `${this.tableName}.erro_detalhes`,
-          `${this.tableName}.ultima_tentativa`,
-          `${this.tableName}.enviado_em`,
-          `${this.tableName}.enviar_em`, // ✅ NOVO: Horário programado
-          `${this.tableName}.created_at`,
-          `${this.tableName}.updated_at`,
-          // Dados do agendamento
-          'a.data_agendamento',
-          'a.hora_inicio',
-          'a.status as agendamento_status',
-          // Dados do cliente
-          db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
-          'c.telefone as cliente_telefone',
-          // Dados do agente
-          db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
-          'ag.telefone as agente_telefone',
-          // Dados da unidade
-          'u.nome as unidade_nome',
-          // ✅ CORREÇÃO: Identificar destinatário correto baseado no telefone
-          db.raw(`
-            CASE 
-              WHEN REPLACE(REPLACE(REPLACE(${this.tableName}.telefone_destino, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(c.telefone, '+', ''), ' ', ''), '-', '')
-              THEN CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))
-              WHEN REPLACE(REPLACE(REPLACE(${this.tableName}.telefone_destino, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(ag.telefone, '+', ''), ' ', ''), '-', '')
-              THEN CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, ''))
-              ELSE CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))
-            END as destinatario_nome
-          `)
-        )
-        .orderBy(`${this.tableName}.created_at`, 'desc')
+      const lembretesSelect = queryLembretes.clone().select(
+        db.raw(`'lembretes' as origem`),
+        `${this.tableName}.id`,
+        `${this.tableName}.agendamento_id`,
+        `${this.tableName}.unidade_id`,
+        db.raw(`COALESCE(${this.tableName}.tipo_notificacao, ${this.tableName}.tipo_lembrete) as tipo_notificacao`),
+        `${this.tableName}.status`,
+        `${this.tableName}.tentativas`,
+        `${this.tableName}.telefone_destino`,
+        `${this.tableName}.mensagem_enviada`,
+        `${this.tableName}.whatsapp_message_id`,
+        `${this.tableName}.erro_detalhes`,
+        `${this.tableName}.ultima_tentativa`,
+        `${this.tableName}.enviado_em`,
+        `${this.tableName}.enviar_em`,
+        `${this.tableName}.created_at`,
+        `${this.tableName}.updated_at`,
+        'a.data_agendamento',
+        'a.hora_inicio',
+        'a.status as agendamento_status',
+        db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
+        'c.telefone as cliente_telefone',
+        db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
+        'ag.telefone as agente_telefone',
+        'u.nome as unidade_nome',
+        db.raw(`
+          CASE 
+            WHEN REPLACE(REPLACE(REPLACE(${this.tableName}.telefone_destino, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(c.telefone, '+', ''), ' ', ''), '-', '')
+            THEN CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))
+            WHEN REPLACE(REPLACE(REPLACE(${this.tableName}.telefone_destino, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(ag.telefone, '+', ''), ' ', ''), '-', '')
+            THEN CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, ''))
+            ELSE CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))
+          END as destinatario_nome
+        `)
+      );
+
+      const aniversariosSelect = queryAniversarios.clone().select(
+        db.raw(`'aniversarios' as origem`),
+        'ae.id',
+        db.raw('NULL::integer as agendamento_id'),
+        'ae.unidade_id',
+        db.raw(`'${BIRTHDAY_TIPO}' as tipo_notificacao`),
+        'ae.status',
+        'ae.tentativas',
+        'ae.telefone_destino',
+        'ae.mensagem_enviada',
+        'ae.whatsapp_message_id',
+        'ae.erro_detalhes',
+        'ae.ultima_tentativa',
+        'ae.enviado_em',
+        'ae.enviar_em',
+        'ae.created_at',
+        'ae.updated_at',
+        db.raw('NULL::date as data_agendamento'),
+        db.raw('NULL::time as hora_inicio'),
+        db.raw('NULL::text as agendamento_status'),
+        db.raw("CONCAT(COALESCE(c2.primeiro_nome, ''), ' ', COALESCE(c2.ultimo_nome, '')) as cliente_nome"),
+        'c2.telefone as cliente_telefone',
+        db.raw('NULL::text as agente_nome'),
+        db.raw('NULL::text as agente_telefone'),
+        'u2.nome as unidade_nome',
+        db.raw("CONCAT(COALESCE(c2.primeiro_nome, ''), ' ', COALESCE(c2.ultimo_nome, '')) as destinatario_nome")
+      );
+
+      const unionQuery = db
+        .from(lembretesSelect.unionAll([aniversariosSelect]).as('notifs'))
+        .select('*')
+        .orderBy('created_at', 'desc')
         .limit(limit)
         .offset(offset);
+
+      const notificacoes = await unionQuery;
 
       return {
         data: notificacoes,
@@ -153,7 +198,7 @@ class NotificacaoModel {
    */
   async findById(id) {
     try {
-      const notificacao = await db(this.tableName)
+      const lembrete = await db(this.tableName)
         .leftJoin('agendamentos as a', `${this.tableName}.agendamento_id`, 'a.id')
         .leftJoin('clientes as c', 'a.cliente_id', 'c.id')
         .leftJoin('agentes as ag', 'a.agente_id', 'ag.id')
@@ -172,7 +217,41 @@ class NotificacaoModel {
         )
         .first();
 
-      return notificacao || null;
+      if (lembrete) {
+        return lembrete;
+      }
+
+      const aniversario = await db('aniversarios_enviados as ae')
+        .leftJoin('clientes as c2', 'ae.cliente_id', 'c2.id')
+        .leftJoin('unidades as u2', 'ae.unidade_id', 'u2.id')
+        .where('ae.id', id)
+        .select(
+          'ae.id',
+          db.raw('NULL::integer as agendamento_id'),
+          'ae.unidade_id',
+          db.raw(`'${BIRTHDAY_TIPO}' as tipo_notificacao`),
+          'ae.status',
+          'ae.tentativas',
+          'ae.telefone_destino',
+          'ae.mensagem_enviada',
+          'ae.whatsapp_message_id',
+          'ae.erro_detalhes',
+          'ae.ultima_tentativa',
+          'ae.enviado_em',
+          'ae.enviar_em',
+          'ae.created_at',
+          'ae.updated_at',
+          db.raw('NULL::timestamp as data_agendamento'),
+          db.raw('NULL::text as hora_inicio'),
+          db.raw('NULL::text as agendamento_status'),
+          db.raw("CONCAT(COALESCE(c2.primeiro_nome, ''), ' ', COALESCE(c2.ultimo_nome, '')) as cliente_nome"),
+          'c2.telefone as cliente_telefone',
+          db.raw('NULL::text as agente_nome'),
+          'u2.nome as unidade_nome'
+        )
+        .first();
+
+      return aniversario || null;
     } catch (error) {
       logger.error(`❌ [NotificacaoModel] Erro ao buscar notificação ${id}:`, error);
       throw error;
@@ -247,25 +326,57 @@ class NotificacaoModel {
    */
   async getStats(filters = {}) {
     try {
-      let query = db(this.tableName);
+      let queryLembretes = db(this.tableName);
+      let queryAniversarios = db('aniversarios_enviados as ae');
 
       if (filters.unidade_id) {
-        query = query.where('unidade_id', filters.unidade_id);
+        queryLembretes = queryLembretes.where('unidade_id', filters.unidade_id);
+        queryAniversarios = queryAniversarios.where('ae.unidade_id', filters.unidade_id);
       }
 
       if (filters.data_inicio && filters.data_fim) {
-        query = query.whereBetween('created_at', [filters.data_inicio, filters.data_fim]);
+        queryLembretes = queryLembretes.whereBetween('created_at', [filters.data_inicio, filters.data_fim]);
+        queryAniversarios = queryAniversarios.whereBetween('ae.created_at', [filters.data_inicio, filters.data_fim]);
       }
 
-      const stats = await query
+      const statsLembretes = await queryLembretes
         .select(
           db.raw(`COALESCE(tipo_notificacao, tipo_lembrete) as tipo`),
           db.raw('COUNT(*) as total'),
           db.raw("SUM(CASE WHEN status = 'enviado' THEN 1 ELSE 0 END) as enviados"),
           db.raw("SUM(CASE WHEN status = 'falha' OR status = 'falha_permanente' THEN 1 ELSE 0 END) as falhas"),
-          db.raw("SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) as pendentes")
+          db.raw("SUM(CASE WHEN status = 'pendente' OR status = 'programado' THEN 1 ELSE 0 END) as pendentes")
         )
         .groupBy(db.raw(`COALESCE(tipo_notificacao, tipo_lembrete)`));
+
+      const statsAniversarios = await queryAniversarios
+        .select(
+          db.raw(`'${BIRTHDAY_TIPO}' as tipo`),
+          db.raw('COUNT(*) as total'),
+          db.raw("SUM(CASE WHEN ae.status = 'enviado' THEN 1 ELSE 0 END) as enviados"),
+          db.raw("SUM(CASE WHEN ae.status = 'falha' OR ae.status = 'falha_permanente' THEN 1 ELSE 0 END) as falhas"),
+          db.raw("SUM(CASE WHEN ae.status = 'pendente' OR ae.status = 'programado' THEN 1 ELSE 0 END) as pendentes")
+        )
+        .groupBy(db.raw(`'${BIRTHDAY_TIPO}'`));
+
+      const merged = new Map();
+      for (const row of [...statsLembretes, ...statsAniversarios]) {
+        const tipo = row.tipo;
+        if (!merged.has(tipo)) {
+          merged.set(tipo, { ...row });
+        } else {
+          const current = merged.get(tipo);
+          merged.set(tipo, {
+            tipo,
+            total: String((parseInt(current.total) || 0) + (parseInt(row.total) || 0)),
+            enviados: String((parseInt(current.enviados) || 0) + (parseInt(row.enviados) || 0)),
+            falhas: String((parseInt(current.falhas) || 0) + (parseInt(row.falhas) || 0)),
+            pendentes: String((parseInt(current.pendentes) || 0) + (parseInt(row.pendentes) || 0))
+          });
+        }
+      }
+
+      const stats = Array.from(merged.values());
 
       return stats;
     } catch (error) {

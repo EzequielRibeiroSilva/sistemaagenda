@@ -190,6 +190,7 @@ class AgendamentoController extends BaseController {
             'agendamentos.*',
             this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
             'clientes.telefone as cliente_telefone',
+            'clientes.data_nascimento as cliente_data_nascimento',
             this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
             'agentes.avatar_url as agente_avatar_url', // ✅ CORREÇÃO CRÍTICA: Incluir avatar do agente
             'unidades.nome as unidade_nome'
@@ -394,6 +395,7 @@ class AgendamentoController extends BaseController {
             'agendamentos.*',
             this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
             'clientes.telefone as cliente_telefone',
+            'clientes.data_nascimento as cliente_data_nascimento',
             this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
             'agentes.avatar_url as agente_avatar_url',
             'unidades.nome as unidade_nome'

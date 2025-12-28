@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent, Service, Appointment, UnavailableBlock, ScheduleSlot, Location } from '../types';
-import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus } from './Icons';
+import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus, Cake } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import { useCalendarData } from '../hooks/useCalendarData';
 import type { CalendarAgent, CalendarService, CalendarLocation, CalendarAppointment } from '../hooks/useCalendarData';
@@ -202,7 +202,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const isSinglePlan = user.plano === 'Single' || locations.length === 1;
     const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
 
-    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string })[] = useMemo(() => {
+    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string })[] = useMemo(() => {
         return backendAppointments.map(appointment => ({
             id: appointment.id,
             agentId: appointment.agentId,
@@ -213,7 +213,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             date: appointment.date,
             status: appointment.status, // ✅ INCLUIR STATUS PARA DESTAQUE VISUAL
             clientName: appointment.clientName, // ✅ CRÍTICO: Incluir nome do cliente
-            clientPhone: appointment.clientPhone // ✅ CRÍTICO: Incluir telefone do cliente
+            clientPhone: appointment.clientPhone, // ✅ CRÍTICO: Incluir telefone do cliente
+            clientBirthDate: appointment.clientBirthDate
         }));
     }, [backendAppointments]);
 
@@ -1114,6 +1115,21 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
         const pad = (num: number) => num.toString().padStart(2, '0');
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     };
+
+    // ✅ NOVO: Função para verificar se é aniversário do cliente
+    const isClientBirthday = (clientBirthDate: string | undefined, appointmentDate: string): boolean => {
+        if (!clientBirthDate) return false;
+
+        const normalizedBirthDate = clientBirthDate.includes('T') ? clientBirthDate.split('T')[0] : clientBirthDate;
+        const normalizedAppointmentDate = appointmentDate.includes('T') ? appointmentDate.split('T')[0] : appointmentDate;
+        
+        // clientBirthDate formato: YYYY-MM-DD
+        // appointmentDate formato: YYYY-MM-DD
+        const [, birthMonth, birthDay] = normalizedBirthDate.split('-');
+        const [, apptMonth, apptDay] = normalizedAppointmentDate.split('-');
+        
+        return birthMonth === apptMonth && birthDay === apptDay;
+    };
     
     // ✅ CORREÇÃO CRÍTICA: Filtrar locais baseado no tipo de usuário
     // AGENTE: Mostrar apenas locais onde trabalha | ADMIN: Mostrar todos os locais
@@ -1417,6 +1433,9 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                         backgroundColor = '#FEF9C3'; // Amarelo claro para não compareceu
                                     }
 
+                                    // ✅ NOVO: Verificar se é aniversário do cliente
+                                    const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+
                                     return (
                                         <div
                                           key={app.id}
@@ -1433,6 +1452,12 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                             <div className="absolute top-1 right-1 bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
                                                 #{app.id}
                                             </div>
+                                            {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
+                                            {isBirthday && (
+                                                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-amber-400 rounded-full p-1.5 shadow-lg border-2 border-amber-400">
+                                                    <Cake className="w-5 h-5 text-white" />
+                                                </div>
+                                            )}
                                             <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                             <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                             {/* Ícones para estados especiais */}
@@ -1731,6 +1756,9 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                             backgroundColor = '#FEF9C3'; // Amarelo claro para não compareceu
                                         }
 
+                                        // ✅ NOVO: Verificar se é aniversário do cliente
+                                        const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+
                                         return (
                                             <div
                                               key={app.id}
@@ -1742,6 +1770,12 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                   ...style,
                                                   ...(backgroundColor && { backgroundColor })
                                               }}>
+                                                {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
+                                                {isBirthday && (
+                                                    <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-amber-400 rounded-full p-1.5 shadow-lg border-2 border-amber-400">
+                                                        <Cake className="w-5 h-5 text-white" />
+                                                    </div>
+                                                )}
                                                 {/* Ícones para estados especiais */}
                                                 {iconComponent}
                                                 <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
@@ -1971,6 +2005,9 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                             // ✅ CALCULAR apenas posição horizontal (sem empilhamento vertical)
                                             const positionStyle = timeToPositionStyleMonth(app.startTime, app.endTime);
 
+                                            // ✅ NOVO: Verificar se é aniversário do cliente
+                                            const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+
                                             return (
                                                 <div
                                                   key={app.id}
@@ -1979,8 +2016,14 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                   onMouseLeave={handleSlotMouseLeave}
                                                   className={`absolute h-full rounded ${cardClasses} cursor-pointer hover:opacity-80 transition-opacity z-10`}
                                                   style={positionStyle}
-                                                  title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}`}
+                                                  title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}${isBirthday ? ' 🎂 Aniversário!' : ''}`}
                                                 >
+                                                    {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
+                                                    {isBirthday && (
+                                                        <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-amber-400 rounded-full p-1 shadow-md border border-amber-400">
+                                                            <Cake className="w-3 h-3 text-white" />
+                                                        </div>
+                                                    )}
                                                     {indicatorComponent}
                                                 </div>
                                             )

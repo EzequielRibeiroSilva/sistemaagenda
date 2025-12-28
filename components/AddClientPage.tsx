@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useClientManagement } from '../hooks/useClientManagement';
 import { useToast } from '../contexts/ToastContext';
-import DatePicker from './DatePicker';
 
 interface AddClientPageProps {
   setActiveView?: (view: string) => void;
@@ -13,20 +12,67 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [birthDateText, setBirthDateText] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
+  const [subscriptionStartDateText, setSubscriptionStartDateText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Hook de gerenciamento de clientes
   const { createClient, error, clearError } = useClientManagement();
 
+  const formatDateToDDMMYYYY = (date: Date): string => {
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  };
+
+  const parseDDMMYYYYToDate = (value: string): Date | null => {
+    const m = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+
+    if (year < 1900) return null;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    if (year > currentYear) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return null;
+    }
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const selected = new Date(year, month - 1, day);
+    if (selected > today) return null;
+
+    return date;
+  };
+
+  const maskBirthDate = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    const d = digits.slice(0, 2);
+    const m = digits.slice(2, 4);
+    const y = digits.slice(4, 8);
+    if (digits.length <= 2) return d;
+    if (digits.length <= 4) return `${d}/${m}`;
+    return `${d}/${m}/${y}`;
+  };
+
   const handleSubscriberToggle = () => {
     const newIsSubscriber = !isSubscriber;
     setIsSubscriber(newIsSubscriber);
     if (newIsSubscriber) {
-      setSubscriptionStartDate(new Date());
+      const now = new Date();
+      setSubscriptionStartDate(now);
+      setSubscriptionStartDateText(formatDateToDDMMYYYY(now));
     } else {
       setSubscriptionStartDate(null);
+      setSubscriptionStartDateText('');
     }
   };
 
@@ -55,6 +101,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
         primeiro_nome: firstName.trim(),
         ultimo_nome: lastName.trim(),
         telefone: phone.trim().startsWith('+55') ? phone.trim() : `+55${phone.trim()}`,
+        data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : undefined,
         is_assinante: isSubscriber,
         data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
         status: 'Ativo' as const
@@ -175,6 +222,23 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
                   {/* Campo Email removido - clientes não precisam de email (comunicação via WhatsApp) */}
 
                   <div>
+                      <label className="text-sm font-medium text-gray-600 mb-2 block">Data de nascimento</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={birthDateText}
+                        onChange={(e) => {
+                          const masked = maskBirthDate(e.target.value);
+                          setBirthDateText(masked);
+                          setBirthDate(parseDDMMYYYYToDate(masked));
+                        }}
+                        placeholder="DD/MM/AAAA"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                        disabled={isSubmitting}
+                      />
+                  </div>
+
+                  <div>
                       <label className="text-sm font-medium text-gray-600 mb-2 block">Assinante</label>
                       <div className="flex items-center space-x-4">
                           <button
@@ -202,14 +266,19 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
                   {isSubscriber && (
                       <div className="md:col-span-2">
                           <label className="text-sm font-medium text-gray-600 mb-2 block">Data de Início da Assinatura</label>
-                          <DatePicker
-                              mode="single"
-                              selectedDate={subscriptionStartDate || undefined}
-                              onDateChange={(date) => setSubscriptionStartDate(date as Date)}
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={subscriptionStartDateText}
+                            onChange={(e) => {
+                              const masked = maskBirthDate(e.target.value);
+                              setSubscriptionStartDateText(masked);
+                              setSubscriptionStartDate(parseDDMMYYYYToDate(masked));
+                            }}
+                            placeholder="DD/MM/AAAA"
+                            className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                            disabled={isSubmitting}
                           />
-                          <p className="text-xs text-gray-500 mt-1">
-                              Esta data será usada para calcular o período da assinatura e enviar notificações.
-                          </p>
                       </div>
                   )}
 

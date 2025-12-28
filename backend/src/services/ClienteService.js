@@ -187,6 +187,7 @@ class ClienteService {
       ultimo_nome: dadosCliente.ultimo_nome?.trim() || '',
       telefone: dadosCliente.telefone?.trim() || '',
       telefone_limpo: this.limparTelefone(dadosCliente.telefone),
+      data_nascimento: dadosCliente.data_nascimento || null,
       is_assinante: Boolean(dadosCliente.is_assinante),
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || 
         (dadosCliente.is_assinante ? new Date().toISOString().split('T')[0] : null),
