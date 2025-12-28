@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 
 // Tipos de notificação
-export type TipoNotificacao = 'confirmacao' | 'cancelamento' | 'reagendamento' | 'lembrete_24h' | 'lembrete_1h';
+export type TipoNotificacao = 'confirmacao' | 'cancelamento' | 'reagendamento' | 'lembrete_24h' | 'lembrete_1h' | 'convite_retorno';
 export type StatusNotificacao = 'programado' | 'pendente' | 'enviado' | 'falha' | 'falha_permanente'; // ✅ NOVO: 'programado'
 
 // Interface para dados do backend
@@ -149,7 +149,8 @@ export const useNotificationManagement = () => {
       'cancelamento': 'Cancelamento',
       'reagendamento': 'Reagendamento',
       'lembrete_24h': 'Lembrete 24h',
-      'lembrete_1h': 'Lembrete 1h'
+      'lembrete_1h': 'Lembrete 1h',
+      'convite_retorno': 'Convite de Retorno'
     };
     return labels[tipo] || tipo;
   };

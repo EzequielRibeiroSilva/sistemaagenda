@@ -181,6 +181,8 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     const [preco, setPreco] = useState(0);
     const [comissaoPercentual, setComissaoPercentual] = useState(70);
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
+    const [conviteRetornoAtivo, setConviteRetornoAtivo] = useState(false);
+    const [conviteRetornoDias, setConviteRetornoDias] = useState<number>(30);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -265,6 +267,11 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
             return;
         }
 
+        if (conviteRetornoAtivo && (!conviteRetornoDias || conviteRetornoDias < 1)) {
+            toast.warning('Convite de retorno inválido', 'Informe um número de dias maior que zero.');
+            return;
+        }
+
         try {
             setSubmitting(true);
             setSubmitError(null);
@@ -285,6 +292,8 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                 preco: parseFloat(String(preco)),
                 comissao_percentual: comissaoPercentual,
                 status: status,
+                convite_retorno_ativo: conviteRetornoAtivo,
+                convite_retorno_dias: conviteRetornoAtivo ? conviteRetornoDias : null,
                 agentes_ids: agentesIds,
                 extras_ids: extrasIds
             };
@@ -388,6 +397,43 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                               value={String(comissaoPercentual)}
                               onChange={(e) => setComissaoPercentual(Number(e.target.value))}
                             />
+                        </div>
+                    </FormCard>
+
+                    <FormCard title="Convite de retorno">
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Envie uma mensagem automática ao cliente após a conclusão do serviço, convidando para um novo agendamento.
+                            </p>
+
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium text-gray-800 text-sm">Ativar convite de retorno</p>
+                                    <p className="text-sm text-gray-500">Configure por serviço</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setConviteRetornoAtivo(v => !v)}
+                                    role="switch"
+                                    aria-checked={conviteRetornoAtivo}
+                                    className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${conviteRetornoAtivo ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                >
+                                    <span
+                                        className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${conviteRetornoAtivo ? 'translate-x-6' : 'translate-x-1'}`}
+                                    />
+                                </button>
+                            </div>
+
+                            {conviteRetornoAtivo && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <TextInput
+                                        label="Enviar após (dias)"
+                                        type="number"
+                                        value={String(conviteRetornoDias)}
+                                        onChange={(e) => setConviteRetornoDias(Number(e.target.value))}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </FormCard>
 

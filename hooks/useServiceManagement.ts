@@ -11,11 +11,13 @@ interface Service {
   duracao_minutos: number;
   preco: number;
   comissao_percentual: number;
-  status: 'Ativo' | 'Inativo';
+  status: 'Ativo' | 'Bloqueado';
   categoria_id?: number;
   usuario_id: number;
   agentes_atuais_ids?: number[];
   extras_atuais_ids?: number[];
+  convite_retorno_ativo?: boolean;
+  convite_retorno_dias?: number | null;
 }
 
 interface Agent {
@@ -36,8 +38,10 @@ interface CreateServiceData {
   duracao_minutos: number;
   preco: number;
   comissao_percentual: number;
-  status: 'Ativo' | 'Inativo';
+  status: 'Ativo' | 'Bloqueado';
   categoria_id?: number;
+  convite_retorno_ativo?: boolean;
+  convite_retorno_dias?: number | null;
   agentes_ids: number[];
   extras_ids: number[];
 }

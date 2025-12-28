@@ -954,6 +954,7 @@ class AgendamentoController extends BaseController {
       
       // ✅ PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
       const foiCancelado = (status === 'Cancelado' && agendamento.status !== 'Cancelado');
+      const foiConcluido = (statusFinal === 'Concluído' && agendamento.status !== 'Concluído');
 
       // ✅ OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
       // O envio pode ter delay em DEV e fila, causando "Salvando..." por muito tempo.
@@ -979,6 +980,70 @@ class AgendamentoController extends BaseController {
             }
           } catch (whatsappError) {
             logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações em background:`, whatsappError);
+          }
+        });
+      }
+
+      // ✅ Convite de retorno: agendar quando status mudar para Concluído
+      // Executar em background para não bloquear a resposta HTTP
+      if (foiConcluido) {
+        setImmediate(async () => {
+          try {
+            // Buscar serviços do agendamento com configuração de convite
+            const servicosElegiveis = await this.model.db('agendamento_servicos as ags')
+              .join('servicos as s', 'ags.servico_id', 's.id')
+              .where('ags.agendamento_id', id)
+              .where('s.convite_retorno_ativo', true)
+              .whereNotNull('s.convite_retorno_dias')
+              .select('s.id', 's.nome', 's.convite_retorno_dias');
+
+            if (!servicosElegiveis || servicosElegiveis.length === 0) {
+              return;
+            }
+
+            const diasMin = servicosElegiveis
+              .map(s => parseInt(s.convite_retorno_dias))
+              .filter(n => !Number.isNaN(n) && n > 0)
+              .sort((a, b) => a - b)[0];
+
+            if (!diasMin) {
+              return;
+            }
+
+            // Buscar telefone do cliente
+            const cliente = await this.model.db('clientes')
+              .where('id', agendamento.cliente_id)
+              .select('telefone')
+              .first();
+
+            if (!cliente?.telefone) {
+              return;
+            }
+
+            // Agendar envio para 10:00 (horário comercial)
+            const enviarEm = new Date();
+            enviarEm.setDate(enviarEm.getDate() + diasMin);
+            enviarEm.setHours(10, 0, 0, 0);
+
+            await this.model.db('lembretes_enviados')
+              .insert({
+                agendamento_id: parseInt(id),
+                unidade_id: agendamento.unidade_id,
+                tipo_lembrete: null,
+                tipo_notificacao: 'convite_retorno',
+                status: 'programado',
+                telefone_destino: cliente.telefone,
+                enviar_em: enviarEm,
+                tentativas: 0,
+                created_at: this.model.db.fn.now(),
+                updated_at: this.model.db.fn.now()
+              });
+          } catch (error) {
+            // Ignorar erro de duplicidade (índice único por agendamento + tipo_notificacao)
+            if (error && (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo_notificacao')) {
+              return;
+            }
+            logger.error(`⚠️ [AgendamentoController] Erro ao agendar convite de retorno em background:`, error);
           }
         });
       }

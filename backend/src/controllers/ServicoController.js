@@ -257,6 +257,8 @@ class ServicoController extends BaseController {
         comissao_percentual,
         status,
         categoria_id,
+        convite_retorno_ativo,
+        convite_retorno_dias,
         agentes_ids,
         extras_ids
       } = req.body;
@@ -291,6 +293,22 @@ class ServicoController extends BaseController {
         });
       }
 
+      // Validação Convite de Retorno
+      const conviteAtivo = Boolean(convite_retorno_ativo);
+      const conviteDias = convite_retorno_dias !== undefined && convite_retorno_dias !== null
+        ? parseInt(convite_retorno_dias)
+        : null;
+
+      if (conviteAtivo) {
+        if (!conviteDias || Number.isNaN(conviteDias) || conviteDias < 1) {
+          return res.status(400).json({
+            success: false,
+            error: 'Convite de retorno inválido',
+            message: 'Informe um número de dias maior que zero para o convite de retorno'
+          });
+        }
+      }
+
       const servicoData = {
         nome: nome.trim(),
         descricao: descricao?.trim() || '',
@@ -299,6 +317,8 @@ class ServicoController extends BaseController {
         comissao_percentual: comissao_percentual || 70,
         status: status || 'Ativo',
         categoria_id: categoria_id || null,
+        convite_retorno_ativo: conviteAtivo,
+        convite_retorno_dias: conviteAtivo ? conviteDias : null,
         usuario_id: usuarioId,
         created_at: new Date(),
         updated_at: new Date()
@@ -366,6 +386,8 @@ class ServicoController extends BaseController {
         comissao_percentual,
         status,
         categoria_id,
+        convite_retorno_ativo,
+        convite_retorno_dias,
         agentes_ids,
         extras_ids
       } = req.body;
@@ -400,6 +422,24 @@ class ServicoController extends BaseController {
         });
       }
 
+      // Validação Convite de Retorno (update)
+      const conviteAtivoUpdate = convite_retorno_ativo !== undefined
+        ? Boolean(convite_retorno_ativo)
+        : undefined;
+      const conviteDiasUpdate = convite_retorno_dias !== undefined && convite_retorno_dias !== null
+        ? parseInt(convite_retorno_dias)
+        : (convite_retorno_dias === null ? null : undefined);
+
+      if (conviteAtivoUpdate === true) {
+        if (!conviteDiasUpdate || Number.isNaN(conviteDiasUpdate) || conviteDiasUpdate < 1) {
+          return res.status(400).json({
+            success: false,
+            error: 'Convite de retorno inválido',
+            message: 'Informe um número de dias maior que zero para o convite de retorno'
+          });
+        }
+      }
+
       const servicoData = {
         ...(nome !== undefined && { nome: nome.trim() }),
         ...(descricao !== undefined && { descricao: descricao?.trim() || '' }),
@@ -408,6 +448,10 @@ class ServicoController extends BaseController {
         ...(comissao_percentual !== undefined && { comissao_percentual }),
         ...(status !== undefined && { status }),
         ...(categoria_id !== undefined && { categoria_id }),
+        ...(conviteAtivoUpdate !== undefined && { convite_retorno_ativo: conviteAtivoUpdate }),
+        ...(conviteAtivoUpdate !== undefined && conviteAtivoUpdate === false && { convite_retorno_dias: null }),
+        ...(conviteAtivoUpdate === true && { convite_retorno_dias: conviteDiasUpdate }),
+        ...(conviteAtivoUpdate === undefined && conviteDiasUpdate !== undefined && { convite_retorno_dias: conviteDiasUpdate }),
         updated_at: new Date()
       };
 

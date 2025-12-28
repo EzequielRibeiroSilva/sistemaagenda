@@ -204,6 +204,48 @@ class WhatsAppService {
   }
 
   /**
+   * Convite de retorno (pós-serviço) - CLIENTE
+   */
+  generateReturnInviteMessage(agendamentoData) {
+    const { cliente, unidade, servicos } = agendamentoData;
+
+    const servicoNome = servicos?.[0]?.nome || 'serviço';
+    const linkCliente = this.generateBookingLink(unidade.slug_url, unidade.id);
+
+    return `Oi, ${cliente.nome}! Saudade de você aqui na ${unidade.nome}. ✨
+
+Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}. Quer garantir seu próximo horário?
+
+É só clicar aqui: ${linkCliente}`;
+  }
+
+  /**
+   * Enviar convite de retorno (apenas cliente)
+   */
+  async sendReturnInvite(agendamentoData) {
+    try {
+      if (!this.isEnabled()) {
+        logger.log('⚠️ [WhatsApp] Serviço desabilitado');
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const message = this.generateReturnInviteMessage(agendamentoData);
+      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+
+      if (!result.success) {
+        logger.error(`❌ [WhatsApp] Falha ao enviar convite de retorno para ${agendamentoData.cliente.nome}:`, result.error);
+      } else {
+        logger.log(`✅ [WhatsApp] Convite de retorno enviado para ${agendamentoData.cliente.nome}`);
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('❌ [WhatsApp] Erro ao enviar convite de retorno:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Formatar data e hora para exibição
    */
   formatDateTime(data_agendamento, hora_inicio) {

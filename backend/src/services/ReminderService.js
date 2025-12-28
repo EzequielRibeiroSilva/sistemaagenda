@@ -202,7 +202,22 @@ class ReminderService {
         .join('unidades as u', 'a.unidade_id', 'u.id')
         .where('le.status', 'programado')
         .where('le.enviar_em', '<=', now)
-        .where('a.status', 'Aprovado') // Apenas agendamentos aprovados
+        // ✅ LÓGICA: lembretes (24h/1h) são para agendamentos aprovados
+        // ✅ Convite de retorno é para agendamentos concluídos
+        .where(function() {
+          this.where(function() {
+            this.whereIn('le.tipo_notificacao', ['lembrete_24h', 'lembrete_1h'])
+              .where('a.status', 'Aprovado');
+          }).orWhere(function() {
+            this.where('le.tipo_notificacao', 'convite_retorno')
+              .where('a.status', 'Concluído');
+          }).orWhere(function() {
+            // Fallback legado: se tipo_notificacao for null, tratar por tipo_lembrete
+            this.whereNull('le.tipo_notificacao')
+              .whereIn('le.tipo_lembrete', ['24h', '2h'])
+              .where('a.status', 'Aprovado');
+          });
+        })
         .forUpdate() // 🔒 Lock pessimista: bloqueia os registros para evitar race conditions
         .skipLocked() // ⏭️ Pula registros já bloqueados por outra transação
         .select(
@@ -223,6 +238,7 @@ class ReminderService {
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
           'u.nome as unidade_nome',
+          'u.slug_url as unidade_slug',
           'u.telefone as unidade_telefone',
           'u.endereco as unidade_endereco'
         );
@@ -579,10 +595,11 @@ class ReminderService {
       let failed = 0;
 
       for (const reminder of reminders) {
-        const { lembrete_id, tipo_lembrete } = reminder;
+        const { lembrete_id, tipo_lembrete, tipo_notificacao } = reminder;
 
         try {
-          logger.log(`📤 [ReminderService] Enviando lembrete programado #${lembrete_id} (${tipo_lembrete})...`);
+          const tipoFinal = tipo_notificacao || tipo_lembrete;
+          logger.log(`📤 [ReminderService] Enviando notificação programada #${lembrete_id} (${tipoFinal})...`);
 
           // Preparar dados para geração da mensagem
           const agendamentoData = {
@@ -594,7 +611,9 @@ class ReminderService {
             },
             unidade: {
               nome: reminder.unidade_nome,
-              endereco: reminder.unidade_endereco
+              endereco: reminder.unidade_endereco,
+              slug_url: reminder.unidade_slug,
+              id: reminder.unidade_id
             },
             data_agendamento: reminder.data_agendamento,
             hora_inicio: reminder.hora_inicio,
@@ -609,9 +628,28 @@ class ReminderService {
 
           // Enviar via WhatsApp
           let result;
-          if (tipo_lembrete === '24h') {
+          if (tipo_notificacao === 'convite_retorno') {
+            // ✅ ANTI-SPAM: se já existe agendamento futuro na mesma unidade, não enviar
+            const todayStr = new Date().toISOString().split('T')[0];
+            const hasFutureAppointment = await db('agendamentos')
+              .where('cliente_id', reminder.cliente_id)
+              .where('unidade_id', reminder.unidade_id)
+              .whereIn('status', ['Aprovado'])
+              .where('data_agendamento', '>=', todayStr)
+              .first();
+
+            if (hasFutureAppointment) {
+              await this.updateReminderStatus(lembrete_id, 'enviado', {
+                mensagem: 'Ignorado: cliente já possui agendamento futuro'
+              });
+              logger.log(`⏭️ [ReminderService] Convite de retorno ignorado (#${lembrete_id}) - cliente já possui agendamento futuro`);
+              continue;
+            }
+
+            result = await this.whatsappService.sendReturnInvite(agendamentoData);
+          } else if (tipo_lembrete === '24h' || tipo_notificacao === 'lembrete_24h') {
             result = await this.whatsappService.sendReminder24h(agendamentoData);
-          } else if (tipo_lembrete === '2h') {
+          } else if (tipo_lembrete === '2h' || tipo_notificacao === 'lembrete_1h') {
             result = await this.whatsappService.sendReminder2h(agendamentoData);
           }
 
