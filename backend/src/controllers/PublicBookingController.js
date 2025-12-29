@@ -943,14 +943,15 @@ class PublicBookingController {
       }
 
       // ✅ CORREÇÃO 1.2: Validar sessão (OPCIONAL - pode ser desabilitado em desenvolvimento)
-      if (process.env.NODE_ENV === 'production' && !session_token) {
-        logger.warn(`🚨 [SECURITY] Tentativa de busca de cliente sem sessão - IP: ${req.ip}, Telefone: ${telefone}`);
-        return res.status(401).json({
-          success: false,
-          error: 'Sessão inválida',
-          message: 'Token de sessão é obrigatório'
-        });
-      }
+      // ⚠️ TEMPORARIAMENTE DESABILITADO: Permitir busca sem session_token para BookingPage funcionar
+      // if (process.env.NODE_ENV === 'production' && !session_token) {
+      //   logger.warn(`🚨 [SECURITY] Tentativa de busca de cliente sem sessão - IP: ${req.ip}, Telefone: ${telefone}`);
+      //   return res.status(401).json({
+      //     success: false,
+      //     error: 'Sessão inválida',
+      //     message: 'Token de sessão é obrigatório'
+      //   });
+      // }
 
       // Validar e incrementar contador de buscas
       if (session_token) {
