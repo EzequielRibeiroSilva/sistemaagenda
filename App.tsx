@@ -14,6 +14,8 @@ import CreateServicePage from './components/CreateServicePage';
 import EditServicePage from './components/EditServicePage';
 import CreateExtraServicePage from './components/CreateExtraServicePage';
 import EditExtraServicePage from './components/EditExtraServicePage';
+import CreateSubscriptionPlanPage from './components/CreateSubscriptionPlanPage';
+import EditSubscriptionPlanPage from './components/EditSubscriptionPlanPage';
 import AgentsPage from './components/AgentsPage';
 import CreateAgentPage from './components/CreateAgentPage';
 import EditAgentPage from './components/EditAgentPage';
@@ -53,6 +55,7 @@ const App: React.FC = () => {
   const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
   const [editingExtraServiceId, setEditingExtraServiceId] = useState<string | null>(null);
   const [editingCupomId, setEditingCupomId] = useState<number | null>(null);
+  const [editingSubscriptionPlanId, setEditingSubscriptionPlanId] = useState<number | null>(null);
   const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
 
   // Usar AuthContext
@@ -113,6 +116,12 @@ const App: React.FC = () => {
         setEditingLocationId(null);
       }
     }
+
+    if (activeView !== 'services-subscriptions-edit' && activeView !== 'services-subscriptions') {
+      if (editingSubscriptionPlanId) {
+        setEditingSubscriptionPlanId(null);
+      }
+    }
   }, [activeView, editingExtraServiceId, editingServiceId, editingAgentId, editingCupomId, editingClientId, editingLocationId]);
 
   // Hook para usuários master (sempre chamado, mas só usado se for MASTER)
@@ -148,6 +157,11 @@ const App: React.FC = () => {
   const handleEditExtraService = (extraServiceId: string) => {
     setEditingExtraServiceId(extraServiceId);
     setActiveView('services-extra-edit');
+  };
+
+  const handleEditSubscriptionPlan = (planId: number) => {
+    setEditingSubscriptionPlanId(planId);
+    setActiveView('services-subscriptions-edit');
   };
 
   const handleEditCupom = (cupomId: number) => {
@@ -274,16 +288,20 @@ const App: React.FC = () => {
       case 'clients-edit': return <EditClientPage setActiveView={setActiveView} clientId={editingClientId} />;
       case 'services-list':
       case 'services-extra':
+      case 'services-subscriptions':
         return <ServicesPage
-          initialTab={activeView === 'services-extra' ? 'Serviços Extras' : 'Serviços'}
+          initialTab={activeView === 'services-extra' ? 'Serviços Extras' : (activeView === 'services-subscriptions' ? 'Clube de Assinatura' : 'Serviços')}
           setActiveView={setActiveView}
           onEditService={handleEditService}
           onEditExtraService={handleEditExtraService}
+          onEditSubscriptionPlan={handleEditSubscriptionPlan}
         />;
       case 'services-create': return <CreateServicePage setActiveView={setActiveView} />;
       case 'services-edit': return <EditServicePage setActiveView={setActiveView} serviceId={editingServiceId} />;
       case 'services-extra-create': return <CreateExtraServicePage setActiveView={setActiveView} />;
       case 'services-extra-edit': return <EditExtraServicePage setActiveView={setActiveView} extraServiceId={editingExtraServiceId} />;
+      case 'services-subscriptions-create': return <CreateSubscriptionPlanPage setActiveView={setActiveView} />;
+      case 'services-subscriptions-edit': return <EditSubscriptionPlanPage setActiveView={setActiveView} planoId={editingSubscriptionPlanId} />;
       case 'agents-list': return <AgentsPage setActiveView={setActiveView} onEditAgent={handleEditAgent} />;
       case 'agents-create': return <CreateAgentPage setActiveView={setActiveView} />;
       case 'agents-edit': return <EditAgentPage setActiveView={setActiveView} agentId={user.role === 'AGENTE' ? user.agentId : editingAgentId} />;

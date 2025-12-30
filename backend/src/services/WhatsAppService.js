@@ -18,6 +18,77 @@ class WhatsAppService {
     this.notificacaoModel = new NotificacaoModel();
   }
 
+  formatAssinaturaSaldoMessage(assinaturaSaldo) {
+    try {
+      if (!assinaturaSaldo || !assinaturaSaldo.assinatura_ativa) return '';
+      const planoNome = assinaturaSaldo?.plano?.nome || 'Plano';
+      const cicloInicio = assinaturaSaldo?.ciclo?.inicio;
+      const cicloFim = assinaturaSaldo?.ciclo?.fim;
+
+      const cycleLine = (cicloInicio && cicloFim)
+        ? `Ciclo atual: ${new Date(`${cicloInicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${cicloFim}T12:00:00`).toLocaleDateString('pt-BR')}`
+        : null;
+
+      const saldos = Array.isArray(assinaturaSaldo?.saldos) ? assinaturaSaldo.saldos : [];
+      if (saldos.length === 0) return '';
+
+      const linhas = saldos
+        .map(item => {
+          const nome = item?.nome || (item?.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
+          const quota = item?.quantidade_por_ciclo;
+          const restantes = item?.restantes;
+          if (quota === null || quota === undefined) {
+            return `• ${nome}: ilimitado`;
+          }
+          const quotaNum = parseInt(quota, 10) || 0;
+          const restNum = restantes === null || restantes === undefined ? null : (parseInt(restantes, 10) || 0);
+          return `• ${nome}: ${restNum === null ? '—' : restNum}/${quotaNum} restantes`;
+        })
+        .filter(Boolean);
+
+      const header = `\n\n🎟️ *Clube de Assinatura* (${planoNome})`;
+      const ciclo = cycleLine ? `\n${cycleLine}` : '';
+      return `${header}${ciclo}\n\n${linhas.join('\n')}`;
+    } catch {
+      return '';
+    }
+  }
+
+  generateSubscriptionEndingSoonClientMessage({ clienteNome, unidadeNome, wppLocal, diasRestantes, dataFimStr }) {
+    const whenLine = (dataFimStr)
+      ? `até ${new Date(`${dataFimStr}T12:00:00`).toLocaleDateString('pt-BR')}`
+      : null;
+
+    const diasTxt = typeof diasRestantes === 'number'
+      ? (diasRestantes === 1 ? '1 dia' : `${diasRestantes} dias`)
+      : null;
+
+    const intro = `Oi, *${clienteNome}*! Tudo bem? 😊\n\nPassando rapidinho para te avisar que o seu ciclo do *Clube de Assinatura* está chegando ao fim.`;
+    const detail = diasTxt || whenLine
+      ? `\n\nEle vai até ${diasTxt ? `*${diasTxt}*` : '*em breve*'}${whenLine ? ` (${whenLine})` : ''}.`
+      : '';
+
+    const cta = `\n\nSe você quiser continuar aproveitando o plano sem interrupções, é só falar com a gente aqui:\n${wppLocal}\n\nA gente te ajuda com todo carinho. ✨`;
+
+    return `${intro}${detail}${cta}\n\n_Mensagem automática do Tally_`;
+  }
+
+  generateSubscriptionEndingSoonAdminMessage({ clienteNome, unidadeNome, wppCliente, diasRestantes, dataFimStr }) {
+    const whenLine = (dataFimStr)
+      ? new Date(`${dataFimStr}T12:00:00`).toLocaleDateString('pt-BR')
+      : null;
+
+    const diasTxt = typeof diasRestantes === 'number'
+      ? (diasRestantes === 1 ? '1 dia' : `${diasRestantes} dias`)
+      : null;
+
+    const extra = diasTxt || whenLine
+      ? `\n\nPrazo: ${diasTxt ? diasTxt : '—'}${whenLine ? ` (até ${whenLine})` : ''}`
+      : '';
+
+    return `⚠️ *Assinatura perto do fim*\n\nCliente: *${clienteNome}*\nUnidade: *${unidadeNome}*${extra}\n\nContato do cliente: ${wppCliente}\n\n_Mensagem automática do Tally_`;
+  }
+
   generateBirthdayMessage({ clienteNome, nomeNegocio }) {
     return `Feliz aniversário, ${clienteNome}! 🎂🎉
 
@@ -335,6 +406,8 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
       const notificacaoId = await this.notificacaoModel.create({
         agendamento_id: data.agendamento_id,
         unidade_id: data.unidade_id,
+        cliente_id: data.cliente_id || null,
+        assinatura_referencia: data.assinatura_referencia || null,
         tipo_notificacao: data.tipo_notificacao,
         status: data.status || 'pendente',
         tentativas: data.tentativas || 0,
@@ -350,6 +423,108 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     } catch (error) {
       logger.error(`❌ [WhatsAppService] Erro ao registrar notificação:`, error);
       return null;
+    }
+  }
+
+  async sendSubscriptionEndingSoonClient({
+    unidade_id,
+    unidade_nome,
+    unidade_telefone,
+    cliente_id,
+    cliente_nome,
+    cliente_telefone,
+    assinatura_referencia,
+    dias_restantes,
+    data_fim,
+    skipRegister = false
+  }) {
+    try {
+      if (!this.isEnabled()) {
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+      const message = this.generateSubscriptionEndingSoonClientMessage({
+        clienteNome: cliente_nome,
+        unidadeNome: unidade_nome,
+        wppLocal,
+        diasRestantes: dias_restantes,
+        dataFimStr: data_fim
+      });
+
+      const result = await this.sendMessage(cliente_telefone, message);
+
+      if (!skipRegister) {
+        await this.registrarNotificacao({
+          agendamento_id: null,
+          unidade_id,
+          cliente_id,
+          assinatura_referencia,
+          tipo_notificacao: 'assinatura_aviso_cliente',
+          status: result.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: cliente_telefone,
+          mensagem_enviada: result.success ? message : null,
+          whatsapp_message_id: result.data?.messageId || result.data?.key?.id || null,
+          erro_detalhes: result.success ? null : JSON.stringify(result.error)
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('❌ [WhatsApp] Erro ao enviar aviso de assinatura (cliente):', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendSubscriptionEndingSoonAdmin({
+    unidade_id,
+    unidade_nome,
+    admin_telefone,
+    cliente_id,
+    cliente_nome,
+    cliente_telefone,
+    assinatura_referencia,
+    dias_restantes,
+    data_fim,
+    skipRegister = false
+  }) {
+    try {
+      if (!this.isEnabled()) {
+        return { success: false, error: 'Serviço WhatsApp desabilitado' };
+      }
+
+      const wppCliente = this.generateWhatsAppLink(cliente_telefone);
+      const message = this.generateSubscriptionEndingSoonAdminMessage({
+        clienteNome: cliente_nome,
+        unidadeNome: unidade_nome,
+        wppCliente,
+        diasRestantes: dias_restantes,
+        dataFimStr: data_fim
+      });
+
+      const result = await this.sendMessage(admin_telefone, message);
+
+      if (!skipRegister) {
+        await this.registrarNotificacao({
+          agendamento_id: null,
+          unidade_id,
+          cliente_id,
+          assinatura_referencia,
+          tipo_notificacao: 'assinatura_aviso_admin',
+          status: result.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: admin_telefone,
+          mensagem_enviada: result.success ? message : null,
+          whatsapp_message_id: result.data?.messageId || result.data?.key?.id || null,
+          erro_detalhes: result.success ? null : JSON.stringify(result.error)
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('❌ [WhatsApp] Erro ao enviar aviso de assinatura (admin):', error);
+      return { success: false, error: error.message };
     }
   }
 
@@ -392,7 +567,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
    */
   generateAppointmentConfirmationClient(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone, pontos } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone, pontos, assinatura_saldo } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
@@ -400,6 +575,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
     const pontosMensagem = this.formatPontosMessage(pontos);
+    const assinaturaMensagem = this.formatAssinaturaSaldoMessage(assinatura_saldo);
 
     return `👋 Olá, *${cliente.nome}*! Ficamos muito felizes com seu agendamento na *${unidade.nome}*.
 
@@ -407,7 +583,7 @@ Seu horário está confirmadíssimo:
 ✂️ ${servicoTexto} com *${agente.nome}*
 🗓 ${dataHora}
 
-🎫 ID do Agendamento: *#${agendamento_id}*${pontosMensagem}
+🎫 ID do Agendamento: *#${agendamento_id}*${pontosMensagem}${assinaturaMensagem}
 
 Precisa alterar algo? Gerencie seu horário através deste link:
 

@@ -269,6 +269,8 @@ class NotificacaoModel {
         .insert({
           agendamento_id: data.agendamento_id,
           unidade_id: data.unidade_id,
+          cliente_id: data.cliente_id || null,
+          assinatura_referencia: data.assinatura_referencia || null,
           tipo_notificacao: data.tipo_notificacao,
           status: data.status || 'pendente',
           tentativas: data.tentativas || 0,

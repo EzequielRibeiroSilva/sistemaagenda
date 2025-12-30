@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, CheckCircle } from './Icons';
-import { useClientManagement, type ClientFilters } from '../hooks/useClientManagement';
+import { createPortal } from 'react-dom';
+import { Plus, CheckCircle, X } from './Icons';
+import { useClientManagement, type ClientFilters, type AssinaturaSaldoResponse } from '../hooks/useClientManagement';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { BaseTable, TableColumn } from './BaseTable';
+
+let lastClientsPageRequestKey: string | null = null;
+let lastClientsPageRequestAt = 0;
 
 interface ClientsPageProps {
   setActiveView: (view: string) => void;
@@ -34,8 +38,15 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         clearFilters,
         clearError,
         totalCount,
-        subscriberCount
+        subscriberCount,
+        fetchClientAssinaturaSaldo
     } = useClientManagement();
+
+    const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+
+    const [assinaturaSaldoByClientId, setAssinaturaSaldoByClientId] = useState<Record<number, AssinaturaSaldoResponse | null>>({});
+    const [assinaturaSaldoLoadingByClientId, setAssinaturaSaldoLoadingByClientId] = useState<Record<number, boolean>>({});
+    const [assinaturaModalClientId, setAssinaturaModalClientId] = useState<number | null>(null);
 
     // Hook de configurações para verificar se sistema de pontos está ativo
     const { settings, loadSettings } = useSettingsManagement();
@@ -46,6 +57,65 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const buildAssinaturaResumo = useCallback((saldo: AssinaturaSaldoResponse | null) => {
+        if (!saldo?.assinatura_ativa || !Array.isArray(saldo.saldos) || saldo.saldos.length === 0) return '';
+
+        const parts = saldo.saldos
+            .map(item => {
+                const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
+                const quota = item.quantidade_por_ciclo;
+                const restantes = item.restantes;
+
+                const quotaLabel = quota === null ? '∞' : String(quota);
+                const restantesLabel = restantes === null ? '∞' : String(restantes);
+
+                return `${nome}: ${restantesLabel}/${quotaLabel}`;
+            })
+            .filter(Boolean);
+
+        return parts.join(' • ');
+    }, []);
+
+    const selectedAssinaturaSaldo = useMemo(() => {
+        if (!assinaturaModalClientId) return null;
+        return assinaturaSaldoByClientId[assinaturaModalClientId] || null;
+    }, [assinaturaModalClientId, assinaturaSaldoByClientId]);
+
+    const closeAssinaturaModal = useCallback(() => {
+        setAssinaturaModalClientId(null);
+    }, []);
+
+    useEffect(() => {
+        const subscriberIds = (clients || [])
+            .filter((c: any) => c?.isSubscriber)
+            .map((c: any) => Number(c.id))
+            .filter((n: number) => Number.isFinite(n));
+
+        if (subscriberIds.length === 0) return;
+
+        const missing = subscriberIds.filter(id => assinaturaSaldoByClientId[id] === undefined);
+        if (missing.length === 0) return;
+
+        let cancelled = false;
+
+        const load = async () => {
+            for (const id of missing) {
+                if (cancelled) return;
+                setAssinaturaSaldoLoadingByClientId(prev => ({ ...prev, [id]: true }));
+                const saldo = await fetchClientAssinaturaSaldo(id);
+                if (cancelled) return;
+                setAssinaturaSaldoByClientId(prev => ({ ...prev, [id]: saldo }));
+                setAssinaturaSaldoLoadingByClientId(prev => ({ ...prev, [id]: false }));
+            }
+        };
+
+        load();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [clients, fetchClientAssinaturaSaldo, assinaturaSaldoByClientId]);
 
     // ✅ Aplicar filtros: 1a carga imediata, mudanças com debounce
     useEffect(() => {
@@ -66,7 +136,24 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             apiFilters.telefone = filters.phone;
         }
 
+        const requestKey = JSON.stringify({
+            page: apiFilters.page,
+            limit: apiFilters.limit,
+            id: apiFilters.id || null,
+            nome: apiFilters.nome || '',
+            telefone: apiFilters.telefone || ''
+        });
+
         // Primeira carga: sem debounce (evita double fetch + flicker)
+        // ✅ DEDUPE LOCAL: Em dev/StrictMode o componente pode montar 2x e disparar 2 requests.
+        // Essa janela curta evita a 2a requisição idêntica sem impactar o fluxo de voltar de criar/editar.
+        const now = Date.now();
+        if (lastClientsPageRequestKey === requestKey && now - lastClientsPageRequestAt < 800) {
+            return;
+        }
+        lastClientsPageRequestKey = requestKey;
+        lastClientsPageRequestAt = now;
+
         if (!hasLoadedInitialDataRef.current) {
             hasLoadedInitialDataRef.current = true;
             applyFilters(apiFilters);
@@ -252,25 +339,44 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             width: 'w-1/4',
             align: 'center',
             filterType: 'none',
-            render: (client: any) => (
-                client.isSubscriber ? (
-                    <div className="flex items-center justify-center gap-2">
-                        <CheckCircle className="w-5 h-5" style={{ color: '#2663EB' }} />
-                        <span className="text-xs font-medium" style={{ color: '#2663EB' }}>
-                            Assinante
-                            {client.subscriptionStartDate && (
-                                <span className="text-gray-500 ml-1">
-                                    desde {new Date(client.subscriptionStartDate).toLocaleDateString('pt-BR')}
-                                </span>
-                            )}
+            render: (client: any) => {
+                if (!client.isSubscriber) return null;
+
+                const clientId = Number(client.id);
+                const saldo = Number.isFinite(clientId) ? (assinaturaSaldoByClientId[clientId] || null) : null;
+                const isSaldoLoading = Number.isFinite(clientId) ? Boolean(assinaturaSaldoLoadingByClientId[clientId]) : false;
+                const resumo = buildAssinaturaResumo(saldo);
+
+                return (
+                    <button
+                        type="button"
+                        className="flex flex-col items-center justify-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                        onClick={() => {
+                            if (Number.isFinite(clientId)) setAssinaturaModalClientId(clientId);
+                        }}
+                        title={resumo || 'Ver detalhes da assinatura'}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            <CheckCircle className="w-5 h-5" style={{ color: '#2663EB' }} />
+                            <span className="text-xs font-medium" style={{ color: '#2663EB' }}>
+                                Assinante
+                                {client.subscriptionStartDate && (
+                                    <span className="text-gray-500 ml-1">
+                                        desde {new Date(client.subscriptionStartDate).toLocaleDateString('pt-BR')}
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                        <span className="text-[11px] text-gray-600 text-center leading-tight">
+                            {isSaldoLoading ? 'Carregando cotas...' : (resumo || 'Sem dados de cotas')}
                         </span>
-                    </div>
-                ) : null
-            ),
+                    </button>
+                );
+            },
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, buildAssinaturaResumo]);
 
     return (
         <div className="space-y-6">
@@ -315,6 +421,102 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 minWidth="min-w-[900px]"
                 enableRowHover={true}
             />
+
+            {assinaturaModalClientId && portalRoot && (
+                createPortal(
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
+                            <div className="p-6 border-b border-gray-200">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-800">Detalhes da Assinatura</h2>
+                                        <p className="text-sm text-gray-500">
+                                            {selectedAssinaturaSaldo?.cliente?.nome || `Cliente #${assinaturaModalClientId}`}
+                                        </p>
+                                    </div>
+                                    <button type="button" onClick={closeAssinaturaModal} className="p-1 rounded-full hover:bg-gray-200">
+                                        <X className="w-5 h-5 text-gray-600" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                        <div className="text-xs text-gray-500">Plano</div>
+                                        <div className="text-sm font-semibold text-gray-800">
+                                            {selectedAssinaturaSaldo?.plano?.nome || '-'}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Validade do ciclo: {selectedAssinaturaSaldo?.plano?.validade_dias ? `${selectedAssinaturaSaldo.plano.validade_dias} dias` : '-'}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                        <div className="text-xs text-gray-500">Ciclo atual</div>
+                                        <div className="text-sm font-semibold text-gray-800">
+                                            {selectedAssinaturaSaldo?.ciclo?.inicio && selectedAssinaturaSaldo?.ciclo?.fim
+                                                ? `${new Date(`${selectedAssinaturaSaldo.ciclo.inicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${selectedAssinaturaSaldo.ciclo.fim}T12:00:00`).toLocaleDateString('pt-BR')}`
+                                                : '-'
+                                            }
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Índice: {typeof selectedAssinaturaSaldo?.ciclo?.indice === 'number' ? selectedAssinaturaSaldo.ciclo.indice : '-'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                                        <div className="text-sm font-semibold text-gray-800">Itens do plano</div>
+                                    </div>
+                                    <div className="divide-y divide-gray-200">
+                                        {(selectedAssinaturaSaldo?.saldos || []).map((item) => {
+                                            const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
+                                            const quotaLabel = item.quantidade_por_ciclo === null ? '∞' : String(item.quantidade_por_ciclo);
+                                            const usadosLabel = String(item.usados || 0);
+                                            const restantesLabel = item.restantes === null ? '∞' : String(item.restantes);
+
+                                            return (
+                                                <div key={item.plano_item_id} className="px-4 py-3 flex items-center justify-between gap-4">
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-medium text-gray-800 truncate">{nome}</div>
+                                                        <div className="text-xs text-gray-500">{item.tipo === 'SERVICO' ? 'Serviço' : 'Extra'}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-6 flex-shrink-0">
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Usado</div>
+                                                            <div className="text-sm font-semibold text-gray-800">{usadosLabel}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Total</div>
+                                                            <div className="text-sm font-semibold text-gray-800">{quotaLabel}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Restante</div>
+                                                            <div className="text-sm font-semibold" style={{ color: '#2663EB' }}>{restantesLabel}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {(selectedAssinaturaSaldo?.saldos || []).length === 0 && (
+                                            <div className="px-4 py-6 text-sm text-gray-500 text-center">Nenhum item encontrado</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+                                <button type="button" onClick={closeAssinaturaModal} className="bg-white text-gray-700 border border-gray-300 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                    Fechar
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    portalRoot
+                )
+            )}
         </div>
     );
 };

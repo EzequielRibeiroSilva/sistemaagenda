@@ -1,9 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-let lastClientsRequestKey: string | null = null;
-let lastClientsRequestAt = 0;
-
 // Tipos para o módulo de clientes
 export interface Client {
   id: number;
@@ -14,6 +11,7 @@ export interface Client {
   birthDate?: string;
   isSubscriber: boolean;
   subscriptionStartDate?: string;
+  subscriptionPlanId?: number | null;
   status: 'Ativo' | 'Bloqueado';
   whatsappId?: number;
   createdAt: string;
@@ -58,12 +56,48 @@ export interface CreateClientData {
   data_nascimento?: string;
   is_assinante?: boolean;
   data_inicio_assinatura?: string;
+  assinatura_plano_id?: number | null;
   status?: 'Ativo' | 'Bloqueado';
 }
 
 export interface UpdateClientData extends Partial<CreateClientData> {
   id: number;
 }
+
+export type AssinaturaSaldoItem = {
+  plano_item_id: number;
+  tipo: 'SERVICO' | 'EXTRA';
+  servico_id: number | null;
+  servico_extra_id: number | null;
+  nome: string | null;
+  quantidade_por_ciclo: number | null;
+  usados: number;
+  restantes: number | null;
+};
+
+export type AssinaturaSaldoResponse = {
+  cliente: {
+    id: number;
+    nome: string;
+    telefone?: string;
+    is_assinante: boolean;
+    data_inicio_assinatura?: string;
+    assinatura_plano_id?: number | null;
+  } | null;
+  assinatura_ativa: boolean;
+  plano: {
+    id: number;
+    nome: string;
+    validade_dias: number;
+  } | null;
+  ciclo: {
+    referencia: string;
+    inicio: string;
+    fim: string;
+    indice: number;
+  } | null;
+  saldos: AssinaturaSaldoItem[];
+};
 
 /**
  * Hook personalizado para gerenciamento de clientes
@@ -146,15 +180,6 @@ export const useClientManagement = () => {
         is_assinante: typeof currentFilters.is_assinante === 'boolean' ? currentFilters.is_assinante : null,
         status: currentFilters.status || ''
       });
-
-      // ✅ DEDUPE GLOBAL (DEV/StrictMode): evitar 2 requests idênticos em sequência
-      // Mesmo que o componente seja montado 2x no StrictMode, essa janela corta o request duplicado.
-      const now = Date.now();
-      if (lastClientsRequestKey === requestKey && now - lastClientsRequestAt < 1000) {
-        return;
-      }
-      lastClientsRequestKey = requestKey;
-      lastClientsRequestAt = now;
 
       if (inFlightKeyRef.current === requestKey) {
         return;
@@ -246,6 +271,18 @@ export const useClientManagement = () => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar cliente';
       setError(errorMessage);
+      return null;
+    }
+  }, [authenticatedFetch]);
+
+  const fetchClientAssinaturaSaldo = useCallback(async (clientId: number): Promise<AssinaturaSaldoResponse | null> => {
+    try {
+      const response = await authenticatedFetch(`/clientes/${clientId}/assinatura-saldo`);
+      if (response?.success) {
+        return (response.data || null) as AssinaturaSaldoResponse | null;
+      }
+      return null;
+    } catch {
       return null;
     }
   }, [authenticatedFetch]);
@@ -405,6 +442,7 @@ export const useClientManagement = () => {
     // Ações
     fetchClients,
     fetchClient,
+    fetchClientAssinaturaSaldo,
     createClient,
     updateClient,
     deleteClient,

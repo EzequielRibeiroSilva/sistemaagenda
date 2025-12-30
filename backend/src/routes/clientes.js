@@ -54,6 +54,19 @@ router.get('/',
 );
 
 /**
+ * GET /api/clientes/:id/assinatura-saldo
+ * Buscar saldo do clube de assinatura (por ciclo) para um cliente específico
+ */
+router.get('/:id/assinatura-saldo',
+  multiTenantMiddleware.requireUnidadeId(),
+  multiTenantMiddleware.auditMultiTenantAccess('VISUALIZAR_ASSINATURA_SALDO_CLIENTE'),
+  rbacMiddleware.auditLog('VISUALIZAR_ASSINATURA_SALDO_CLIENTE'),
+  async (req, res) => {
+    await clienteController.getAssinaturaSaldo(req, res);
+  }
+);
+
+/**
  * POST /api/clientes
  * Criar novo cliente na unidade do usuário logado
  * Body: { primeiro_nome, ultimo_nome, telefone, email?, is_assinante?, data_inicio_assinatura? }

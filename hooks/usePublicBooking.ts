@@ -100,10 +100,16 @@ export interface AgendamentoData {
   unidade_id: number;
   agente_id: number;
   servico_ids: number[];
+  servico_extra_ids?: number[];
   data_agendamento: string;
   hora_inicio: string;
   cliente_nome: string;
   cliente_telefone: string;
+  data_nascimento?: string | null;
+  usar_assinatura_itens?: {
+    servico_ids?: number[];
+    servico_extra_ids?: number[];
+  } | null;
   observacoes?: string;
 }
 

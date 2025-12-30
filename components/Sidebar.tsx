@@ -154,6 +154,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             <li>
                 <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-extra'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">SERVIÇOS EXTRAS</a>
             </li>
+            <li>
+                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-subscriptions'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">CLUBE DE ASSINATURA</a>
+            </li>
         </ul>
     </div>
   );

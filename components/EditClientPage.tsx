@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClientManagement, type Client } from '../hooks/useClientManagement';
 import { useToast } from '../contexts/ToastContext';
+import { useSubscriptionPlanManagement, type PlanoAssinaturaListItem } from '../hooks/useSubscriptionPlanManagement';
 
 interface EditClientPageProps {
   clientId: number | null;
@@ -18,12 +19,17 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
   const [isSubscriber, setIsSubscriber] = useState(false);
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
   const [subscriptionStartDateText, setSubscriptionStartDateText] = useState('');
+  const [subscriptionPlanId, setSubscriptionPlanId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [clientData, setClientData] = useState<Client | null>(null);
 
+  const [subscriptionPlans, setSubscriptionPlans] = useState<PlanoAssinaturaListItem[]>([]);
+
   // Hook de gerenciamento de clientes
   const { fetchClient, updateClient, error, clearError } = useClientManagement();
+
+  const { fetchPlans } = useSubscriptionPlanManagement();
 
   const formatDateToDDMMYYYY = (date: Date): string => {
     const pad = (num: number) => num.toString().padStart(2, '0');
@@ -99,6 +105,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
           const parsedSubscriptionStartDate = parseApiDateToDate(client.subscriptionStartDate);
           setSubscriptionStartDate(parsedSubscriptionStartDate);
           setSubscriptionStartDateText(parsedSubscriptionStartDate ? formatDateToDDMMYYYY(parsedSubscriptionStartDate) : '');
+          setSubscriptionPlanId(client.subscriptionPlanId ? String(client.subscriptionPlanId) : '');
         }
       } catch (err) {
         // Erro silencioso - não expor detalhes no console
@@ -120,8 +127,18 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
     } else {
       setSubscriptionStartDate(null);
       setSubscriptionStartDateText('');
+      setSubscriptionPlanId('');
     }
   };
+
+  useEffect(() => {
+    const loadPlans = async () => {
+      if (!isSubscriber) return;
+      const plans = await fetchPlans();
+      setSubscriptionPlans(Array.isArray(plans) ? plans : []);
+    };
+    loadPlans();
+  }, [isSubscriber, fetchPlans]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +156,11 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
       return;
     }
 
+    if (isSubscriber && !subscriptionPlanId) {
+      toast.warning('Campo Obrigatório', 'Selecione um plano de assinatura para o cliente assinante.');
+      return;
+    }
+
     // Limpar erro anterior
     clearError();
 
@@ -152,7 +174,8 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
         telefone: phone.trim().startsWith('+55') ? phone.trim() : `+55${phone.trim()}`,
         data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : null,
         is_assinante: isSubscriber,
-        data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined
+        data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
+        assinatura_plano_id: isSubscriber ? parseInt(subscriptionPlanId) : null
       };
 
       const success = await updateClient(clientId, updateData);
@@ -373,6 +396,25 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                             className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                             disabled={isSubmitting}
                           />
+                      </div>
+                  )}
+
+                  {isSubscriber && (
+                      <div className="md:col-span-2">
+                          <label className="text-sm font-medium text-gray-600 mb-2 block">Plano de Assinatura</label>
+                          <select
+                            value={subscriptionPlanId}
+                            onChange={(e) => setSubscriptionPlanId(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                            disabled={isSubmitting}
+                          >
+                            <option value="">Selecione um plano</option>
+                            {subscriptionPlans.map(p => (
+                              <option key={p.id} value={String(p.id)}>
+                                {p.nome}
+                              </option>
+                            ))}
+                          </select>
                       </div>
                   )}
 

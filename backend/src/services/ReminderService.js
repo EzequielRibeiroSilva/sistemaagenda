@@ -14,6 +14,7 @@ class ReminderService {
     this.maxRetries = 3; // Máximo de tentativas de envio
     this.allowedStartHour = 6; // 06:00
     this.allowedEndHour = 23; // 23:00
+    this.subscriptionEndingSoonDays = parseInt(process.env.SUBSCRIPTION_ENDING_SOON_DAYS || '3', 10);
   }
 
   getNowInSaoPaulo() {
@@ -24,6 +25,43 @@ class ReminderService {
   getTodayStrInSaoPaulo() {
     const nowDate = this.getNowInSaoPaulo();
     return nowDate.toLocaleDateString('en-CA');
+  }
+
+  addDays(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    const pad = (num) => num.toString().padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  }
+
+  dayNumberFromDateStr(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+    return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+  }
+
+  diffDays(a, b) {
+    return this.dayNumberFromDateStr(a) - this.dayNumberFromDateStr(b);
+  }
+
+  normalizeDateStr(dateValue) {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date) return dateValue.toISOString().slice(0, 10);
+    const s = String(dateValue);
+    if (s.length >= 10 && s.includes('T')) return s.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const dt = new Date(s);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+    return null;
+  }
+
+  getCycleBounds({ startDateStr, validadeDias, referenceDateStr }) {
+    const delta = this.diffDays(referenceDateStr, startDateStr);
+    const idx = delta > 0 ? Math.floor(delta / validadeDias) : 0;
+    const cycleStart = this.addDays(startDateStr, idx * validadeDias);
+    const cycleEndExclusive = this.addDays(cycleStart, validadeDias);
+    const cycleEndInclusive = this.addDays(cycleEndExclusive, -1);
+    return { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex: idx };
   }
 
   getBirthdaySendAtForToday() {
@@ -190,6 +228,109 @@ class ReminderService {
     } catch (error) {
       logger.error('❌ [ReminderService] Erro ao processar aniversários:', error);
       return { processed: 0, sent: 0, failed: 0, error: error.message };
+    }
+  }
+
+  async scheduleSubscriptionEndingSoonNotifications() {
+    try {
+      const todayStr = this.getTodayStrInSaoPaulo();
+      const thresholdDays = Number.isFinite(this.subscriptionEndingSoonDays) ? this.subscriptionEndingSoonDays : 3;
+
+      // Buscar assinantes ativos com plano e inicio configurados
+      const rows = await db('clientes as c')
+        .join('unidades as u', 'c.unidade_id', 'u.id')
+        .join('usuarios as us', 'u.usuario_id', 'us.id')
+        .join('planos_assinatura as p', 'c.assinatura_plano_id', 'p.id')
+        .where('c.status', 'Ativo')
+        .where('c.is_assinante', true)
+        .whereNotNull('c.assinatura_plano_id')
+        .whereNotNull('c.data_inicio_assinatura')
+        .where('p.status', 'Ativo')
+        .select(
+          'c.id as cliente_id',
+          'c.telefone as cliente_telefone',
+          db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
+          'c.data_inicio_assinatura',
+          'p.validade_dias',
+          'u.id as unidade_id',
+          'u.nome as unidade_nome',
+          'u.telefone as unidade_telefone',
+          'us.telefone as admin_telefone'
+        );
+
+      if (!rows || rows.length === 0) return { scheduled: 0 };
+
+      let scheduled = 0;
+
+      for (const r of rows) {
+        const validadeDias = parseInt(r.validade_dias, 10) || 31;
+        const startStr = this.normalizeDateStr(r.data_inicio_assinatura);
+        if (!startStr) continue;
+
+        const { cycleEndInclusive } = this.getCycleBounds({
+          startDateStr: startStr,
+          validadeDias,
+          referenceDateStr: todayStr
+        });
+
+        const diasRestantes = this.diffDays(cycleEndInclusive, todayStr);
+
+        if (diasRestantes < 0 || diasRestantes > thresholdDays) continue;
+
+        const enviarEm = this.getNowInSaoPaulo();
+        enviarEm.setMinutes(enviarEm.getMinutes() + 1);
+
+        const baseRow = {
+          agendamento_id: null,
+          unidade_id: r.unidade_id,
+          cliente_id: r.cliente_id,
+          assinatura_referencia: cycleEndInclusive,
+          status: 'programado',
+          tentativas: 0,
+          enviar_em: enviarEm,
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+
+        // Cliente
+        try {
+          await db('lembretes_enviados')
+            .insert({
+              ...baseRow,
+              tipo_notificacao: 'assinatura_aviso_cliente',
+              telefone_destino: r.cliente_telefone,
+              mensagem_enviada: null
+            });
+          scheduled++;
+        } catch (error) {
+          if (!(error && error.code === '23505')) {
+            throw error;
+          }
+        }
+
+        // Admin
+        if (r.admin_telefone) {
+          try {
+            await db('lembretes_enviados')
+              .insert({
+                ...baseRow,
+                tipo_notificacao: 'assinatura_aviso_admin',
+                telefone_destino: r.admin_telefone,
+                mensagem_enviada: null
+              });
+            scheduled++;
+          } catch (error) {
+            if (!(error && error.code === '23505')) {
+              throw error;
+            }
+          }
+        }
+      }
+
+      return { scheduled };
+    } catch (error) {
+      logger.error('❌ [ReminderService] Erro ao programar avisos de assinatura:', error);
+      return { scheduled: 0, error: error.message };
     }
   }
 
@@ -372,15 +513,18 @@ class ReminderService {
 
       const now = new Date();
 
-      const reminders = await db('lembretes_enviados as le')
+      // ✅ Importante: em PostgreSQL, FOR UPDATE não pode ser aplicado ao lado nullable de LEFT JOIN.
+      // Como avisos de assinatura não têm agendamento_id, separamos em duas queries:
+      // 1) Lembretes vinculados a agendamento (com lock)
+      // 2) Avisos de assinatura (sem join com agendamentos)
+
+      const remindersAgendamento = await db('lembretes_enviados as le')
         .join('agendamentos as a', 'le.agendamento_id', 'a.id')
         .join('clientes as c', 'a.cliente_id', 'c.id')
         .join('agentes as ag', 'a.agente_id', 'ag.id')
-        .join('unidades as u', 'a.unidade_id', 'u.id')
+        .join('unidades as u', 'le.unidade_id', 'u.id')
         .where('le.status', 'programado')
         .where('le.enviar_em', '<=', now)
-        // ✅ LÓGICA: lembretes (24h/1h) são para agendamentos aprovados
-        // ✅ Convite de retorno é para agendamentos concluídos
         .where(function() {
           this.where(function() {
             this.whereIn('le.tipo_notificacao', ['lembrete_24h', 'lembrete_1h'])
@@ -395,18 +539,19 @@ class ReminderService {
               .where('a.status', 'Aprovado');
           });
         })
-        .forUpdate() // 🔒 Lock pessimista: bloqueia os registros para evitar race conditions
-        .skipLocked() // ⏭️ Pula registros já bloqueados por outra transação
+        .forUpdate()
+        .skipLocked()
         .select(
           'le.id as lembrete_id',
           'le.tipo_lembrete',
           'le.tipo_notificacao',
           'le.enviar_em',
+          'le.telefone_destino',
+          'le.assinatura_referencia',
           'a.id as agendamento_id',
           'a.data_agendamento',
           'a.hora_inicio',
           'a.hora_fim',
-          'a.unidade_id',
           'c.id as cliente_id',
           db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
           'c.telefone as cliente_telefone',
@@ -420,13 +565,52 @@ class ReminderService {
           'u.endereco as unidade_endereco'
         );
 
-      // Buscar serviços para cada lembrete
+      const remindersAssinatura = await db('lembretes_enviados as le')
+        .join('clientes as c', 'le.cliente_id', 'c.id')
+        .join('unidades as u', 'le.unidade_id', 'u.id')
+        .where('le.status', 'programado')
+        .where('le.enviar_em', '<=', now)
+        .whereIn('le.tipo_notificacao', ['assinatura_aviso_cliente', 'assinatura_aviso_admin'])
+        .forUpdate()
+        .skipLocked()
+        .select(
+          'le.id as lembrete_id',
+          'le.tipo_lembrete',
+          'le.tipo_notificacao',
+          'le.enviar_em',
+          'le.telefone_destino',
+          'le.assinatura_referencia',
+          db.raw('NULL::int as agendamento_id'),
+          db.raw('NULL::date as data_agendamento'),
+          db.raw('NULL::text as hora_inicio'),
+          db.raw('NULL::text as hora_fim'),
+          'c.id as cliente_id',
+          db.raw("CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')) as cliente_nome"),
+          'c.telefone as cliente_telefone',
+          db.raw('NULL::int as agente_id'),
+          db.raw('NULL::text as agente_nome'),
+          db.raw('NULL::text as agente_telefone'),
+          'u.id as unidade_id',
+          'u.nome as unidade_nome',
+          'u.slug_url as unidade_slug',
+          'u.telefone as unidade_telefone',
+          'u.endereco as unidade_endereco'
+        );
+
+      const reminders = [...remindersAgendamento, ...remindersAssinatura];
+
+      // Buscar serviços apenas quando existir agendamento_id
       for (const reminder of reminders) {
+        if (!reminder.agendamento_id) {
+          reminder.servicos = [];
+          continue;
+        }
+
         const servicos = await db('agendamento_servicos as ags')
           .join('servicos as s', 'ags.servico_id', 's.id')
           .where('ags.agendamento_id', reminder.agendamento_id)
           .select('s.id', 's.nome');
-        
+
         reminder.servicos = servicos;
       }
 
@@ -824,6 +1008,38 @@ class ReminderService {
             }
 
             result = await this.whatsappService.sendReturnInvite(agendamentoData);
+          } else if (tipo_notificacao === 'assinatura_aviso_cliente') {
+            const todayStr = this.getTodayStrInSaoPaulo();
+            const ref = reminder.assinatura_referencia ? String(reminder.assinatura_referencia).slice(0, 10) : null;
+            const diasRestantes = ref ? this.diffDays(ref, todayStr) : null;
+            result = await this.whatsappService.sendSubscriptionEndingSoonClient({
+              unidade_id: reminder.unidade_id,
+              unidade_nome: reminder.unidade_nome,
+              unidade_telefone: reminder.unidade_telefone,
+              cliente_id: reminder.cliente_id,
+              cliente_nome: reminder.cliente_nome,
+              cliente_telefone: reminder.telefone_destino || reminder.cliente_telefone,
+              assinatura_referencia: reminder.assinatura_referencia,
+              dias_restantes: diasRestantes,
+              data_fim: ref,
+              skipRegister: true
+            });
+          } else if (tipo_notificacao === 'assinatura_aviso_admin') {
+            const todayStr = this.getTodayStrInSaoPaulo();
+            const ref = reminder.assinatura_referencia ? String(reminder.assinatura_referencia).slice(0, 10) : null;
+            const diasRestantes = ref ? this.diffDays(ref, todayStr) : null;
+            result = await this.whatsappService.sendSubscriptionEndingSoonAdmin({
+              unidade_id: reminder.unidade_id,
+              unidade_nome: reminder.unidade_nome,
+              admin_telefone: reminder.telefone_destino,
+              cliente_id: reminder.cliente_id,
+              cliente_nome: reminder.cliente_nome,
+              cliente_telefone: reminder.cliente_telefone,
+              assinatura_referencia: reminder.assinatura_referencia,
+              dias_restantes: diasRestantes,
+              data_fim: ref,
+              skipRegister: true
+            });
           } else if (tipo_lembrete === '24h' || tipo_notificacao === 'lembrete_24h') {
             result = await this.whatsappService.sendReminder24h(agendamentoData);
           } else if (tipo_lembrete === '2h' || tipo_notificacao === 'lembrete_1h') {
@@ -885,10 +1101,13 @@ class ReminderService {
       const birthdaysScheduled = await this.scheduleBirthdayMessages();
       const birthdays = await this.processBirthdayMessages();
 
+      const subscriptionEndingSoonScheduled = await this.scheduleSubscriptionEndingSoonNotifications();
+
       const results = {
         timestamp: new Date().toISOString(),
         birthdaysScheduled,
         birthdays,
+        subscriptionEndingSoonScheduled,
         scheduled: await this.processScheduledReminders(), // ✅ NOVO: Processar lembretes programados
         reminders24h: await this.process24hReminders(),
         reminders2h: await this.process2hReminders()

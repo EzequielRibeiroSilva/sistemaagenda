@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ServiceExtrasPage from './ServiceExtrasPage';
+import SubscriptionPlansPage from './SubscriptionPlansPage';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
@@ -74,11 +75,12 @@ interface ServicesPageProps {
   setActiveView: (view: string) => void;
   onEditService: (serviceId: number) => void;
   onEditExtraService: (extraServiceId: string) => void;
+  onEditSubscriptionPlan: (planId: number) => void;
 }
 
-const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, onEditService, onEditExtraService }) => {
+const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, onEditService, onEditExtraService, onEditSubscriptionPlan }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
-  const tabs = ['Serviços', 'Serviços Extras'];
+  const tabs = ['Serviços', 'Serviços Extras', 'Clube de Assinatura'];
   const toast = useToast();
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
@@ -95,6 +97,7 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
     setActiveTab(tabName);
     if (tabName === 'Serviços') setActiveView('services-list');
     if (tabName === 'Serviços Extras') setActiveView('services-extra');
+    if (tabName === 'Clube de Assinatura') setActiveView('services-subscriptions');
   }
 
   const handleDeleteService = async (id: number) => {
@@ -189,6 +192,12 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ initialTab, setActiveView, 
         </div>
       )}
       {activeTab === 'Serviços Extras' && <ServiceExtrasPage setActiveView={setActiveView} onEditExtraService={onEditExtraService} />}
+      {activeTab === 'Clube de Assinatura' && (
+        <SubscriptionPlansPage
+          setActiveView={setActiveView}
+          onEditPlan={(planId) => onEditSubscriptionPlan(planId)}
+        />
+      )}
     </div>
   );
 };

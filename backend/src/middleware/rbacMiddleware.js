@@ -87,7 +87,7 @@ class RBACMiddleware {
         }
 
         // Obter unidade_id do parâmetro da rota ou do body
-        const unidadeId = parseInt(req.params.unidade_id || req.params.id || req.body.unidade_id);
+        const unidadeId = parseInt(req.params.unidade_id || req.params.id || req.body?.unidade_id);
 
         if (!unidadeId) {
           return res.status(400).json({

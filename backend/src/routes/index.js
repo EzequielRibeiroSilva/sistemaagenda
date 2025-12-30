@@ -19,6 +19,7 @@ const testRoutes = require('./test');
 const cuponsRoutes = require('./cupons');
 const notificacoesRoutes = require('./notificacoes');
 const auditLogsRoutes = require('./auditLogs');
+const planosAssinaturaRoutes = require('./planosAssinatura');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -46,6 +47,7 @@ router.use('/unidades', authenticate(), unidadesRoutes);
 router.use('/clientes', authenticate(), clientesRoutes);
 router.use('/servicos/extras', authenticate(), servicosExtrasRoutes);
 router.use('/servicos', authenticate(), servicosRoutes);
+router.use('/planos-assinatura', authenticate(), planosAssinaturaRoutes);
 router.use('/agendamentos', authenticate(), agendamentosRoutes);
 router.use('/cupons', cuponsRoutes);
 router.use('/settings', settingsRoutes);

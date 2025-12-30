@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const UnidadeController = require('../controllers/UnidadeController');
+const PlanoAssinaturaController = require('../controllers/PlanoAssinaturaController');
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
 
 const unidadeController = new UnidadeController();
+const planoAssinaturaController = new PlanoAssinaturaController();
 
 // Middleware de autenticação para todas as rotas
 router.use(authenticate());
@@ -141,6 +143,70 @@ router.delete('/:id/excecoes/:excecaoId',
   rbacMiddleware.auditLog('DELETAR_EXCECAO_CALENDARIO'),
   async (req, res) => {
     await unidadeController.deleteExcecao(req, res);
+  }
+);
+
+// ========================================
+// ROTAS PARA CLUBE DE ASSINATURA (PLANOS)
+// ========================================
+
+/**
+ * GET /api/unidades/:id/planos-assinatura
+ * Lista planos de assinatura da unidade
+ */
+router.get('/:id/planos-assinatura',
+  rbacMiddleware.requireUnitManagement(),
+  rbacMiddleware.auditLog('LISTAR_PLANOS_ASSINATURA'),
+  async (req, res) => {
+    await planoAssinaturaController.listByUnidade(req, res);
+  }
+);
+
+/**
+ * GET /api/unidades/:id/planos-assinatura/:planoId
+ * Buscar plano de assinatura com itens
+ */
+router.get('/:id/planos-assinatura/:planoId',
+  rbacMiddleware.requireUnitManagement(),
+  rbacMiddleware.auditLog('VISUALIZAR_PLANO_ASSINATURA'),
+  async (req, res) => {
+    await planoAssinaturaController.show(req, res);
+  }
+);
+
+/**
+ * POST /api/unidades/:id/planos-assinatura
+ * Criar plano de assinatura
+ */
+router.post('/:id/planos-assinatura',
+  rbacMiddleware.requireUnitManagement(),
+  rbacMiddleware.auditLog('CRIAR_PLANO_ASSINATURA'),
+  async (req, res) => {
+    await planoAssinaturaController.store(req, res);
+  }
+);
+
+/**
+ * PUT /api/unidades/:id/planos-assinatura/:planoId
+ * Atualizar plano de assinatura
+ */
+router.put('/:id/planos-assinatura/:planoId',
+  rbacMiddleware.requireUnitManagement(),
+  rbacMiddleware.auditLog('ATUALIZAR_PLANO_ASSINATURA'),
+  async (req, res) => {
+    await planoAssinaturaController.update(req, res);
+  }
+);
+
+/**
+ * DELETE /api/unidades/:id/planos-assinatura/:planoId
+ * Deletar plano e remover clientes do plano
+ */
+router.delete('/:id/planos-assinatura/:planoId',
+  rbacMiddleware.requireUnitManagement(),
+  rbacMiddleware.auditLog('DELETAR_PLANO_ASSINATURA'),
+  async (req, res) => {
+    await planoAssinaturaController.destroy(req, res);
   }
 );
 

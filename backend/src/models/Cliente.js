@@ -33,6 +33,7 @@ class Cliente extends BaseModel {
         'data_nascimento',
         'is_assinante',
         'data_inicio_assinatura',
+        'assinatura_plano_id',
         'status',
         'whatsapp_id',
         'unidade_id',
@@ -65,6 +66,7 @@ class Cliente extends BaseModel {
         'data_nascimento',
         'is_assinante',
         'data_inicio_assinatura',
+        'assinatura_plano_id',
         'status',
         'whatsapp_id',
         'created_at',
@@ -130,6 +132,7 @@ class Cliente extends BaseModel {
         'data_nascimento',
         'is_assinante',
         'data_inicio_assinatura',
+        'assinatura_plano_id',
         'status',
         'whatsapp_id',
         'created_at',
@@ -157,6 +160,7 @@ class Cliente extends BaseModel {
         'data_nascimento',
         'is_assinante',
         'data_inicio_assinatura',
+        'assinatura_plano_id',
         'status',
         'whatsapp_id',
         'created_at',
@@ -186,6 +190,16 @@ class Cliente extends BaseModel {
       dadosCliente.data_inicio_assinatura = new Date().toISOString().split('T')[0];
     }
 
+    if (dadosCliente.is_assinante) {
+      const planoId = dadosCliente.assinatura_plano_id !== undefined && dadosCliente.assinatura_plano_id !== null
+        ? parseInt(dadosCliente.assinatura_plano_id)
+        : NaN;
+
+      if (!planoId || Number.isNaN(planoId)) {
+        throw new Error('Plano de assinatura é obrigatório para assinantes');
+      }
+    }
+
     const dadosParaInserir = {
       unidade_id: unidadeId,
       primeiro_nome: dadosCliente.primeiro_nome?.trim() || '',
@@ -195,6 +209,7 @@ class Cliente extends BaseModel {
       data_nascimento: dadosCliente.data_nascimento || null,
       is_assinante: dadosCliente.is_assinante || false,
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || null,
+      assinatura_plano_id: dadosCliente.is_assinante ? parseInt(dadosCliente.assinatura_plano_id) : null,
       status: dadosCliente.status || 'Ativo',
       whatsapp_id: dadosCliente.whatsapp_id || null
     };
@@ -237,6 +252,28 @@ class Cliente extends BaseModel {
     // Validar dados de assinante
     if (dadosCliente.is_assinante && !dadosCliente.data_inicio_assinatura && !clienteExistente.data_inicio_assinatura) {
       dadosCliente.data_inicio_assinatura = new Date().toISOString().split('T')[0];
+    }
+
+    const isAssinanteFinal = typeof dadosCliente.is_assinante === 'boolean'
+      ? dadosCliente.is_assinante
+      : Boolean(clienteExistente.is_assinante);
+
+    if (isAssinanteFinal) {
+      const planoIdRaw = dadosCliente.assinatura_plano_id !== undefined
+        ? dadosCliente.assinatura_plano_id
+        : clienteExistente.assinatura_plano_id;
+
+      const planoId = planoIdRaw !== undefined && planoIdRaw !== null ? parseInt(planoIdRaw) : NaN;
+      if (!planoId || Number.isNaN(planoId)) {
+        throw new Error('Plano de assinatura é obrigatório para assinantes');
+      }
+
+      dadosCliente.assinatura_plano_id = planoId;
+    } else {
+      // Se deixou de ser assinante, limpar plano
+      if (dadosCliente.is_assinante === false) {
+        dadosCliente.assinatura_plano_id = null;
+      }
     }
 
     const dadosParaAtualizar = {

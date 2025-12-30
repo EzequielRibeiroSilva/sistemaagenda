@@ -49,6 +49,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [isValidatingCupom, setIsValidatingCupom] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
 
+  const [assinaturaInfo, setAssinaturaInfo] = useState<any>(null);
+  const [isLoadingAssinatura, setIsLoadingAssinatura] = useState(false);
+  const [usarAssinaturaItens, setUsarAssinaturaItens] = useState<{ servico_ids: number[]; servico_extra_ids: number[] } | null>(null);
+  const [nextStepAfterSubscription, setNextStepAfterSubscription] = useState<number | null>(null);
+  const lastAssinaturaCheckKeyRef = useRef<string>('');
+
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
 
@@ -374,8 +380,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (step === 2) return 2;
       if (step === 3 || step === 4) return 3;
       if (step === 5) return 4;
-      if (step === 6 || step === 7) return 5;
-      if (step === 8) return 6;
+      if (step === 6 || step === 7 || step === 8) return 5;
+      if (step === 9) return 6;
       return 7;
     };
 
@@ -389,9 +395,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     else if (currentStep === 4) stageLabel = 'Extras';
     else if (currentStep === 5) stageLabel = 'Data e Hora';
     else if (currentStep === 6) stageLabel = 'Seus Dados';
-    else if (currentStep === 7) stageLabel = 'Data de Nascimento';
-    else if (currentStep === 8) stageLabel = 'Revisão';
-    else if (currentStep === 9) stageLabel = 'Concluído';
+    else if (currentStep === 7) stageLabel = 'Seu Plano';
+    else if (currentStep === 8) stageLabel = 'Data de Nascimento';
+    else if (currentStep === 9) stageLabel = 'Revisão';
+    else if (currentStep === 10) stageLabel = 'Concluído';
 
     return { stage, totalStages, percent, stageLabel };
   }, [currentStep]);
@@ -560,6 +567,82 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
     autoLoadSlotsOnStep5();
   }, [currentStep, selectedAgent, selectedServices, availableDays, unidadeId, getAgenteDisponibilidade, formatDateToYYYYMMDD, salonData?.configuracoes?.periodo_futuro_dias]);
+
+  const buscarAssinaturaSaldo = async (telefone: string) => {
+    if (!unidadeId) return null;
+
+    try {
+      const telefoneLimpo = telefone.trim().replace(/\D/g, '');
+      const response = await fetch(`${API_BASE_URL}/public/cliente/assinatura-saldo?telefone=${telefoneLimpo}&unidade_id=${unidadeId}`);
+
+      if (!response.ok) {
+        let errorMessage = `Erro ao buscar plano (HTTP ${response.status})`;
+        try {
+          const body = await response.json();
+          errorMessage = body?.message || body?.error || errorMessage;
+        } catch (_) {
+          // ignore
+        }
+        return {
+          assinatura_ativa: false,
+          plano: null,
+          ciclo: null,
+          saldos: [],
+          error_message: errorMessage
+        };
+      }
+
+      const data = await response.json();
+      if (!data?.success) {
+        return {
+          assinatura_ativa: false,
+          plano: null,
+          ciclo: null,
+          saldos: [],
+          error_message: data?.message || data?.error || 'Erro ao buscar plano'
+        };
+      }
+
+      return data.data || {
+        assinatura_ativa: false,
+        plano: null,
+        ciclo: null,
+        saldos: []
+      };
+    } catch (e) {
+      return {
+        assinatura_ativa: false,
+        plano: null,
+        ciclo: null,
+        saldos: [],
+        error_message: 'Erro ao buscar plano. Verifique sua conexão e tente novamente.'
+      };
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      if (currentStep !== 7) return;
+      if (!clientPhone || !unidadeId) return;
+
+      const key = `${unidadeId}:${clientPhone.trim().replace(/\D/g, '')}`;
+      if (lastAssinaturaCheckKeyRef.current === key && assinaturaInfo !== null) return;
+
+      lastAssinaturaCheckKeyRef.current = key;
+      setIsLoadingAssinatura(true);
+      try {
+        const data = await buscarAssinaturaSaldo(clientPhone);
+        setAssinaturaInfo(data);
+        setUsarAssinaturaItens(null);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoadingAssinatura(false);
+      }
+    };
+
+    run();
+  }, [currentStep, clientPhone, unidadeId, assinaturaInfo]);
 
   if (isBootstrapping || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50" style={{ minHeight: '100dvh' }}><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -771,6 +854,206 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     );
   };
 
+  const renderSubscriptionStep = () => {
+    const saldoByServicoId = new Map<number, any>();
+    const saldoByExtraId = new Map<number, any>();
+
+    const saldos = Array.isArray(assinaturaInfo?.saldos) ? assinaturaInfo.saldos : [];
+    for (const s of saldos) {
+      if (s.tipo === 'SERVICO' && s.servico_id) saldoByServicoId.set(s.servico_id, s);
+      if (s.tipo === 'EXTRA' && s.servico_extra_id) saldoByExtraId.set(s.servico_extra_id, s);
+    }
+
+    const selectedExtraServices = filteredExtras.filter(e => selectedExtraServiceIds.includes(e.id));
+
+    const canUseServico = (id: number) => {
+      const saldo = saldoByServicoId.get(id);
+      if (!saldo) return false;
+      if (saldo.restantes === null) return true;
+      return saldo.restantes > 0;
+    };
+
+    const canUseExtra = (id: number) => {
+      const saldo = saldoByExtraId.get(id);
+      if (!saldo) return false;
+      if (saldo.restantes === null) return true;
+      return saldo.restantes > 0;
+    };
+
+    const toggleServico = (id: number) => {
+      setUsarAssinaturaItens(prev => {
+        const current = prev || { servico_ids: [], servico_extra_ids: [] };
+        const has = current.servico_ids.includes(id);
+        return {
+          ...current,
+          servico_ids: has ? current.servico_ids.filter(x => x !== id) : [...current.servico_ids, id]
+        };
+      });
+    };
+
+    const toggleExtra = (id: number) => {
+      setUsarAssinaturaItens(prev => {
+        const current = prev || { servico_ids: [], servico_extra_ids: [] };
+        const has = current.servico_extra_ids.includes(id);
+        return {
+          ...current,
+          servico_extra_ids: has ? current.servico_extra_ids.filter(x => x !== id) : [...current.servico_extra_ids, id]
+        };
+      });
+    };
+
+    const shouldShowOptions = Boolean(assinaturaInfo?.assinatura_ativa);
+    const hasAssinaturaError = Boolean(assinaturaInfo?.error_message);
+
+    const eligibleServicoIds = selectedServices
+      .filter(s => canUseServico(s.id))
+      .map(s => s.id);
+    const eligibleExtraIds = selectedExtraServices
+      .filter(e => canUseExtra(e.id))
+      .map(e => e.id);
+    const hasAnyEligible = eligibleServicoIds.length > 0 || eligibleExtraIds.length > 0;
+
+    if (!isLoadingAssinatura && assinaturaInfo && !hasAssinaturaError && (!shouldShowOptions || !hasAnyEligible)) {
+      setTimeout(() => {
+        setCurrentStep(nextStepAfterSubscription || 9);
+      }, 0);
+      return null;
+    }
+
+    const renderSaldoLabel = (saldo: any) => {
+      if (!saldo) return 'Não incluso no plano';
+      if (saldo.quantidade_por_ciclo === null) return 'Ilimitado';
+      const restantes = saldo.restantes ?? 0;
+      const quota = saldo.quantidade_por_ciclo ?? 0;
+      return `${restantes} de ${quota} restantes`;
+    };
+
+    return (
+      <div className="flex flex-col">
+        <StepHeader title="Deseja utilizar seu plano?" onBack={() => resetToStep(6)} />
+
+        <div className="p-4 space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-sm text-gray-700 font-semibold">Cliente</div>
+            <div className="text-sm text-gray-600">{clientName || '—'}</div>
+            <div className="text-sm text-gray-600">{clientPhone || '—'}</div>
+          </div>
+
+          {!isLoadingAssinatura && assinaturaInfo?.error_message && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">
+              {assinaturaInfo.error_message}
+            </div>
+          )}
+
+          {!isLoadingAssinatura && assinaturaInfo === null && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3 text-sm">
+              Não foi possível carregar as informações do seu plano.
+            </div>
+          )}
+
+          {isLoadingAssinatura && (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+              <span className="ml-2 text-gray-600">Verificando plano...</span>
+            </div>
+          )}
+
+          {shouldShowOptions && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+              <div className="text-sm text-gray-700 font-semibold">
+                {assinaturaInfo?.plano?.nome || 'Plano ativo'}
+              </div>
+
+              <div className="text-xs text-gray-500">
+                Saldos disponíveis para este ciclo:
+              </div>
+
+              <div className="space-y-2">
+                {selectedServices.map(service => {
+                  const eligible = canUseServico(service.id);
+                  const saldo = saldoByServicoId.get(service.id);
+                  return (
+                    <div
+                      key={`sub-serv-${service.id}`}
+                      className={`w-full flex items-center justify-between p-3 rounded-lg border ${eligible ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}
+                    >
+                      <span className="text-gray-800 font-medium">{service.nome}</span>
+                      <span className={`text-sm font-semibold ${eligible ? 'text-blue-700' : 'text-gray-500'}`}>{renderSaldoLabel(saldo)}</span>
+                    </div>
+                  );
+                })}
+
+                {selectedExtraServices.map(extra => {
+                  const eligible = canUseExtra(extra.id);
+                  const saldo = saldoByExtraId.get(extra.id);
+                  return (
+                    <div
+                      key={`sub-extra-${extra.id}`}
+                      className={`w-full flex items-center justify-between p-3 rounded-lg border ${eligible ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}
+                    >
+                      <span className="text-gray-800 font-medium">{(extra as any).nome || (extra as any).name || ''}</span>
+                      <span className={`text-sm font-semibold ${eligible ? 'text-blue-700' : 'text-gray-500'}`}>{renderSaldoLabel(saldo)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isLoadingAssinatura && assinaturaInfo && !shouldShowOptions && (
+            <div className="text-sm text-gray-600">
+              Nenhuma assinatura ativa encontrada para este telefone.
+            </div>
+          )}
+        </div>
+
+        {!isLoadingAssinatura && shouldShowOptions && (
+          <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white space-y-3">
+            <button
+              onClick={() => {
+                setUsarAssinaturaItens({ servico_ids: eligibleServicoIds, servico_extra_ids: eligibleExtraIds });
+                setCurrentStep(nextStepAfterSubscription || 9);
+              }}
+              className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Sim, utilizar meu plano
+            </button>
+            <button
+              onClick={() => {
+                setUsarAssinaturaItens(null);
+                setCurrentStep(nextStepAfterSubscription || 9);
+              }}
+              className="w-full bg-white text-gray-800 font-bold py-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              Não, continuar sem plano
+            </button>
+          </div>
+        )}
+
+        {!isLoadingAssinatura && (assinaturaInfo === null || hasAssinaturaError) && (
+          <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
+            <button
+              onClick={async () => {
+                if (!clientPhone || !unidadeId) return;
+                setIsLoadingAssinatura(true);
+                try {
+                  const data = await buscarAssinaturaSaldo(clientPhone);
+                  setAssinaturaInfo(data);
+                  setUsarAssinaturaItens(null);
+                } finally {
+                  setIsLoadingAssinatura(false);
+                }
+              }}
+              className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Função para buscar disponibilidade quando uma data é selecionada
   const handleDateSelect = async (date: Date) => {
     // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
@@ -780,6 +1063,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     autoSelectDateRequestRef.current++;
 
     setSelectedDate(date);
+    setSelectedTime(null);
     setTempSelectedTime('');
     setIsLoadingSlots(true);
     setAvailableTimeSlots([]);
@@ -804,6 +1088,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
       if (disponibilidade && disponibilidade.slots_disponiveis) {
         setAvailableTimeSlots(disponibilidade.slots_disponiveis);
+
+        // Se o horário selecionado anteriormente não existe mais para esta data,
+        // limpar para evitar envio de horário inválido no POST.
+        if (selectedTime && !disponibilidade.slots_disponiveis.some(s => s.hora_inicio === selectedTime)) {
+          setSelectedTime(null);
+        }
 
         if (disponibilidade.slots_disponiveis.length === 0) {
           const timeLimitHours = salonData?.configuracoes?.tempo_limite_agendar_horas || 0;
@@ -941,7 +1231,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     return (
       <div className="flex flex-col">
         <StepHeader title="Escolha data e hora" onBack={() => {
-          // ✅ CRÍTICO: Voltar para Step 4 se houver extras, senão voltar para Step 3
           if (filteredExtras.length > 0) {
             resetToStep(4);
           } else {
@@ -995,6 +1284,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
           <button
             onClick={() => {
+              if (!tempSelectedTime || !availableTimeSlots.some(s => s.hora_inicio === tempSelectedTime)) {
+                setBookingSubmitError('Este horário não está mais disponível. Selecione um horário válido.');
+                return;
+              }
+
               setSelectedTime(tempSelectedTime);
               setCurrentStep(6);
             }}
@@ -1076,17 +1370,21 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             if (clienteInfo && clienteInfo.hasBirthDate) {
               setClientBirthDate(clienteInfo.birthDate);
               setClientBirthDateText(formatDateToDDMMYYYY(clienteInfo.birthDate));
-              setCurrentStep(8);
+              setNextStepAfterSubscription(9);
             } else {
               setClientBirthDate(null);
               setClientBirthDateText('');
-              setCurrentStep(7);
+              setNextStepAfterSubscription(8);
             }
+
+            setAssinaturaInfo(null);
+            setUsarAssinaturaItens(null);
+            setCurrentStep(7);
           }} 
           disabled={!clientName || !clientPhone} 
           className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
         >
-            Continuar para Revisão
+            Continuar
         </button>
       </div>
     </div>
@@ -1130,7 +1428,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               return;
             }
             setClientBirthDate(parsed);
-            setCurrentStep(8);
+            setCurrentStep(9);
           }}
           disabled={!clientBirthDateText || !parseDDMMYYYYToDate(clientBirthDateText)}
           className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
@@ -1145,6 +1443,13 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const handleCreateAppointment = async () => {
     if (!unidadeId || !selectedAgentId || !selectedServiceIds.length || !selectedDate || !selectedTime || !clientName || !clientPhone) {
       setBookingSubmitError('Dados incompletos para criar o agendamento');
+      return;
+    }
+
+    // Garantir que o horário enviado ainda está nos slots retornados pela API.
+    // Isso evita 409 quando o frontend mantém um horário antigo/stale.
+    if (availableTimeSlots.length > 0 && !availableTimeSlots.some(s => s.hora_inicio === selectedTime)) {
+      setBookingSubmitError('Este horário não está mais disponível. Volte e selecione outro horário.');
       return;
     }
 
@@ -1171,16 +1476,19 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         formattedPhone = `+55${formattedPhone}`;
       }
 
+      const isValidBirthDate = clientBirthDate instanceof Date && !Number.isNaN(clientBirthDate.getTime());
+
       const agendamentoData = {
         unidade_id: unidadeId,
         agente_id: selectedAgentId,
         servico_ids: selectedServiceIds,
         servico_extra_ids: selectedExtraServiceIds,
+        usar_assinatura_itens: usarAssinaturaItens,
         data_agendamento: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD
         hora_inicio: selectedTime,
         cliente_nome: clientName.trim(),
         cliente_telefone: formattedPhone,
-        data_nascimento: clientBirthDate ? formatDateToYYYYMMDD(clientBirthDate) : null,
+        data_nascimento: isValidBirthDate ? formatDateToYYYYMMDD(clientBirthDate) : null,
         observacoes: ''
       };
 
@@ -1193,7 +1501,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           setClientName(agendamentoCriado.cliente.nome);
         }
         
-        setCurrentStep(9); // Ir para tela de sucesso
+        setCurrentStep(10); // Ir para tela de sucesso
       }
 
     } catch (error) {
@@ -1321,14 +1629,24 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const renderCheckout = () => {
     // Buscar objetos completos dos extras selecionados
     const selectedExtraServices = filteredExtras.filter(e => selectedExtraServiceIds.includes(e.id));
+
+    const usarPlanoServicoIds = usarAssinaturaItens?.servico_ids || [];
+    const usarPlanoExtraIds = usarAssinaturaItens?.servico_extra_ids || [];
+    const hasPlanoSelection = usarPlanoServicoIds.length > 0 || usarPlanoExtraIds.length > 0;
+
+    const servicosCobertos = selectedServices.filter(s => usarPlanoServicoIds.includes(s.id));
+    const extrasCobertos = selectedExtraServices.filter(e => usarPlanoExtraIds.includes(e.id));
+    const descontoPlanoServicos = servicosCobertos.reduce((total, s) => total + (Number(s.preco) || 0), 0);
+    const descontoPlanoExtras = extrasCobertos.reduce((total, e) => total + (Number((e as any).preco ?? (e as any).price) || 0), 0);
+    const descontoPlano = descontoPlanoServicos + descontoPlanoExtras;
     
     const valorServicos = selectedServices.reduce((total, s) => total + (Number(s.preco) || 0), 0);
-    const valorExtras = selectedExtraServices.reduce((total, e) => total + (Number(e.preco) || 0), 0);
+    const valorExtras = selectedExtraServices.reduce((total, e) => total + (Number((e as any).preco ?? (e as any).price) || 0), 0);
     const subtotal = valorServicos + valorExtras;
     const desconto = cupomAplicado ? cupomAplicado.desconto_calculado : 0;
-    const valorFinal = Math.max(0, subtotal - desconto);
+    const valorFinal = Math.max(0, subtotal - descontoPlano - desconto);
     const totalDuration = selectedServices.reduce((total, s) => total + s.duracao_minutos, 0) + 
-                         selectedExtraServices.reduce((total, e) => total + e.duracao_minutos, 0);
+                         selectedExtraServices.reduce((total, e) => total + (Number((e as any).duracao_minutos ?? (e as any).duration) || 0), 0);
 
     return (
       <div className="flex flex-col">
@@ -1339,6 +1657,27 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           <p className="text-sm text-gray-600">
             Revise os detalhes abaixo. Você pode voltar para editar ou confirmar sua reserva.
           </p>
+
+          {hasPlanoSelection && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-xs font-semibold text-blue-700 uppercase mb-2">Plano de Assinatura</h3>
+              <p className="text-sm text-blue-800 font-medium">
+                Você está utilizando seu plano{assinaturaInfo?.plano?.nome ? `: ${assinaturaInfo.plano.nome}` : ''}.
+              </p>
+              <div className="mt-2 space-y-1">
+                {servicosCobertos.map(s => (
+                  <div key={`plano-uso-serv-${s.id}`} className="text-sm text-blue-800">
+                    {s.nome} (1 cota)
+                  </div>
+                ))}
+                {extrasCobertos.map(e => (
+                  <div key={`plano-uso-extra-${e.id}`} className="text-sm text-blue-800">
+                    {(e as any).nome || (e as any).name || ''} (1 cota)
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {bookingSubmitError && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -1352,7 +1691,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             {selectedServices.map(service => (
               <div key={service.id} className="flex justify-between items-center mb-2">
                 <span className="text-gray-800 font-medium">{service.nome}</span>
-                <span className="text-gray-800 font-semibold">R$ {(Number(service.preco) || 0).toFixed(2).replace('.', ',')}</span>
+                {usarPlanoServicoIds.includes(service.id) ? (
+                  <span className="text-gray-800 font-semibold">R$ 0,00</span>
+                ) : (
+                  <span className="text-gray-800 font-semibold">R$ {(Number(service.preco) || 0).toFixed(2).replace('.', ',')}</span>
+                )}
               </div>
             ))}
             {selectedExtraServices.length > 0 && (
@@ -1360,8 +1703,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                 <p className="text-xs text-gray-500 mb-2">Serviços Extras:</p>
                 {selectedExtraServices.map(extra => (
                   <div key={extra.id} className="flex justify-between items-center mb-1 text-sm">
-                    <span className="text-gray-600">{extra.nome}</span>
-                    <span className="text-gray-600">R$ {(Number(extra.preco) || 0).toFixed(2).replace('.', ',')}</span>
+                    <span className="text-gray-600">{(extra as any).nome || (extra as any).name || ''}</span>
+                    {usarPlanoExtraIds.includes(extra.id) ? (
+                      <span className="text-gray-600">R$ 0,00</span>
+                    ) : (
+                      <span className="text-gray-600">R$ {(Number((extra as any).preco ?? (extra as any).price) || 0).toFixed(2).replace('.', ',')}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1490,6 +1837,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                   <span className="text-gray-800">R$ {valorExtras.toFixed(2).replace('.', ',')}</span>
                 </div>
               )}
+              {descontoPlano > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-blue-700">Plano de assinatura</span>
+                  <span className="text-blue-700 font-semibold">- R$ {descontoPlano.toFixed(2).replace('.', ',')}</span>
+                </div>
+              )}
               {desconto > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-green-600">Desconto</span>
@@ -1584,9 +1937,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       case 4: return renderExtraServiceSelection();
       case 5: return renderDateTimeSelection();
       case 6: return renderClientDetails();
-      case 7: return renderBirthDateStep();
-      case 8: return renderCheckout();
-      case 9: return renderSuccess();
+      case 7: return renderSubscriptionStep();
+      case 8: return renderBirthDateStep();
+      case 9: return renderCheckout();
+      case 10: return renderSuccess();
       default: return renderLocationSelection();
     }
   }

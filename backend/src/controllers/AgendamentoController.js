@@ -1181,7 +1181,10 @@ class AgendamentoController extends BaseController {
         })),
         
         // ✅ NOVO: Informações de pontos
-        pontos: pontosInfo
+        pontos: pontosInfo,
+
+        // ✅ NOVO: Informações de assinatura (se aplicável)
+        assinatura_saldo: assinaturaSaldo
       };
 
     } catch (error) {

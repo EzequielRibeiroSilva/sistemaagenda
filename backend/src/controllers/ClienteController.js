@@ -1,5 +1,7 @@
 const Cliente = require('../models/Cliente');
 const logger = require('./../utils/logger');
+const { db } = require('../config/knex');
+const PlanoAssinatura = require('../models/PlanoAssinatura');
 
 /**
  * Controller para gerenciamento de clientes
@@ -16,6 +18,55 @@ const logger = require('./../utils/logger');
 class ClienteController {
   constructor() {
     this.clienteModel = new Cliente();
+    this.planoAssinaturaModel = new PlanoAssinatura();
+  }
+
+  normalizeDateStr(dateValue) {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date) return dateValue.toISOString().slice(0, 10);
+    const s = String(dateValue);
+    if (s.length >= 10 && s.includes('T')) return s.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const dt = new Date(s);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+    return null;
+  }
+
+  addDays(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    const pad = (num) => num.toString().padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  }
+
+  dayNumberFromDateStr(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+    return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+  }
+
+  diffDays(a, b) {
+    return this.dayNumberFromDateStr(a) - this.dayNumberFromDateStr(b);
+  }
+
+  getCycleBounds({ startDateStr, validadeDias, referenceDateStr }) {
+    const ref = referenceDateStr;
+    const start = startDateStr;
+    const delta = this.diffDays(ref, start);
+    const idx = delta > 0 ? Math.floor(delta / validadeDias) : 0;
+    const cycleStart = this.addDays(start, idx * validadeDias);
+    const cycleEndExclusive = this.addDays(cycleStart, validadeDias);
+    const cycleEndInclusive = this.addDays(cycleEndExclusive, -1);
+    return { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex: idx };
+  }
+
+  getDateStrInTimeZone(tz, date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
   }
 
   /**
@@ -130,6 +181,7 @@ class ClienteController {
         birthDate: cliente.data_nascimento,
         isSubscriber: cliente.is_assinante,
         subscriptionStartDate: cliente.data_inicio_assinatura,
+        subscriptionPlanId: cliente.assinatura_plano_id,
         status: cliente.status,
         whatsappId: cliente.whatsapp_id,
         createdAt: cliente.created_at,
@@ -219,6 +271,7 @@ class ClienteController {
           birthDate: novoCliente.data_nascimento,
           isSubscriber: novoCliente.is_assinante,
           subscriptionStartDate: novoCliente.data_inicio_assinatura,
+          subscriptionPlanId: novoCliente.assinatura_plano_id,
           status: novoCliente.status
         },
         message: 'Cliente criado com sucesso'
@@ -285,6 +338,7 @@ class ClienteController {
           birthDate: cliente.data_nascimento,
           isSubscriber: cliente.is_assinante,
           subscriptionStartDate: cliente.data_inicio_assinatura,
+          subscriptionPlanId: cliente.assinatura_plano_id,
           status: cliente.status,
           whatsappId: cliente.whatsapp_id,
           createdAt: cliente.created_at,
@@ -339,6 +393,7 @@ class ClienteController {
           birthDate: clienteAtualizado.data_nascimento,
           isSubscriber: clienteAtualizado.is_assinante,
           subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
+          subscriptionPlanId: clienteAtualizado.assinatura_plano_id,
           status: clienteAtualizado.status
         },
         message: 'Cliente atualizado com sucesso'
@@ -495,6 +550,248 @@ class ClienteController {
     } catch (error) {
       logger.error('❌ [ClienteController.getPontos] Erro ao buscar pontos do cliente:', error);
       res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  async getAssinaturaSaldo(req, res) {
+    try {
+      const clienteId = parseInt(req.params.id, 10);
+      const unidadeId = req.user?.unidade_id;
+
+      if (!unidadeId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Usuário deve estar associado a uma unidade'
+        });
+      }
+
+      if (!clienteId || Number.isNaN(clienteId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente inválido'
+        });
+      }
+
+      const unidade = await db('unidades')
+        .where('id', unidadeId)
+        .select('id', 'usuario_id', 'status')
+        .first();
+
+      if (!unidade || unidade.status !== 'Ativo') {
+        return res.status(404).json({
+          success: false,
+          message: 'Unidade não encontrada'
+        });
+      }
+
+      const cliente = await db('clientes')
+        .leftJoin('unidades as u', 'clientes.unidade_id', 'u.id')
+        .where('clientes.id', clienteId)
+        .where('u.usuario_id', unidade.usuario_id)
+        .select(
+          'clientes.id',
+          'clientes.primeiro_nome',
+          'clientes.ultimo_nome',
+          'clientes.telefone',
+          'clientes.data_nascimento',
+          'clientes.is_assinante',
+          'clientes.data_inicio_assinatura',
+          'clientes.assinatura_plano_id',
+          'clientes.status',
+          'clientes.unidade_id'
+        )
+        .first();
+
+      if (!cliente || !cliente.is_assinante || !cliente.assinatura_plano_id || !cliente.data_inicio_assinatura || cliente.status !== 'Ativo') {
+        return res.json({
+          success: true,
+          data: {
+            cliente: cliente
+              ? {
+                  id: cliente.id,
+                  nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
+                  telefone: cliente.telefone,
+                  data_nascimento: cliente.data_nascimento,
+                  is_assinante: Boolean(cliente.is_assinante)
+                }
+              : null,
+            assinatura_ativa: false,
+            plano: null,
+            ciclo: null,
+            saldos: []
+          }
+        });
+      }
+
+      const plano = await db('planos_assinatura')
+        .where('id', cliente.assinatura_plano_id)
+        .where('usuario_id', unidade.usuario_id)
+        .where('status', 'Ativo')
+        .select('id', 'nome', 'validade_dias')
+        .first();
+
+      if (!plano) {
+        return res.json({
+          success: true,
+          data: {
+            cliente: {
+              id: cliente.id,
+              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
+              telefone: cliente.telefone,
+              data_nascimento: cliente.data_nascimento,
+              is_assinante: Boolean(cliente.is_assinante)
+            },
+            assinatura_ativa: false,
+            plano: null,
+            ciclo: null,
+            saldos: []
+          }
+        });
+      }
+
+      const validadeDias = parseInt(plano.validade_dias, 10) || 31;
+      const tz = 'America/Sao_Paulo';
+      const referencia = this.getDateStrInTimeZone(tz);
+
+      const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
+      if (!dataInicioAssinaturaStr) {
+        return res.json({
+          success: true,
+          data: {
+            cliente: {
+              id: cliente.id,
+              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
+              telefone: cliente.telefone,
+              data_nascimento: cliente.data_nascimento,
+              is_assinante: Boolean(cliente.is_assinante),
+              data_inicio_assinatura: cliente.data_inicio_assinatura,
+              assinatura_plano_id: cliente.assinatura_plano_id
+            },
+            assinatura_ativa: false,
+            plano: null,
+            ciclo: null,
+            saldos: []
+          }
+        });
+      }
+
+      const { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex } = this.getCycleBounds({
+        startDateStr: dataInicioAssinaturaStr,
+        validadeDias,
+        referenceDateStr: referencia
+      });
+
+      const itens = await this.planoAssinaturaModel.findItens(plano.id);
+      const itemIds = (itens || []).map(i => i.id);
+
+      const servicoIds = (itens || [])
+        .filter(i => i.tipo === 'SERVICO' && i.servico_id)
+        .map(i => parseInt(i.servico_id, 10))
+        .filter(n => Number.isFinite(n));
+
+      const extraIds = (itens || [])
+        .filter(i => i.tipo === 'EXTRA' && i.servico_extra_id)
+        .map(i => parseInt(i.servico_extra_id, 10))
+        .filter(n => Number.isFinite(n));
+
+      const [servicos, extras] = await Promise.all([
+        servicoIds.length > 0
+          ? db('servicos').whereIn('id', servicoIds).select('id', 'nome')
+          : Promise.resolve([]),
+        extraIds.length > 0
+          ? db('servicos_extras').whereIn('id', extraIds).select('id', 'nome')
+          : Promise.resolve([])
+      ]);
+
+      const servicoNomeById = (servicos || []).reduce((acc, row) => {
+        acc[String(row.id)] = row.nome;
+        return acc;
+      }, {});
+
+      const extraNomeById = (extras || []).reduce((acc, row) => {
+        acc[String(row.id)] = row.nome;
+        return acc;
+      }, {});
+
+      let usadosRows = [];
+      if (itemIds.length > 0) {
+        usadosRows = await db('assinatura_usos')
+          .where('cliente_id', cliente.id)
+          .whereIn('plano_item_id', itemIds)
+          .where('data_uso', '>=', cycleStart)
+          .where('data_uso', '<', cycleEndExclusive)
+          .groupBy('plano_item_id')
+          .select('plano_item_id')
+          .sum({ total: 'quantidade' });
+      }
+
+      const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+        const id = String(row.plano_item_id);
+        acc[id] = parseInt(row.total, 10) || 0;
+        return acc;
+      }, {});
+
+      const saldos = (itens || []).map(i => {
+        const usados = usadosByItemId[String(i.id)] || 0;
+        const quota = i.quantidade_por_ciclo === null || i.quantidade_por_ciclo === undefined
+          ? null
+          : parseInt(i.quantidade_por_ciclo, 10);
+        const restante = quota === null ? null : Math.max(0, quota - usados);
+
+        let nomeItem = null;
+        if (i.tipo === 'SERVICO' && i.servico_id) {
+          nomeItem = servicoNomeById[String(i.servico_id)] || null;
+        }
+        if (i.tipo === 'EXTRA' && i.servico_extra_id) {
+          nomeItem = extraNomeById[String(i.servico_extra_id)] || null;
+        }
+
+        return {
+          plano_item_id: i.id,
+          tipo: i.tipo,
+          servico_id: i.servico_id,
+          servico_extra_id: i.servico_extra_id,
+          nome: nomeItem,
+          quantidade_por_ciclo: quota,
+          usados,
+          restantes: restante
+        };
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          cliente: {
+            id: cliente.id,
+            nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
+            telefone: cliente.telefone,
+            data_nascimento: cliente.data_nascimento,
+            is_assinante: Boolean(cliente.is_assinante),
+            data_inicio_assinatura: cliente.data_inicio_assinatura,
+            assinatura_plano_id: cliente.assinatura_plano_id
+          },
+          assinatura_ativa: true,
+          plano: {
+            id: plano.id,
+            nome: plano.nome,
+            validade_dias: validadeDias
+          },
+          ciclo: {
+            referencia,
+            inicio: cycleStart,
+            fim: cycleEndInclusive,
+            indice: cycleIndex
+          },
+          saldos
+        }
+      });
+    } catch (error) {
+      logger.error('❌ [ClienteController.getAssinaturaSaldo] Erro ao buscar saldo de assinatura:', error);
+      return res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
         error: process.env.NODE_ENV === 'development' ? error.message : undefined

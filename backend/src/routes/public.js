@@ -66,20 +66,14 @@ router.get('/agentes/:id/disponibilidade-range', async (req, res) => {
   await publicBookingController.getAgenteDisponibilidadeRange(req, res);
 });
 
-/**
- * GET /api/public/cliente/buscar?telefone=XXX&unidade_id=Y&session_token=ZZZ
- * Buscar cliente por telefone (para pré-preencher dados)
- * ✅ CORREÇÃO 1.2: Rate limiting agressivo (3 tentativas / 5 min) + validação de sessão
- */
 router.get('/cliente/buscar', clientSearchRateLimit, async (req, res) => {
   await publicBookingController.buscarCliente(req, res);
 });
 
-/**
- * POST /api/public/agendamento
- * Criar novo agendamento público
- * ✅ CORREÇÃO 1.2: Rate limiting (5 tentativas / 15 min)
- */
+router.get('/cliente/assinatura-saldo', clientSearchRateLimit, async (req, res) => {
+  await publicBookingController.buscarAssinaturaSaldo(req, res);
+});
+
 router.post('/agendamento', createBookingRateLimit, async (req, res) => {
   await publicBookingController.createAgendamento(req, res);
 });
