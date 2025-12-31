@@ -260,8 +260,29 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       // Não definir erro global para não bloquear outras operações
+
+      // ✅ FALLBACK (AGENTE): se listar unidades falhar, buscar pelo menos a unidade do próprio usuário
+      // Evita loading infinito na tela de Configurações/EditAgentPage quando availableUnits fica vazio.
+      if (user?.role === 'AGENTE' && user?.unidade_id) {
+        try {
+          const unitResponse = await authenticatedFetch(`/unidades/${user.unidade_id}`);
+          const unit = unitResponse?.data || unitResponse;
+
+          if (unit?.id) {
+            setAvailableUnits([
+              {
+                id: unit.id,
+                nome: unit.nome,
+                horarios_funcionamento: unit.horarios_funcionamento || []
+              }
+            ]);
+          }
+        } catch (e) {
+          void e;
+        }
+      }
     }
-  }, [authenticatedFetch, isAuthenticated, token]);
+  }, [authenticatedFetch, isAuthenticated, token, user?.role, user?.unidade_id]);
 
   // Buscar agente por ID
   const fetchAgentById = useCallback(async (id: number): Promise<AgentDetails | null> => {
