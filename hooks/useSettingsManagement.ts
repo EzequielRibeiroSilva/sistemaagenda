@@ -56,6 +56,17 @@ export const useSettingsManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const slugify = useCallback((value: string) => {
+    return value
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+  }, []);
+
   // Função para fazer requisições autenticadas
   const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     if (!token) {
@@ -223,9 +234,13 @@ export const useSettingsManagement = () => {
       return '';
     }
 
-    // Link baseado no ID do usuário ADMIN
+    const businessSlug = settings?.nome_negocio ? slugify(settings.nome_negocio) : '';
+    if (businessSlug) {
+      return `${window.location.origin}/booking/${businessSlug}`;
+    }
+
     return `${window.location.origin}/booking/${user.id}`;
-  }, [user?.id]);
+  }, [user?.id, settings?.nome_negocio, slugify]);
 
   // Copiar link para clipboard
   const copyBookingLink = useCallback(async () => {

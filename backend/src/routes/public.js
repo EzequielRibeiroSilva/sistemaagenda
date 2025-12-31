@@ -18,6 +18,18 @@ const {
   generalPublicRateLimit 
 } = require('../middleware/publicBookingRateLimit');
 
+const slugify = (value) => {
+  if (!value) return '';
+  return value
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+};
+
 // Inicializar controllers
 const publicBookingController = new PublicBookingController();
 const cupomController = new CupomController();
@@ -161,6 +173,97 @@ router.get('/salao/slug/:slug', async (req, res) => {
       success: false,
       error: 'Erro interno do servidor',
       message: 'Erro ao buscar salão'
+    });
+  }
+});
+
+router.get('/negocio/:slug/unidades', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { db } = require('../config/knex');
+    const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
+    const configuracaoModel = new ConfiguracaoSistema(db);
+
+    const slugNormalizado = slugify(slug);
+    if (!slugNormalizado) {
+      return res.status(400).json({
+        success: false,
+        error: 'Slug inválido',
+        message: 'Slug inválido'
+      });
+    }
+
+    const candidatos = await db('configuracoes_sistema')
+      .join('unidades', 'unidades.id', 'configuracoes_sistema.unidade_id')
+      .join('usuarios', 'usuarios.id', 'unidades.usuario_id')
+      .where('usuarios.role', 'ADMIN')
+      .where('usuarios.status', 'Ativo')
+      .where('unidades.status', 'Ativo')
+      .select(
+        'unidades.usuario_id as usuario_id',
+        'configuracoes_sistema.nome_negocio as nome_negocio'
+      );
+
+    const match = (candidatos || []).find((c) => slugify(c.nome_negocio) === slugNormalizado);
+
+    if (!match?.usuario_id) {
+      return res.status(404).json({
+        success: false,
+        error: 'Negócio não encontrado',
+        message: 'Este negócio não foi encontrado ou não está ativo'
+      });
+    }
+
+    const usuarioId = match.usuario_id;
+    logger.log(`[Public] Resolvido slug negocio='${slugNormalizado}' para usuario_id=${usuarioId}`);
+
+    const unidades = await db('unidades')
+      .where('usuario_id', usuarioId)
+      .where('status', 'Ativo')
+      .select('id', 'nome', 'endereco', 'telefone', 'slug_url')
+      .orderBy('id', 'asc');
+
+    if (unidades.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhuma unidade ativa',
+        message: 'Este usuário não possui unidades ativas para agendamento'
+      });
+    }
+
+    let configuracoes = await configuracaoModel.findByUnidade(unidades[0].id);
+
+    if (!configuracoes || !configuracoes.nome_negocio) {
+      for (const unidade of unidades) {
+        const configAux = await configuracaoModel.findByUnidade(unidade.id);
+        if (configAux && configAux.nome_negocio) {
+          configuracoes = configAux;
+          break;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        usuario_id: parseInt(usuarioId),
+        nome_negocio: configuracoes?.nome_negocio || match.nome_negocio || slugNormalizado,
+        logo_url: configuracoes?.logo_url || null,
+        unidades: unidades.map(u => ({
+          id: u.id,
+          nome: u.nome,
+          endereco: u.endereco,
+          telefone: u.telefone,
+          slug_url: u.slug_url
+        }))
+      }
+    });
+  } catch (error) {
+    logger.error('[Public] Erro ao resolver slug de negocio:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: 'Erro ao buscar unidades'
     });
   }
 });

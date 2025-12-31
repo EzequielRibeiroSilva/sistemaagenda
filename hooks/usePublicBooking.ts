@@ -290,9 +290,10 @@ export const usePublicBooking = () => {
       if (!data.success) {
         throw new Error(data.message || 'Falha ao carregar locais');
       }
-      
-      setAvailableLocations(data.data);
-      return data.data;
+
+      const unidades = data?.data?.unidades || [];
+      setAvailableLocations(unidades);
+      return unidades;
       
     } catch (err) {
       setAvailableLocations([]);

@@ -154,8 +154,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       const pathParts = window.location.pathname.split('/').filter(Boolean);
 
       if (pathParts.length >= 2 && pathParts[0] === 'booking') {
-        // Formato: /booking/:usuarioId
-        const userId = parseInt(pathParts[1]);
+        const idOrSlug = pathParts[1];
+        const userId = parseInt(idOrSlug);
         if (!isNaN(userId)) {
           setUsuarioId(userId);
 
@@ -208,6 +208,59 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           }
           return;
         }
+
+        const slug = idOrSlug;
+        if (slug) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/public/negocio/${slug}/unidades`);
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+              const unidade = await findUnidadeBySlug(slug);
+              if (unidade?.unidade_id) {
+                setUnidadeId(unidade.unidade_id);
+                setSelectedLocationId(unidade.unidade_id);
+                await loadSalonData(unidade.unidade_id);
+                setCurrentStep(2);
+                setIsBootstrapping(false);
+                return;
+              }
+
+              setIsBootstrapping(false);
+              return;
+            }
+
+            const { usuario_id, nome_negocio, logo_url, unidades } = data.data;
+            setUsuarioId(usuario_id);
+            setBusinessConfig({ logo_url, nome_negocio });
+
+            if (unidades.length === 1) {
+              setUnidadeId(unidades[0].id);
+              setSelectedLocationId(unidades[0].id);
+              await loadSalonData(unidades[0].id);
+              setCurrentStep(2);
+              setIsBootstrapping(false);
+            } else {
+              setAlternativeLocations(unidades);
+              setCurrentStep(1);
+              setIsBootstrapping(false);
+            }
+          } catch (err) {
+            try {
+              const unidade = await findUnidadeBySlug(slug);
+              if (unidade?.unidade_id) {
+                setUnidadeId(unidade.unidade_id);
+                setSelectedLocationId(unidade.unidade_id);
+                await loadSalonData(unidade.unidade_id);
+                setCurrentStep(2);
+                return;
+              }
+            } finally {
+              setIsBootstrapping(false);
+            }
+          }
+          return;
+        }
       }
 
       // Não foi possível extrair usuario_id da URL
@@ -215,7 +268,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     };
 
     loadData();
-  }, [isPreview, loadSalonData]);
+  }, [isPreview, loadSalonData, findUnidadeBySlug]);
 
   // ✅ NOVO: Buscar unidades alternativas quando a unidade atual não está disponível
   useEffect(() => {
