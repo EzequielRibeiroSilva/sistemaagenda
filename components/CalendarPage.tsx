@@ -205,6 +205,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string })[] = useMemo(() => {
         return backendAppointments.map(appointment => ({
             id: appointment.id,
+            numeroAgendamento: appointment.numeroAgendamento,
             agentId: appointment.agentId,
             serviceId: appointment.serviceId,
             locationId: appointment.locationId,
@@ -1450,7 +1451,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                           }}>
                                             {/* Badge do ID no canto superior direito */}
                                             <div className="absolute top-1 right-1 bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
-                                                #{app.id}
+                                                #{app.numeroAgendamento || app.id}
                                             </div>
                                             {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
                                             {isBirthday && (

@@ -51,8 +51,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
     const { services } = useServiceManagement();
     const [isSearchingServices, setIsSearchingServices] = useState(false);
 
-    // ✅ NOVO: Hook para buscar agendamentos por ID
-    const { fetchAppointmentById } = useAppointmentManagement();
+    // ✅ NOVO: Hook para buscar agendamentos por número visível
+    const { fetchAppointmentByNumero } = useAppointmentManagement();
     const [isSearchingAppointment, setIsSearchingAppointment] = useState(false);
     const [foundAppointment, setFoundAppointment] = useState<any>(null);
 
@@ -86,14 +86,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
         return () => clearTimeout(timeoutId);
     }, [query, fetchClients]);
 
-    // ✅ NOVO: Buscar agendamento por ID quando a query for numérica
+    // ✅ NOVO: Buscar agendamento por número visível quando a query for numérica (aceita '#144' ou '144')
     useEffect(() => {
         const searchAppointment = async () => {
-            const numericId = parseInt(query);
-            if (!isNaN(numericId) && query.length >= 1) {
+            // Remover '#' se presente e converter para número
+            const cleanQuery = query.replace('#', '').trim();
+            const numericId = parseInt(cleanQuery);
+            if (!isNaN(numericId) && cleanQuery.length >= 1) {
                 setIsSearchingAppointment(true);
                 try {
-                    const appointment = await fetchAppointmentById(numericId);
+                    const appointment = await fetchAppointmentByNumero(numericId);
                     if (appointment) {
                         setFoundAppointment(appointment);
                     } else {
@@ -113,7 +115,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
         // Debounce de 300ms
         const timeoutId = setTimeout(searchAppointment, 300);
         return () => clearTimeout(timeoutId);
-    }, [query, fetchAppointmentById]);
+    }, [query, fetchAppointmentByNumero]);
 
     // ✅ NOVO: Filtrar agentes por nome (busca client-side)
     const filteredAgents = useMemo(() => {
@@ -164,7 +166,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
                     >
                         <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-semibold text-gray-800">Agendamento #{foundAppointment.id}</span>
+                                <span className="text-sm font-semibold text-gray-800">Agendamento #{foundAppointment.numeroAgendamento || foundAppointment.id}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                                     foundAppointment.status === 'Confirmado' ? 'bg-green-100 text-green-700' :
                                     foundAppointment.status === 'Pendente' ? 'bg-yellow-100 text-yellow-700' :

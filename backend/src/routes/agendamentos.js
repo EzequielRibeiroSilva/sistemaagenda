@@ -22,6 +22,13 @@ router.get('/',
   (req, res) => agendamentoController.index(req, res)
 );
 
+// GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível
+// ✅ NOVO: Busca pelo numero_agendamento (sequencial por empresa)
+router.get('/numero/:numero',
+  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  (req, res) => agendamentoController.showByNumero(req, res)
+);
+
 // GET /api/agendamentos/:id - Buscar agendamento por ID
 // ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem visualizar agendamentos
 router.get('/:id', 

@@ -375,6 +375,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     const dateStr = toLocalDateString(selectedDate);
     const cardsByAgent: Record<string, Array<{
       id: number;
+      numeroAgendamento?: number;
       startTime: string;
       endTime: string;
       serviceName: string;
@@ -447,6 +448,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
       cardsByAgent[agentId].push({
         id: apt.id,
+        numeroAgendamento: apt.numero_agendamento,
         startTime: apt.hora_inicio,
         endTime: apt.hora_fim,
         serviceName,
@@ -1081,7 +1083,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                       <div className="flex items-center gap-1.5">
                         <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
                         <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
-                          #{card.id}
+                          #{card.numeroAgendamento || card.id}
                         </div>
                       </div>
                     </div>

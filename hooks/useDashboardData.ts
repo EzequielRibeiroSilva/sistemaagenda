@@ -6,6 +6,7 @@ import type { PerformanceMetric } from '../types';
 // Interfaces para dados do backend
 interface BackendAgendamento {
   id: number;
+  numero_agendamento?: number;
   cliente_id: number; // ✅ ADICIONADO: ID do cliente (necessário para cálculo de novos clientes)
   agente_id: number;
   servico_id?: number;

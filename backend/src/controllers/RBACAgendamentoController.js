@@ -164,6 +164,33 @@ class RBACAgendamentoController extends BaseController {
     try {
       const { cliente_id, agente_id, unidade_id, data_agendamento, hora_inicio, hora_fim, servicos, observacoes } = req.body;
 
+      // ✅ NOVO: Determinar usuario_id (dono/empresa) para o agendamento
+      // O campo usuario_id em agendamentos é NOT NULL e é usado para gerar numero_agendamento.
+      let usuarioIdAgendamento = null;
+      if (req.user.role === 'MASTER') {
+        const unidadeInfo = await this.model.db('unidades')
+          .where('id', parseInt(unidade_id))
+          .select('usuario_id')
+          .first();
+        usuarioIdAgendamento = unidadeInfo?.usuario_id || null;
+      } else if (req.user.role === 'ADMIN') {
+        usuarioIdAgendamento = req.user.id;
+      } else if (req.user.role === 'AGENTE') {
+        // Para AGENTE, usar o dono da unidade como empresa
+        const unidadeInfo = await this.model.db('unidades')
+          .where('id', parseInt(unidade_id))
+          .select('usuario_id')
+          .first();
+        usuarioIdAgendamento = unidadeInfo?.usuario_id || null;
+      }
+
+      if (!usuarioIdAgendamento) {
+        return res.status(400).json({
+          error: 'Unidade inválida',
+          message: 'Não foi possível determinar o dono (usuario_id) da unidade para criar o agendamento'
+        });
+      }
+
       // Validações RBAC para criação
       switch (req.user.role) {
         case 'MASTER':
@@ -229,6 +256,7 @@ class RBACAgendamentoController extends BaseController {
         cliente_id: parseInt(cliente_id),
         agente_id: parseInt(agente_id),
         unidade_id: parseInt(unidade_id),
+        usuario_id: usuarioIdAgendamento,
         data_agendamento,
         hora_inicio,
         hora_fim,
@@ -239,7 +267,8 @@ class RBACAgendamentoController extends BaseController {
         observacoes: observacoes || null
       };
 
-      const agendamento = await this.model.create(agendamentoData);
+      // ✅ CRÍTICO: Usar createWithLock para gerar numero_agendamento e evitar race condition
+      const agendamento = await this.model.createWithLock(agendamentoData);
 
       // Associar serviços ao agendamento
       for (const servico of servicos) {

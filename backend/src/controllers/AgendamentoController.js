@@ -11,6 +11,68 @@ class AgendamentoController extends BaseController {
     this.authService = new AuthService();
   }
 
+  // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
+  async showByNumero(req, res) {
+    try {
+      const numero = parseInt(req.params.numero, 10);
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+      let usuarioId = req.user?.id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (!Number.isFinite(numero)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Número inválido'
+        });
+      }
+
+      // --- RBAC ---
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.numero_agendamento', numero);
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        // AGENTE: só consegue encontrar seus próprios agendamentos
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+      } else if (userRole === 'ADMIN' || userRole === 'MASTER') {
+        // ADMIN/MASTER: buscar dentro da empresa (usuario_id dono)
+        // obs: agendamentos.usuario_id já está materializado na tabela
+        agendamentoQuery = agendamentoQuery.where('agendamentos.usuario_id', usuarioId);
+      } else {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
+
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado ou acesso negado'
+        });
+      }
+
+      const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
+
+      return res.json({
+        success: true,
+        data: agendamentoCompleto
+      });
+    } catch (error) {
+      logger.error('❌ [AgendamentoController.showByNumero] Erro ao buscar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
   // GET /api/agendamentos - Buscar agendamentos do usuário logado
   async index(req, res) {
     try {
@@ -672,6 +734,7 @@ class AgendamentoController extends BaseController {
         data_agendamento,
         hora_inicio,
         hora_fim,
+        usuario_id: usuarioId,
         valor_total: valorTotal,
         ...outrosDados
       };

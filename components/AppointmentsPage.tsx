@@ -136,6 +136,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         agentOptions,
         allAgents, // Agentes completos com unidades
         fetchAppointments,
+        fetchAppointmentByNumero,
         updateAppointmentStatus,
         deleteAppointment
     } = useAppointmentManagement();
@@ -198,6 +199,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     const [filters, setFilters] = useState(initialFilters);
 
+    const [foundAppointmentByNumero, setFoundAppointmentByNumero] = useState<AppointmentDetail | null>(null);
+    const [isSearchingAppointmentByNumero, setIsSearchingAppointmentByNumero] = useState(false);
+    const appointmentByNumeroRequestSeqRef = useRef(0);
+
     // ✅ NOVO: Converter locations do backend para formato do componente
     const locations: Location[] = useMemo(() => {
         return backendLocations.map(location => ({
@@ -249,6 +254,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             return;
         }
 
+        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+        if (cleanId) {
+            return;
+        }
+
         const apiFilters: AppointmentFilters = {
             page: currentPage,
             limit: itemsPerPage,
@@ -273,7 +283,64 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             apiFilters.unidade_id = parseInt(selectedLocationFilter);
         }
         fetchAppointments(apiFilters);
-    }, [currentPage, itemsPerPage, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
+    }, [currentPage, itemsPerPage, filters.id, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
+
+    useEffect(() => {
+        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+        if (selectedLocationFilter === 'all') {
+            setIsSearchingAppointmentByNumero(false);
+            return;
+        }
+
+        if (!cleanId) {
+            setFoundAppointmentByNumero(null);
+            setIsSearchingAppointmentByNumero(false);
+            return;
+        }
+
+        const numericId = parseInt(cleanId, 10);
+        if (!Number.isFinite(numericId)) {
+            setFoundAppointmentByNumero(null);
+            setIsSearchingAppointmentByNumero(false);
+            return;
+        }
+
+        setCurrentPage(1);
+        setIsSearchingAppointmentByNumero(true);
+
+        const requestSeq = ++appointmentByNumeroRequestSeqRef.current;
+
+        const timeoutId = setTimeout(async () => {
+            try {
+                const apt = await fetchAppointmentByNumero(numericId);
+
+                // Ignorar respostas atrasadas (usuário mudou/limpou o filtro)
+                if (requestSeq !== appointmentByNumeroRequestSeqRef.current) {
+                    return;
+                }
+
+                if (apt && selectedLocationFilter !== 'all') {
+                    if (String(apt.locationId) !== String(selectedLocationFilter)) {
+                        setFoundAppointmentByNumero(null);
+                        return;
+                    }
+                }
+                setFoundAppointmentByNumero(apt);
+            } catch (e) {
+                if (requestSeq !== appointmentByNumeroRequestSeqRef.current) {
+                    return;
+                }
+                setFoundAppointmentByNumero(null);
+            } finally {
+                if (requestSeq !== appointmentByNumeroRequestSeqRef.current) {
+                    return;
+                }
+                setIsSearchingAppointmentByNumero(false);
+            }
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [filters.id, selectedLocationFilter, fetchAppointmentByNumero]);
     
     const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -283,6 +350,8 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFilters(prev => ({ ...prev, [name]: value }));
+        // ✅ CORREÇÃO: Resetar para página 1 ao aplicar qualquer filtro
+        setCurrentPage(1);
     };
 
     const serviceOptions = useMemo(() => [...new Set(appointments.map(a => a.service))], [appointments]);
@@ -343,11 +412,22 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     };
     
     const filteredAppointments = useMemo(() => {
+        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+        const appointmentsSource = cleanId
+            ? (foundAppointmentByNumero ? [foundAppointmentByNumero] : [])
+            : appointments;
+
         // Aplicar filtros locais (os filtros do servidor já foram aplicados)
-        const filtered = appointments.filter(app => {
+        const filtered = appointmentsSource.filter(app => {
             const { id, service, dateTime, timeRemainingStatus, agent, client, paymentStatus, createdAt, paymentMethod } = filters;
 
-            if (id && !String(app.id).toLowerCase().includes(id.toLowerCase())) return false;
+            // ✅ CORREÇÃO: Buscar por numeroAgendamento (número visível) com comparação EXATA
+            if (id) {
+                const cleanId = id.replace(/#/g, '').trim(); // Remove todos os '#'
+                const appNumero = String(app.numeroAgendamento || app.id);
+                // Comparação exata: #1 só encontra 1, não 10, 11, 100, etc.
+                if (appNumero !== cleanId) return false;
+            }
             if (service !== 'all' && app.service !== service) return false;
             if (dateTime && !app.dateTime.toLowerCase().includes(dateTime.toLowerCase())) return false;
             // ✅ REMOVIDO: Filtro temporal agora é feito no backend
@@ -432,7 +512,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             // Ordenar crescente (mais próximo primeiro)
             return timestampA - timestampB;
         });
-    }, [appointments, filters]);
+    }, [appointments, filters, foundAppointmentByNumero]);
 
     
     // ✅ NOVO: Preparar opções e handler para o dropdown de Locais
@@ -556,6 +636,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     // Função para mudar página
     const handlePageChange = (newPage: number) => {
+        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+        if (cleanId) {
+            return;
+        }
         if (newPage >= 1 && newPage <= pagination.pages) {
             setCurrentPage(newPage);
         }
@@ -671,6 +755,15 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                         </div>
                                     </td>
                                 </tr>
+                            ) : isSearchingAppointmentByNumero ? (
+                                <tr>
+                                    <td colSpan={10} className="p-8 text-center text-gray-500">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <RotateCw className="w-4 h-4 animate-spin" />
+                                            Buscando agendamento...
+                                        </div>
+                                    </td>
+                                </tr>
                             ) : filteredAppointments.length === 0 ? (
                                 <tr>
                                     <td colSpan={10} className="p-8 text-center text-gray-500">
@@ -694,7 +787,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                                                     className="text-blue-600 hover:text-blue-800 font-semibold hover:underline cursor-pointer"
                                                     type="button"
                                                 >
-                                                    #{app.id}
+                                                    #{app.numeroAgendamento || app.id}
                                                 </button>
                                             </td>
                                         )}
@@ -775,23 +868,55 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             
             <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-gray-600">
                 <p>
-                    Mostrando {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total}
+                    {(() => {
+                        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+                        const total = cleanId ? filteredAppointments.length : pagination.total;
+                        const pages = cleanId ? (total > 0 ? 1 : 0) : pagination.pages;
+                        const page = cleanId ? (pages > 0 ? 1 : 0) : currentPage;
+                        if (!pages) {
+                            return (
+                                <>Mostrando 0 de 0</>
+                            );
+                        }
+
+                        return (
+                            <>Mostrando {((page - 1) * itemsPerPage) + 1}-{Math.min(page * itemsPerPage, total)} de {total}</>
+                        );
+                    })()}
                 </p>
                 <div className="flex items-center gap-2">
                     <span>Página:</span>
-                    <span className="font-semibold text-gray-800">{currentPage}</span>
-                    <span>de {pagination.pages}</span>
+                    {(() => {
+                        const cleanId = (filters.id || '').replace(/#/g, '').trim();
+                        const total = cleanId ? filteredAppointments.length : pagination.total;
+                        const pages = cleanId ? (total > 0 ? 1 : 0) : pagination.pages;
+                        const page = cleanId ? (pages > 0 ? 1 : 0) : currentPage;
+                        return (
+                            <>
+                                <span className="font-semibold text-gray-800">{page}</span>
+                                <span>de {pages}</span>
+                            </>
+                        );
+                    })()}
                     <div className="flex items-center">
                         <button
                             className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                            disabled={currentPage <= 1}
+                            disabled={(() => {
+                                const cleanId = (filters.id || '').replace(/#/g, '').trim();
+                                if (cleanId) return true;
+                                return currentPage <= 1;
+                            })()}
                             onClick={() => handlePageChange(currentPage - 1)}
                         >
                             <ChevronLeft className="w-4 h-4" />
                         </button>
                         <button
                             className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                            disabled={currentPage >= pagination.pages}
+                            disabled={(() => {
+                                const cleanId = (filters.id || '').replace(/#/g, '').trim();
+                                if (cleanId) return true;
+                                return currentPage >= pagination.pages;
+                            })()}
                             onClick={() => handlePageChange(currentPage + 1)}
                         >
                             <ChevronRight className="w-4 h-4" />

@@ -6,6 +6,7 @@ import type { AppointmentDetail, AppointmentStatus } from '../types';
 // Interface para dados do backend
 export interface BackendAgendamento {
   id: number;
+  numero_agendamento?: number;
   cliente_id: number;
   agente_id: number;
   unidade_id: number;
@@ -25,6 +26,27 @@ export interface BackendAgendamento {
   agente_avatar_url?: string;
   unidade_nome: string;
   servicos?: Array<{ id: number; nome: string; preco: number; comissao_percentual?: number }>; // ✅ NOVO: Serviços do agendamento
+
+  // ✅ Compat: alguns endpoints retornam estrutura aninhada
+  cliente?: {
+    id?: number;
+    nome_completo?: string;
+    primeiro_nome?: string;
+    ultimo_nome?: string;
+    telefone?: string;
+  };
+  agente?: {
+    id?: number;
+    nome?: string;
+    sobrenome?: string;
+    telefone?: string;
+    email?: string;
+    avatar_url?: string;
+  };
+  unidade?: {
+    id?: number;
+    nome?: string;
+  };
 }
 
 // Interface para filtros
@@ -219,20 +241,38 @@ export const useAppointmentManagement = () => {
 
     // Observações mapeadas do backend
 
+    const agenteNomeFromNested = backendData.agente
+      ? `${backendData.agente.nome || ''} ${backendData.agente.sobrenome || ''}`.trim()
+      : '';
+
+    const agenteNome = (backendData.agente_nome || agenteNomeFromNested || '').trim();
+    const agenteAvatarUrl = backendData.agente_avatar_url || backendData.agente?.avatar_url || '';
+
+    const clienteNomeFromNested = backendData.cliente
+      ? (
+          backendData.cliente.nome_completo ||
+          `${backendData.cliente.primeiro_nome || ''} ${backendData.cliente.ultimo_nome || ''}`.trim()
+        )
+      : '';
+
+    const clienteNome = (backendData.cliente_nome || clienteNomeFromNested || '').trim();
+    const clienteTelefone = backendData.cliente_telefone || backendData.cliente?.telefone || '';
+
     return {
       id: backendData.id,
+      numeroAgendamento: backendData.numero_agendamento,
       service,
       dateTime,
       date: dateString, // ✅ NOVO: Data bruta no formato YYYY-MM-DD para navegação
       timeRemaining,
       timeRemainingStatus,
       agent: {
-        name: backendData.agente_nome,
-        avatar: backendData.agente_avatar_url || `https://i.pravatar.cc/150?u=${backendData.agente_id}`, // ✅ CORREÇÃO: Usar avatar real do agente
+        name: agenteNome || 'Agente',
+        avatar: agenteAvatarUrl || `https://i.pravatar.cc/150?u=${backendData.agente_id}`, // ✅ CORREÇÃO: Usar avatar real do agente
         id: backendData.agente_id // ✅ NOVO: Mapear ID do agente para edição
       },
       client: {
-        name: backendData.cliente_nome,
+        name: clienteNome || 'Cliente',
         avatar: `https://i.pravatar.cc/150?u=${backendData.cliente_id}` // Avatar placeholder
       },
       status: backendData.status,
@@ -250,7 +290,7 @@ export const useAppointmentManagement = () => {
       startTime: backendData.hora_inicio.substring(0, 5), // Remove segundos
       endTime: backendData.hora_fim.substring(0, 5), // Remove segundos
       locationId: backendData.unidade_id,
-      clientPhone: backendData.cliente_telefone
+      clientPhone: clienteTelefone
     };
   }, []);
 
@@ -317,6 +357,26 @@ export const useAppointmentManagement = () => {
     } finally {
       setIsLoading(false);
       setInitialLoadComplete(true); // ✅ NOVO: Marcar carregamento inicial como completo
+    }
+  }, [isAuthenticated, token, makeAuthenticatedRequest, transformBackendToFrontend]);
+
+  // ✅ NOVO: Buscar agendamento específico pelo número visível (numero_agendamento)
+  const fetchAppointmentByNumero = useCallback(async (numero: number): Promise<AppointmentDetail | null> => {
+    if (!isAuthenticated || !token) {
+      return null;
+    }
+
+    try {
+      const response: { success: boolean; data: BackendAgendamento } = await makeAuthenticatedRequest(
+        `${API_BASE_URL}/agendamentos/numero/${numero}`
+      );
+
+      if (response.success && response.data) {
+        return transformBackendToFrontend(response.data);
+      }
+      return null;
+    } catch (err) {
+      return null;
     }
   }, [isAuthenticated, token, makeAuthenticatedRequest, transformBackendToFrontend]);
 
@@ -431,6 +491,7 @@ export const useAppointmentManagement = () => {
     allAgents, // Exportar agentes completos
     fetchAppointments,
     fetchAppointmentById,
+    fetchAppointmentByNumero,
     updateAppointmentStatus,
     deleteAppointment,
     setError

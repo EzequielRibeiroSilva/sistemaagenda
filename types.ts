@@ -18,6 +18,7 @@ export interface Service {
 
 export interface Appointment {
     id: string;
+    numeroAgendamento?: number;
     agentId: string;
     serviceId: string;
     locationId: string;
@@ -94,6 +95,7 @@ export interface AgentSchedule {
 
 export interface AppointmentDetail {
   id: number;
+  numeroAgendamento?: number;
   service: string;
   dateTime: string;
   date: string; // ✅ NOVO: Data bruta no formato YYYY-MM-DD para navegação ao calendário

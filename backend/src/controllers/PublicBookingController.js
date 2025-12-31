@@ -32,6 +32,7 @@ class PublicBookingController {
     this.excecaoCalendarioModel = new ExcecaoCalendario();
     this.agenteExcecaoCalendarioModel = new AgenteExcecaoCalendario();
     this.whatsappService = new WhatsAppService();
+    this.whatsAppService = this.whatsappService;
     this.scheduledReminderService = new ScheduledReminderService(); // 
     this.publicSessionService = getPublicSessionService(); // 
     this.planoAssinaturaModel = new PlanoAssinatura();
@@ -1964,11 +1965,31 @@ class PublicBookingController {
         valorTotal = Math.max(0, (subtotalServicosRecalc + subtotalExtrasRecalc) - (descontoServicosRecalc + descontoExtrasRecalc));
       }
 
+      // ✅ NOVO: Gerar numero_agendamento sequencial por empresa (usuario_id)
+      // Importante: usuario_id é o dono da unidade
+      const usuarioId = unidade.usuario_id;
+
+      await trx.raw(`
+        SELECT pg_advisory_xact_lock(
+          hashtext(?::text)
+        )
+      `, [`agendamento_numero_usuario_${usuarioId}`]);
+
+      const lastRow = await trx('agendamentos')
+        .where('usuario_id', usuarioId)
+        .max('numero_agendamento as max')
+        .first();
+
+      const last = lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0;
+      const numeroAgendamento = last + 1;
+
       // Criar agendamento
       const [agendamento] = await trx('agendamentos').insert({
         cliente_id: cliente.id,
         agente_id: agente_id,
         unidade_id: unidade_id,
+        usuario_id: usuarioId,
+        numero_agendamento: numeroAgendamento,
         data_agendamento: data_agendamento,
         hora_inicio: hora_inicio,
         hora_fim: hora_fim,

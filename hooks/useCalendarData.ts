@@ -51,6 +51,7 @@ export interface BackendUnidade {
 
 export interface BackendAgendamento {
   id: number;
+  numero_agendamento?: number;
   cliente_id: number;
   agente_id: number;
   unidade_id: number;
@@ -97,6 +98,7 @@ export interface CalendarLocation {
 
 export interface CalendarAppointment {
   id: string;
+  numeroAgendamento?: number;
   agentId: string;
   serviceId: string;
   locationId: string;
@@ -250,6 +252,7 @@ export const useCalendarData = () => {
 
     return {
       id: backendAgendamento.id.toString(),
+      numeroAgendamento: backendAgendamento.numero_agendamento,
       agentId: backendAgendamento.agente_id.toString(),
       serviceId: serviceId,
       locationId: backendAgendamento.unidade_id.toString(),

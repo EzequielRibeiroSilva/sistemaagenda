@@ -158,7 +158,7 @@ class Agendamento extends BaseModel {
     if (agendamento.agente_id) {
       agente = await this.db('agentes')
         .where('id', agendamento.agente_id)
-        .select('id', 'nome', 'email', 'telefone')
+        .select('id', 'nome', 'sobrenome', 'email', 'telefone', 'avatar_url')
         .first();
     }
 
@@ -217,9 +217,32 @@ class Agendamento extends BaseModel {
    * Usa transação com SERIALIZABLE isolation level para garantir consistência
    */
   async createWithLock(dadosAgendamento) {
-    const { agente_id, data_agendamento, hora_inicio, hora_fim } = dadosAgendamento;
+    const { agente_id, data_agendamento, hora_inicio, hora_fim, usuario_id } = dadosAgendamento;
 
     return this.db.transaction(async (trx) => {
+      if (!usuario_id) {
+        const error = new Error('usuario_id é obrigatório para criar agendamento');
+        error.code = 'MISSING_USUARIO_ID';
+        throw error;
+      }
+
+      await trx.raw(`
+        SELECT pg_advisory_xact_lock(
+          hashtext(?::text)
+        )
+      `, [`agendamento_numero_usuario_${usuario_id}`]);
+
+      let numeroAgendamento = dadosAgendamento.numero_agendamento;
+      if (!numeroAgendamento) {
+        const lastRow = await trx(this.tableName)
+          .where('usuario_id', usuario_id)
+          .max('numero_agendamento as max')
+          .first();
+
+        const last = lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0;
+        numeroAgendamento = last + 1;
+      }
+
       // 1. Adquirir lock exclusivo no agente para a data específica
       // Isso serializa todas as operações de criação para o mesmo agente/data
       await trx.raw(`
@@ -259,6 +282,8 @@ class Agendamento extends BaseModel {
       const [agendamento] = await trx(this.tableName)
         .insert({
           ...dadosAgendamento,
+          usuario_id,
+          numero_agendamento: numeroAgendamento,
           created_at: new Date(),
           updated_at: new Date()
         })
