@@ -43,6 +43,28 @@ class HorarioFuncionamentoUnidade extends BaseModel {
     }
   }
 
+  static async findByUnidades(unidadeIds) {
+    try {
+      if (!Array.isArray(unidadeIds) || unidadeIds.length === 0) {
+        return [];
+      }
+
+      const horarios = await db('horarios_funcionamento_unidade')
+        .whereIn('unidade_id', unidadeIds)
+        .orderBy(['unidade_id', { column: 'dia_semana', order: 'asc' }]);
+
+      return horarios.map(h => ({
+        ...h,
+        horarios_json: typeof h.horarios_json === 'string'
+          ? JSON.parse(h.horarios_json)
+          : h.horarios_json
+      }));
+    } catch (error) {
+      logger.error('Erro ao buscar horários das unidades:', error);
+      throw error;
+    }
+  }
+
   /**
    * Buscar horários de um dia específico de uma unidade
    * @param {number} unidadeId - ID da unidade

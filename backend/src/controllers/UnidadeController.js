@@ -1,6 +1,7 @@
 const BaseController = require('./BaseController');
 const Unidade = require('../models/Unidade');
 const UnidadeService = require('../services/UnidadeService');
+const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const logger = require('./../utils/logger');
 
 class UnidadeController extends BaseController {
@@ -16,6 +17,9 @@ class UnidadeController extends BaseController {
       let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
+
+      const include = req.query.include;
+      const includeHorarios = typeof include === 'string' && include.split(',').includes('horarios_funcionamento');
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -44,6 +48,10 @@ class UnidadeController extends BaseController {
 
         if (!unidade) {
           return res.json([]);
+        }
+
+        if (includeHorarios) {
+          unidade.horarios_funcionamento = await HorarioFuncionamentoUnidade.findByUnidade(unidade.id);
         }
 
         // Aplicar filtros adicionais se fornecidos
@@ -82,6 +90,30 @@ class UnidadeController extends BaseController {
         // Para AGENTE, req.user.id é o ID do usuário ADMIN que criou o agente
 
         result = await this.unidadeService.listUnidadesWithLimit(usuarioId, filters);
+      }
+
+      if (includeHorarios) {
+        const unidades = Array.isArray(result)
+          ? result
+          : (Array.isArray(result?.data) ? result.data : []);
+
+        const unidadeIds = unidades
+          .map(u => u?.id)
+          .filter(id => Number.isFinite(id));
+
+        const horariosRows = await HorarioFuncionamentoUnidade.findByUnidades(unidadeIds);
+        const horariosByUnidadeId = new Map();
+        for (const row of horariosRows) {
+          const id = row.unidade_id;
+          if (!horariosByUnidadeId.has(id)) {
+            horariosByUnidadeId.set(id, []);
+          }
+          horariosByUnidadeId.get(id).push(row);
+        }
+
+        for (const unidade of unidades) {
+          unidade.horarios_funcionamento = horariosByUnidadeId.get(unidade.id) || [];
+        }
       }
 
 

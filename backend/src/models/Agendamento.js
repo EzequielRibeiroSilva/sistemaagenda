@@ -5,6 +5,76 @@ class Agendamento extends BaseModel {
     super('agendamentos');
   }
 
+  async attachServicosAndExtras(agendamentos, options = {}) {
+    const { includeExtras = false, includeComissao = false } = options;
+
+    if (!Array.isArray(agendamentos) || agendamentos.length === 0) {
+      return agendamentos;
+    }
+
+    const agendamentoIds = agendamentos
+      .map(a => a?.id)
+      .filter(id => Number.isFinite(id));
+
+    if (agendamentoIds.length === 0) {
+      return agendamentos;
+    }
+
+    const servicosRows = await this.db('agendamento_servicos')
+      .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+      .whereIn('agendamento_servicos.agendamento_id', agendamentoIds)
+      .select(
+        'agendamento_servicos.agendamento_id as agendamento_id',
+        'servicos.id as id',
+        'servicos.nome as nome',
+        'agendamento_servicos.preco_aplicado as preco',
+        ...(includeComissao ? ['servicos.comissao_percentual as comissao_percentual'] : [])
+      );
+
+    const servicosByAgendamentoId = new Map();
+    for (const row of servicosRows) {
+      const id = row.agendamento_id;
+      if (!servicosByAgendamentoId.has(id)) {
+        servicosByAgendamentoId.set(id, []);
+      }
+      const { agendamento_id, ...servico } = row;
+      servicosByAgendamentoId.get(id).push(servico);
+    }
+
+    let extrasByAgendamentoId = null;
+    if (includeExtras) {
+      const extrasRows = await this.db('agendamento_servicos_extras')
+        .join('servicos_extras', 'agendamento_servicos_extras.servico_extra_id', 'servicos_extras.id')
+        .whereIn('agendamento_servicos_extras.agendamento_id', agendamentoIds)
+        .select(
+          'agendamento_servicos_extras.agendamento_id as agendamento_id',
+          'servicos_extras.id as id',
+          'servicos_extras.nome as nome',
+          'agendamento_servicos_extras.preco_aplicado as preco',
+          'servicos_extras.duracao_minutos as duracao_minutos'
+        );
+
+      extrasByAgendamentoId = new Map();
+      for (const row of extrasRows) {
+        const id = row.agendamento_id;
+        if (!extrasByAgendamentoId.has(id)) {
+          extrasByAgendamentoId.set(id, []);
+        }
+        const { agendamento_id, ...extra } = row;
+        extrasByAgendamentoId.get(id).push(extra);
+      }
+    }
+
+    for (const agendamento of agendamentos) {
+      agendamento.servicos = servicosByAgendamentoId.get(agendamento.id) || [];
+      if (includeExtras) {
+        agendamento.extras = (extrasByAgendamentoId && extrasByAgendamentoId.get(agendamento.id)) || [];
+      }
+    }
+
+    return agendamentos;
+  }
+
   // Buscar agendamentos por usuário (através das unidades)
   async findByUsuario(usuarioId) {
     const agendamentos = await this.db(this.tableName)
@@ -20,18 +90,7 @@ class Agendamento extends BaseModel {
         'unidades.nome as unidade_nome'
       );
 
-    // ✅ Incluir serviços para cada agendamento
-    for (const agendamento of agendamentos) {
-      const servicos = await this.db('agendamento_servicos')
-        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-        .where('agendamento_servicos.agendamento_id', agendamento.id)
-        .select(
-          'servicos.id',
-          'servicos.nome',
-          'agendamento_servicos.preco_aplicado as preco'
-        );
-      agendamento.servicos = servicos;
-    }
+    await this.attachServicosAndExtras(agendamentos);
 
     return agendamentos;
   }
@@ -52,18 +111,7 @@ class Agendamento extends BaseModel {
         'unidades.nome as unidade_nome'
       );
 
-    // ✅ Incluir serviços para cada agendamento
-    for (const agendamento of agendamentos) {
-      const servicos = await this.db('agendamento_servicos')
-        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-        .where('agendamento_servicos.agendamento_id', agendamento.id)
-        .select(
-          'servicos.id',
-          'servicos.nome',
-          'agendamento_servicos.preco_aplicado as preco'
-        );
-      agendamento.servicos = servicos;
-    }
+    await this.attachServicosAndExtras(agendamentos);
 
     return agendamentos;
   }
@@ -87,18 +135,7 @@ class Agendamento extends BaseModel {
       'unidades.nome as unidade_nome'
     );
 
-    // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento (igual aos outros métodos)
-    for (const agendamento of agendamentos) {
-      const servicos = await this.db('agendamento_servicos')
-        .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-        .where('agendamento_servicos.agendamento_id', agendamento.id)
-        .select(
-          'servicos.id',
-          'servicos.nome',
-          'agendamento_servicos.preco_aplicado as preco'
-        );
-      agendamento.servicos = servicos;
-    }
+    await this.attachServicosAndExtras(agendamentos);
 
     return agendamentos;
   }

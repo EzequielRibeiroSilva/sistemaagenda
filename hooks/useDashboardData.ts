@@ -54,6 +54,7 @@ interface BackendUnidade {
   id: number;
   nome: string;
   endereco?: string;
+  horarios_funcionamento?: UnitSchedule[];
 }
 
 // ✅ NOVO: Interface para horários de funcionamento da unidade
@@ -121,7 +122,7 @@ export const useDashboardData = () => {
   // Buscar unidades
   const fetchUnidades = useCallback(async () => {
     try {
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades`);
+      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades?include=horarios_funcionamento`);
       
       let unidadesData: BackendUnidade[] = [];
       
@@ -140,19 +141,10 @@ export const useDashboardData = () => {
       }
       
       setUnidades(unidadesData);
-      
-      // ✅ NOVO: Buscar horários de funcionamento para cada unidade (igual CalendarPage)
+
       const schedulesMap: Record<string, UnitSchedule[]> = {};
       for (const unidade of unidadesData) {
-        try {
-          const scheduleResponse = await makeAuthenticatedRequest(`${API_BASE_URL}/unidades/${unidade.id}`);
-
-          if (scheduleResponse.success && scheduleResponse.data?.horarios_funcionamento) {
-            schedulesMap[unidade.id.toString()] = scheduleResponse.data.horarios_funcionamento;
-          }
-        } catch (err) {
-          // Erro ao buscar horários da unidade
-        }
+        schedulesMap[unidade.id.toString()] = unidade.horarios_funcionamento || [];
       }
       setUnitSchedules(schedulesMap);
       

@@ -225,10 +225,11 @@ class AgendamentoController extends BaseController {
           .join('agentes', 'agendamentos.agente_id', 'agentes.id');
 
         // RBAC: Aplicar filtros baseados no role do usuário
+        let agenteIdFinal = null;
         if (req.user?.role === 'AGENTE') {
           // ✅ Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
           // Fallback: se token não tiver agente_id, buscar na tabela agentes por usuario_id
-          let agenteIdFinal = userAgenteId;
+          agenteIdFinal = userAgenteId;
           if (!agenteIdFinal) {
             logger.warn(`⚠️ [AgendamentoController] AGENTE sem agente_id no token (paginação), buscando na tabela agentes...`);
             const agenteRecord = await this.model.db('agentes')
@@ -324,9 +325,9 @@ class AgendamentoController extends BaseController {
           */
         });
 
+        const dataQuery = baseQuery.clone();
 
-
-        data = await baseQuery
+        data = await dataQuery
           .select(
             'agendamentos.*',
             this.model.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
@@ -347,125 +348,12 @@ class AgendamentoController extends BaseController {
 
 
 
-        // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento
-        for (const agendamento of data) {
-          // 🔍 DEBUG: Log para verificar observações do agendamento #94
-          if (agendamento.id === 94) {
-            logger.log('🔍 [AgendamentoController] Agendamento #94 - observacoes do DB:', agendamento.observacoes);
-          }
+        await this.model.attachServicosAndExtras(data, { includeComissao: true });
 
-          const servicos = await this.model.db('agendamento_servicos')
-            .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-            .where('agendamento_servicos.agendamento_id', agendamento.id)
-            .select(
-              'servicos.id',
-              'servicos.nome',
-              'agendamento_servicos.preco_aplicado as preco',
-              'servicos.comissao_percentual'
-            );
-          
-          // 🔍 DEBUG: Log para verificar comissão
-          if (servicos.length > 0 && agendamento.status === 'Concluído') {
-          }
-          
-          agendamento.servicos = servicos;
-        }
-
-        // Aplicar os mesmos filtros RBAC na contagem total
-        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
-        // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
-        let totalQuery = this.model.db(this.model.tableName)
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
-
-        // RBAC: Aplicar filtros baseados no role do usuário
-        if (req.user?.role === 'AGENTE') {
-          // AGENTE: Buscar o agente_id através da tabela agentes
-          const agenteRecord = await this.model.db('agentes')
-            .where('usuario_id', req.user.id)
-            .select('id')
-            .first();
-
-          if (agenteRecord) {
-            totalQuery = totalQuery.where('agendamentos.agente_id', agenteRecord.id);
-          } else {
-            // Se não encontrou agente, total é 0
-            const total = { count: 0 };
-            return res.json({
-              data: [],
-              pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: 0,
-                pages: 0
-              }
-            });
-          }
-        } else {
-          // ADMIN/MASTER: Ver todos da unidade
-          totalQuery = totalQuery.where('unidades.usuario_id', usuarioId);
-        }
-
-        const total = await totalQuery
-          .modify(function(queryBuilder) {
-            if (status) {
-              queryBuilder.where('agendamentos.status', status);
-            }
-
-            // ✅ NOVO: Filtrar por unidade_id se fornecido (mesma lógica da query principal)
-            if (unidade_id) {
-              queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
-            }
-
-            // ✅ NOVO: Filtro temporal (mesma lógica da query principal)
-            if (time_filter) {
-              const now = new Date();
-              const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-              const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
-
-              switch (time_filter) {
-                case 'soon': // Próximo/Agora (hoje que ainda não passou + futuro)
-                  queryBuilder.where(function() {
-                    this.where('agendamentos.data_agendamento', '>', today)
-                        .orWhere(function() {
-                          this.where('agendamentos.data_agendamento', '=', today)
-                              .where('agendamentos.hora_inicio', '>=', currentTime);
-                        });
-                  });
-                  break;
-                case 'overdue': // Passado (dias passados + hoje que já passou)
-                  queryBuilder.where(function() {
-                    this.where('agendamentos.data_agendamento', '<', today)
-                        .orWhere(function() {
-                          this.where('agendamentos.data_agendamento', '=', today)
-                              .where('agendamentos.hora_fim', '<', currentTime);
-                        });
-                  });
-                  break;
-                case 'pending': // Futuro (apenas dias futuros, não inclui hoje)
-                  queryBuilder.where('agendamentos.data_agendamento', '>', today);
-                  break;
-                case 'today': // Apenas hoje
-                  queryBuilder.where('agendamentos.data_agendamento', '=', today);
-                  break;
-              }
-            }
-
-            // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados no total também
-            // Comentado o filtro que estava ocultando agendamentos passados:
-            /*
-            if (!status) {
-              queryBuilder.where(function() {
-                this.where('agendamentos.data_agendamento', '>', this.client.raw('CURRENT_DATE'))
-                    .orWhere(function() {
-                      this.where('agendamentos.data_agendamento', '=', this.client.raw('CURRENT_DATE'))
-                          .where('agendamentos.hora_fim', '>', this.client.raw('CURRENT_TIME'));
-                    });
-              });
-            }
-            */
-          })
-          .count('agendamentos.id as count')
+        const total = await baseQuery.clone()
+          .clearSelect()
+          .clearOrder()
+          .countDistinct('agendamentos.id as count')
           .first();
 
         // 🔍 DEBUG CRÍTICO: Log da resposta final
@@ -536,9 +424,14 @@ class AgendamentoController extends BaseController {
 
         // ✅ APLICAR FILTRO DE SERVIÇO
         if (servico_id) {
-          baseQuery = baseQuery
-            .join('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
-            .where('agendamento_servicos.servico_id', parseInt(servico_id));
+          // Evitar duplicação de linhas (1 agendamento pode ter múltiplos serviços)
+          // e manter a query eficiente usando EXISTS em vez de JOIN
+          baseQuery = baseQuery.whereExists(function() {
+            this.select(1)
+              .from('agendamento_servicos')
+              .whereRaw('agendamento_servicos.agendamento_id = agendamentos.id')
+              .where('agendamento_servicos.servico_id', parseInt(servico_id));
+          });
         }
 
         // Executar query
@@ -555,24 +448,7 @@ class AgendamentoController extends BaseController {
           .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
-        // ✅ INCLUIR SERVIÇOS PARA CADA AGENDAMENTO
-        for (const agendamento of data) {
-          const servicos = await this.model.db('agendamento_servicos')
-            .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-            .where('agendamento_servicos.agendamento_id', agendamento.id)
-            .select(
-              'servicos.id',
-              'servicos.nome',
-              'agendamento_servicos.preco_aplicado as preco',
-              'servicos.comissao_percentual'
-            );
-
-          // 🔍 DEBUG: Log para verificar comissão
-          if (servicos.length > 0) {
-          }
-
-          agendamento.servicos = servicos;
-        }
+        await this.model.attachServicosAndExtras(data, { includeComissao: true });
 
       }
 
