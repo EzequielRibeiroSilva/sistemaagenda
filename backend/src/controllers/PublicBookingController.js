@@ -28,10 +28,58 @@ class PublicBookingController {
     this.clienteModel = new Cliente();
     this.agendamentoModel = new Agendamento();
     this.configuracaoModel = new ConfiguracaoSistema(db);
-    this.whatsAppService = new WhatsAppService();
-    this.scheduledReminderService = new ScheduledReminderService(); // ✅ NOVO
-    this.publicSessionService = getPublicSessionService(); // ✅ CORREÇÃO 1.2
+    this.horarioFuncionamentoUnidadeModel = new HorarioFuncionamentoUnidade();
+    this.excecaoCalendarioModel = new ExcecaoCalendario();
+    this.agenteExcecaoCalendarioModel = new AgenteExcecaoCalendario();
+    this.whatsappService = new WhatsAppService();
+    this.scheduledReminderService = new ScheduledReminderService(); // 
+    this.publicSessionService = getPublicSessionService(); // 
     this.planoAssinaturaModel = new PlanoAssinatura();
+  }
+
+  /**
+   * HELPER: Normalizar telefone brasileiro e gerar variações
+   * Solução para problema de duplicação de clientes (com/sem 9º dígito)
+   * 
+   * Exemplos:
+   * - Input: "8591082000" (10 dígitos) → Output: ["8591082000", "85991082000"]
+   * - Input: "85991082000" (11 dígitos) → Output: ["85991082000", "8591082000"]
+   * 
+   * @param {string} telefone - Telefone com ou sem formatação
+   * @returns {string[]} Array com variações do telefone (com e sem 9º dígito)
+   */
+  normalizarTelefoneVariacoes(telefone) {
+    // Limpar telefone (apenas números)
+    let limpo = telefone.replace(/\D/g, '');
+
+    // Remover código do país se presente (+55)
+    if (limpo.startsWith('55') && limpo.length >= 12) {
+      limpo = limpo.substring(2);
+    }
+
+    const variacoes = [];
+
+    // Caso 1: Telefone com 11 dígitos (DDD + 9 + 8 dígitos)
+    if (limpo.length === 11 && limpo[2] === '9') {
+      variacoes.push(limpo); // Versão com 9
+      // Gerar versão sem o 9 (10 dígitos)
+      const semNove = limpo.substring(0, 2) + limpo.substring(3);
+      variacoes.push(semNove);
+    }
+    // Caso 2: Telefone com 10 dígitos (DDD + 8 dígitos - formato antigo)
+    else if (limpo.length === 10) {
+      variacoes.push(limpo); // Versão sem 9
+      // Gerar versão com o 9 (11 dígitos)
+      const comNove = limpo.substring(0, 2) + '9' + limpo.substring(2);
+      variacoes.push(comNove);
+    }
+    // Caso 3: Telefone em outro formato (manter original)
+    else {
+      variacoes.push(limpo);
+    }
+
+    logger.log(` [TelefoneNormalizer] Input: "${telefone}" → Variações: [${variacoes.join(', ')}]`);
+    return variacoes;
   }
 
   normalizeDateStr(dateValue) {
@@ -1270,17 +1318,24 @@ class PublicBookingController {
         }
       }
 
-      // Limpar telefone (remover caracteres não numéricos)
-      const telefoneLimpo = telefone.replace(/\D/g, '');
+      // 🔧 CORREÇÃO: Buscar cliente considerando variações do 9º dígito
+      // Gera variações: ["8591082000", "85991082000"] ou ["85991082000", "8591082000"]
+      const variacoesTelefone = this.normalizarTelefoneVariacoes(telefone);
 
-      // Buscar cliente por telefone na unidade
+      logger.log(`🔍 [BuscarCliente] Buscando cliente com variações: [${variacoesTelefone.join(', ')}]`);
+
+      // Buscar cliente por telefone_limpo na unidade (usando variações)
       const cliente = await db('clientes')
         .where('unidade_id', unidade_id)
         .where(function() {
-          this.where('telefone', telefone)
-              .orWhere('telefone', `+55${telefoneLimpo}`)
-              .orWhere('telefone', `+${telefoneLimpo}`)
-              .orWhere('telefone', telefoneLimpo);
+          // Buscar por qualquer uma das variações do telefone
+          variacoesTelefone.forEach((variacao, index) => {
+            if (index === 0) {
+              this.where('telefone_limpo', variacao);
+            } else {
+              this.orWhere('telefone_limpo', variacao);
+            }
+          });
         })
         .first();
 
@@ -1709,12 +1764,24 @@ class PublicBookingController {
 
       logger.log(`✅ [PublicBooking] Nenhum conflito detectado. Prosseguindo com criação...`);
 
-      // Criar ou buscar cliente
-      // ✅ CORREÇÃO: Buscar por telefone_limpo para garantir match correto
-      const telefone_limpo_busca = cliente_telefone.replace(/\D/g, '');
+      // 🔧 CORREÇÃO: Buscar cliente considerando variações do 9º dígito
+      // Evita duplicação de clientes (ex: 8591082000 vs 85991082000)
+      const variacoesTelefone = this.normalizarTelefoneVariacoes(cliente_telefone);
+      
+      logger.log(`🔍 [CriarAgendamento] Buscando cliente com variações: [${variacoesTelefone.join(', ')}]`);
+
       let cliente = await trx('clientes')
-        .where('telefone_limpo', telefone_limpo_busca)
         .where('unidade_id', unidade_id)
+        .where(function() {
+          // Buscar por qualquer uma das variações do telefone
+          variacoesTelefone.forEach((variacao, index) => {
+            if (index === 0) {
+              this.where('telefone_limpo', variacao);
+            } else {
+              this.orWhere('telefone_limpo', variacao);
+            }
+          });
+        })
         .first();
 
       if (!cliente) {
@@ -1723,14 +1790,27 @@ class PublicBookingController {
         const primeiro_nome = nomePartes[0];
         const ultimo_nome = nomePartes.slice(1).join(' ') || '';
 
-        // ✅ CORREÇÃO: Limpar telefone para preencher telefone_limpo
-        const telefone_limpo = cliente_telefone.replace(/\D/g, '');
+        // 🔧 CORREÇÃO: Normalizar telefone para formato padrão (11 dígitos com 9)
+        // Se telefone tem 10 dígitos, adiciona o 9. Se tem 11, mantém.
+        let telefone_limpo = cliente_telefone.replace(/\D/g, '');
+        
+        // Remover código do país se presente
+        if (telefone_limpo.startsWith('55') && telefone_limpo.length >= 12) {
+          telefone_limpo = telefone_limpo.substring(2);
+        }
+
+        // Normalizar para 11 dígitos (adicionar 9 se necessário)
+        if (telefone_limpo.length === 10) {
+          // Formato antigo (DDD + 8 dígitos) → Adicionar 9
+          telefone_limpo = telefone_limpo.substring(0, 2) + '9' + telefone_limpo.substring(2);
+          logger.log(`📞 [PublicBooking] Telefone normalizado de 10 para 11 dígitos: ${telefone_limpo}`);
+        }
 
         const [novoCliente] = await trx('clientes').insert({
           primeiro_nome,
           ultimo_nome,
           telefone: cliente_telefone,
-          telefone_limpo: telefone_limpo, // ✅ CRÍTICO: Necessário para envio de WhatsApp
+          telefone_limpo: telefone_limpo, // ✅ CRÍTICO: Sempre 11 dígitos (formato padrão)
           data_nascimento: data_nascimento || null,
           unidade_id: unidade_id,
           status: 'Ativo'
@@ -1740,13 +1820,15 @@ class PublicBookingController {
         logger.log(`✅ [PublicBooking] Cliente criado automaticamente:`, {
           cliente_id: cliente?.id,
           unidade_id,
-          telefone_limpo: telefone_limpo_busca
+          telefone_limpo: telefone_limpo,
+          telefone_original: cliente_telefone
         });
       } else {
-        logger.log(`✅ [PublicBooking] Cliente encontrado por telefone:`, {
+        logger.log(`✅ [PublicBooking] Cliente encontrado por telefone (variações):`, {
           cliente_id: cliente?.id,
           unidade_id,
-          telefone_limpo: telefone_limpo_busca
+          telefone_limpo: cliente.telefone_limpo,
+          variacoes_buscadas: variacoesTelefone
         });
 
         if (!cliente.data_nascimento && data_nascimento) {
