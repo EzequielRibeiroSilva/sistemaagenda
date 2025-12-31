@@ -146,7 +146,12 @@ class ServicoController extends BaseController {
       if (stats === 'true') {
         data = await this.model.findWithStats(usuarioId);
       } else if (agente_id) {
-        data = await this.model.findByAgente(parseInt(agente_id));
+        // ✅ Multi-tenant safety: ADMIN nunca pode consultar serviços de outro tenant via agente_id
+        if (userRole === 'MASTER') {
+          data = await this.model.findByAgente(parseInt(agente_id));
+        } else {
+          data = await this.model.findByAgente(parseInt(agente_id), usuarioId);
+        }
       } else if (categoria_id) {
         data = await this.model.findByCategoria(parseInt(categoria_id), usuarioId);
       } else if (status === 'Ativo') {

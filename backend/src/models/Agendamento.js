@@ -69,17 +69,23 @@ class Agendamento extends BaseModel {
   }
 
   // Buscar agendamentos por agente
-  async findByAgente(agenteId) {
-    const agendamentos = await this.db(this.tableName)
+  async findByAgente(agenteId, usuarioId = null) {
+    let query = this.db(this.tableName)
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-      .where('agendamentos.agente_id', agenteId)
-      .select(
-        'agendamentos.*',
-        this.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
-        'clientes.telefone as cliente_telefone',
-        'unidades.nome as unidade_nome'
-      );
+      .where('agendamentos.agente_id', agenteId);
+
+    // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o agendamento pertence à empresa
+    if (usuarioId) {
+      query = query.where('unidades.usuario_id', usuarioId);
+    }
+
+    const agendamentos = await query.select(
+      'agendamentos.*',
+      this.db.raw("CONCAT(COALESCE(clientes.primeiro_nome, ''), ' ', COALESCE(clientes.ultimo_nome, '')) as cliente_nome"),
+      'clientes.telefone as cliente_telefone',
+      'unidades.nome as unidade_nome'
+    );
 
     // ✅ CORREÇÃO CRÍTICA: Incluir serviços para cada agendamento (igual aos outros métodos)
     for (const agendamento of agendamentos) {
@@ -98,16 +104,22 @@ class Agendamento extends BaseModel {
   }
 
   // Buscar agendamentos por cliente
-  async findByCliente(clienteId) {
-    return await this.db(this.tableName)
+  async findByCliente(clienteId, usuarioId = null) {
+    let query = this.db(this.tableName)
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-      .where('agendamentos.cliente_id', clienteId)
-      .select(
-        'agendamentos.*',
-        'agentes.nome as agente_nome',
-        'unidades.nome as unidade_nome'
-      );
+      .where('agendamentos.cliente_id', clienteId);
+
+    // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o agendamento pertence à empresa
+    if (usuarioId) {
+      query = query.where('unidades.usuario_id', usuarioId);
+    }
+
+    return await query.select(
+      'agendamentos.*',
+      'agentes.nome as agente_nome',
+      'unidades.nome as unidade_nome'
+    );
   }
 
   // Buscar agendamentos com serviços

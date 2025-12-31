@@ -25,30 +25,35 @@ class UnidadeController extends BaseController {
 
 
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar TODAS as unidades onde ele trabalha
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar a unidade onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
+        // Buscar o agente para pegar sua unidade_id
+        const agente = await this.model.db('agentes')
+          .where('id', userAgenteId)
+          .first();
 
+        if (!agente || !agente.unidade_id) {
+          return res.json([]);
+        }
 
-        // Buscar TODAS as unidades onde o agente trabalha através da tabela agente_unidades
-        const unidadesDoAgente = await this.model.db('agente_unidades')
-          .join('unidades', 'agente_unidades.unidade_id', 'unidades.id')
-          .where('agente_unidades.agente_id', userAgenteId)
-          .where('unidades.status', '!=', 'Excluido') // Excluir unidades deletadas
-          .select('unidades.*');
+        // Buscar a unidade do agente
+        const unidade = await this.model.db('unidades')
+          .where('id', agente.unidade_id)
+          .where('status', '!=', 'Excluido')
+          .first();
+
+        if (!unidade) {
+          return res.json([]);
+        }
 
         // Aplicar filtros adicionais se fornecidos
         const { status } = req.query;
-        let filteredUnidades = unidadesDoAgente;
-        if (status) {
-          filteredUnidades = unidadesDoAgente.filter(u => u.status === status);
+        if (status && unidade.status !== status) {
+          return res.json([]);
         }
 
-
-
         // Retornar no formato esperado pelo frontend (array direto)
-        return res.json(filteredUnidades);
-      } else {
-
+        return res.json([unidade]);
       }
 
       const { status } = req.query;
@@ -493,6 +498,7 @@ class UnidadeController extends BaseController {
       const { id } = req.params;
       const usuarioId = req.user?.id;
       const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -509,9 +515,12 @@ class UnidadeController extends BaseController {
         filters.dataFim = req.query.dataFim;
       }
 
+      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, passar agente_id ao invés de usuario_id
+      const userIdForService = userRole === 'AGENTE' && userAgenteId ? userAgenteId : usuarioId;
+
       // Buscar exceções usando service
       const excecoes = await this.unidadeService.listExcecoesCalendario(
-        usuarioId,
+        userIdForService,
         parseInt(id),
         filters,
         userRole

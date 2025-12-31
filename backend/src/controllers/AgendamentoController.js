@@ -78,7 +78,15 @@ class AgendamentoController extends BaseController {
     try {
       const usuarioId = req.user?.id;
       const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
 
+      // 🔍 DEBUG CRÍTICO: Log completo do req.user para AGENTE
+      logger.info(`🔍 [AgendamentoController.index] Requisição recebida:`, {
+        usuarioId,
+        userRole,
+        userAgenteId,
+        queryParams: req.query
+      });
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -107,14 +115,23 @@ class AgendamentoController extends BaseController {
       if (data_agendamento) {
         // ✅ CORREÇÃO CRÍTICA: Para AGENTE, filtrar por agente_id diretamente
         if (userRole === 'AGENTE') {
-          // Buscar o agente_id do usuário logado
-          const agenteRecord = await this.model.db('agentes')
-            .where('usuario_id', usuarioId)
-            .select('id')
-            .first();
+          // ✅ Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
+          // Fallback: se token não tiver agente_id, buscar na tabela agentes por usuario_id
+          let agenteIdFinal = userAgenteId;
+          if (!agenteIdFinal) {
+            logger.warn(`⚠️ [AgendamentoController] AGENTE sem agente_id no token, buscando na tabela agentes...`);
+            const agenteRecord = await this.model.db('agentes')
+              .where('usuario_id', usuarioId)
+              .select('id')
+              .first();
+            agenteIdFinal = agenteRecord?.id;
+            logger.info(`🔍 [AgendamentoController] Agente encontrado via usuario_id: ${agenteIdFinal}`);
+          }
 
-          if (agenteRecord) {
-            const allAgendamentos = await this.model.findByAgente(agenteRecord.id);
+          if (agenteIdFinal) {
+            logger.info(`✅ [AgendamentoController] Buscando agendamentos para AGENTE (agente_id=${agenteIdFinal}, data=${data_agendamento})`);
+            const allAgendamentos = await this.model.findByAgente(agenteIdFinal);
+            logger.info(`📊 [AgendamentoController] Total de agendamentos do agente: ${allAgendamentos.length}`);
 
             // Filtrar apenas pela data específica
             data = allAgendamentos.filter(agendamento => {
@@ -125,19 +142,72 @@ class AgendamentoController extends BaseController {
                 : agendamentoDate;
               return dateString === data_agendamento;
             });
+            logger.info(`📊 [AgendamentoController] Agendamentos filtrados por data: ${data.length}`);
           } else {
+            logger.error(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${usuarioId}`);
             data = [];
           }
         } else {
           // Para ADMIN/MASTER, usar o método original
           data = await this.model.findByData(data_agendamento, usuarioId);
         }
-      } else if (agente_id && !unidade_id && !page && !limit) {
-        // ✅ CORREÇÃO: Só usar findByAgente se NÃO há unidade_id nem paginação
-        data = await this.model.findByAgente(parseInt(agente_id));
-      } else if (cliente_id && !unidade_id && !page && !limit) {
-        // ✅ CORREÇÃO: Só usar findByCliente se NÃO há unidade_id nem paginação
-        data = await this.model.findByCliente(parseInt(cliente_id));
+      } else if (agente_id && !unidade_id && !page && !limit && !data_inicio && !data_fim) {
+        // ✅ CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
+        // - Tem APENAS agente_id (sem page/limit, sem data_inicio/data_fim, sem unidade_id)
+        // - Isso evita bloquear requests legítimos de AGENTE com filtros de período
+        
+        // ✅ Multi-tenant safety: nunca permitir que query param bypass o isolamento
+        if (userRole === 'MASTER') {
+          data = await this.model.findByAgente(parseInt(agente_id));
+        } else if (userRole === 'ADMIN') {
+          data = await this.model.findByAgente(parseInt(agente_id), usuarioId);
+
+          if (Array.isArray(data) && data.length === 0) {
+            const agenteExisteEmOutroTenant = await this.model.db('agentes')
+              .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+              .where('agentes.id', parseInt(agente_id))
+              .where(function() {
+                this.whereNotNull('unidades.usuario_id')
+                  .whereNot('unidades.usuario_id', usuarioId);
+              })
+              .select('agentes.id', 'unidades.usuario_id')
+              .first();
+
+            if (agenteExisteEmOutroTenant) {
+              logger.warn(`🚨 [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por agente_id=${agente_id} de outro tenant`);
+            }
+          }
+        } else {
+          // ✅ CORREÇÃO: AGENTE não pode usar APENAS agente_id isolado, mas pode usar com data_inicio/data_fim
+          return res.status(403).json({ error: 'Acesso negado' });
+        }
+      } else if (cliente_id && !unidade_id && !page && !limit && !data_inicio && !data_fim) {
+        // ✅ CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
+        // - Tem APENAS cliente_id (sem page/limit, sem data_inicio/data_fim, sem unidade_id)
+        // - Isso evita bloquear requests legítimos com filtros de período
+        
+        // ✅ Multi-tenant safety: nunca permitir que query param bypass o isolamento
+        if (userRole === 'MASTER') {
+          data = await this.model.findByCliente(parseInt(cliente_id));
+        } else if (userRole === 'ADMIN') {
+          data = await this.model.findByCliente(parseInt(cliente_id), usuarioId);
+
+          if (Array.isArray(data) && data.length === 0) {
+            const clienteExisteEmOutroTenant = await this.model.db('clientes')
+              .join('unidades', 'clientes.unidade_id', 'unidades.id')
+              .where('clientes.id', parseInt(cliente_id))
+              .whereNot('unidades.usuario_id', usuarioId)
+              .select('clientes.id', 'unidades.usuario_id')
+              .first();
+
+            if (clienteExisteEmOutroTenant) {
+              logger.warn(`🚨 [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por cliente_id=${cliente_id} de outro tenant`);
+            }
+          }
+        } else {
+          // ✅ CORREÇÃO: Bloquear apenas uso isolado de cliente_id
+          return res.status(403).json({ error: 'Acesso negado' });
+        }
       } else if (page && limit) {
         // Para paginação, precisamos filtrar por usuário através das unidades
         const filters = {};
@@ -156,16 +226,25 @@ class AgendamentoController extends BaseController {
 
         // RBAC: Aplicar filtros baseados no role do usuário
         if (req.user?.role === 'AGENTE') {
-          // AGENTE: Buscar o agente_id através da tabela agentes
-          const agenteRecord = await this.model.db('agentes')
-            .where('usuario_id', req.user.id)
-            .select('id')
-            .first();
+          // ✅ Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
+          // Fallback: se token não tiver agente_id, buscar na tabela agentes por usuario_id
+          let agenteIdFinal = userAgenteId;
+          if (!agenteIdFinal) {
+            logger.warn(`⚠️ [AgendamentoController] AGENTE sem agente_id no token (paginação), buscando na tabela agentes...`);
+            const agenteRecord = await this.model.db('agentes')
+              .where('usuario_id', req.user.id)
+              .select('id')
+              .first();
+            agenteIdFinal = agenteRecord?.id;
+            logger.info(`🔍 [AgendamentoController] Agente encontrado via usuario_id (paginação): ${agenteIdFinal}`);
+          }
 
-          if (agenteRecord) {
-            baseQuery = baseQuery.where('agendamentos.agente_id', agenteRecord.id);
+          if (agenteIdFinal) {
+            logger.info(`✅ [AgendamentoController] Aplicando filtro AGENTE (agente_id=${agenteIdFinal}) na query paginada`);
+            baseQuery = baseQuery.where('agendamentos.agente_id', agenteIdFinal);
           } else {
             // Se não encontrou agente, retornar vazio
+            logger.error(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${req.user.id} (paginação)`);
             return res.json({
               data: [],
               pagination: {
@@ -388,6 +467,17 @@ class AgendamentoController extends BaseController {
           })
           .count('agendamentos.id as count')
           .first();
+
+        // 🔍 DEBUG CRÍTICO: Log da resposta final
+        logger.info(`📤 [AgendamentoController] Retornando resposta:`, {
+          totalAgendamentos: data.length,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: parseInt(total.count),
+            pages: Math.ceil(parseInt(total.count) / parseInt(limit))
+          }
+        });
 
         return res.json({
           data,

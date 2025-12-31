@@ -219,32 +219,57 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
     // ✅ NOVO: Auto-seleção de local baseada no PLANO (mesma lógica do CalendarPage.tsx)
     useEffect(() => {
         // 🔧 CORREÇÃO: Permitir auto-seleção quando selectedLocationFilter === 'all'
-        if (locations.length === 0) return;
+        if (locations.length === 0) {
+            return;
+        }
+
+        // ✅ CORREÇÃO CRÍTICA: Para AGENTE, aguardar allAgents ser carregado
+        if (user?.role === 'AGENTE' && allAgents.length === 0) {
+            return;
+        }
 
         // Se já tem um local específico selecionado, não alterar
         if (selectedLocationFilter !== 'all') return;
 
-        // Caso 1: Plano Single (sempre seleciona o primeiro)
-        if (isSinglePlan) {
-            setSelectedLocationFilter(locations[0].id);
-            return;
-        }
+        let newLocationFilterId: string | null = null;
 
-        if (isMultiPlan) {
-            // Caso 2: Plano Multi e usuário tem unidade padrão
+        // ✅ CORREÇÃO CRÍTICA: Prioridade 1 - Usuário AGENTE
+        if (user?.role === 'AGENTE' && loggedInAgentId) {
+            const agentData = allAgents.find(a => a.id.toString() === loggedInAgentId);
+            
+            // Caso 1a: AGENTE tem unidade principal definida
+            if (agentData && agentData.unidade_id !== undefined && agentData.unidade_id !== null) {
+                newLocationFilterId = agentData.unidade_id.toString();
+            }
+            // Caso 1b: AGENTE Multi-Local (sem unidade principal, mas tem array de unidades)
+            else if (agentData && Array.isArray(agentData.unidades) && agentData.unidades.length > 0) {
+                newLocationFilterId = agentData.unidades[0];
+            }
+        }
+        // Prioridade 2 - Plano Single
+        else if (isSinglePlan) {
+            newLocationFilterId = locations[0].id;
+        }
+        // Prioridade 3 - Plano Multi
+        else if (isMultiPlan) {
+            // Caso 3a: Plano Multi e usuário tem unidade padrão
             if (user.unidade_id) {
                 const userLocation = locations.find(l => l.id === user.unidade_id?.toString());
                 if (userLocation) {
-                    setSelectedLocationFilter(userLocation.id);
-                    return;
+                    newLocationFilterId = userLocation.id;
                 }
             }
-
-            // Caso 3: Plano Multi, sem unidade padrão (ADMIN Master)
-            // Seleciona o primeiro da lista para quebrar o deadlock
-            setSelectedLocationFilter(locations[0].id);
+            // Caso 3b: Plano Multi, sem unidade padrão (ADMIN Master)
+            if (!newLocationFilterId) {
+                newLocationFilterId = locations[0].id;
+            }
         }
-    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id]);
+
+        // Aplicar a seleção se encontrou um local válido
+        if (newLocationFilterId) {
+            setSelectedLocationFilter(newLocationFilterId);
+        }
+    }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id, user?.role, loggedInAgentId, allAgents.length]);
 
     // ✅ MODIFICADO: Buscar agendamentos quando filtros, página ou LOCAL mudarem
     useEffect(() => {

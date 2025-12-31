@@ -15,6 +15,8 @@ class RBACAgendamentoController extends BaseController {
   async index(req, res) {
     try {
       const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
       
       if (!usuarioId) {
         return res.status(401).json({ 
@@ -26,11 +28,13 @@ class RBACAgendamentoController extends BaseController {
       let data;
 
       // Aplicar filtros baseados no role do usuário
-      switch (req.user.role) {
+      switch (userRole) {
         case 'MASTER':
           // MASTER vê todos os agendamentos do sistema
           if (data_agendamento) {
-            data = await this.model.findByData(data_agendamento);
+            data = await this.model.db(this.model.tableName)
+              .where('data_agendamento', data_agendamento)
+              .select('*');
           } else if (agente_id) {
             data = await this.model.findByAgente(parseInt(agente_id));
           } else if (cliente_id) {
@@ -108,11 +112,11 @@ class RBACAgendamentoController extends BaseController {
           // AGENTE vê apenas seus próprios agendamentos
           if (data_agendamento) {
             data = await this.model.db(this.model.tableName)
-              .where('agente_id', usuarioId)
+              .where('agente_id', userAgenteId)
               .where('data_agendamento', data_agendamento);
           } else if (cliente_id) {
             data = await this.model.db(this.model.tableName)
-              .where('agente_id', usuarioId)
+              .where('agente_id', userAgenteId)
               .where('cliente_id', parseInt(cliente_id));
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -120,7 +124,7 @@ class RBACAgendamentoController extends BaseController {
               .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
               .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-              .where('agendamentos.agente_id', usuarioId)
+              .where('agendamentos.agente_id', userAgenteId)
               .modify(function(queryBuilder) {
                 if (status) queryBuilder.where('agendamentos.status', status);
               })
@@ -136,7 +140,7 @@ class RBACAgendamentoController extends BaseController {
               .offset(offset);
           } else {
             data = await this.model.db(this.model.tableName)
-              .where('agente_id', usuarioId);
+              .where('agente_id', userAgenteId);
           }
           break;
 

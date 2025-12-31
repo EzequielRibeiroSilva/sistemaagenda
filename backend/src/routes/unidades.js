@@ -39,6 +39,21 @@ router.get('/:id',
   }
 );
 
+/**
+ * GET /api/unidades/:id/excecoes
+ * Lista exceções de calendário de uma unidade
+ * Query params: ?dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD (opcionais)
+ * ADMIN só pode ver exceções de suas unidades, MASTER pode ver de qualquer uma, AGENTE pode ver de sua unidade
+ * ✅ CRÍTICO: Esta rota DEVE estar ANTES do middleware global que bloqueia AGENTE
+ */
+router.get('/:id/excecoes',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  rbacMiddleware.auditLog('LISTAR_EXCECOES_CALENDARIO'),
+  async (req, res) => {
+    await unidadeController.listExcecoes(req, res);
+  }
+);
+
 // ✅ Middleware para exigir role ADMIN ou MASTER APENAS em operações de escrita
 router.use(rbacMiddleware.requireRole('ADMIN', 'MASTER'));
 
@@ -105,19 +120,6 @@ router.post('/:id/excecoes',
   rbacMiddleware.auditLog('CRIAR_EXCECAO_CALENDARIO'),
   async (req, res) => {
     await unidadeController.createExcecao(req, res);
-  }
-);
-
-/**
- * GET /api/unidades/:id/excecoes
- * Lista exceções de calendário de uma unidade
- * Query params: ?dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD (opcionais)
- * ADMIN só pode ver exceções de suas unidades, MASTER pode ver de qualquer uma
- */
-router.get('/:id/excecoes',
-  rbacMiddleware.auditLog('LISTAR_EXCECOES_CALENDARIO'),
-  async (req, res) => {
-    await unidadeController.listExcecoes(req, res);
   }
 );
 

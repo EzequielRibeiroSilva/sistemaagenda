@@ -80,12 +80,18 @@ class Servico extends BaseModel {
   }
 
   // Buscar serviços por agente
-  async findByAgente(agenteId) {
-    return await this.db(this.tableName)
+  async findByAgente(agenteId, usuarioId = null) {
+    let query = this.db(this.tableName)
       .join('agente_servicos', 'servicos.id', 'agente_servicos.servico_id')
       .where('agente_servicos.agente_id', agenteId)
-      .where('servicos.status', 'Ativo')
-      .select('servicos.*');
+      .where('servicos.status', 'Ativo');
+
+    // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o serviço pertence à empresa
+    if (usuarioId) {
+      query = query.where('servicos.usuario_id', usuarioId);
+    }
+
+    return await query.select('servicos.*');
   }
 
   // Buscar serviços com estatísticas
