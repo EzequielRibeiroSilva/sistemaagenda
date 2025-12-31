@@ -58,6 +58,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ✅ CORREÇÃO: Memoizar para não recriar a cada render
     const buildAssinaturaResumo = useCallback((saldo: AssinaturaSaldoResponse | null) => {
         if (!saldo?.assinatura_ativa || !Array.isArray(saldo.saldos) || saldo.saldos.length === 0) return '';
 
@@ -238,7 +239,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         }
     }, []);
 
-    // ✅ NOVO: Definir colunas da tabela dinamicamente
+    // ✅ CORREÇÃO CRÍTICA: Definir colunas da tabela com dependências estáveis
+    // Remover assinaturaSaldoByClientId e assinaturaSaldoLoadingByClientId das dependências
+    // pois eles são acessados dentro do render mas não afetam a ESTRUTURA das colunas
     const tableColumns: TableColumn[] = useMemo(() => {
         const columns: TableColumn[] = [
             {
@@ -376,7 +379,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, buildAssinaturaResumo]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo]);
 
     return (
         <div className="space-y-6">

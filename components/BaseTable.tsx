@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from './Icons';
 
 // ========================================
@@ -61,12 +61,14 @@ export interface BaseTableProps<T = any> {
 // COMPONENTES AUXILIARES
 // ========================================
 
-const FilterInput: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
+// ✅ CORREÇÃO CRÍTICA: FilterInput precisa usar forwardRef para aceitar refs
+const FilterInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
   <input 
+    ref={ref}
     {...props}
     className="w-full bg-white p-1.5 border border-gray-300 rounded-md text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
   />
-);
+));
 
 const FilterSelect: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({ children, ...props }) => (
   <select 
@@ -99,11 +101,30 @@ export function BaseTable<T = any>({
   enableRowHover = true,
 }: BaseTableProps<T>) {
   
+  // ✅ CORREÇÃO: Sistema de preservação de foco
+  const focusedInputRef = useRef<{ columnKey: string; selectionStart: number | null; selectionEnd: number | null } | null>(null);
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  
   // Calcular colspan para mensagens
   const colspan = columns.length;
   
   // Verificar se há filtros ativos
   const hasActiveFilters = Object.values(filters).some(value => value && value !== 'all');
+  
+  // ✅ CORREÇÃO: Restaurar foco após re-render
+  useEffect(() => {
+    if (focusedInputRef.current) {
+      const { columnKey, selectionStart, selectionEnd } = focusedInputRef.current;
+      const input = inputRefs.current.get(columnKey);
+      if (input && document.activeElement !== input) {
+        input.focus();
+        // Restaurar posição do cursor
+        if (selectionStart !== null && selectionEnd !== null) {
+          input.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
+    }
+  });
   
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -136,7 +157,23 @@ export function BaseTable<T = any>({
                         value={filters[column.key] || ''}
                         onChange={(e) => onFilterChange(column.key, e.target.value)}
                         placeholder={column.filterPlaceholder || `Pesquisar...`}
-                        disabled={isLoading}
+                        ref={(el) => {
+                          if (el) {
+                            inputRefs.current.set(column.key, el);
+                          } else {
+                            inputRefs.current.delete(column.key);
+                          }
+                        }}
+                        onFocus={(e) => {
+                          focusedInputRef.current = {
+                            columnKey: column.key,
+                            selectionStart: e.target.selectionStart,
+                            selectionEnd: e.target.selectionEnd
+                          };
+                        }}
+                        onBlur={() => {
+                          focusedInputRef.current = null;
+                        }}
                       />
                     )}
                     
@@ -144,7 +181,6 @@ export function BaseTable<T = any>({
                       <FilterSelect
                         value={filters[column.key] || 'all'}
                         onChange={(e) => onFilterChange(column.key, e.target.value)}
-                        disabled={isLoading}
                       >
                         <option value="all">Todos</option>
                         {column.filterOptions.map((option) => (
@@ -163,7 +199,6 @@ export function BaseTable<T = any>({
                       <button
                         onClick={onClearFilters}
                         className="text-xs text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
-                        disabled={isLoading}
                       >
                         Limpar Filtros
                       </button>
