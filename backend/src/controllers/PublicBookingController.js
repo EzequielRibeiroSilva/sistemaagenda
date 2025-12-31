@@ -2016,6 +2016,95 @@ class PublicBookingController {
       const nomeCompleto = `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim();
       const nomeAgenteCompleto = `${agente.nome} ${agente.sobrenome || ''}`.trim();
       
+      // ✅ NOVO: Calcular saldo de assinatura se cliente for assinante e usou cota
+      let assinaturaSaldo = null;
+      try {
+        if (cliente.is_assinante && cliente.assinatura_plano_id && plano && hasAssinaturaSelection) {
+          const validadeDias = parseInt(plano.validade_dias, 10) || 31;
+          const tz = 'America/Sao_Paulo';
+          const referencia = this.getDateStrInTimeZone(tz);
+          const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
+
+          if (dataInicioAssinaturaStr) {
+            const { cycleStart, cycleEndExclusive, cycleEndInclusive } = this.getCycleBounds({
+              startDateStr: dataInicioAssinaturaStr,
+              validadeDias,
+              referenceDateStr: referencia
+            });
+
+            const itens = await this.planoAssinaturaModel.findItens(plano.id);
+            const itemIds = itens.map(i => i.id);
+
+            let usadosRows = [];
+            if (itemIds.length > 0) {
+              usadosRows = await db('assinatura_usos')
+                .where('cliente_id', cliente.id)
+                .whereIn('plano_item_id', itemIds)
+                .where('data_uso', '>=', cycleStart)
+                .where('data_uso', '<', cycleEndExclusive)
+                .groupBy('plano_item_id')
+                .select('plano_item_id')
+                .sum({ total: 'quantidade' });
+            }
+
+            const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+              const id = String(row.plano_item_id);
+              acc[id] = parseInt(row.total, 10) || 0;
+              return acc;
+            }, {});
+
+            // Buscar nomes dos serviços/extras
+            const servicoIds = itens.filter(i => i.tipo === 'SERVICO' && i.servico_id).map(i => i.servico_id);
+            const extraIds = itens.filter(i => i.tipo === 'EXTRA' && i.servico_extra_id).map(i => i.servico_extra_id);
+
+            let servicosMap = {};
+            let extrasMap = {};
+
+            if (servicoIds.length > 0) {
+              const servs = await db('servicos').whereIn('id', servicoIds).select('id', 'nome');
+              servicosMap = servs.reduce((acc, s) => { acc[s.id] = s.nome; return acc; }, {});
+            }
+
+            if (extraIds.length > 0) {
+              const exts = await db('servicos_extras').whereIn('id', extraIds).select('id', 'nome');
+              extrasMap = exts.reduce((acc, e) => { acc[e.id] = e.nome; return acc; }, {});
+            }
+
+            const saldoItens = itens.map(i => {
+              const usados = usadosByItemId[String(i.id)] || 0;
+              const quota = i.quantidade_por_ciclo === null || i.quantidade_por_ciclo === undefined
+                ? null
+                : parseInt(i.quantidade_por_ciclo, 10);
+              const restantes = quota === null ? null : Math.max(0, quota - usados);
+
+              return {
+                tipo: i.tipo,
+                nome: i.servico_id ? servicosMap[i.servico_id] : (i.servico_extra_id ? extrasMap[i.servico_extra_id] : 'Item'),
+                quantidade_por_ciclo: quota,
+                restantes: restantes
+              };
+            });
+
+            assinaturaSaldo = {
+              assinatura_ativa: true,
+              plano: {
+                nome: plano.nome
+              },
+              ciclo: {
+                inicio: cycleStart,
+                fim: cycleEndInclusive
+              },
+              saldos: saldoItens
+            };
+
+            logger.log(`📋 [PublicBooking] Assinatura saldo calculado para cliente #${cliente.id}:`, assinaturaSaldo);
+          }
+        }
+      } catch (assinaturaError) {
+        logger.error('❌ [PublicBooking] Erro ao calcular saldo de assinatura:', assinaturaError);
+        // Continuar sem informação de assinatura
+      }
+      
       const agendamentoCompleto = {
         cliente: {
           nome: nomeCompleto
@@ -2035,7 +2124,8 @@ class PublicBookingController {
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,
         valor_total: agendamento.valor_total,
-        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco }))
+        servicos: servicos.map(s => ({ nome: s.nome, preco: s.preco })),
+        assinatura_saldo: assinaturaSaldo // ✅ NOVO: Informações de saldo de assinatura
       };
 
       // Enviar notificação WhatsApp e criar lembretes programados (não bloquear a resposta)
