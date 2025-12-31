@@ -45,12 +45,13 @@ services:
       JWT_REFRESH_SECRET: painel_agendamento_refresh_jwt_secret_key_2025_muito_segura_desenvolvimento
       EVO_API_BASE_URL: https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/
       EVO_API_INTERNAL_URL: http://ssesmt-evolution-api_evolution-api:8080/
-      EVO_API_INSTANCE_ID: D1737ABB6963-4720-8EE5-AE48DAE0BB18
-      EVO_API_KEY: D1737ABB6963-4720-8EE5-AE48DAE0BB18
+      EVO_API_INSTANCE_ID: D29738C28C8D-4035-8DEF-F2F49364E590
+      EVO_API_KEY: ${EVO_API_KEY}
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY}
       WHATSAPP_ENABLED: true
       WHATSAPP_TEST_MODE: false
       EVOLUTION_API_URL: https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/
-      EVOLUTION_API_KEY: D1737ABB6963-4720-8EE5-AE48DAE0BB18
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       EVOLUTION_INSTANCE_NAME: PAINEL-DE-AGENDAMENTOS
       ENABLE_WHATSAPP_NOTIFICATIONS: true
       REMINDER_24H_ENABLED: true

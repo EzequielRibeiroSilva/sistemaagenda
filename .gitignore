@@ -50,7 +50,10 @@ backend/*.pid.lock
 # Environment files (production)
 .env.prod
 .env.production
-*.env.prod
+.env.production.local
+
+# Root Environment Variables
+.env
 *.env.production
 
 # Uploads (user-generated content)

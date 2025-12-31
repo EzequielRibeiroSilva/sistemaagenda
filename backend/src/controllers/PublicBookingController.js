@@ -2012,6 +2012,112 @@ class PublicBookingController {
 
       logger.log(`[PublicBooking] Agendamento criado com sucesso: ID ${agendamento.id}`);
 
+      // ✅ NOVO (abb4106): Calcular saldo da assinatura após commit (para mensagem WhatsApp)
+      // Importante: aqui usamos a conexão normal (db), pois a transação já foi comitada.
+      let assinaturaSaldo = null;
+      try {
+        if (cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo') {
+          const planoAssinatura = plano || await db('planos_assinatura')
+            .where('id', cliente.assinatura_plano_id)
+            .where('usuario_id', unidade.usuario_id)
+            .where('status', 'Ativo')
+            .first();
+
+          if (planoAssinatura) {
+            const validadeDias = parseInt(planoAssinatura.validade_dias, 10) || 31;
+            const tz = 'America/Sao_Paulo';
+            const referencia = this.getDateStrInTimeZone(tz);
+            const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
+
+            if (dataInicioAssinaturaStr) {
+              const { cycleStart, cycleEndInclusive, cycleEndExclusive } = this.getCycleBounds({
+                startDateStr: dataInicioAssinaturaStr,
+                validadeDias,
+                referenceDateStr: referencia
+              });
+
+              const itens = await this.planoAssinaturaModel.findItens(planoAssinatura.id);
+              const itemIds = (itens || []).map(i => parseInt(i.id, 10)).filter(n => Number.isFinite(n));
+
+              let usadosRows = [];
+              if (itemIds.length > 0) {
+                try {
+                  usadosRows = await db('assinatura_usos')
+                    .where('cliente_id', cliente.id)
+                    .whereIn('plano_item_id', itemIds)
+                    .where('data_uso', '>=', cycleStart)
+                    .where('data_uso', '<', cycleEndExclusive)
+                    .groupBy('plano_item_id')
+                    .select('plano_item_id')
+                    .sum({ total: 'quantidade' });
+                } catch (err) {
+                  // Se as migrations ainda não foram aplicadas, a tabela pode não existir.
+                  if (!(err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos')))) {
+                    throw err;
+                  }
+                }
+              }
+
+              const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+                acc[String(row.plano_item_id)] = parseInt(row.total, 10) || 0;
+                return acc;
+              }, {});
+
+              const servicoIds = (itens || [])
+                .filter(i => i.tipo === 'SERVICO' && i.servico_id)
+                .map(i => parseInt(i.servico_id, 10))
+                .filter(n => Number.isFinite(n));
+              const extraIds = (itens || [])
+                .filter(i => i.tipo === 'EXTRA' && i.servico_extra_id)
+                .map(i => parseInt(i.servico_extra_id, 10))
+                .filter(n => Number.isFinite(n));
+
+              const servicosDoPlano = servicoIds.length > 0
+                ? await db('servicos').whereIn('id', servicoIds).select('id', 'nome')
+                : [];
+              const extrasDoPlano = extraIds.length > 0
+                ? await db('servicos_extras')
+                  .whereIn('id', extraIds)
+                  .where('usuario_id', unidade.usuario_id)
+                  .select('id', 'nome')
+                : [];
+
+              const nomeServicoById = new Map((servicosDoPlano || []).map(s => [String(s.id), s.nome]));
+              const nomeExtraById = new Map((extrasDoPlano || []).map(e => [String(e.id), e.nome]));
+
+              const saldos = (itens || []).map(item => {
+                const quota = item.quantidade_por_ciclo === null || item.quantidade_por_ciclo === undefined
+                  ? null
+                  : (parseInt(item.quantidade_por_ciclo, 10) || 0);
+
+                const usados = usadosByItemId[String(item.id)] || 0;
+                const restantes = quota === null ? null : Math.max(0, quota - usados);
+
+                const nome = item.tipo === 'SERVICO'
+                  ? (item.servico_id ? (nomeServicoById.get(String(item.servico_id)) || 'Serviço') : 'Serviço')
+                  : (item.servico_extra_id ? (nomeExtraById.get(String(item.servico_extra_id)) || 'Extra') : 'Extra');
+
+                return {
+                  tipo: item.tipo,
+                  nome,
+                  quantidade_por_ciclo: quota,
+                  restantes
+                };
+              });
+
+              assinaturaSaldo = {
+                assinatura_ativa: true,
+                plano: { nome: planoAssinatura.nome },
+                ciclo: { inicio: cycleStart, fim: cycleEndInclusive },
+                saldos
+              };
+            }
+          }
+        }
+      } catch (err) {
+        logger.error('❌ [PublicBooking] Erro ao calcular assinatura_saldo:', err);
+      }
+
       // Preparar dados para notificação WhatsApp
       const nomeCompleto = `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim();
       const nomeAgenteCompleto = `${agente.nome} ${agente.sobrenome || ''}`.trim();
