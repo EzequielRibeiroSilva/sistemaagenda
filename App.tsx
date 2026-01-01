@@ -266,7 +266,27 @@ const App: React.FC = () => {
             setSearchQuery={user.role === 'MASTER' ? masterUsersHook.setSearchQuery : (() => {})}
           />
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
-            <AdminDashboardPage searchQuery={masterUsersHook?.searchQuery || ''} />
+            <AdminDashboardPage
+              users={masterUsersHook.users.map(u => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                contact: u.contact,
+                status: u.status,
+                plan: u.plan,
+                unitLimit: u.unitLimit,
+                activeUnits: u.activeUnits,
+                units: [],
+                clientCount: u.clientCount
+              }))}
+              loading={masterUsersHook.loading}
+              error={masterUsersHook.error}
+              createUser={masterUsersHook.createUser}
+              updateUser={masterUsersHook.updateUser}
+              updateUserStatus={masterUsersHook.updateUserStatus}
+              getUserUnits={masterUsersHook.getUserUnits}
+              updateUnitStatus={masterUsersHook.updateUnitStatus}
+            />
           </main>
         </div>
       </div>
@@ -279,7 +299,30 @@ const App: React.FC = () => {
     }
 
     switch (activeView) {
-      case 'admin-dashboard': return <AdminDashboardPage searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''} />;
+      case 'admin-dashboard':
+        return (
+          <AdminDashboardPage
+            users={masterUsersHook.users.map(u => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              contact: u.contact,
+              status: u.status,
+              plan: u.plan,
+              unitLimit: u.unitLimit,
+              activeUnits: u.activeUnits,
+              units: [],
+              clientCount: u.clientCount
+            }))}
+            loading={masterUsersHook.loading}
+            error={masterUsersHook.error}
+            createUser={masterUsersHook.createUser}
+            updateUser={masterUsersHook.updateUser}
+            updateUserStatus={masterUsersHook.updateUserStatus}
+            getUserUnits={masterUsersHook.getUserUnits}
+            updateUnitStatus={masterUsersHook.updateUnitStatus}
+          />
+        );
       case 'dashboard': return <DashboardPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'calendar': return <CalendarPage loggedInAgentId={user.role === 'AGENTE' ? user.agentId : null} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
       case 'compromissos': return <AppointmentsPage loggedInAgentId={user.agentId} />;
