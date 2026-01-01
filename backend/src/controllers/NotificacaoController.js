@@ -38,13 +38,13 @@ class NotificacaoController {
       // Construir filtros
       const filters = {};
 
-      // ✅ CORREÇÃO: Permitir que ADMIN/MASTER filtrem por qualquer unidade
-      // Se unidade_id foi especificada na query, usar ela
-      // Senão, usar a unidade do usuário (fallback para compatibilidade)
+      // ✅ Regra de escopo:
+      // - MASTER: por padrão NÃO filtra por unidade (visão global). Só filtra se unidade_id vier na query.
+      // - ADMIN: se unidade_id vier na query, usa ela; senão, usa unidade do usuário como fallback.
       if (unidade_id) {
         filters.unidade_id = parseInt(unidade_id);
         logger.log(`🎯 [NotificacaoController] Filtrando por unidade especificada: ${unidade_id}`);
-      } else if (userUnidadeId) {
+      } else if (userRole !== 'MASTER' && userUnidadeId) {
         filters.unidade_id = userUnidadeId;
         logger.log(`🎯 [NotificacaoController] Filtrando por unidade do usuário: ${userUnidadeId}`);
       }
@@ -63,8 +63,9 @@ class NotificacaoController {
       }
 
       if (data_inicio && data_fim) {
-        filters.data_inicio = data_inicio;
-        filters.data_fim = data_fim;
+        // ✅ Período inclusivo (fim do dia)
+        filters.data_inicio = `${data_inicio}T00:00:00.000Z`;
+        filters.data_fim = `${data_fim}T23:59:59.999Z`;
       }
 
       // Buscar notificações
@@ -138,20 +139,21 @@ class NotificacaoController {
       // Construir filtros
       const filters = {};
 
-      // ✅ CORREÇÃO: Permitir que ADMIN/MASTER filtrem por qualquer unidade
-      // Se unidade_id foi especificada na query, usar ela
-      // Senão, usar a unidade do usuário (fallback para compatibilidade)
+      // ✅ Regra de escopo:
+      // - MASTER: por padrão NÃO filtra por unidade (visão global). Só filtra se unidade_id vier na query.
+      // - ADMIN: se unidade_id vier na query, usa ela; senão, usa unidade do usuário como fallback.
       if (unidade_id) {
         filters.unidade_id = parseInt(unidade_id);
         logger.log(`🎯 [NotificacaoController] Stats para unidade especificada: ${unidade_id}`);
-      } else if (userUnidadeId) {
+      } else if (userRole !== 'MASTER' && userUnidadeId) {
         filters.unidade_id = userUnidadeId;
         logger.log(`🎯 [NotificacaoController] Stats para unidade do usuário: ${userUnidadeId}`);
       }
 
       if (data_inicio && data_fim) {
-        filters.data_inicio = data_inicio;
-        filters.data_fim = data_fim;
+        // ✅ Período inclusivo (fim do dia)
+        filters.data_inicio = `${data_inicio}T00:00:00.000Z`;
+        filters.data_fim = `${data_fim}T23:59:59.999Z`;
       }
 
       // Buscar estatísticas

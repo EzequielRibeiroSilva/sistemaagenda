@@ -6,9 +6,10 @@ interface AdminHeaderProps {
   onLogout: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  showSearch?: boolean;
 }
 
-const AdminHeader: React.FC<AdminHeaderProps> = ({ onLogout, searchQuery, setSearchQuery }) => {
+const AdminHeader: React.FC<AdminHeaderProps> = ({ onLogout, searchQuery, setSearchQuery, showSearch = true }) => {
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -28,16 +29,20 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ onLogout, searchQuery, setSea
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0">
       {/* Search bar */}
-      <div className="flex items-center w-full max-w-lg">
-        <Search className="h-5 w-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Pesquisar usuários..."
-          className="ml-3 w-full bg-transparent focus:outline-none text-sm"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
+      {showSearch ? (
+        <div className="flex items-center w-full max-w-lg">
+          <Search className="h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Pesquisar usuários..."
+            className="ml-3 w-full bg-transparent focus:outline-none text-sm"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {/* User/Logout section */}
       <div className="relative" ref={dropdownRef}>

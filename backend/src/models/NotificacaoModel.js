@@ -365,15 +365,22 @@ class NotificacaoModel {
       for (const row of [...statsLembretes, ...statsAniversarios]) {
         const tipo = row.tipo;
         if (!merged.has(tipo)) {
-          merged.set(tipo, { ...row });
+          // ✅ CORREÇÃO: Converter strings para números
+          merged.set(tipo, {
+            tipo: row.tipo,
+            total: parseInt(row.total) || 0,
+            enviados: parseInt(row.enviados) || 0,
+            falhas: parseInt(row.falhas) || 0,
+            pendentes: parseInt(row.pendentes) || 0
+          });
         } else {
           const current = merged.get(tipo);
           merged.set(tipo, {
             tipo,
-            total: String((parseInt(current.total) || 0) + (parseInt(row.total) || 0)),
-            enviados: String((parseInt(current.enviados) || 0) + (parseInt(row.enviados) || 0)),
-            falhas: String((parseInt(current.falhas) || 0) + (parseInt(row.falhas) || 0)),
-            pendentes: String((parseInt(current.pendentes) || 0) + (parseInt(row.pendentes) || 0))
+            total: (parseInt(current.total) || 0) + (parseInt(row.total) || 0),
+            enviados: (parseInt(current.enviados) || 0) + (parseInt(row.enviados) || 0),
+            falhas: (parseInt(current.falhas) || 0) + (parseInt(row.falhas) || 0),
+            pendentes: (parseInt(current.pendentes) || 0) + (parseInt(row.pendentes) || 0)
           });
         }
       }

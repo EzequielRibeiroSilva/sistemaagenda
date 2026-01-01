@@ -20,6 +20,7 @@ const cuponsRoutes = require('./cupons');
 const notificacoesRoutes = require('./notificacoes');
 const auditLogsRoutes = require('./auditLogs');
 const planosAssinaturaRoutes = require('./planosAssinatura');
+const metricasRoutes = require('./metricas');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -33,6 +34,7 @@ router.use('/rbac', rbacRoutes);
 
 // Rotas MASTER (AdminDashboardPage)
 router.use('/usuarios', usuariosRoutes);
+router.use('/metricas', metricasRoutes);
 
 // Rotas de Auditoria (MASTER apenas)
 router.use('/audit-logs', authenticate(), auditLogsRoutes);

@@ -31,6 +31,7 @@ import LoginPage from './components/LoginPage';
 import AdminSidebar from './components/admin/AdminSidebar';
 import AdminDashboardPage from './components/admin/AdminDashboardPage';
 import AdminHeader from './components/admin/AdminHeader';
+import AdminMetricsPage from './components/admin/AdminMetricsPage';
 import BookingPage from './components/BookingPage';
 import ManageBookingPage from './components/ManageBookingPage';
 import { useMasterUsers } from './hooks/useMasterUsers';
@@ -57,6 +58,8 @@ const App: React.FC = () => {
   const [editingCupomId, setEditingCupomId] = useState<number | null>(null);
   const [editingSubscriptionPlanId, setEditingSubscriptionPlanId] = useState<number | null>(null);
   const [isPreviewingBookingPage, setIsPreviewingBookingPage] = useState(false);
+
+  const [adminActiveItem, setAdminActiveItem] = useState<'usuarios' | 'metricas'>('usuarios');
 
   // Usar AuthContext
   const { user, isAuthenticated, isLoading, login, logout: authLogout } = useAuth();
@@ -258,35 +261,45 @@ const App: React.FC = () => {
   if (user.role === 'MASTER') {
     return (
       <div className="flex h-screen bg-gray-100 text-gray-800" style={{ minHeight: '100dvh' }}>
-        <AdminSidebar />
+        <AdminSidebar
+          activeItem={adminActiveItem}
+          onNavigate={(item) => setAdminActiveItem(item)}
+        />
         <div className="flex-1 flex flex-col overflow-hidden">
           <AdminHeader
             onLogout={handleLogout}
             searchQuery={user.role === 'MASTER' ? masterUsersHook.searchQuery : ''}
             setSearchQuery={user.role === 'MASTER' ? masterUsersHook.setSearchQuery : (() => {})}
+            showSearch={adminActiveItem === 'usuarios'}
           />
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
-            <AdminDashboardPage
-              users={masterUsersHook.users.map(u => ({
-                id: u.id,
-                name: u.name,
-                email: u.email,
-                contact: u.contact,
-                status: u.status,
-                plan: u.plan,
-                unitLimit: u.unitLimit,
-                activeUnits: u.activeUnits,
-                units: [],
-                clientCount: u.clientCount
-              }))}
-              loading={masterUsersHook.loading}
-              error={masterUsersHook.error}
-              createUser={masterUsersHook.createUser}
-              updateUser={masterUsersHook.updateUser}
-              updateUserStatus={masterUsersHook.updateUserStatus}
-              getUserUnits={masterUsersHook.getUserUnits}
-              updateUnitStatus={masterUsersHook.updateUnitStatus}
-            />
+            {adminActiveItem === 'usuarios' ? (
+              <AdminDashboardPage
+                users={masterUsersHook.users.map(u => ({
+                  id: u.id,
+                  name: u.name,
+                  email: u.email,
+                  contact: u.contact,
+                  status: u.status,
+                  plan: u.plan,
+                  unitLimit: u.unitLimit,
+                  activeUnits: u.activeUnits,
+                  units: [],
+                  clientCount: u.clientCount
+                }))}
+                loading={masterUsersHook.loading}
+                error={masterUsersHook.error}
+                createUser={masterUsersHook.createUser}
+                updateUser={masterUsersHook.updateUser}
+                updateUserStatus={masterUsersHook.updateUserStatus}
+                getUserUnits={masterUsersHook.getUserUnits}
+                updateUnitStatus={masterUsersHook.updateUnitStatus}
+              />
+            ) : (
+              <AdminMetricsPage
+                users={masterUsersHook.users.map(u => ({ id: u.id, status: u.status }))}
+              />
+            )}
           </main>
         </div>
       </div>
