@@ -353,13 +353,12 @@ class NotificacaoModel {
 
       const statsAniversarios = await queryAniversarios
         .select(
-          db.raw(`'${BIRTHDAY_TIPO}' as tipo`),
+          db.raw(`? as tipo`, [BIRTHDAY_TIPO]),
           db.raw('COUNT(*) as total'),
           db.raw("SUM(CASE WHEN ae.status = 'enviado' THEN 1 ELSE 0 END) as enviados"),
           db.raw("SUM(CASE WHEN ae.status = 'falha' OR ae.status = 'falha_permanente' THEN 1 ELSE 0 END) as falhas"),
           db.raw("SUM(CASE WHEN ae.status = 'pendente' OR ae.status = 'programado' THEN 1 ELSE 0 END) as pendentes")
-        )
-        .groupBy(db.raw(`'${BIRTHDAY_TIPO}'`));
+        );
 
       const merged = new Map();
       for (const row of [...statsLembretes, ...statsAniversarios]) {
