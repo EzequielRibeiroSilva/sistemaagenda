@@ -1170,6 +1170,115 @@ class AgendamentoController extends BaseController {
         // Continuar sem informação de pontos
       }
 
+      // ✅ NOVO: Calcular informações de assinatura do cliente
+      let assinaturaSaldo = null;
+      try {
+        if (cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo') {
+          const PlanoAssinaturaModel = require('../models/PlanoAssinatura');
+          const planoAssinaturaModel = new PlanoAssinaturaModel();
+          
+          const planoAssinatura = await this.model.db('planos_assinatura')
+            .where('id', cliente.assinatura_plano_id)
+            .where('status', 'Ativo')
+            .first();
+
+          if (planoAssinatura) {
+            const validadeDias = parseInt(planoAssinatura.validade_dias, 10) || 31;
+            const hoje = new Date();
+            const dataInicio = new Date(cliente.data_inicio_assinatura + 'T12:00:00');
+            
+            // Calcular ciclo atual
+            const diffMs = hoje - dataInicio;
+            const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const cicloAtual = Math.floor(diffDias / validadeDias);
+            
+            const cycleStart = new Date(dataInicio);
+            cycleStart.setDate(cycleStart.getDate() + (cicloAtual * validadeDias));
+            const cycleEnd = new Date(cycleStart);
+            cycleEnd.setDate(cycleEnd.getDate() + validadeDias - 1);
+            
+            const cycleStartStr = cycleStart.toISOString().split('T')[0];
+            const cycleEndStr = cycleEnd.toISOString().split('T')[0];
+            const cycleEndExclusive = new Date(cycleEnd);
+            cycleEndExclusive.setDate(cycleEndExclusive.getDate() + 1);
+            const cycleEndExclusiveStr = cycleEndExclusive.toISOString().split('T')[0];
+
+            const itens = await planoAssinaturaModel.findItens(planoAssinatura.id);
+            const itemIds = (itens || []).map(i => parseInt(i.id, 10)).filter(n => Number.isFinite(n));
+
+            let usadosRows = [];
+            if (itemIds.length > 0) {
+              try {
+                usadosRows = await this.model.db('assinatura_usos')
+                  .where('cliente_id', cliente.id)
+                  .whereIn('plano_item_id', itemIds)
+                  .where('data_uso', '>=', cycleStartStr)
+                  .where('data_uso', '<', cycleEndExclusiveStr)
+                  .groupBy('plano_item_id')
+                  .select('plano_item_id')
+                  .sum({ total: 'quantidade' });
+              } catch (err) {
+                if (!(err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos')))) {
+                  throw err;
+                }
+              }
+            }
+
+            const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+              acc[String(row.plano_item_id)] = parseInt(row.total, 10) || 0;
+              return acc;
+            }, {});
+
+            const servicoIds = (itens || [])
+              .filter(i => i.tipo === 'SERVICO' && i.servico_id)
+              .map(i => parseInt(i.servico_id, 10))
+              .filter(n => Number.isFinite(n));
+
+            const servicosDoPlano = servicoIds.length > 0
+              ? await this.model.db('servicos').whereIn('id', servicoIds).select('id', 'nome')
+              : [];
+
+            const nomeServicoById = new Map((servicosDoPlano || []).map(s => [String(s.id), s.nome]));
+
+            const saldos = (itens || []).map(item => {
+              const quota = item.quantidade_por_ciclo === null || item.quantidade_por_ciclo === undefined
+                ? null
+                : (parseInt(item.quantidade_por_ciclo, 10) || 0);
+
+              const usados = usadosByItemId[String(item.id)] || 0;
+              const restantes = quota === null ? null : Math.max(0, quota - usados);
+
+              const nome = item.tipo === 'SERVICO'
+                ? (item.servico_id ? (nomeServicoById.get(String(item.servico_id)) || 'Serviço') : 'Serviço')
+                : 'Extra';
+
+              return {
+                tipo: item.tipo,
+                nome,
+                quantidade_por_ciclo: quota,
+                restantes
+              };
+            });
+
+            assinaturaSaldo = {
+              assinatura_ativa: true,
+              plano: { nome: planoAssinatura.nome },
+              ciclo: { inicio: cycleStartStr, fim: cycleEndStr },
+              saldos
+            };
+
+            logger.log(`🎟️ [AgendamentoController] Assinatura calculada para cliente #${agendamento.cliente_id}:`, {
+              plano: planoAssinatura.nome,
+              ciclo: `${cycleStartStr} até ${cycleEndStr}`,
+              saldos_count: saldos.length
+            });
+          }
+        }
+      } catch (assinaturaError) {
+        logger.error('❌ [AgendamentoController] Erro ao calcular assinatura:', assinaturaError);
+        // Continuar sem informação de assinatura
+      }
+
       // ✅ NOVO: Formatar dados para as novas mensagens do Tally
       return {
         // Dados do cliente
