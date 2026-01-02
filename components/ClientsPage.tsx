@@ -379,7 +379,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId]);
 
     return (
         <div className="space-y-6">

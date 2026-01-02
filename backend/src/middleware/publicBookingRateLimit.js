@@ -187,12 +187,41 @@ const rescheduleBookingRateLimit = rateLimit({
 
 /**
  * Rate limit geral para rotas públicas
- * 100 requisições a cada 15 minutos por IP
+ * 500 requisições a cada 15 minutos por IP (aumentado para permitir navegação normal)
  */
 const generalPublicRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // 100 requisições
-  skip: (req) => isLocalDevBypass(req),
+  max: 500, // 500 requisições (aumentado de 100)
+  skip: (req) => {
+    // Bypass para desenvolvimento local
+    if (isLocalDevBypass(req)) return true;
+    
+    // Não aplicar rate limit geral em rotas que já têm rate limit específico
+    const specificRateLimitPaths = [
+      '/api/public/cliente/buscar',
+      '/api/public/agendamento',
+      '/api/public/cupons/validar',
+      '/api/public/agendamento/:id/cancelar',
+      '/api/public/agendamento/:id/reagendar'
+    ];
+    
+    // Bypass para rotas de navegação pública (não sensíveis)
+    const publicNavigationPaths = [
+      '/api/public/negocio/',
+      '/api/public/salao/slug/',
+      '/api/public/usuario/',
+      '/api/public/salao/',
+      '/api/public/agentes/'
+    ];
+    
+    // Se é rota de navegação pública, não aplicar rate limit
+    if (publicNavigationPaths.some(path => req.path.includes(path))) {
+      return true;
+    }
+    
+    // Se é rota com rate limit específico, não aplicar rate limit geral
+    return specificRateLimitPaths.some(path => req.path.includes(path.split(':')[0]));
+  },
   message: {
     error: 'Muitas requisições',
     message: 'Você excedeu o limite de requisições. Tente novamente em 15 minutos.',
@@ -202,18 +231,6 @@ const generalPublicRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     return req.ip || req.connection.remoteAddress;
-  },
-  // Pular rate limit para rotas específicas (se necessário)
-  skip: (req) => {
-    // Não aplicar rate limit geral em rotas que já têm rate limit específico
-    const specificRateLimitPaths = [
-      '/api/public/cliente/buscar',
-      '/api/public/agendamento',
-      '/api/public/cupons/validar',
-      '/api/public/agendamento/:id/cancelar',
-      '/api/public/agendamento/:id/reagendar'
-    ];
-    return specificRateLimitPaths.some(path => req.path.includes(path.split(':')[0]));
   }
 });
 

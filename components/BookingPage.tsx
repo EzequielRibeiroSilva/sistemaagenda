@@ -679,7 +679,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (!clientPhone || !unidadeId) return;
 
       const key = `${unidadeId}:${clientPhone.trim().replace(/\D/g, '')}`;
-      if (lastAssinaturaCheckKeyRef.current === key && assinaturaInfo !== null) return;
+      // ✅ CORREÇÃO: Verificar se já buscamos para este cliente
+      if (lastAssinaturaCheckKeyRef.current === key) return;
 
       lastAssinaturaCheckKeyRef.current = key;
       setIsLoadingAssinatura(true);
@@ -688,14 +689,22 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         setAssinaturaInfo(data);
         setUsarAssinaturaItens(null);
       } catch (e) {
-        console.error(e);
+        console.error('[BookingPage] Erro ao buscar assinatura:', e);
+        // ✅ CORREÇÃO: Definir estado de erro para permitir retry
+        setAssinaturaInfo({
+          assinatura_ativa: false,
+          plano: null,
+          ciclo: null,
+          saldos: [],
+          error_message: 'Erro ao carregar informações do plano. Tente novamente.'
+        });
       } finally {
         setIsLoadingAssinatura(false);
       }
     };
 
     run();
-  }, [currentStep, clientPhone, unidadeId, assinaturaInfo]);
+  }, [currentStep, clientPhone, unidadeId]);
 
   if (isBootstrapping || isLoadingAlternatives) {
     return <div className="flex items-center justify-center min-h-screen bg-gray-50" style={{ minHeight: '100dvh' }}><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -1420,11 +1429,29 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             // Buscar cliente existente antes de ir para revisão
             const clienteInfo = await buscarClienteExistente(clientPhone);
 
-            if (clienteInfo && clienteInfo.hasBirthDate) {
+            // ✅ CORREÇÃO CRÍTICA: Tratar erro de API separadamente de "cliente não encontrado"
+            if (clienteInfo?.error) {
+              // Erro de rede/API - solicitar data de nascimento por segurança
+              console.warn(`[BookingPage] ⚠️ Erro ao buscar cliente - solicitando data de nascimento`);
+              setClientBirthDate(null);
+              setClientBirthDateText('');
+              // ✅ CORREÇÃO: Solicitar data de nascimento quando houver erro de API
+              setNextStepAfterSubscription(8);
+            } else if (clienteInfo && clienteInfo.found && clienteInfo.hasBirthDate) {
+              // Cliente encontrado COM data de nascimento - pular etapa
+              console.log(`[BookingPage] ✅ Cliente tem data de nascimento cadastrada`);
               setClientBirthDate(clienteInfo.birthDate);
               setClientBirthDateText(formatDateToDDMMYYYY(clienteInfo.birthDate));
               setNextStepAfterSubscription(9);
+            } else if (clienteInfo && clienteInfo.found && !clienteInfo.hasBirthDate) {
+              // Cliente encontrado SEM data de nascimento - solicitar
+              console.log(`[BookingPage] Cliente encontrado mas sem data de nascimento`);
+              setClientBirthDate(null);
+              setClientBirthDateText('');
+              setNextStepAfterSubscription(8);
             } else {
+              // Cliente não encontrado (novo) - solicitar data de nascimento
+              console.log(`[BookingPage] Novo cliente - solicitar data de nascimento`);
               setClientBirthDate(null);
               setClientBirthDateText('');
               setNextStepAfterSubscription(8);
@@ -1554,6 +1581,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           setClientName(agendamentoCriado.cliente.nome);
         }
         
+        // ✅ CORREÇÃO: Limpar cache de assinatura para forçar recarga dos saldos atualizados
+        // Isso garante que na próxima vez que o cliente agendar, verá as cotas corretas
+        lastAssinaturaCheckKeyRef.current = '';
+        setAssinaturaInfo(null);
+        
         setCurrentStep(10); // Ir para tela de sucesso
       }
 
@@ -1575,41 +1607,71 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   };
 
   // Função para buscar cliente existente por telefone
-  const buscarClienteExistente = async (telefone: string) => {
+  const buscarClienteExistente = async (telefone: string, retryCount = 0): Promise<{ found: boolean; hasBirthDate: boolean; birthDate: Date | null; error?: boolean } | null> => {
     try {
       // Formatar telefone para busca
       const telefoneLimpo = telefone.trim().replace(/\D/g, '');
       
+      console.log(`[BookingPage] Buscando cliente existente: ${telefoneLimpo} (tentativa ${retryCount + 1})`);
+      
       // Buscar cliente no backend
       const response = await fetch(`${API_BASE_URL}/public/cliente/buscar?telefone=${telefoneLimpo}&unidade_id=${unidadeId}`);
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.cliente) {
-          if (data.cliente.id) {
-            setClienteId(data.cliente.id);
-          }
-
-          // Cliente encontrado - atualizar nome completo
-          const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
-          if (nomeCompleto && nomeCompleto !== clientName) {
-            setClientName(nomeCompleto);
-          }
-
-          const birthDate = data.cliente.data_nascimento ? new Date(`${data.cliente.data_nascimento}T12:00:00`) : null;
-          return {
-            found: true,
-            hasBirthDate: Boolean(data.cliente.data_nascimento),
-            birthDate
-          };
+      // ✅ CORREÇÃO CRÍTICA: Verificar status HTTP antes de processar
+      if (!response.ok) {
+        console.error(`[BookingPage] Erro HTTP ao buscar cliente: ${response.status} ${response.statusText}`);
+        
+        // Se for erro 5xx (servidor) e ainda temos tentativas, fazer retry
+        if (response.status >= 500 && retryCount < 2) {
+          console.log(`[BookingPage] Tentando novamente em 1 segundo...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return buscarClienteExistente(telefone, retryCount + 1);
         }
+        
+        // ✅ IMPORTANTE: Retornar erro explícito, não null
+        return { found: false, hasBirthDate: false, birthDate: null, error: true };
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.cliente) {
+        console.log(`[BookingPage] ✅ Cliente encontrado:`, data.cliente);
+        
+        if (data.cliente.id) {
+          setClienteId(data.cliente.id);
+        }
+
+        // Cliente encontrado - atualizar nome completo
+        const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
+        if (nomeCompleto && nomeCompleto !== clientName) {
+          setClientName(nomeCompleto);
+        }
+
+        const birthDate = data.cliente.data_nascimento ? new Date(`${data.cliente.data_nascimento}T12:00:00`) : null;
+        return {
+          found: true,
+          hasBirthDate: Boolean(data.cliente.data_nascimento),
+          birthDate
+        };
       }
 
+      // Cliente não encontrado no banco de dados (novo cliente)
+      console.log(`[BookingPage] Cliente não encontrado no banco (novo cliente)`);
       setClienteId(null);
       return { found: false, hasBirthDate: false, birthDate: null };
+      
     } catch (error) {
-      // Não bloquear o fluxo se houver erro
-      return null;
+      console.error(`[BookingPage] ❌ Erro de rede ao buscar cliente:`, error);
+      
+      // ✅ CORREÇÃO: Retry automático em caso de erro de rede
+      if (retryCount < 2) {
+        console.log(`[BookingPage] Tentando novamente em 1 segundo...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return buscarClienteExistente(telefone, retryCount + 1);
+      }
+      
+      // ✅ IMPORTANTE: Após todas as tentativas, retornar erro explícito
+      return { found: false, hasBirthDate: false, birthDate: null, error: true };
     }
   };
 

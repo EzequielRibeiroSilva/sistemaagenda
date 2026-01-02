@@ -1849,7 +1849,10 @@ class PublicBookingController {
         try {
           plano = await trx('planos_assinatura')
             .where('id', cliente.assinatura_plano_id)
-            .where('usuario_id', unidade.usuario_id)
+            .where(function() {
+              this.where('usuario_id', unidade.usuario_id)
+                .orWhere('unidade_id', unidade_id);
+            })
             .where('status', 'Ativo')
             .first();
 
@@ -2122,9 +2125,21 @@ class PublicBookingController {
         if (cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo') {
           const planoAssinatura = plano || await db('planos_assinatura')
             .where('id', cliente.assinatura_plano_id)
-            .where('usuario_id', unidade.usuario_id)
+            .where(function() {
+              this.where('usuario_id', unidade.usuario_id)
+                .orWhere('unidade_id', unidade_id);
+            })
             .where('status', 'Ativo')
             .first();
+
+          logger.log('[PublicBooking] assinatura_saldo debug (pre-itens):', {
+            agendamento_id: agendamento?.id,
+            cliente_id: cliente?.id,
+            unidade_id,
+            assinatura_plano_id: cliente?.assinatura_plano_id,
+            plano_encontrado: Boolean(planoAssinatura?.id),
+            plano_id: planoAssinatura?.id || null
+          });
 
           if (planoAssinatura) {
             const validadeDias = parseInt(planoAssinatura.validade_dias, 10) || 31;
@@ -2214,6 +2229,15 @@ class PublicBookingController {
                 ciclo: { inicio: cycleStart, fim: cycleEndInclusive },
                 saldos
               };
+
+              logger.log('[PublicBooking] assinatura_saldo debug (computed):', {
+                agendamento_id: agendamento?.id,
+                cliente_id: cliente?.id,
+                unidade_id,
+                plano_id: planoAssinatura?.id || null,
+                itens_count: Array.isArray(itens) ? itens.length : null,
+                saldos_count: Array.isArray(assinaturaSaldo?.saldos) ? assinaturaSaldo.saldos.length : null
+              });
             }
           }
         }
