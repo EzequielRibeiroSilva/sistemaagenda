@@ -4,6 +4,9 @@ import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../t
 import { ChevronDown, Check, MoreHorizontal, Plus, Cake } from './Icons';
 import DatePicker from './DatePicker';
 import { getAssetUrl } from '../utils/api';
+import { useTimelineCalculations } from '../hooks/useTimelineCalculations';
+import { useAgentFiltering } from '../hooks/useAgentFiltering';
+import { usePreviewAppointments } from '../hooks/usePreviewAppointments';
 
 // ✅ Helper: Formatar data como YYYY-MM-DD em timezone LOCAL (evita bugs de UTC/toISOString em mobile)
 const toLocalDateString = (date: Date): string => {
@@ -242,6 +245,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   const scheduleContainerRef = useRef<HTMLDivElement>(null);
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
+  // ✅ REFATORADO: Usar hooks customizados para lógica de negócio
+  const displayedAgents = useAgentFiltering(agents, selectedLocation, selectedDate, backendAgentes);
+  
   const backendAgentesById = useMemo(() => {
     const map: Record<string, BackendAgente> = {};
     backendAgentes.forEach(a => {
@@ -271,8 +277,6 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
   }, []);
 
   const isAgentWorkingOnDay = useCallback((agent: BackendAgente, date: Date, unidadeId: string): boolean => {
-    // ✅ REGRA (Programação do Dia): só considera que trabalha se houver horários configurados
-    // para o agente (sem fallback para "agenda padrão da unidade").
     if (!agent.horarios_funcionamento || agent.horarios_funcionamento.length === 0) {
       return false;
     }
@@ -293,54 +297,6 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
     return true;
   }, [matchesDiaSemana]);
-
-  // ✅ NOVO: Filtrar agentes por local selecionado (igual CalendarPage)
-  const displayedAgents = useMemo(() => {
-    // ✅ CORREÇÃO: Não permitir 'all' - sempre filtrar por local específico
-    if (!selectedLocation || selectedLocation === 'all' || agents.length === 0) {
-      return [];
-    }
-
-    // Filtrar agentes que trabalham no local selecionado
-    const locationIdStr = selectedLocation.toString();
-    const locationIdNum = parseInt(locationIdStr);
-    const filtered = agents.filter(agent => {
-      const unidadesRaw: any[] = Array.isArray(agent.unidades) ? (agent.unidades as any[]) : [];
-      const unidadesStr = unidadesRaw.map(u => u?.toString?.() ?? String(u));
-      const hasUnidadesArray = unidadesStr.length > 0;
-
-      const hasLocation = unidadesStr.includes(locationIdStr) ||
-        (!Number.isNaN(locationIdNum) && unidadesStr.includes(locationIdNum.toString()));
-
-      // Compatibilidade com formato legado (agente.unidade_id)
-      const legacyUnidadeId = (agent as any).unidade_id;
-      // ✅ IMPORTANTE: só confiar no legado quando NÃO há array de unidades
-      const hasLegacyLocation = !hasUnidadesArray && legacyUnidadeId != null && legacyUnidadeId.toString() === locationIdStr;
-
-      const backendAgent = backendAgentesById[agent.id];
-      // ✅ Regra: além de pertencer à unidade, precisa ter ao menos 1 horário configurado para ela
-      const hasAnyScheduleForUnit = (() => {
-        if (!backendAgent?.horarios_funcionamento || backendAgent.horarios_funcionamento.length === 0) {
-          return false;
-        }
-
-        return backendAgent.horarios_funcionamento.some(h => {
-          const unidadeMatch = !h.unidade_id || h.unidade_id.toString() === locationIdStr;
-          const hasPeriods = Array.isArray(h.periodos) && h.periodos.length > 0;
-          return unidadeMatch && hasPeriods;
-        });
-      })();
-
-      // ✅ Regra (Programação do Dia): só exibir quem trabalha HOJE nesta unidade
-      const worksTodayInUnit = backendAgent
-        ? isAgentWorkingOnDay(backendAgent, selectedDate, locationIdStr)
-        : false;
-
-      return (hasLocation || hasLegacyLocation) && hasAnyScheduleForUnit && worksTodayInUnit;
-    });
-
-    return filtered;
-  }, [agents, selectedLocation, selectedDate, backendAgentesById, isAgentWorkingOnDay]);
 
   // ✅ NOVO: Verificar se o dia está bloqueado por exceção de calendário
   const dayException = useMemo(() => {
@@ -368,108 +324,9 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     });
   }, [calendarExceptions, selectedDate, selectedLocation, toLocalDateString]);
 
-  // ✅ NOVO: Transformar agendamentos do backend em formato de cards por agente
-  const agentAppointmentCards = useMemo(() => {
+  // ✅ REFATORADO: Usar hook customizado para processar agendamentos
+  const agentAppointmentCards = usePreviewAppointments(appointments, selectedDate, services, backendAgentes);
 
-    // ✅ CORREÇÃO CRÍTICA: Usar toLocalDateString ao invés de toISOString para evitar off-by-one em mobile
-    const dateStr = toLocalDateString(selectedDate);
-    const cardsByAgent: Record<string, Array<{
-      id: number;
-      numeroAgendamento?: number;
-      startTime: string;
-      endTime: string;
-      serviceName: string;
-      clientName: string;
-      status: string;
-      agentName: string;
-      agentAvatar?: string;
-      agentEmail: string;
-      agentPhone?: string;
-      clientBirthDate?: string;
-      // ✅ CRÍTICO: Campos necessários para o modal de edição
-      agentId: number;
-      serviceId?: number;
-      clientPhone?: string;
-      dateISO: string;
-    }>> = {};
-
-    // Inicializar arrays vazios para cada agente exibido
-    displayedAgents.forEach(agent => {
-      cardsByAgent[agent.id] = [];
-    });
-
-    // Processar agendamentos
-    // 🚫 REGRA DE NEGÓCIO: Agendamentos CANCELADOS não ocupam espaço no grid
-    appointments.forEach(apt => {
-      // ✅ CORREÇÃO CRÍTICA: Extrair apenas a data (YYYY-MM-DD) do campo data_agendamento
-      // O backend pode retornar 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS'
-      const aptDateStr = apt.data_agendamento.split('T')[0];
-      
-
-      
-      // Verificar se o agendamento é do dia selecionado
-      if (aptDateStr !== dateStr) {
-        return;
-      }
-
-      // ✅ NOVO: Excluir agendamentos cancelados (libera espaço para novos agendamentos)
-      if (apt.status === 'Cancelado') {
-        return;
-      }
-
-      const agentId = apt.agente_id.toString();
-      
-      // Verificar se o agente está sendo exibido
-      if (!cardsByAgent[agentId]) {
-        return;
-      }
-
-      // Buscar nome do serviço
-      let serviceName = 'Serviço';
-      if (apt.servicos && apt.servicos.length > 0) {
-        serviceName = apt.servicos.map(s => s.nome).join(', ');
-      } else if (apt.servico_id) {
-        const service = services.find(s => s.id === apt.servico_id.toString());
-        serviceName = service?.name || 'Serviço';
-      }
-
-      // ✅ CORREÇÃO CRÍTICA: Buscar dados do agente com fallback robusto
-      const backendAgent = backendAgentes.find(a => a.id === apt.agente_id);
-      
-      // ✅ PRIORIDADE: nome_exibicao > name > concatenar nome+sobrenome
-      const agentName = backendAgent 
-        ? (backendAgent.nome_exibicao || backendAgent.name || `${backendAgent.nome || ''} ${backendAgent.sobrenome || ''}`.trim() || 'Agente')
-        : 'Agente';
-      
-      const agentEmail = backendAgent?.email || 'agente@email.com';
-      const agentAvatar = backendAgent?.avatar_url || backendAgent?.avatar;
-      
-
-
-      cardsByAgent[agentId].push({
-        id: apt.id,
-        numeroAgendamento: apt.numero_agendamento,
-        startTime: apt.hora_inicio,
-        endTime: apt.hora_fim,
-        serviceName,
-        clientName: apt.cliente_nome || 'Cliente',
-        status: apt.status,
-        agentName,
-        agentAvatar,
-        agentEmail,
-        agentPhone: backendAgent?.telefone,
-        clientBirthDate: apt.cliente_data_nascimento ? apt.cliente_data_nascimento.split('T')[0] : undefined,
-        // ✅ CRÍTICO: Campos necessários para o modal de edição
-        agentId: apt.agente_id,
-        serviceId: apt.servico_id,
-        clientPhone: apt.cliente_telefone,
-        dateISO: aptDateStr
-      });
-    });
-
-
-    return cardsByAgent;
-  }, [appointments, displayedAgents, selectedDate, services, backendAgentes]);
 
   const filteredSchedules = useMemo(() => {
     // ✅ CORREÇÃO: Não permitir 'all' para location - sempre exigir local específico
@@ -494,45 +351,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     }));
   }, [schedules, selectedLocation, selectedService]);
 
-  // ✅ NOVO: Calcular horários dinâmicos baseados nos horários de funcionamento da unidade selecionada
-  const { startHour, endHour } = useMemo(() => {
-
-    
-    // Se há unidade selecionada, usar seus horários de funcionamento
-    if (selectedLocation && selectedLocation !== 'all' && unitSchedules[selectedLocation]) {
-      const schedules = unitSchedules[selectedLocation];
-      
-      // Encontrar o horário mais cedo de abertura e o mais tarde de fechamento
-      let minHour = 23;
-      let maxHour = 0;
-      let hasValidSchedule = false; // 🚩 Flag para rastrear se um horário foi encontrado
-      
-      schedules.forEach(schedule => {
-        // ✅ CORREÇÃO CRÍTICA: Validar que é um Array antes de iterar
-        if (schedule.is_aberto && Array.isArray(schedule.horarios_json) && schedule.horarios_json.length > 0) {
-          schedule.horarios_json.forEach(periodo => {
-            const startH = parseInt(periodo.inicio.split(':')[0]);
-            const endH = parseInt(periodo.fim.split(':')[0]);
-            
-            if (startH < minHour) minHour = startH;
-            if (endH > maxHour) maxHour = endH;
-            
-            hasValidSchedule = true; // 🎯 Marcar que encontrou horário válido
-          });
-        }
-      });
-      
-      // ✅ Usando a flag de rastreamento
-      if (hasValidSchedule) {
-
-        return { startHour: minHour, endHour: maxHour };
-      }
-    }
-    
-    // Fallback: usar horários padrão
-
-    return { startHour: 9, endHour: 21 };
-  }, [selectedLocation, unitSchedules]);
+  // ✅ REFATORADO: Usar hook customizado para cálculos de timeline
+  const { startHour, endHour, hours, timeToPercentage, getSlotStyle, getAppointmentCardStyle } = useTimelineCalculations(
+    selectedLocation,
+    unitSchedules,
+    selectedDate
+  );
 
   // ✅ NOVO: Calcular blocos de intervalo do local (igual CalendarPage)
   const calculateLocationIntervalBlocks = useCallback((date: Date): Array<{ start: string; end: string; id: string }> => {
@@ -604,41 +428,6 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return calculateLocationIntervalBlocks(selectedDate);
   }, [calculateLocationIntervalBlocks, selectedDate]);
 
-  // ✅ NOVO: Gerar array de horas dinâmico baseado nos horários da unidade
-  const hours = useMemo(() => {
-    const hourCount = endHour - startHour + 1;
-    const hoursArray = Array.from({ length: hourCount }, (_, i) => i + startHour);
-
-    return hoursArray;
-  }, [startHour, endHour]);
-
-  // ✅ CORRIGIDO: Converter horário (HH:MM) em porcentagem da timeline
-  const timeToPercentage = (time: string) => {
-    const [h, m] = time.split(':').map(Number);
-    // Calcular minutos totais desde startHour
-    const totalMinutes = (h - startHour) * 60 + m;
-    // ✅ CORREÇÃO CRÍTICA: Total de minutos no range (sem +1)
-    // Se startHour=9 e endHour=17, temos 8 horas = 480 minutos
-    const totalDurationMinutes = (endHour - startHour) * 60;
-    return (totalMinutes / totalDurationMinutes) * 100;
-  };
-
-  // ✅ CORRIGIDO: Usar horários dinâmicos no cálculo de posição (para slots antigos)
-  const getSlotStyle = (start: number, end: number) => {
-    // ✅ CORREÇÃO: Garantir que os slots ocupem o espaço correto
-    const totalHours = endHour - startHour;
-    const left = ((start - startHour) / totalHours) * 100;
-    const width = ((end - start) / totalHours) * 100;
-    return { left: `${left}%`, width: `${width}%` };
-  };
-
-  // ✅ NOVO: Calcular posição de um card de agendamento na timeline
-  const getAppointmentCardStyle = (startTime: string, endTime: string) => {
-    const left = timeToPercentage(startTime);
-    const right = timeToPercentage(endTime);
-    const width = right - left;
-    return { left: `${left}%`, width: `${width}%` };
-  };
 
   const getSlotColor = (type: ScheduleSlot['type']) => {
     switch(type) {
@@ -795,6 +584,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     });
   }, [displayedAgents, appointments, selectedDate, startHour, endHour]);
 
+  const timelineMinWidthPx = useMemo(() => {
+    const columns = Math.max(1, hours.length - 1);
+    return Math.max(600, columns * 140);
+  }, [hours.length]);
+
   // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
   // Sempre deve haver um local específico selecionado
   const locationOptions = locations.map(loc => ({ 
@@ -835,9 +629,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
       </div>
       
       <div className="relative" ref={scheduleContainerRef}>
-        <div className="grid text-center text-sm text-gray-500 mb-4" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
-          {hours.map(hour => <div key={hour}>{hour}</div>)}
-        </div>
+        <div className="overflow-x-auto overflow-y-hidden">
+          <div style={{ minWidth: `${timelineMinWidthPx}px` }}>
+            <div className="grid text-center text-sm text-gray-500 mb-4" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
+              {hours.map(hour => <div key={hour}>{hour}</div>)}
+            </div>
 
         {/* ✅ NOVO: Mensagem quando o dia está bloqueado por exceção */}
         {dayException && (
@@ -861,17 +657,18 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
           </div>
         )}
 
-        <div className="space-y-4">
-          {displayedAgents.map((agent, agentIndex) => (
-            <div key={agent.id} className="flex items-center gap-4 h-12">
-              <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full object-cover"/>
-              <div className="flex-1 bg-gray-100 h-full rounded relative overflow-hidden">
-                {/* ✅ CORRIGIDO: Grid com divisões corretas usando CSS Grid */}
-                <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${hours.length - 1}, 1fr)` }}>
-                   {hours.slice(0, -1).map((h, idx) => (
-                     <div key={`line-${h}`} className="border-r border-dashed border-gray-300"></div>
-                   ))}
-                </div>
+            <div className="space-y-4">
+              {displayedAgents.map((agent, agentIndex) => (
+                <div key={agent.id} className="flex items-center gap-4 h-12">
+                  <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full object-cover"/>
+                  <div className="flex-1 min-w-0 h-full">
+                    <div className="bg-gray-100 h-full rounded relative w-full" style={{ minWidth: `${timelineMinWidthPx}px` }}>
+                  {/* ✅ CORRIGIDO: Grid com divisões corretas usando CSS Grid */}
+                  <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${hours.length - 1}, 1fr)` }}>
+                     {hours.slice(0, -1).map((h, idx) => (
+                       <div key={`line-${h}`} className="border-r border-dashed border-gray-300"></div>
+                     ))}
+                  </div>
                 
 
 
@@ -1002,7 +799,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
 
                 {/* ✅ NOVO: Renderizar cards de agendamentos do backend */}
-                {agentAppointmentCards[agent.id]?.map((card) => {
+                {agentAppointmentCards[agent.id]?.map((card, index) => {
                   // Determinar cor e estilo baseado no status
                   const isApproved = card.status === 'Aprovado';
                   const isCompleted = card.status === 'Concluído';
@@ -1032,13 +829,16 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
                   const isBirthday = isClientBirthday(card.clientBirthDate, card.dateISO);
 
+                  const positionStyle = getAppointmentCardStyle(card.startTime, card.endTime);
+
                   return (
                     <div
                       key={card.id}
-                      className={`absolute h-full p-2 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-20 flex flex-col justify-center relative`}
+                      className={`absolute inset-y-0 box-border px-2 py-1 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-40 flex flex-col justify-center`}
                       style={{
-                        ...getAppointmentCardStyle(card.startTime, card.endTime),
-                        backgroundColor
+                        ...positionStyle,
+                        backgroundColor,
+                        zIndex: 40
                       }}
                       onMouseEnter={(e) => handleAppointmentCardMouseEnter(e, card)}
                       onMouseLeave={handleSlotMouseLeave}
@@ -1096,7 +896,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   return (
                     <div
                       key={block.id}
-                      className="absolute h-full bg-red-100 rounded z-5"
+                      className="absolute inset-y-0 bg-red-100 rounded z-5"
                       style={blockStyle}
                     >
                       <div
@@ -1109,31 +909,34 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   );
                 })}
 
-                {/* ✅ NOVO: Renderizar bloqueio por exceção de calendário (dia inteiro) */}
-                {dayException && (
-                  <div
-                    className="absolute h-full w-full bg-red-50 rounded z-10"
-                    style={{ left: 0, right: 0 }}
-                    title={`${dayException.tipo}: ${dayException.descricao}`}
-                  >
+                  {/* ✅ NOVO: Renderizar bloqueio por exceção de calendário (dia inteiro) */}
+                  {dayException && (
                     <div
-                      className="w-full h-full"
-                      style={{
-                        backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)'
-                      }}
+                      className="absolute inset-y-0 w-full bg-red-50 rounded z-10"
+                      style={{ left: 0, right: 0 }}
+                      title={`${dayException.tipo}: ${dayException.descricao}`}
                     >
-                      {/* Label da exceção */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="bg-red-400 text-white px-2 py-1 rounded text-xs font-medium shadow-sm opacity-90">
-                          🚫 {dayException.tipo}
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 0, 0, 0.2) 4px, rgba(255, 0, 0, 0.2) 5px)'
+                        }}
+                      >
+                        {/* Label da exceção */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="bg-red-400 text-white px-2 py-1 rounded text-xs font-medium shadow-sm opacity-90">
+                            🚫 {dayException.tipo}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  )}
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </div>
       {popover?.visible && popover.content && portalRoot && createPortal(

@@ -452,6 +452,11 @@ class AgendamentoController extends BaseController {
 
       }
 
+      console.log('🚀 [BACKEND] SQL Result Count:', Array.isArray(data) ? data.length : 0);
+      if (Array.isArray(data) && data.length > 0) {
+        console.log('Exemplo do primeiro registro:', JSON.stringify(data[0], null, 2));
+      }
+
       return res.json({ data });
     } catch (error) {
       logger.error('❌ [AgendamentoController.index] Erro ao buscar agendamentos:', error);

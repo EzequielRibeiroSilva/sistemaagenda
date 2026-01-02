@@ -246,8 +246,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         }
         
         fetchAgendamentosRaw(filters).then((data) => {
-
-
             // ✅ CORREÇÃO CRÍTICA: Transformar BackendAgendamento para formato compatível com PreviewSection
             const transformedAppointments = data.map(apt => ({
                 ...apt,
