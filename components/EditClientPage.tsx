@@ -85,7 +85,11 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
   // Carregar dados do cliente
   useEffect(() => {
     const loadClient = async () => {
-      if (!clientId) return;
+      if (!clientId) {
+        setClientData(null);
+        setIsLoading(false);
+        return;
+      }
 
       setIsLoading(true);
       clearError();
