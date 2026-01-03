@@ -192,7 +192,7 @@ const CreateSubscriptionPlanPage: React.FC<CreateSubscriptionPlanPageProps> = ({
 
       if (result.success) {
         toast.success('Plano Criado!', `O plano "${nome}" foi adicionado com sucesso.`);
-        setActiveView('services-subscriptions');
+        setActiveView('subscriptions-list');
       } else {
         toast.error('Erro ao Criar Plano', result.error || 'Não foi possível criar o plano.');
       }
@@ -326,7 +326,7 @@ const CreateSubscriptionPlanPage: React.FC<CreateSubscriptionPlanPageProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveView('services-subscriptions')}
+              onClick={() => setActiveView('subscriptions-list')}
               className="bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
               disabled={submitting}
             >

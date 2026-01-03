@@ -216,7 +216,7 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
 
       if (result.success) {
         toast.success('Plano Atualizado!', `As alterações em "${nome}" foram salvas com sucesso.`);
-        setActiveView('services-subscriptions');
+        setActiveView('subscriptions-list');
       } else {
         toast.error('Erro ao Atualizar Plano', result.error || 'Não foi possível atualizar o plano.');
       }
@@ -361,7 +361,7 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
 
             <button
               type="button"
-              onClick={() => setActiveView('services-subscriptions')}
+              onClick={() => setActiveView('subscriptions-list')}
               className="bg-gray-100 text-gray-800 font-semibold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
               disabled={submitting}
             >

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 // FIX: Removed unused 'BarChart3' import as it is not an exported member of './Icons'.
 import {
   Box, Briefcase, Calendar, ChevronDown, Cog, LayoutDashboard,
-  Users, ChevronRight, MapPin, Ticket, Bell
+  Users, ChevronRight, MapPin, Ticket, Bell, UserPlus, Gift
 } from './Icons';
 
 interface NavItemProps {
@@ -154,9 +154,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
             <li>
                 <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-extra'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">SERVIÇOS EXTRAS</a>
             </li>
-            <li>
-                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-subscriptions'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">CLUBE DE ASSINATURA</a>
-            </li>
         </ul>
     </div>
   );
@@ -276,7 +273,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
                 </a>
             </div>
             <NavItem
-              icon={<Users className="h-5 w-5" />}
+              icon={<UserPlus className="h-5 w-5" />}
               label="EQUIPE"
               isCollapsed={isCollapsed}
               isActive={activeView.startsWith('agents')}
@@ -291,6 +288,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
                 onClick={() => handleNavItemClick('locations-list')}
               />
             )}
+
+            <NavItem
+              icon={<Gift className="h-5 w-5" />}
+              label="CLUBE"
+              isCollapsed={isCollapsed}
+              isActive={activeView.startsWith('subscriptions') || activeView.startsWith('services-subscriptions')}
+              onClick={() => handleNavItemClick('subscriptions-list')}
+            />
 
             {userRole === 'ADMIN' && (
                 <NavItem

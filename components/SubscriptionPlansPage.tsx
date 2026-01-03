@@ -86,7 +86,7 @@ const SubscriptionPlansPage: React.FC<SubscriptionPlansPageProps> = ({ setActive
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-800">Clube de Assinatura</h2>
+        <h1 className="text-3xl font-bold text-gray-800">Clube de Assinatura</h1>
       </div>
 
       {error && (
@@ -121,7 +121,7 @@ const SubscriptionPlansPage: React.FC<SubscriptionPlansPageProps> = ({ setActive
             />
           ))}
 
-          <AddPlanCard onClick={() => setActiveView('services-subscriptions-create')} />
+          <AddPlanCard onClick={() => setActiveView('subscriptions-create')} />
         </div>
       )}
     </div>
