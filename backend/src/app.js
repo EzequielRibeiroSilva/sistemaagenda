@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const config = require('./config/config');
 const { testConnection } = require('./config/database');
 const apiRoutes = require('./routes/index');
+const webhooksRoutes = require('./routes/webhooks');
 const reminderJob = require('./jobs/reminderJob');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
@@ -202,6 +203,9 @@ app.get('/', (req, res) => {
 
 // Middleware de rotas da API
 app.use('/api', apiRoutes);
+
+// Webhooks (sem autenticação JWT; segurança tratada no handler)
+app.use('/webhooks', webhooksRoutes);
 
 // Middleware de tratamento de erros 404
 app.use('*', (req, res) => {

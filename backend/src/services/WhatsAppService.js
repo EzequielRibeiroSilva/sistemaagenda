@@ -5,6 +5,8 @@
  */
 
 const NotificacaoModel = require('../models/NotificacaoModel');
+const Usuario = require('../models/Usuario');
+const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 
 class WhatsAppService {
@@ -16,6 +18,78 @@ class WhatsAppService {
     this.enabled = process.env.WHATSAPP_ENABLED === 'true' || process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
     this.notificacaoModel = new NotificacaoModel();
+    this.usuarioModel = new Usuario();
+  }
+
+  async resolveOwnerUsuarioIdFromAgendamentoData(agendamentoData) {
+    const directOwnerId = agendamentoData?.unidade?.usuario_id;
+    if (directOwnerId) return directOwnerId;
+
+    const unidadeId = agendamentoData?.unidade_id || agendamentoData?.unidade?.id;
+    if (!unidadeId) return null;
+
+    const unidade = await db('unidades')
+      .where('id', unidadeId)
+      .select('usuario_id')
+      .first();
+
+    return unidade?.usuario_id || null;
+  }
+
+  async getWhatsAppInstanceForUsuario(usuarioId) {
+    if (!usuarioId) return null;
+    const user = await this.usuarioModel.findById(usuarioId);
+    if (!user) return null;
+
+    if (!user.whatsapp_instance_name || !user.whatsapp_instance_token) {
+      return null;
+    }
+
+    return {
+      instanceName: user.whatsapp_instance_name,
+      token: user.whatsapp_instance_token,
+      status: user.whatsapp_status,
+      number: user.whatsapp_number
+    };
+  }
+
+  async sendMessageViaInstance({ instanceName, token, phoneNumber, message }) {
+    const formattedPhone = this.formatPhoneNumber(phoneNumber);
+
+    const payload = {
+      number: formattedPhone,
+      text: message,
+      delay: 1000,
+      linkPreview: false
+    };
+
+    const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': token
+      },
+      body: JSON.stringify(payload),
+      timeout: 30000
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      return { success: true, data };
+    }
+
+    logger.error('❌ [WhatsApp] Erro ao enviar mensagem (multi-tenant):');
+    logger.error('❌ [WhatsApp] Status:', response.status);
+    logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
+    return {
+      success: false,
+      error: {
+        status: response.status,
+        error: response.statusText,
+        response: data
+      }
+    };
   }
 
   formatAssinaturaSaldoMessage(assinaturaSaldo) {
@@ -223,16 +297,16 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
       }
 
       try {
+        // Modo legado: envio com credenciais globais (compatibilidade)
         const formattedPhone = this.formatPhoneNumber(phoneNumber);
 
-        // Usar instanceName se disponível, senão usar instanceId
         const instanceIdentifier = this.instanceName || this.instanceId;
 
         const payload = {
           number: formattedPhone,
           text: message,
           delay: 1000,
-          linkPreview: false // Desabilitar preview de links
+          linkPreview: false
         };
 
         const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
@@ -242,26 +316,26 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
             'apikey': this.evolutionApiKey
           },
           body: JSON.stringify(payload),
-          timeout: 30000 // 30 segundos de timeout
+          timeout: 30000
         });
 
         const data = await response.json();
 
         if (response.ok) {
           return { success: true, data };
-        } else {
-          logger.error('❌ [WhatsApp] Erro ao enviar mensagem:');
-          logger.error('❌ [WhatsApp] Status:', response.status);
-          logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
-          return {
-            success: false,
-            error: {
-              status: response.status,
-              error: response.statusText,
-              response: data
-            }
-          };
         }
+
+        logger.error('❌ [WhatsApp] Erro ao enviar mensagem:');
+        logger.error('❌ [WhatsApp] Status:', response.status);
+        logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
+        return {
+          success: false,
+          error: {
+            status: response.status,
+            error: response.statusText,
+            response: data
+          }
+        };
 
       } catch (error) {
         logger.error('❌ [WhatsApp] Erro na requisição:', error);
@@ -275,6 +349,32 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
     WhatsAppService.setSendQueue(queuedPromise.catch(() => {}));
 
     return queuedPromise;
+  }
+
+  async sendMessageForAgendamento(agendamentoData, phoneNumber, message) {
+    if (!this.isEnabled()) {
+      return { success: false, message: 'Serviço WhatsApp desabilitado' };
+    }
+
+    // Modo de teste - simula envio bem-sucedido
+    if (this.testMode) {
+      return await this.sendMessage(phoneNumber, message);
+    }
+
+    const usuarioId = await this.resolveOwnerUsuarioIdFromAgendamentoData(agendamentoData);
+    const instance = await this.getWhatsAppInstanceForUsuario(usuarioId);
+
+    if (!instance) {
+      // fallback legado
+      return await this.sendMessage(phoneNumber, message);
+    }
+
+    return await this.sendMessageViaInstance({
+      instanceName: instance.instanceName,
+      token: instance.token,
+      phoneNumber,
+      message
+    });
   }
 
   /**
@@ -332,7 +432,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
       }
 
       const message = this.generateReturnInviteMessage(agendamentoData);
-      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+      const result = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, message);
 
       if (!result.success) {
         logger.error(`❌ [WhatsApp] Falha ao enviar convite de retorno para ${agendamentoData.cliente.nome}:`, result.error);
@@ -642,7 +742,7 @@ _Mensagem automática do Tally_`;
       // Enviar para o cliente
       if (clienteTelefone) {
         const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
-        results.cliente = await this.sendMessage(clienteTelefone, messageCliente);
+        results.cliente = await this.sendMessageForAgendamento(agendamentoData, clienteTelefone, messageCliente);
 
         // ✅ Registrar notificação para o cliente
         await this.registrarNotificacao({
@@ -669,7 +769,7 @@ _Mensagem automática do Tally_`;
       // Enviar para o agente
       if (agenteTelefone) {
         const messageAgente = this.generateAppointmentConfirmationAgent(agendamentoData);
-        results.agente = await this.sendMessage(agenteTelefone, messageAgente);
+        results.agente = await this.sendMessageForAgendamento(agendamentoData, agenteTelefone, messageAgente);
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({
@@ -849,7 +949,7 @@ _Mensagem automática do Tally_`;
 
       // Enviar para o cliente
       const messageCliente = this.generateCancellationClient(agendamentoData);
-      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
+      results.cliente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, messageCliente);
 
       // ✅ Registrar notificação para o cliente
       await this.registrarNotificacao({
@@ -873,7 +973,7 @@ _Mensagem automática do Tally_`;
       // Enviar para o agente
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateCancellationAgent(agendamentoData);
-        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+        results.agente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.agente_telefone, messageAgente);
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({
@@ -916,7 +1016,7 @@ _Mensagem automática do Tally_`;
 
       // Enviar para o cliente
       const messageCliente = this.generateRescheduleClient(agendamentoData);
-      results.cliente = await this.sendMessage(agendamentoData.cliente_telefone, messageCliente);
+      results.cliente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, messageCliente);
 
       // ✅ Registrar notificação para o cliente
       await this.registrarNotificacao({
@@ -940,7 +1040,7 @@ _Mensagem automática do Tally_`;
       // Enviar para o agente
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateRescheduleAgent(agendamentoData);
-        results.agente = await this.sendMessage(agendamentoData.agente_telefone, messageAgente);
+        results.agente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.agente_telefone, messageAgente);
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({
@@ -980,7 +1080,7 @@ _Mensagem automática do Tally_`;
       }
 
       const message = this.generateReminder24hMessage(agendamentoData);
-      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+      const result = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, message);
       
       if (!result.success) {
         logger.error(`❌ [WhatsApp] Falha ao enviar lembrete 24h para ${agendamentoData.cliente.nome}:`, result.error);
@@ -1006,7 +1106,7 @@ _Mensagem automática do Tally_`;
       }
 
       const message = this.generateReminder2hMessage(agendamentoData);
-      const result = await this.sendMessage(agendamentoData.cliente_telefone, message);
+      const result = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, message);
       
       if (!result.success) {
         logger.error(`❌ [WhatsApp] Falha ao enviar lembrete 1h para ${agendamentoData.cliente.nome}:`, result.error);

@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, MessageSquare, Inbox, FaUser } from './Icons';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Search, Plus, MessageSquare, Inbox, FaUser, WhatsApp } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
+import { useWhatsAppConnection } from '../hooks/useWhatsAppConnection';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -23,6 +24,21 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
   const { user } = useAuth();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { status, statusLabel } = useWhatsAppConnection({ autoPoll: userRole === 'ADMIN', pollIntervalMs: 15000 });
+
+  const whatsappColorClass = useMemo(() => {
+    if (status.whatsapp_status === 'open') return 'text-green-600';
+    if (status.whatsapp_status === 'connecting') return 'text-yellow-600';
+    if (status.whatsapp_status === 'close') return 'text-red-600';
+    return 'text-gray-400';
+  }, [status.whatsapp_status]);
+
+  const whatsappTooltip = useMemo(() => {
+    if (userRole !== 'ADMIN') return '';
+    const number = status.whatsapp_number ? ` • ${status.whatsapp_number}` : '';
+    return `WhatsApp: ${statusLabel}${number}`;
+  }, [status.whatsapp_number, statusLabel, userRole]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -110,6 +126,14 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
 
             <div className="flex items-center space-x-6">
               <div className="h-6 w-px bg-gray-200 "></div>
+              {userRole === 'ADMIN' && (
+                <div
+                  className={`flex items-center justify-center ${whatsappColorClass}`}
+                  title={whatsappTooltip}
+                >
+                  <WhatsApp className="h-6 w-6" />
+                </div>
+              )}
               <button
                 onClick={() => setModalOpen(true)}
                 className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors "

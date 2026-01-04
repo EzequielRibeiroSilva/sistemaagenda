@@ -5,6 +5,8 @@ import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
+import WhatsAppConnectModal from './WhatsAppConnectModal';
+import { useWhatsAppConnection } from '../hooks/useWhatsAppConnection';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
@@ -81,6 +83,41 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+    // WhatsApp
+    const canManageWhatsApp = user?.role === 'ADMIN' || user?.role === 'MASTER';
+    const [showWhatsAppConnect, setShowWhatsAppConnect] = useState(false);
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const {
+        status: whatsappStatus,
+        statusLabel: whatsappStatusLabel,
+        statusLoading: whatsappStatusLoading,
+        connectLoading: whatsappConnectLoading,
+        disconnectLoading: whatsappDisconnectLoading,
+        qrcodeBase64,
+        setQrcodeBase64,
+        error: whatsappError,
+        lastStatusFetchAt: whatsappLastStatusFetchAt,
+        lastStatusRaw: whatsappLastStatusRaw,
+        connect: connectWhatsApp,
+        disconnect: disconnectWhatsApp,
+        fetchStatus: fetchWhatsAppStatus,
+        isConnected: isWhatsAppConnected
+    } = useWhatsAppConnection({
+        autoPoll: canManageWhatsApp,
+        pollIntervalMs: isWhatsAppModalOpen ? 2000 : 30000
+    });
+
+    const [confirmingWhatsAppDisconnect, setConfirmingWhatsAppDisconnect] = useState(false);
+
+    useEffect(() => {
+        if (!canManageWhatsApp) return;
+        const hasKnownState = whatsappStatus.whatsapp_status !== 'unknown';
+        const hasAnyWhatsAppData = Boolean(whatsappStatus.whatsapp_instance_name || whatsappStatus.whatsapp_number || hasKnownState);
+        if (hasAnyWhatsAppData) {
+            setShowWhatsAppConnect(true);
+        }
+    }, [canManageWhatsApp, whatsappStatus.whatsapp_instance_name, whatsappStatus.whatsapp_number, whatsappStatus.whatsapp_status]);
+
     // Estados de loading específicos
     const [savingSettings, setSavingSettings] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
@@ -90,6 +127,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     useEffect(() => {
         loadSettings();
     }, [loadSettings]);
+
+    useEffect(() => {
+        if (whatsappError) {
+            toast.error('WhatsApp', whatsappError);
+        }
+    }, [toast, whatsappError]);
+
+    useEffect(() => {
+        if (isWhatsAppModalOpen && isWhatsAppConnected) {
+            setIsWhatsAppModalOpen(false);
+            toast.success('WhatsApp', 'Conectado com sucesso.');
+        }
+    }, [isWhatsAppConnected, isWhatsAppModalOpen, toast]);
 
     // Sincronizar estados locais com configurações carregadas
     useEffect(() => {
@@ -329,6 +379,153 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
               />
           </FormRow>
       </Card>
+
+      {canManageWhatsApp && (
+        <>
+          <Card title="Conectar WhatsApp">
+            <FormRow label="Mostrar configuração do WhatsApp">
+              <ToggleSwitch enabled={showWhatsAppConnect} setEnabled={setShowWhatsAppConnect} />
+            </FormRow>
+
+            {showWhatsAppConnect && (
+              <>
+                <FormRow label="Status">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm font-semibold ${
+                      whatsappStatus.whatsapp_status === 'open'
+                        ? 'text-green-600'
+                        : whatsappStatus.whatsapp_status === 'connecting'
+                          ? 'text-yellow-700'
+                          : whatsappStatus.whatsapp_status === 'close'
+                            ? 'text-red-600'
+                            : 'text-gray-500'
+                    }`}>
+                      {whatsappStatusLabel}
+                    </span>
+
+                    {whatsappStatusLoading && (
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => fetchWhatsAppStatus()}
+                      className="text-xs font-semibold text-gray-900 hover:underline"
+                    >
+                      Atualizar
+                    </button>
+                  </div>
+                </FormRow>
+
+                <FormRow label="Número conectado">
+                  <span className="text-sm text-gray-700 font-medium">
+                    {whatsappStatus.whatsapp_number || '-'}
+                  </span>
+                </FormRow>
+
+                <FormRow label="">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsWhatsAppModalOpen(true);
+                        setQrcodeBase64(null);
+                        await connectWhatsApp();
+                        await fetchWhatsAppStatus();
+                      }}
+                      disabled={whatsappConnectLoading || isWhatsAppConnected}
+                      className={`flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors w-44 ${
+                        isWhatsAppConnected
+                          ? 'bg-green-600'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      } ${
+                        (whatsappConnectLoading || isWhatsAppConnected) ? 'opacity-90 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {whatsappConnectLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span className="ml-2">Conectando...</span>
+                        </>
+                      ) : (
+                        <>
+                          {isWhatsAppConnected ? 'Conectado' : 'Conectar'}
+                        </>
+                      )}
+                    </button>
+
+                    {!!whatsappStatus.whatsapp_instance_name && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirmingWhatsAppDisconnect) {
+                            setConfirmingWhatsAppDisconnect(true);
+                            setTimeout(() => setConfirmingWhatsAppDisconnect(false), 5000);
+                            toast.error('Desconectar WhatsApp', 'Clique novamente em 5s para confirmar a desconexão.');
+                            return;
+                          }
+
+                          const ok = await disconnectWhatsApp();
+                          setConfirmingWhatsAppDisconnect(false);
+                          if (ok) {
+                            await fetchWhatsAppStatus();
+                            toast.success('WhatsApp', 'Desconectado. Você já pode conectar outro número.');
+                          }
+                        }}
+                        disabled={whatsappDisconnectLoading}
+                        className={`px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
+                          confirmingWhatsAppDisconnect
+                            ? 'bg-gray-700 text-white hover:bg-gray-800'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                        } ${whatsappDisconnectLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      >
+                        {whatsappDisconnectLoading ? 'Desconectando...' : (confirmingWhatsAppDisconnect ? 'Confirmar' : 'Desconectar')}
+                      </button>
+                    )}
+                  </div>
+                </FormRow>
+
+                <FormRow label="">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-800 font-semibold mb-3">
+                      Para evitar bloqueios do número ao usar o WhatsApp, evite:
+                    </p>
+                    <ul className="text-sm text-blue-700 space-y-2">
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Disparos em massa e picos de envio (muitas mensagens em pouco tempo)</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Repetir o mesmo texto para muitos contatos (conteúdo repetitivo / comportamento de spam)</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Usar número de celular novo/recém-criado para envios automáticos (aquecimento gradual é recomendado)</span>
+                      </li>
+                    </ul>
+                  </div>
+                </FormRow>
+              </>
+            )}
+          </Card>
+
+          <WhatsAppConnectModal
+            isOpen={isWhatsAppModalOpen}
+            onClose={() => setIsWhatsAppModalOpen(false)}
+            qrcodeBase64={qrcodeBase64}
+            statusText={whatsappStatusLabel}
+            connectedNumber={whatsappStatus.whatsapp_number}
+            loading={whatsappConnectLoading}
+            debugLastFetchAt={whatsappLastStatusFetchAt}
+            debugLastRaw={whatsappLastStatusRaw}
+            onRetry={async () => {
+              setQrcodeBase64(null);
+              await connectWhatsApp();
+            }}
+          />
+        </>
+      )}
 
       <Card title="Compromissos e Definições">
           <FormRow label="Duração do Serviço (Horas)">

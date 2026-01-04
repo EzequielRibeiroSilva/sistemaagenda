@@ -25,6 +25,9 @@ exports.up = async function(knex) {
   // 2) Ajustar índice único legado (agendamento_id, tipo_lembrete) para não bloquear registros sem agendamento
   // Mantém o comportamento anterior para lembretes ligados a agendamento.
   await knex.raw(`
+    ALTER TABLE lembretes_enviados
+    DROP CONSTRAINT IF EXISTS uk_lembretes_agendamento_tipo;
+
     DROP INDEX IF EXISTS uk_lembretes_agendamento_tipo;
     CREATE UNIQUE INDEX IF NOT EXISTS uk_lembretes_agendamento_tipo
     ON lembretes_enviados (agendamento_id, tipo_lembrete)
@@ -34,6 +37,9 @@ exports.up = async function(knex) {
   // 3) Ajustar índice único parcial por (agendamento_id, tipo_notificacao)
   // Mantém o comportamento anterior para notificações ligadas a agendamento.
   await knex.raw(`
+    ALTER TABLE lembretes_enviados
+    DROP CONSTRAINT IF EXISTS uk_lembretes_agendamento_tipo_notificacao;
+
     DROP INDEX IF EXISTS uk_lembretes_agendamento_tipo_notificacao;
     CREATE UNIQUE INDEX IF NOT EXISTS uk_lembretes_agendamento_tipo_notificacao
     ON lembretes_enviados (agendamento_id, tipo_notificacao)

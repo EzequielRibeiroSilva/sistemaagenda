@@ -59,6 +59,43 @@ class Usuario extends BaseModel {
   async findActive() {
     return await this.db(this.tableName).where('status', 'Ativo').select('*');
   }
+
+  // Buscar usuário pela instância WhatsApp/Evolution
+  async findByWhatsAppInstanceName(instanceName) {
+    if (!instanceName) return null;
+    return await this.db(this.tableName)
+      .where('whatsapp_instance_name', instanceName)
+      .first();
+  }
+
+  // Atualizar campos da conexão WhatsApp/Evolution
+  async updateWhatsAppFields(id, fields) {
+    if (!id) throw new Error('ID do usuário é obrigatório');
+    if (!fields || typeof fields !== 'object') throw new Error('Fields inválidos');
+
+    const allowed = new Set([
+      'whatsapp_instance_name',
+      'whatsapp_instance_token',
+      'whatsapp_status',
+      'whatsapp_number'
+    ]);
+
+    const updateData = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (allowed.has(key)) updateData[key] = value;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return await this.db(this.tableName).where({ id }).first();
+    }
+
+    const [updated] = await this.db(this.tableName)
+      .where({ id })
+      .update(updateData)
+      .returning('*');
+
+    return updated;
+  }
 }
 
 module.exports = Usuario;

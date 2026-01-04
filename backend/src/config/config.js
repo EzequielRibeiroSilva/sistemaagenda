@@ -34,7 +34,7 @@ const config = {
     baseUrl: process.env.EVO_API_BASE_URL || 'https://ssesmt-evolution-api-evolution-api.mpra0p.easypanel.host/',
     internalUrl: process.env.EVO_API_INTERNAL_URL || 'http://ssesmt-evolution-api_evolution-api:8080/',
     instanceId: process.env.EVO_API_INSTANCE_ID || 'D1737ABB6963-4720-8EE5-AE48DAE0BB18',
-    apiKey: process.env.EVO_API_KEY || null,
+    apiKey: process.env.EVO_API_KEY || process.env.EVOLUTION_API_KEY || process.env.AUTHENTICATION_API_KEY || null,
     timeout: 10000 // 10 segundos
   },
 
