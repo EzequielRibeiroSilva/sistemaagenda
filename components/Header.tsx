@@ -94,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0">
+      <header className="sticky top-0 z-50 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0">
         
         {/* --- DESKTOP/TABLET HEADER (lg and up) --- */}
         <div className="hidden lg:flex items-center w-full justify-between">
