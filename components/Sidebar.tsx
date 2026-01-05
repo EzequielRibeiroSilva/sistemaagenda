@@ -349,7 +349,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
         aria-hidden="true"
       ></div>
        <div
-        className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-gray-200 flex flex-col w-64 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:z-30 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-gray-200 flex flex-col w-64 transition-transform duration-300 ease-in-out lg:relative lg:z-30 lg:translate-x-0 ${
           isOpenOnMobile ? 'translate-x-0' : '-translate-x-full'
         } ${ isCollapsed ? 'lg:w-20' : 'lg:w-64' }`}
       >
