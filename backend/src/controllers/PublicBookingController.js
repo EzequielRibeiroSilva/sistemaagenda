@@ -2264,6 +2264,7 @@ class PublicBookingController {
         unidade_id: agendamento.unidade_id, // ✅ CRÍTICO: Adicionar unidade_id para registro de notificações
         unidade_telefone: unidade.telefone,
         agendamento_id: agendamento.id,
+        numero_agendamento: agendamento.numero_agendamento, // ✅ CORREÇÃO: Adicionar número mascarado para mensagens
         data_agendamento: agendamento.data_agendamento,
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,

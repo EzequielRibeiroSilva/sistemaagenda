@@ -667,7 +667,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
    */
   generateAppointmentConfirmationClient(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, agente_telefone, unidade_telefone, pontos, assinatura_saldo } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, numero_agendamento, agente_telefone, unidade_telefone, pontos, assinatura_saldo } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
@@ -676,6 +676,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
     const pontosMensagem = this.formatPontosMessage(pontos);
     const assinaturaMensagem = this.formatAssinaturaSaldoMessage(assinatura_saldo);
+    const idExibicao = numero_agendamento || agendamento_id;
 
     return `👋 Olá, *${cliente.nome}*! Ficamos muito felizes com seu agendamento na *${unidade.nome}*.
 
@@ -683,7 +684,7 @@ Seu horário está confirmadíssimo:
 ✂️ ${servicoTexto} com *${agente.nome}*
 🗓 ${dataHora}
 
-🎫 ID do Agendamento: *#${agendamento_id}*${pontosMensagem}${assinaturaMensagem}
+🎫 ID do Agendamento: *#${idExibicao}*${pontosMensagem}${assinaturaMensagem}
 
 Precisa alterar algo? Gerencie seu horário através deste link:
 
@@ -700,17 +701,18 @@ _Mensagem automática do Tally_`;
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - AGENTE
    */
   generateAppointmentConfirmationAgent(agendamentoData) {
-    const { cliente, data_agendamento, hora_inicio, servicos, agendamento_id, cliente_telefone, unidade_telefone } = agendamentoData;
+    const { cliente, data_agendamento, hora_inicio, servicos, agendamento_id, numero_agendamento, cliente_telefone, unidade_telefone } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
     const wppCliente = this.generateWhatsAppLink(cliente_telefone);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
+    const idExibicao = numero_agendamento || agendamento_id;
 
     return `🆕 *Novo Agendamento:* ${cliente.nome} agendou ${servicoTexto}.
 
 🗓 ${dataHora}
-🎫 ID: *#${agendamento_id}*
+🎫 ID: *#${idExibicao}*
 
 Contatos:
 👤 Cliente ${cliente.nome}: ${wppCliente}
