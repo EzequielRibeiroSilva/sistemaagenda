@@ -345,6 +345,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
     <>
        <div 
         className={`fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden transition-opacity ${isOpenOnMobile ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{ pointerEvents: isOpenOnMobile ? 'auto' : 'none' }}
         onClick={() => setOpenOnMobile(false)}
         aria-hidden="true"
       ></div>

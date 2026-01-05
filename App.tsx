@@ -407,7 +407,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100 text-gray-800" style={{ minHeight: '100dvh' }}>
+    <div className="flex h-screen bg-gray-100 text-gray-800" style={{ minHeight: '100dvh' }}>
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
@@ -422,7 +422,7 @@ const App: React.FC = () => {
           userData: user.userData
         }}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         <Header 
           onLogout={handleLogout} 
           setActiveView={setActiveView} 
@@ -434,7 +434,7 @@ const App: React.FC = () => {
           loggedInAgentId={user.agentId}
           onToggleMobileSidebar={() => setMobileSidebarOpen(true)}
         />
-        <main className="flex-1 relative overflow-y-auto focus:outline-none bg-gray-100 p-4 lg:p-6">
+        <main className="flex-1 relative overflow-y-auto overflow-x-hidden focus:outline-none bg-gray-100 p-4 lg:p-6 h-[calc(100dvh-64px)] min-w-0 min-h-0 w-full max-w-full">
           {renderMainContent()}
         </main>
       </div>

@@ -2056,7 +2056,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden min-w-0 max-w-full">
 
             {/* Mensagem de erro */}
             {error && (

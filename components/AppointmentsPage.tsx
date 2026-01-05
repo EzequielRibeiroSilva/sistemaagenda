@@ -541,7 +541,7 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     
     // ✅ NOVO: Preparar opções e handler para o dropdown de Locais
-    const locationOptionsForHeader = useMemo(() => {
+    const locationOptionsForHeaderDropdown = useMemo(() => {
         return locations.map(location => location.name);
     }, [locations]);
 
@@ -670,35 +670,26 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         }
     };
 
-    // Função para atualizar status de agendamento
-    const handleStatusChange = async (appointmentId: number, newStatus: AppointmentStatus) => {
-        try {
-            await updateAppointmentStatus(appointmentId, newStatus);
-        } catch (error) {
-            // Erro já tratado no hook
-        }
-    };
-
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Agendamentos</h1>
-                    <p className="text-sm text-gray-500">
-                        Mostrando {filteredAppointments.length} de {pagination.total} agendamentos
-                        {isLoading && ' (Carregando...)'}
+return (
+    <div className="space-y-6 min-h-full pb-10">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-800">Agendamentos</h1>
+                <p className="text-sm text-gray-500">
+                    Mostrando {filteredAppointments.length} de {pagination.total} agendamentos
+                    {isLoading && ' (Carregando...)'}
+                </p>
+                {error && (
+                    <p className="text-sm text-red-600 mt-1">
+                        Erro: {error}
                     </p>
-                    {error && (
-                        <p className="text-sm text-red-600 mt-1">
-                            Erro: {error}
-                        </p>
-                    )}
-                </div>
-                <div className="flex items-center gap-3">
+                )}
+            </div>
+            <div className="flex items-center gap-3">
                     {/* ✅ NOVO: Dropdown de seleção de Local - visível apenas quando há múltiplos locais */}
                     {locations.length > 1 && (
                         <HeaderDropdown
-                            options={locationOptionsForHeader}
+                            options={locationOptionsForHeaderDropdown}
                             selected={selectedLocationName}
                             onSelect={handleLocationSelect}
                         />
@@ -714,8 +705,8 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                 </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
+                <div className="overflow-x-auto max-w-full">
                     <table className="w-full min-w-[1600px] text-sm table-fixed">
                         <thead className="bg-gray-50">
                             <tr>
@@ -889,65 +880,53 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
                         </tbody>
                     </table>
                 </div>
-            </div>
-            
-            <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-gray-600">
-                <p>
-                    {(() => {
-                        const cleanId = (filters.id || '').replace(/#/g, '').trim();
-                        const total = cleanId ? filteredAppointments.length : pagination.total;
-                        const pages = cleanId ? (total > 0 ? 1 : 0) : pagination.pages;
-                        const page = cleanId ? (pages > 0 ? 1 : 0) : currentPage;
-                        if (!pages) {
-                            return (
-                                <>Mostrando 0 de 0</>
-                            );
-                        }
 
-                        return (
-                            <>Mostrando {((page - 1) * itemsPerPage) + 1}-{Math.min(page * itemsPerPage, total)} de {total}</>
-                        );
-                    })()}
-                </p>
-                <div className="flex items-center gap-2">
-                    <span>Página:</span>
-                    {(() => {
-                        const cleanId = (filters.id || '').replace(/#/g, '').trim();
-                        const total = cleanId ? filteredAppointments.length : pagination.total;
-                        const pages = cleanId ? (total > 0 ? 1 : 0) : pagination.pages;
-                        const page = cleanId ? (pages > 0 ? 1 : 0) : currentPage;
-                        return (
-                            <>
-                                <span className="font-semibold text-gray-800">{page}</span>
-                                <span>de {pages}</span>
-                            </>
-                        );
-                    })()}
-                    <div className="flex items-center">
-                        <button
-                            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                            disabled={(() => {
-                                const cleanId = (filters.id || '').replace(/#/g, '').trim();
-                                if (cleanId) return true;
-                                return currentPage <= 1;
-                            })()}
-                            onClick={() => handlePageChange(currentPage - 1)}
-                        >
-                            <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                            className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                            disabled={(() => {
-                                const cleanId = (filters.id || '').replace(/#/g, '').trim();
-                                if (cleanId) return true;
-                                return currentPage >= pagination.pages;
-                            })()}
-                            onClick={() => handlePageChange(currentPage + 1)}
-                        >
-                            <ChevronRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
+                {(() => {
+                    const cleanId = (filters.id || '').replace(/#/g, '').trim();
+                    if (cleanId) return null;
+
+                    const totalItems = pagination.total;
+                    const totalPages = pagination.pages;
+                    const start = totalItems === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1;
+                    const end = totalItems === 0 ? 0 : Math.min(currentPage * itemsPerPage, totalItems);
+
+                    if (totalPages <= 1) return null;
+
+                    return (
+                        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                            <div className="text-sm text-gray-700">
+                                Mostrando{' '}
+                                <span className="font-medium">{start}</span>{' '}
+                                a{' '}
+                                <span className="font-medium">{end}</span>{' '}
+                                de <span className="font-medium">{totalItems}</span> registros
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft className="w-5 h-5" />
+                                </button>
+
+                                <span className="text-sm text-gray-700">
+                                    Página <span className="font-medium">{currentPage}</span> de{' '}
+                                    <span className="font-medium">{totalPages}</span>
+                                </span>
+
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* ✅ NOVO: Popover de Observações */}
