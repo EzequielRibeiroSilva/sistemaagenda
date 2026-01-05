@@ -22,8 +22,8 @@ const FormRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
     </div>
 );
 
-const Input: React.FC<{ defaultValue?: string, type?: string, value?: string, onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder?: string }> = ({ defaultValue, type = "text", value, onChange, placeholder }) => (
-    <input type={type} defaultValue={defaultValue} value={value} onChange={onChange} placeholder={placeholder} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" />
+const Input: React.FC<{ defaultValue?: string, type?: string, value?: string, onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder?: string, autoComplete?: string }> = ({ defaultValue, type = "text", value, onChange, placeholder, autoComplete }) => (
+    <input type={type} defaultValue={defaultValue} value={value} onChange={onChange} placeholder={placeholder} autoComplete={autoComplete} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" />
 );
 
 const ToggleSwitch: React.FC<{ enabled: boolean; setEnabled: (enabled: boolean) => void }> = ({ enabled, setEnabled }) => (
@@ -713,6 +713,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Digite sua senha atual"
+                  autoComplete="current-password"
               />
           </FormRow>
           <FormRow label="Nova Senha">
@@ -721,6 +722,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Digite a nova senha (mín. 6 caracteres)"
+                  autoComplete="new-password"
               />
           </FormRow>
           <FormRow label="Confirmar Nova Senha">
@@ -729,6 +731,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirme a nova senha"
+                  autoComplete="new-password"
               />
           </FormRow>
           <FormRow label="">
