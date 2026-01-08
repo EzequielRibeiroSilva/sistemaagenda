@@ -45,11 +45,11 @@ function isLocalDevBypass(req) {
 
 /**
  * Rate limit para busca de cliente (CRÍTICO - LGPD)
- * 3 tentativas a cada 5 minutos por IP
+ * 15 tentativas a cada 5 minutos por IP
  */
 const clientSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutos
-  max: 3, // 3 tentativas
+  max: 15, // 15 tentativas
   skip: (req) => isLocalDevBypass(req),
   message: {
     error: 'Muitas tentativas de busca',
@@ -65,6 +65,34 @@ const clientSearchRateLimit = rateLimit({
   // Log de tentativas bloqueadas
   handler: (req, res) => {
     logger.warn(`🚨 [SECURITY] Rate limit excedido para busca de cliente - IP: ${req.ip}, Telefone: ${req.query.telefone}`);
+    res.status(429).json({
+      error: 'Muitas tentativas de busca',
+      message: 'Você excedeu o limite de buscas. Tente novamente em 5 minutos.',
+      retryAfter: '5 minutos'
+    });
+  }
+});
+
+/**
+ * Rate limit para busca de assinatura/saldo (LGPD)
+ * 30 tentativas a cada 5 minutos por IP
+ */
+const assinaturaSaldoRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutos
+  max: 30, // 30 tentativas
+  skip: (req) => isLocalDevBypass(req),
+  message: {
+    error: 'Muitas tentativas de busca',
+    message: 'Você excedeu o limite de buscas. Tente novamente em 5 minutos.',
+    retryAfter: '5 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  },
+  handler: (req, res) => {
+    logger.warn(`🚨 [SECURITY] Rate limit excedido para busca de assinatura/saldo - IP: ${req.ip}, Telefone: ${req.query.telefone}`);
     res.status(429).json({
       error: 'Muitas tentativas de busca',
       message: 'Você excedeu o limite de buscas. Tente novamente em 5 minutos.',
@@ -199,6 +227,7 @@ const generalPublicRateLimit = rateLimit({
     // Não aplicar rate limit geral em rotas que já têm rate limit específico
     const specificRateLimitPaths = [
       '/api/public/cliente/buscar',
+      '/api/public/cliente/assinatura-saldo',
       '/api/public/agendamento',
       '/api/public/cupons/validar',
       '/api/public/agendamento/:id/cancelar',
@@ -236,6 +265,7 @@ const generalPublicRateLimit = rateLimit({
 
 module.exports = {
   clientSearchRateLimit,
+  assinaturaSaldoRateLimit,
   createBookingRateLimit,
   couponValidationRateLimit,
   cancelBookingRateLimit,

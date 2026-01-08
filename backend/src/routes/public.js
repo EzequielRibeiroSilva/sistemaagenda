@@ -11,6 +11,7 @@ const CupomController = require('../controllers/CupomController');
 const logger = require('../utils/logger'); // ✅ CORREÇÃO: Import do logger
 const { 
   clientSearchRateLimit, 
+  assinaturaSaldoRateLimit,
   createBookingRateLimit, 
   couponValidationRateLimit,
   cancelBookingRateLimit,
@@ -82,7 +83,7 @@ router.get('/cliente/buscar', clientSearchRateLimit, async (req, res) => {
   await publicBookingController.buscarCliente(req, res);
 });
 
-router.get('/cliente/assinatura-saldo', clientSearchRateLimit, async (req, res) => {
+router.get('/cliente/assinatura-saldo', assinaturaSaldoRateLimit, async (req, res) => {
   await publicBookingController.buscarAssinaturaSaldo(req, res);
 });
 

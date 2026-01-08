@@ -1612,37 +1612,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       if (!unidadeIdParaBusca) {
         return { found: false, hasBirthDate: false, birthDate: null, error: true };
       }
-      
-      const candidatosTelefone: string[] = [];
-      const addUnique = (v: string) => {
-        if (v && !candidatosTelefone.includes(v)) candidatosTelefone.push(v);
-      };
 
-      addUnique(rawDigits);
-      if (rawDigits.startsWith('55') && rawDigits.length >= 12) {
-        addUnique(rawDigits.substring(2));
-      } else if (!rawDigits.startsWith('55') && rawDigits.length >= 10) {
-        addUnique(`55${rawDigits}`);
-      }
-
-      const versaoCom55 = rawDigits.startsWith('55') ? rawDigits : `55${rawDigits}`;
-      addUnique(`+${versaoCom55}`);
-
-      let response: Response | null = null;
+      // ✅ Importante: Apenas 1 request. O backend já trata variações (com/sem 55 e 9º dígito).
+      const url = `${API_BASE_URL}/public/cliente/buscar?telefone=${encodeURIComponent(rawDigits)}&unidade_id=${unidadeIdParaBusca}`;
+      const response = await fetch(url);
       let data: any = null;
-
-      for (const tel of candidatosTelefone) {
-        const url = `${API_BASE_URL}/public/cliente/buscar?telefone=${encodeURIComponent(tel)}&unidade_id=${unidadeIdParaBusca}`;
-        const resp = await fetch(url);
-        response = resp;
-        if (!resp.ok) {
-          continue;
-        }
-        data = await resp.json();
-        if (data?.success && data?.cliente) {
-          break;
-        }
-      }
 
       // ✅ CORREÇÃO CRÍTICA: Verificar status HTTP antes de processar
       if (!response || !response.ok) {
