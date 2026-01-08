@@ -328,6 +328,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         // Apenas 1 local: auto-selecionar e pular para serviços
         setSelectedLocationId(locations[0].id);
         setTempSelectedLocationId(locations[0].id);
+        setUnidadeId(locations[0].id);
         setCurrentStep(2); // Pular para seleção de serviços
       } else {
         // Múltiplos locais: permanecer no step 1 para seleção
@@ -1432,26 +1433,22 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             // ✅ CORREÇÃO CRÍTICA: Tratar erro de API separadamente de "cliente não encontrado"
             if (clienteInfo?.error) {
               // Erro de rede/API - solicitar data de nascimento por segurança
-              console.warn(`[BookingPage] ⚠️ Erro ao buscar cliente - solicitando data de nascimento`);
               setClientBirthDate(null);
               setClientBirthDateText('');
               // ✅ CORREÇÃO: Solicitar data de nascimento quando houver erro de API
               setNextStepAfterSubscription(8);
             } else if (clienteInfo && clienteInfo.found && clienteInfo.hasBirthDate) {
               // Cliente encontrado COM data de nascimento - pular etapa
-              console.log(`[BookingPage] ✅ Cliente tem data de nascimento cadastrada`);
               setClientBirthDate(clienteInfo.birthDate);
               setClientBirthDateText(formatDateToDDMMYYYY(clienteInfo.birthDate));
               setNextStepAfterSubscription(9);
             } else if (clienteInfo && clienteInfo.found && !clienteInfo.hasBirthDate) {
               // Cliente encontrado SEM data de nascimento - solicitar
-              console.log(`[BookingPage] Cliente encontrado mas sem data de nascimento`);
               setClientBirthDate(null);
               setClientBirthDateText('');
               setNextStepAfterSubscription(8);
             } else {
               // Cliente não encontrado (novo) - solicitar data de nascimento
-              console.log(`[BookingPage] Novo cliente - solicitar data de nascimento`);
               setClientBirthDate(null);
               setClientBirthDateText('');
               setNextStepAfterSubscription(8);
@@ -1609,21 +1606,52 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // Função para buscar cliente existente por telefone
   const buscarClienteExistente = async (telefone: string, retryCount = 0): Promise<{ found: boolean; hasBirthDate: boolean; birthDate: Date | null; error?: boolean } | null> => {
     try {
-      // Formatar telefone para busca
-      const telefoneLimpo = telefone.trim().replace(/\D/g, '');
+      const rawDigits = telefone.trim().replace(/\D/g, '');
+
+      const unidadeIdParaBusca = unidadeId ?? selectedLocationId;
+      if (!unidadeIdParaBusca) {
+        return { found: false, hasBirthDate: false, birthDate: null, error: true };
+      }
       
-      console.log(`[BookingPage] Buscando cliente existente: ${telefoneLimpo} (tentativa ${retryCount + 1})`);
-      
-      // Buscar cliente no backend
-      const response = await fetch(`${API_BASE_URL}/public/cliente/buscar?telefone=${telefoneLimpo}&unidade_id=${unidadeId}`);
-      
+      const candidatosTelefone: string[] = [];
+      const addUnique = (v: string) => {
+        if (v && !candidatosTelefone.includes(v)) candidatosTelefone.push(v);
+      };
+
+      addUnique(rawDigits);
+      if (rawDigits.startsWith('55') && rawDigits.length >= 12) {
+        addUnique(rawDigits.substring(2));
+      } else if (!rawDigits.startsWith('55') && rawDigits.length >= 10) {
+        addUnique(`55${rawDigits}`);
+      }
+
+      const versaoCom55 = rawDigits.startsWith('55') ? rawDigits : `55${rawDigits}`;
+      addUnique(`+${versaoCom55}`);
+
+      let response: Response | null = null;
+      let data: any = null;
+
+      for (const tel of candidatosTelefone) {
+        const url = `${API_BASE_URL}/public/cliente/buscar?telefone=${encodeURIComponent(tel)}&unidade_id=${unidadeIdParaBusca}`;
+        const resp = await fetch(url);
+        response = resp;
+        if (!resp.ok) {
+          continue;
+        }
+        data = await resp.json();
+        if (data?.success && data?.cliente) {
+          break;
+        }
+      }
+
       // ✅ CORREÇÃO CRÍTICA: Verificar status HTTP antes de processar
-      if (!response.ok) {
-        console.error(`[BookingPage] Erro HTTP ao buscar cliente: ${response.status} ${response.statusText}`);
+      if (!response || !response.ok) {
+        const status = response?.status;
+        const statusText = response?.statusText;
+        console.error(`[BookingPage] Erro HTTP ao buscar cliente: ${status} ${statusText}`);
         
         // Se for erro 5xx (servidor) e ainda temos tentativas, fazer retry
-        if (response.status >= 500 && retryCount < 2) {
-          console.log(`[BookingPage] Tentando novamente em 1 segundo...`);
+        if ((status || 0) >= 500 && retryCount < 2) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           return buscarClienteExistente(telefone, retryCount + 1);
         }
@@ -1631,11 +1659,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         // ✅ IMPORTANTE: Retornar erro explícito, não null
         return { found: false, hasBirthDate: false, birthDate: null, error: true };
       }
-      
-      const data = await response.json();
+
+      if (!data) {
+        data = await response.json();
+      }
       
       if (data.success && data.cliente) {
-        console.log(`[BookingPage] ✅ Cliente encontrado:`, data.cliente);
         
         if (data.cliente.id) {
           setClienteId(data.cliente.id);
@@ -1643,20 +1672,24 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
         // Cliente encontrado - atualizar nome completo
         const nomeCompleto = `${data.cliente.primeiro_nome} ${data.cliente.ultimo_nome}`.trim();
-        if (nomeCompleto && nomeCompleto !== clientName) {
+        if (nomeCompleto && (!clientName || clientName.length < nomeCompleto.length)) {
           setClientName(nomeCompleto);
         }
 
-        const birthDate = data.cliente.data_nascimento ? new Date(`${data.cliente.data_nascimento}T12:00:00`) : null;
+        const rawBirth = data.cliente.data_nascimento;
+        const hasBirthDate =
+          typeof rawBirth === 'string'
+            ? rawBirth.trim() !== '' && rawBirth.trim().toLowerCase() !== 'null'
+            : Boolean(rawBirth);
+        const birthDate = hasBirthDate ? new Date(`${rawBirth}T12:00:00`) : null;
         return {
           found: true,
-          hasBirthDate: Boolean(data.cliente.data_nascimento),
+          hasBirthDate,
           birthDate
         };
       }
 
       // Cliente não encontrado no banco de dados (novo cliente)
-      console.log(`[BookingPage] Cliente não encontrado no banco (novo cliente)`);
       setClienteId(null);
       return { found: false, hasBirthDate: false, birthDate: null };
       
@@ -1665,7 +1698,6 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       
       // ✅ CORREÇÃO: Retry automático em caso de erro de rede
       if (retryCount < 2) {
-        console.log(`[BookingPage] Tentando novamente em 1 segundo...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return buscarClienteExistente(telefone, retryCount + 1);
       }
@@ -2061,12 +2093,12 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   }
 
   const mainContainerClass = isPreview 
-    ? "w-full max-w-none bg-gray-50 flex flex-col flex-1 h-full overflow-hidden"
-    : "bg-gray-100 flex flex-col items-center";
+  ? "w-full max-w-none bg-gray-50 flex flex-col flex-1 h-full overflow-hidden"
+  : "w-full bg-gray-100 flex flex-col items-center h-[100dvh] overflow-hidden";
   
   const contentWrapperClass = isPreview 
-    ? "h-full flex flex-col" 
-    : "w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg";
+  ? "h-full flex flex-col min-h-0" 
+  : "w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg h-full min-h-0";
 
   return (
     <div className={mainContainerClass} style={!isPreview ? { minHeight: '100dvh' } : undefined}>
@@ -2147,7 +2179,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             const target = e.currentTarget;
             setShowBackToTop(target.scrollTop > 240);
           }}
-          className="flex-1 flex flex-col overflow-y-auto"
+          className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain"
         >
           {renderStep()}
         </main>

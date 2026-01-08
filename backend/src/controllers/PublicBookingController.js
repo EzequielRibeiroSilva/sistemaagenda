@@ -1275,6 +1275,21 @@ class PublicBookingController {
         });
       }
 
+      // ✅ CORREÇÃO: Descobrir o dono (usuario_id) da unidade para permitir busca global multi-unidade
+      const unidadeIdNum = parseInt(unidade_id);
+      const unidade = await db('unidades')
+        .where('id', unidadeIdNum)
+        .select('id', 'usuario_id')
+        .first();
+
+      if (!unidade) {
+        return res.status(404).json({
+          success: false,
+          error: 'Unidade não encontrada',
+          message: 'A unidade informada não existe.'
+        });
+      }
+
       // ✅ CORREÇÃO 1.2: Validar sessão (OPCIONAL - pode ser desabilitado em desenvolvimento)
       // ⚠️ TEMPORARIAMENTE DESABILITADO: Permitir busca sem session_token para BookingPage funcionar
       // if (process.env.NODE_ENV === 'production' && !session_token) {
@@ -1299,7 +1314,7 @@ class PublicBookingController {
         }
 
         // Verificar se a sessão pertence à mesma unidade
-        if (sessionData.unidade_id !== parseInt(unidade_id)) {
+        if (sessionData.unidade_id !== unidadeIdNum) {
           logger.warn(`🚨 [SECURITY] Tentativa de busca em unidade diferente - IP: ${req.ip}, Sessão Unidade: ${sessionData.unidade_id}, Busca Unidade: ${unidade_id}`);
           return res.status(403).json({
             success: false,
@@ -1321,26 +1336,52 @@ class PublicBookingController {
 
       // 🔧 CORREÇÃO: Buscar cliente considerando variações do 9º dígito
       // Gera variações: ["8591082000", "85991082000"] ou ["85991082000", "8591082000"]
-      const variacoesTelefone = this.normalizarTelefoneVariacoes(telefone);
+      const variacoesTelefoneBase = this.normalizarTelefoneVariacoes(telefone);
+      const variacoesTelefone = [];
+      const addUnique = (v) => {
+        if (v && !variacoesTelefone.includes(v)) variacoesTelefone.push(v);
+      };
 
-      logger.log(`🔍 [BuscarCliente] Buscando cliente com variações: [${variacoesTelefone.join(', ')}]`);
+      // Cobrir inconsistência: clientes.telefone_limpo pode estar salvo com ou sem 55
+      variacoesTelefoneBase.forEach(v => {
+        addUnique(v);
+        if (v.startsWith('55') && v.length >= 12) {
+          addUnique(v.substring(2));
+        } else {
+          addUnique(`55${v}`);
+        }
+      });
 
-      // Buscar cliente por telefone_limpo na unidade (usando variações)
+      logger.log(`🔍 [BuscarCliente] Buscando cliente Global (Usuario ID: ${unidade.usuario_id}). Total variações: ${variacoesTelefone.length}`);
+
+      // ✅ CORREÇÃO: Busca global por dono (usuario_id) em vez de restringir ao unidade_id atual.
+      // Permite encontrar cliente cadastrado em outra unidade do mesmo dono.
       const cliente = await db('clientes')
-        .where('unidade_id', unidade_id)
+        .leftJoin('unidades as u', 'clientes.unidade_id', 'u.id')
         .where(function() {
-          // Buscar por qualquer uma das variações do telefone
+          this.where('clientes.unidade_id', unidadeIdNum)
+            .orWhere('u.usuario_id', unidade.usuario_id);
+        })
+        .where(function() {
           variacoesTelefone.forEach((variacao, index) => {
             if (index === 0) {
-              this.where('telefone_limpo', variacao);
+              this.where('clientes.telefone_limpo', variacao);
             } else {
-              this.orWhere('telefone_limpo', variacao);
+              this.orWhere('clientes.telefone_limpo', variacao);
             }
           });
         })
+        .select(
+          'clientes.id',
+          'clientes.primeiro_nome',
+          'clientes.ultimo_nome',
+          'clientes.telefone',
+          'clientes.data_nascimento'
+        )
         .first();
 
       if (cliente) {
+        logger.log(`✅ [BuscarCliente] Cliente encontrado - ID: ${cliente.id}, Nome: ${cliente.primeiro_nome}`);
         // ✅ CORREÇÃO 1.2: Log de acesso a dados pessoais (LGPD)
         logger.log(`🔍 [LGPD] Busca de cliente - IP: ${req.ip}, Cliente ID: ${cliente.id}, Unidade: ${unidade_id}`);
         
@@ -1355,6 +1396,7 @@ class PublicBookingController {
           }
         });
       } else {
+        logger.log('❌ [BuscarCliente] Cliente não encontrado nas variações.');
         return res.json({
           success: true,
           cliente: null
@@ -2417,44 +2459,22 @@ class PublicBookingController {
         });
       }
 
-      // Validar telefone do cliente (normalizar ambos para comparação)
-      let telefoneNormalizado = telefone.replace(/\D/g, '');
-      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      const inputLimpo = telefone.replace(/\D/g, '');
+      const dbLimpo = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      // ✅ VALIDAÇÃO FLEXÍVEL PARA TELEFONES BRASILEIROS
-      // Aceita 4 formatos válidos:
-      // 1. Com código do país: +5585985502643 (13 dígitos: 55 + 85 + 985502643)
-      // 2. Completo com DDD: 85985502643 (11 dígitos: 85 + 985502643)
-      // 3. Com prefixo 9 sem DDD: 985502643 (9 dígitos)
-      // 4. Sem prefixo 9 sem DDD: 85502643 (8 dígitos)
-      
-      // Remover código do país (55) se presente
-      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
-        telefoneNormalizado = telefoneNormalizado.substring(2); // Remove '55'
-      }
-      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
-        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2); // Remove '55'
-      }
-      
-      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9); // 985502643
-      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8); // 85502643
-      
+      const inputLast9 = inputLimpo.slice(-9);
+      const dbLast9 = dbLimpo.slice(-9);
+      const inputLast8 = inputLimpo.slice(-8);
+      const dbLast8 = dbLimpo.slice(-8);
+
       const telefoneValido = (
-        telefoneNormalizado === telefoneClienteNormalizado || // Completo: 85985502643
-        telefoneNormalizado === ultimosNoveDigitos ||         // Com 9: 985502643
-        telefoneNormalizado === ultimosOitoDigitos            // Sem 9: 85502643
+        inputLimpo === dbLimpo ||
+        inputLast9 === dbLast9 ||
+        inputLast8 === dbLast8
       );
-      
+
       if (!telefoneValido) {
-        logger.log(`[PublicBooking] ❌ Validação de telefone falhou:`, {
-          telefoneDigitado: telefoneNormalizado,
-          telefoneEsperado: telefoneClienteNormalizado,
-          formatoAceitos: {
-            completo: telefoneClienteNormalizado,
-            com9: ultimosNoveDigitos,
-            sem9: ultimosOitoDigitos
-          }
-        });
+        logger.log(`[PublicBooking] ❌ Validação falhou. Input: ${inputLimpo}, Banco: ${dbLimpo}`);
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
@@ -2583,27 +2603,22 @@ class PublicBookingController {
       }
 
       // Validar telefone (mesma lógica do getAgendamento)
-      let telefoneNormalizado = telefone.replace(/\D/g, '');
-      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      const inputLimpo = telefone.replace(/\D/g, '');
+      const dbLimpo = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      // Remover código do país (55) se presente
-      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
-        telefoneNormalizado = telefoneNormalizado.substring(2);
-      }
-      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
-        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2);
-      }
-      
-      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9);
-      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8);
-      
+      const inputLast9 = inputLimpo.slice(-9);
+      const dbLast9 = dbLimpo.slice(-9);
+      const inputLast8 = inputLimpo.slice(-8);
+      const dbLast8 = dbLimpo.slice(-8);
+
       const telefoneValido = (
-        telefoneNormalizado === telefoneClienteNormalizado ||
-        telefoneNormalizado === ultimosNoveDigitos ||
-        telefoneNormalizado === ultimosOitoDigitos
+        inputLimpo === dbLimpo ||
+        inputLast9 === dbLast9 ||
+        inputLast8 === dbLast8
       );
 
       if (!telefoneValido) {
+        logger.log(`[PublicBooking] ❌ Validação falhou. Input: ${inputLimpo}, Banco: ${dbLimpo}`);
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',
@@ -2789,27 +2804,22 @@ class PublicBookingController {
       }
 
       // Validar telefone (mesma lógica do getAgendamento)
-      let telefoneNormalizado = telefone.replace(/\D/g, '');
-      let telefoneClienteNormalizado = agendamento.cliente_telefone.replace(/\D/g, '');
+      const inputLimpo = telefone.replace(/\D/g, '');
+      const dbLimpo = agendamento.cliente_telefone.replace(/\D/g, '');
 
-      // Remover código do país (55) se presente
-      if (telefoneNormalizado.startsWith('55') && telefoneNormalizado.length === 13) {
-        telefoneNormalizado = telefoneNormalizado.substring(2);
-      }
-      if (telefoneClienteNormalizado.startsWith('55') && telefoneClienteNormalizado.length === 13) {
-        telefoneClienteNormalizado = telefoneClienteNormalizado.substring(2);
-      }
-      
-      const ultimosNoveDigitos = telefoneClienteNormalizado.slice(-9);
-      const ultimosOitoDigitos = telefoneClienteNormalizado.slice(-8);
-      
+      const inputLast9 = inputLimpo.slice(-9);
+      const dbLast9 = dbLimpo.slice(-9);
+      const inputLast8 = inputLimpo.slice(-8);
+      const dbLast8 = dbLimpo.slice(-8);
+
       const telefoneValido = (
-        telefoneNormalizado === telefoneClienteNormalizado ||
-        telefoneNormalizado === ultimosNoveDigitos ||
-        telefoneNormalizado === ultimosOitoDigitos
+        inputLimpo === dbLimpo ||
+        inputLast9 === dbLast9 ||
+        inputLast8 === dbLast8
       );
 
       if (!telefoneValido) {
+        logger.log(`[PublicBooking] ❌ Validação falhou. Input: ${inputLimpo}, Banco: ${dbLimpo}`);
         return res.status(403).json({
           success: false,
           error: 'Acesso negado',

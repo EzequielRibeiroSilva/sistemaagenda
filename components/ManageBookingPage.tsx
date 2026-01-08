@@ -742,8 +742,8 @@ const ManageBookingPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center" style={{ minHeight: '100dvh' }}>
-      <div className="w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg">
+    <div className="w-full bg-gray-100 flex flex-col items-center h-[100dvh] overflow-hidden" style={{ minHeight: '100dvh' }}>
+      <div className="w-full max-w-md bg-gray-50 flex flex-col flex-1 shadow-lg h-full min-h-0">
         <div className="sticky top-0 z-20 shrink-0">
           <header className="bg-gray-100 border-b border-gray-200">
             <div className="p-3">
@@ -805,7 +805,10 @@ const ManageBookingPage: React.FC = () => {
           </header>
         </div>
 
-        <main ref={(el) => { mainScrollRef.current = el; }} className="flex-1 flex flex-col overflow-y-hidden">
+        <main
+          ref={(el) => { mainScrollRef.current = el; }}
+          className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain"
+        >
           {renderStep()}
         </main>
       </div>
