@@ -150,11 +150,15 @@ class WhatsAppController {
         }
       }
 
+      // Se não há instância configurada, tratar como "nunca configurado".
+      // Isso evita que o frontend interprete o default do banco (ex: 'close') como configuração existente.
+      const responseStatus = instanceName ? (user.whatsapp_status || null) : null;
+
       return res.json({
         success: true,
         data: {
           whatsapp_instance_name: user.whatsapp_instance_name || null,
-          whatsapp_status: user.whatsapp_status || null,
+          whatsapp_status: responseStatus,
           whatsapp_number: user.whatsapp_number || null
         }
       });

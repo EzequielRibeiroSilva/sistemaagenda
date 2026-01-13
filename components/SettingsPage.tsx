@@ -111,10 +111,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
 
     useEffect(() => {
         if (!canManageWhatsApp) return;
-        const hasKnownState = whatsappStatus.whatsapp_status !== 'unknown';
-        const hasAnyWhatsAppData = Boolean(whatsappStatus.whatsapp_instance_name || whatsappStatus.whatsapp_number || hasKnownState);
-        if (hasAnyWhatsAppData) {
-            setShowWhatsAppConnect(true);
+        const hasInstance = Boolean(whatsappStatus.whatsapp_instance_name);
+        const isActiveConnection = whatsappStatus.whatsapp_status === 'open' || whatsappStatus.whatsapp_status === 'connecting';
+        const shouldAutoOpen = hasInstance || isActiveConnection;
+        if (shouldAutoOpen) {
+            setShowWhatsAppConnect(prev => prev || true);
         }
     }, [canManageWhatsApp, whatsappStatus.whatsapp_instance_name, whatsappStatus.whatsapp_number, whatsappStatus.whatsapp_status]);
 
