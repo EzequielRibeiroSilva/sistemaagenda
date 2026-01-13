@@ -177,9 +177,9 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     // Estados do formulário
     const [nome, setNome] = useState('');
     const [descricao, setDescricao] = useState('');
-    const [duracaoMinutos, setDuracaoMinutos] = useState(60);
+    const [duracaoMinutos, setDuracaoMinutos] = useState(0);
     const [preco, setPreco] = useState(0);
-    const [comissaoPercentual, setComissaoPercentual] = useState(70);
+    const [comissaoPercentual, setComissaoPercentual] = useState(0);
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
     const [conviteRetornoAtivo, setConviteRetornoAtivo] = useState(false);
     const [conviteRetornoDias, setConviteRetornoDias] = useState<number>(30);

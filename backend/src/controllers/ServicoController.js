@@ -276,7 +276,7 @@ class ServicoController extends BaseController {
         });
       }
 
-      if (!preco || preco < 0) {
+      if (preco === undefined || preco === null || Number.isNaN(Number(preco)) || Number(preco) < 0) {
         return res.status(400).json({
           success: false,
           error: 'Preço deve ser maior ou igual a zero'
@@ -288,6 +288,17 @@ class ServicoController extends BaseController {
           success: false,
           error: 'Duração deve ser maior que zero'
         });
+      }
+
+      if (comissao_percentual !== undefined && comissao_percentual !== null) {
+        const comissaoNumero = Number(comissao_percentual);
+        if (Number.isNaN(comissaoNumero) || comissaoNumero < 0 || comissaoNumero > 100) {
+          return res.status(400).json({
+            success: false,
+            error: 'Comissão inválida',
+            message: 'Comissão deve ser um número entre 0 e 100'
+          });
+        }
       }
 
       if (status && !['Ativo', 'Bloqueado'].includes(status)) {
@@ -318,8 +329,8 @@ class ServicoController extends BaseController {
         nome: nome.trim(),
         descricao: descricao?.trim() || '',
         duracao_minutos: duracao_minutos,
-        preco: parseFloat(preco),
-        comissao_percentual: comissao_percentual || 70,
+        preco: Number(preco),
+        comissao_percentual: comissao_percentual ?? 0,
         status: status || 'Ativo',
         categoria_id: categoria_id || null,
         convite_retorno_ativo: conviteAtivo,
