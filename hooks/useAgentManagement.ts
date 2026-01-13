@@ -146,6 +146,17 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
   const [loading, setLoading] = useState<boolean>(true); // Iniciar como true para evitar flash de "Nenhuma unidade"
   const [error, setError] = useState<string | null>(null);
 
+  const buildBackendErrorMessage = useCallback((errorData: any, fallback: string) => {
+    const baseMessage = errorData?.message || errorData?.error || fallback;
+    const details = errorData?.details;
+
+    if (Array.isArray(details) && details.length > 0) {
+      return `${baseMessage} ${details.join(' • ')}`;
+    }
+
+    return baseMessage;
+  }, []);
+
   // ✅ ETAPA 1: Estados para suporte multi-unidade
   const [availableUnits, setAvailableUnits] = useState<UnitData[]>([]);
 
@@ -346,7 +357,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Erro HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(buildBackendErrorMessage(errorData, `Erro HTTP ${response.status}: ${response.statusText}`));
       }
 
       const result = await response.json();
@@ -356,16 +367,16 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
         await fetchAgents();
         return true;
       } else {
-        throw new Error(result.message || 'Erro ao criar agente');
+        throw new Error(buildBackendErrorMessage(result, result.message || 'Erro ao criar agente'));
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      return false;
+      throw err;
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, token, fetchAgents]);
+  }, [isAuthenticated, token, fetchAgents, buildBackendErrorMessage]);
 
   // ========================================
   // EXCEÇÕES DE CALENDÁRIO DO AGENTE
@@ -446,8 +457,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const backendMessage = errorData?.message || errorData?.error;
-        throw new Error(backendMessage || `Erro HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(buildBackendErrorMessage(errorData, `Erro HTTP ${response.status}: ${response.statusText}`));
       }
 
       const result = await response.json();
@@ -455,7 +465,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
       if (result.success) {
         return result.data;
       } else {
-        throw new Error(result.message || 'Erro ao atualizar agente');
+        throw new Error(buildBackendErrorMessage(result, result.message || 'Erro ao atualizar agente'));
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -465,7 +475,7 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, token, fetchAgents]);
+  }, [isAuthenticated, token, fetchAgents, buildBackendErrorMessage]);
 
   // Excluir agente
   const deleteAgent = useCallback(async (id: number): Promise<boolean> => {

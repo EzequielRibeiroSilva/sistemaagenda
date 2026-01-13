@@ -384,21 +384,22 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     };
 
     const allServicesSelected = useMemo(() => {
-        if (!agentData?.servicos_disponiveis?.length) return false;
-        return agentData.servicos_disponiveis.every(servico => checkedServices[servico.id] === true);
-    }, [checkedServices, agentData?.servicos_disponiveis]);
+        const totalServices = agentData?.servicos_disponiveis?.length || 0;
+        const checkedCount = Object.values(checkedServices).filter(Boolean).length;
+        return totalServices > 0 && checkedCount === totalServices;
+    }, [checkedServices, agentData?.servicos_disponiveis?.length]);
 
     const handleSave = async () => {
-        if (!agentData) {
-            return;
-        }
+        if (!agentData) return;
+        if (isSaving) return;
 
         setIsSaving(true);
+
         try {
             // Coletar apenas os IDs dos serviços marcados
             const servicosSelecionados = Object.entries(checkedServices)
                 .filter(([_, isChecked]) => isChecked)
-                .map(([servicoId, _]) => parseInt(servicoId));
+                .map(([servicoId]) => parseInt(servicoId));
 
             // ✅ NOVO: Mapear agentSchedules para formato do backend
             const dayNameToNumber: Record<string, number> = {
@@ -418,7 +419,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         .filter(([_, dayData]: [string, any]) => dayData.isActive && dayData.periods.length > 0)
                         .map(([dayName, dayData]: [string, any]) => ({
                             dia_semana: dayNameToNumber[dayName],
-                            unidade_id: item.unidade_id, // ✅ CHAVE: Incluir unidade_id
+                            unidade_id: item.unidade_id,
                             periodos: dayData.periods.map((period: any) => ({
                                 inicio: period.start,
                                 fim: period.end
@@ -432,11 +433,9 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 email: email,
                 telefone: phone,
                 status: status,
-                unidade_id: agentData.unidade_id, // Incluir unidade_id obrigatório
+                unidade_id: agentData.unidade_id,
                 servicos_oferecidos: servicosSelecionados,
-                // ✅ NOVO: Enviar agendas multi-unidade
                 agendas_multi_unidade: schedulesToSubmit,
-                // ✅ CORREÇÃO CRÍTICA: Definir agenda_personalizada quando há agendas customizadas
                 agenda_personalizada: schedulesToSubmit.length > 0,
                 avatar: avatarFile,
                 ...(password.trim() !== '' && { senha: password })
@@ -445,17 +444,15 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             const result = await updateAgent(agentData.id, updateData);
 
             if (result) {
-                toast.success('Alterações Salvas!', 'As informações do agente foram atualizadas com sucesso.');
+                toast.success('Alterações Salvas!', 'As informações do membro foram atualizadas com sucesso.');
 
-                // Se o usuário logado é o agente que foi editado, atualizar o avatar no contexto
                 if (user.agentId === agentData.id.toString() && result?.avatar_url) {
                     updateUser({ avatarUrl: result.avatar_url });
                 }
 
-                // Redirecionar para lista de agentes
                 setActiveView('agents-list');
             } else {
-                throw new Error('Erro ao atualizar agente');
+                throw new Error('Erro ao atualizar membro');
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -470,7 +467,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             <div className="flex items-center justify-center min-h-64">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Carregando dados do agente...</p>
+                    <p className="text-gray-600">Carregando dados do membro...</p>
                 </div>
             </div>
         );
@@ -479,9 +476,9 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     if (!agentData) {
         return (
             <div className="p-4 text-center">
-                <h2 className="text-xl font-semibold text-gray-700">Agente não encontrado.</h2>
+                <h2 className="text-xl font-semibold text-gray-700">Membro não encontrado.</h2>
                 <button onClick={() => setActiveView('agents-list')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    Voltar para a lista de agentes
+                    Voltar para a lista da equipe
                 </button>
             </div>
         );
@@ -489,7 +486,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Editar Agente</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Editar Equipe</h1>
 
             <FormCard title="Informações Gerais">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -532,7 +529,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                             />
                         </div>
                         <div>
-                            <h3 className="text-sm font-medium text-gray-700">Foto do Agente</h3>
+                            <h3 className="text-sm font-medium text-gray-700">Foto do Membro</h3>
                             <p className="text-xs text-gray-500 mt-1">
                                 Clique no botão + para alterar a foto. Máximo 5MB.
                             </p>
@@ -553,6 +550,12 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                     />
+
+                    <div className="md:col-span-2 -mt-4">
+                        <p className="text-xs text-gray-500">
+                            Mín. 8 caracteres (máx. 128), com letra maiúscula, minúscula, número e caractere especial.
+                        </p>
+                    </div>
 
                     <div className="relative">
                         <label className="text-sm font-medium text-gray-600 mb-2 block">Telefone</label>

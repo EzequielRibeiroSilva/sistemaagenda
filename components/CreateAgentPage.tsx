@@ -88,7 +88,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     biografia: '',
     nome_exibicao: '',
     // unidade_id: 1, // REMOVIDO: Backend usa unidade_id do token JWT
-    comissao_percentual: 60,
+    comissao_percentual: 0,
     observacoes: ''
   });
   
@@ -240,14 +240,14 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
       const success = await createAgent(agentData);
       
       if (success) {
-        toast.success('Agente Criado!', 'O agente foi adicionado com sucesso ao sistema.');
+        toast.success('Equipe criada!', 'O membro foi adicionado com sucesso ao sistema.');
         setActiveView('agents-list');
       } else {
-        toast.error('Erro ao Criar Agente', 'Não foi possível criar o agente. Tente novamente.');
+        toast.error('Erro ao Criar Equipe', error || 'Não foi possível criar a equipe. Tente novamente.');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      toast.error('Erro ao Criar Agente', errorMessage);
+      toast.error('Erro ao Criar Equipe', errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -256,7 +256,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-800">Criar Novo Agente</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Criar Equipe</h1>
         <button
           onClick={() => setActiveView('agents-list')}
           className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
@@ -265,18 +265,12 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700">{error}</p>
-        </div>
-      )}
-
       {/* ✅ ETAPA 3: Validação de pré-condição - Exigir unidade antes de criar agente */}
       {/* Só exibe a mensagem quando o carregamento inicial foi CONCLUÍDO E não há unidades */}
       {availableUnits.length === 0 && !loading && initialLoadComplete && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800 font-semibold">⚠️ Nenhuma unidade encontrada</p>
-          <p className="text-yellow-700 text-sm mt-1">Você precisa criar pelo menos uma unidade antes de cadastrar agentes.</p>
+          <p className="text-yellow-700 text-sm mt-1">Você precisa criar pelo menos uma unidade antes de cadastrar equipe.</p>
           <button
             onClick={() => setActiveView('locations')}
             className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
@@ -314,7 +308,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
               />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-700">Foto do Agente</h3>
+              <h3 className="text-sm font-medium text-gray-700">Foto do Membro</h3>
               <p className="text-xs text-gray-500 mt-1">
                 Clique no ícone + para adicionar uma foto (máx. 5MB)
               </p>
@@ -349,19 +343,27 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
             value={formData.telefone}
             onChange={(value) => handleInputChange('telefone', value)}
           />
-          
-          <TextInput
-            label="Senha"
-            type="password"
-            placeholder="Digite a senha (opcional)"
-            value={formData.senha}
-            onChange={(value) => handleInputChange('senha', value)}
-          />
-          
+
+          <div>
+            <TextInput
+              label="Senha"
+              type="password"
+              placeholder="Digite a senha (opcional)"
+              value={formData.senha}
+              onChange={(value) => handleInputChange('senha', value)}
+            />
+
+            <div className="mt-1">
+              <p className="text-xs text-gray-500">
+                Mín. 8 caracteres (máx. 128), com letra maiúscula, minúscula, número e caractere especial.
+              </p>
+            </div>
+          </div>
+
           <TextInput
             label="Comissão (%)"
             type="number"
-            placeholder="60"
+            placeholder="0"
             value={formData.comissao_percentual.toString()}
             onChange={(value) => handleInputChange('comissao_percentual', parseFloat(value) || 0)}
           />
@@ -370,7 +372,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         <div className="mt-6">
           <TextArea
             label="Biografia"
-            placeholder="Descreva a experiência e especialidades do agente..."
+            placeholder="Descreva a experiência e especialidades do membro..."
             value={formData.biografia}
             onChange={(value) => handleInputChange('biografia', value)}
             rows={3}
@@ -398,7 +400,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         ) : (
           <div className="text-center py-8">
             <p className="text-gray-600">Nenhum serviço disponível</p>
-            <p className="text-sm text-gray-500 mt-1">Cadastre serviços primeiro para associá-los ao agente</p>
+            <p className="text-sm text-gray-500 mt-1">Cadastre serviços primeiro para associá-los ao membro</p>
           </div>
         )}
       </FormCard>
@@ -454,7 +456,7 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
           ) : (
             <>
               <Plus className="w-4 h-4 mr-2" />
-              Criar Agente
+              Criar Equipe
             </>
           )}
         </button>

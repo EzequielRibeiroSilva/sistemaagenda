@@ -25,7 +25,7 @@ interface AgentCardProps {
 }
 
 const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfirmingDelete = false }) => {
-  // Avatar do agente para o header
+  // Avatar do membro para o header
   const avatarContent = (
     <div className="flex items-center">
       <div className="relative w-14 h-14">
@@ -60,7 +60,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfir
       onEdit={() => onEdit(agent.id)}
       onDelete={() => onDelete(agent.id)}
       isConfirmingDelete={isConfirmingDelete}
-      editLabel="Editar Agente"
+      editLabel="Editar Equipe"
       showTopBar={true}
       headerContent={avatarContent}
     >
@@ -110,7 +110,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onEdit, onDelete, isConfir
 const AddAgentCard: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <AddCard 
     onClick={onClick} 
-    label="Adicionar Agente" 
+    label="Criar Equipe" 
   />
 );
 
@@ -142,14 +142,14 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
             setDeleteLoading(null);
 
             if (success) {
-                toast.success('Agente Excluído!', `O agente "${agent.name}" foi removido com sucesso do sistema.`);
+                toast.success('Membro removido!', `"${agent.name}" foi removido com sucesso do sistema.`);
             } else {
-                toast.error('Erro ao Excluir', 'Não foi possível excluir o agente. Tente novamente.');
+                toast.error('Erro ao Excluir', 'Não foi possível excluir o membro. Tente novamente.');
             }
         } else {
             // Primeira vez clicando: mostrar toast de aviso e marcar para confirmação
             setConfirmingDelete(agentId);
-            toast.warning('Confirme a Exclusão', `Clique novamente no ícone de lixeira para confirmar a exclusão de "${agent.name}". Esta ação não pode ser desfeita.`);
+            toast.warning('Confirme a exclusão', `Clique novamente no ícone de lixeira para confirmar a exclusão de "${agent.name}". Esta ação não pode ser desfeita.`);
 
             // Resetar confirmação após 5 segundos
             setTimeout(() => {
@@ -163,7 +163,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
             <div className="flex items-center justify-center min-h-64">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Carregando agentes...</p>
+                    <p className="text-gray-600">Carregando equipe...</p>
                 </div>
             </div>
         );
@@ -196,7 +196,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-gray-800">Equipe</h1>
                 <div className="text-sm text-gray-600">
-                    {agents.length} agente{agents.length !== 1 ? 's' : ''} encontrado{agents.length !== 1 ? 's' : ''}
+                    {agents.length} membro{agents.length !== 1 ? 's' : ''} encontrado{agents.length !== 1 ? 's' : ''}
                 </div>
             </div>
 
