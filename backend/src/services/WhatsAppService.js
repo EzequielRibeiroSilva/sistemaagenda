@@ -171,15 +171,25 @@ Desejamos muita saúde, paz e sucesso no seu novo ciclo. Esperamos te ver em bre
 Um abraço da equipe ${nomeNegocio}! 🤗`;
   }
 
-  async sendBirthdayMessage({ clienteTelefone, clienteNome, nomeNegocio }) {
+  async sendBirthdayMessage({ unidade_id, clienteTelefone, clienteNome, nomeNegocio }) {
     try {
       if (!this.isEnabled()) {
         logger.log('⚠️ [WhatsApp] Serviço desabilitado');
         return { success: false, error: 'Serviço WhatsApp desabilitado' };
       }
 
+      if (!unidade_id) {
+        return {
+          success: false,
+          error: {
+            code: 'unidade_id_required',
+            message: 'unidade_id é obrigatório para envio multi-tenant de mensagem de aniversário'
+          }
+        };
+      }
+
       const message = this.generateBirthdayMessage({ clienteNome, nomeNegocio });
-      const result = await this.sendMessage(clienteTelefone, message);
+      const result = await this.sendMessageForAgendamento({ unidade_id }, clienteTelefone, message);
 
       if (!result.success) {
         logger.error(`❌ [WhatsApp] Falha ao enviar feliz aniversário para ${clienteNome}:`, result.error);
@@ -365,8 +375,26 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
     const instance = await this.getWhatsAppInstanceForUsuario(usuarioId);
 
     if (!instance) {
-      // fallback legado
-      return await this.sendMessage(phoneNumber, message);
+      const unidadeId = agendamentoData?.unidade_id || agendamentoData?.unidade?.id;
+      const reason = !usuarioId
+        ? 'owner_usuario_id_not_resolved'
+        : 'whatsapp_instance_not_configured';
+
+      logger.error('❌ [WhatsApp] Envio bloqueado (multi-tenant obrigatório).');
+      logger.error('❌ [WhatsApp] Motivo:', reason);
+      logger.error('❌ [WhatsApp] Contexto:', JSON.stringify({
+        unidadeId,
+        usuarioId,
+        phoneNumber: phoneNumber ? this.formatPhoneNumber(phoneNumber) : null
+      }, null, 2));
+
+      return {
+        success: false,
+        error: {
+          code: reason,
+          message: 'WhatsApp não conectado para esta unidade/usuário. Conecte o WhatsApp nas configurações para habilitar envios.'
+        }
+      };
     }
 
     return await this.sendMessageViaInstance({
@@ -552,7 +580,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
         dataFimStr: data_fim
       });
 
-      const result = await this.sendMessage(cliente_telefone, message);
+      const result = await this.sendMessageForAgendamento({ unidade_id }, cliente_telefone, message);
 
       if (!skipRegister) {
         await this.registrarNotificacao({
@@ -603,7 +631,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
         dataFimStr: data_fim
       });
 
-      const result = await this.sendMessage(admin_telefone, message);
+      const result = await this.sendMessageForAgendamento({ unidade_id }, admin_telefone, message);
 
       if (!skipRegister) {
         await this.registrarNotificacao({

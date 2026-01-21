@@ -193,7 +193,12 @@ class ReminderService {
         const texto = msg.mensagem_enviada || this.whatsappService.generateBirthdayMessage({ clienteNome, nomeNegocio });
 
         try {
-          const result = await this.whatsappService.sendMessage(msg.telefone_destino, texto);
+          const result = await this.whatsappService.sendBirthdayMessage({
+            unidade_id: msg.unidade_id,
+            clienteTelefone: msg.telefone_destino,
+            clienteNome,
+            nomeNegocio
+          });
 
           if (result.success) {
             await this.updateBirthdayStatus(msg.id, 'enviado', {
@@ -390,6 +395,7 @@ class ReminderService {
           db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
+          'u.usuario_id as unidade_usuario_id',
           'u.nome as unidade_nome',
           'u.telefone as unidade_telefone',
           'u.endereco as unidade_endereco'
@@ -477,6 +483,7 @@ class ReminderService {
           db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
+          'u.usuario_id as unidade_usuario_id',
           'u.nome as unidade_nome',
           'u.telefone as unidade_telefone',
           'u.endereco as unidade_endereco'
@@ -559,6 +566,7 @@ class ReminderService {
           db.raw("CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')) as agente_nome"),
           'ag.telefone as agente_telefone',
           'u.id as unidade_id',
+          'u.usuario_id as unidade_usuario_id',
           'u.nome as unidade_nome',
           'u.slug_url as unidade_slug',
           'u.telefone as unidade_telefone',
@@ -591,6 +599,7 @@ class ReminderService {
           db.raw('NULL::text as agente_nome'),
           db.raw('NULL::text as agente_telefone'),
           'u.id as unidade_id',
+          'u.usuario_id as unidade_usuario_id',
           'u.nome as unidade_nome',
           'u.slug_url as unidade_slug',
           'u.telefone as unidade_telefone',
@@ -757,7 +766,10 @@ class ReminderService {
         agente: {
           nome: appointment.agente_nome
         },
+        unidade_id: appointment.unidade_id,
         unidade: {
+          id: appointment.unidade_id,
+          usuario_id: appointment.unidade_usuario_id,
           nome: appointment.unidade_nome,
           endereco: appointment.unidade_endereco
         },
@@ -970,11 +982,13 @@ class ReminderService {
             agente: {
               nome: reminder.agente_nome
             },
+            unidade_id: reminder.unidade_id,
             unidade: {
               nome: reminder.unidade_nome,
               endereco: reminder.unidade_endereco,
               slug_url: reminder.unidade_slug,
-              id: reminder.unidade_id
+              id: reminder.unidade_id,
+              usuario_id: reminder.unidade_usuario_id
             },
             data_agendamento: reminder.data_agendamento,
             hora_inicio: reminder.hora_inicio,
