@@ -75,11 +75,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (response.ok) {
               const validationData = await response.json();
 
-              
+              const meResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${storedToken}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+
+              const mePayload = meResponse.ok ? await meResponse.json() : null;
+              const meUser = mePayload?.data?.user;
+              const userData = meUser || validationData.data;
+
               // Restaurar estado do usuário baseado no token válido
               let frontendRole: User['role'] = 'none';
-              
-              switch (validationData.data.role) {
+
+              switch (userData.role) {
                 case 'MASTER':
                   frontendRole = 'MASTER';
                   break;
@@ -98,15 +109,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setUser({
                 role: frontendRole,
                 // ✅ CORREÇÃO CRÍTICA: Para AGENTE, usar agente_id do backend, não o user.id
-                agentId: validationData.data.agente_id?.toString() || null,
+                agentId: userData.agente_id?.toString() || null,
                 email: storedUserEmail,
-                avatarUrl: validationData.data.avatar_url || null,
-                permissions: validationData.data.permissions,
-                userData: validationData.data,
+                avatarUrl: userData.avatar_url || null,
+                permissions: userData.permissions,
+                userData: userData,
                 // Campos críticos para regras de negócio
-                id: validationData.data.id,
-                unidade_id: validationData.data.unidade_id,
-                plano: validationData.data.plano
+                id: userData.id,
+                unidade_id: userData.unidade_id,
+                plano: userData.plano
               });
             } else {
               // Token inválido, limpar storage

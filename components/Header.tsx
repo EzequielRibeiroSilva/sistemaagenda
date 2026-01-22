@@ -21,7 +21,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, onEditClient, onNavigateToCalendar, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
   const [isModalOpen, setModalOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -189,7 +189,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
               aria-haspopup="true"
               aria-expanded={isDropdownOpen}
             >
-              {user.avatarUrl ? (
+              {!isLoading && user.avatarUrl ? (
                 <img
                   src={getAssetUrl(user.avatarUrl)}
                   alt="User Avatar"
@@ -205,7 +205,9 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                   }}
                 />
               ) : null}
-              <div className={`h-9 w-9 rounded-full bg-gray-300 flex items-center justify-center ${user.avatarUrl ? 'hidden' : ''}`}>
+              <div
+                className={`h-9 w-9 rounded-full bg-gray-300 flex items-center justify-center ${!isLoading && user.avatarUrl ? 'hidden' : ''} ${isLoading ? 'animate-pulse' : ''}`}
+              >
                 <FaUser className="h-5 w-5 text-gray-600" />
               </div>
             </button>
