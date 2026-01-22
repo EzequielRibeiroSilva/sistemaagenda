@@ -54,6 +54,9 @@ class AuthMiddleware {
           });
         }
 
+        // Unidade efetiva: prioriza banco, mas usa fallback do token para evitar perda de contexto no reload
+        const effectiveUnidadeId = usuario.unidade_id || decoded.unidade_id;
+
         // Buscar avatar_url baseado no role do usuário
         let avatarUrl = null;
         if (usuario.role === 'AGENTE') {
@@ -68,12 +71,12 @@ class AuthMiddleware {
           if (agente) {
             avatarUrl = agente.avatar_url;
           }
-        } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && usuario.unidade_id) {
+        } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && effectiveUnidadeId) {
           // Para admins e masters: buscar logo_url das configurações da unidade
           const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
           const { db } = require('../config/knex');
           const configuracaoModel = new ConfiguracaoSistema(db);
-          const configuracao = await configuracaoModel.findByUnidade(usuario.unidade_id);
+          const configuracao = await configuracaoModel.findByUnidade(effectiveUnidadeId);
 
           if (configuracao && configuracao.logo_url) {
             avatarUrl = configuracao.logo_url;
@@ -99,7 +102,7 @@ class AuthMiddleware {
           ...usuario,
           // Garantir que as informações RBAC estejam disponíveis
           role: usuario.role || decoded.role,
-          unidade_id: usuario.unidade_id || decoded.unidade_id,
+          unidade_id: effectiveUnidadeId,
           agente_id: decoded.agente_id, // ✅ CRÍTICO: ID do agente na tabela agentes (para role='AGENTE')
           avatar_url: avatarUrl
         };
