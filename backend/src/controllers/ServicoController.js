@@ -283,10 +283,10 @@ class ServicoController extends BaseController {
         });
       }
 
-      if (!duracao_minutos || duracao_minutos < 1) {
+      if (duracao_minutos === undefined || duracao_minutos === null || Number.isNaN(Number(duracao_minutos)) || Number(duracao_minutos) < 0) {
         return res.status(400).json({
           success: false,
-          error: 'Duração deve ser maior que zero'
+          error: 'Duração deve ser maior ou igual a zero'
         });
       }
 
@@ -423,10 +423,10 @@ class ServicoController extends BaseController {
         });
       }
 
-      if (duracao_minutos !== undefined && duracao_minutos < 1) {
+      if (duracao_minutos !== undefined && (duracao_minutos === null || Number.isNaN(Number(duracao_minutos)) || Number(duracao_minutos) < 0)) {
         return res.status(400).json({
           success: false,
-          error: 'Duração deve ser maior que zero'
+          error: 'Duração deve ser maior ou igual a zero'
         });
       }
 

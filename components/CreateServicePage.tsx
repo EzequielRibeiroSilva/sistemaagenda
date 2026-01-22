@@ -257,8 +257,8 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
             return;
         }
 
-        if (duracaoMinutos < 1) {
-            toast.warning('Duração Inválida', 'A duração deve ser maior que zero.');
+        if (duracaoMinutos < 0) {
+            toast.warning('Duração Inválida', 'A duração deve ser maior ou igual a zero.');
             return;
         }
 
@@ -512,9 +512,9 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                 <div className="pt-2">
                     <button
                         type="submit"
-                        disabled={submitting || !nome.trim() || duracaoMinutos < 1}
+                        disabled={submitting || !nome.trim() || duracaoMinutos < 0}
                         className={`font-semibold px-6 py-2.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                            submitting || !nome.trim() || duracaoMinutos < 1
+                            submitting || !nome.trim() || duracaoMinutos < 0
                                 ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                                 : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}

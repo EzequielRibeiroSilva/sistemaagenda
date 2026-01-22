@@ -287,8 +287,8 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
             return;
         }
 
-        if (duracaoMinutos < 1) {
-            toast.warning('Duração Inválida', 'A duração deve ser maior que zero.');
+        if (duracaoMinutos < 0) {
+            toast.warning('Duração Inválida', 'A duração deve ser maior ou igual a zero.');
             return;
         }
 
