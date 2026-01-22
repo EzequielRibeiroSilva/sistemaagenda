@@ -96,30 +96,4 @@ router.post('/change-password',
   }
 );
 
-/**
- * @route GET /auth/validate
- * @desc Validar se token é válido (para frontend)
- * @access Private
- * @headers Authorization: Bearer <token>
- * @returns { success: boolean, data: { valid: boolean, user: object } }
- */
-router.get('/validate', authenticate(), async (req, res) => {
-  try {
-    return res.json({
-      success: true,
-      data: {
-        valid: true,
-        user: req.user
-      }
-    });
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      data: {
-        valid: false
-      }
-    });
-  }
-});
-
 module.exports = router;

@@ -15,6 +15,9 @@ const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware
 
 const app = express();
 
+// Desabilitar ETag para evitar respostas 304 em endpoints JSON da API
+app.set('etag', false);
+
 // ✅ CORREÇÃO: Configurar trust proxy para produção (nginx/proxy reverso)
 // Necessário para express-rate-limit funcionar corretamente com X-Forwarded-For
 if (process.env.NODE_ENV === 'production') {
@@ -158,6 +161,22 @@ app.use('/api/', limiter);
 // Middleware de parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Evitar cache em rotas sensíveis de autenticação (perfil/token)
+app.use('/api/auth', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+// Evitar cache em rotas sensíveis de WhatsApp (status/polling)
+app.use('/api/whatsapp', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // ✅ CORREÇÃO 1.4: Sanitização global de inputs (XSS + SQL Injection)
 const { sanitizeInput, detectSQLInjection } = require('./middleware/validation');

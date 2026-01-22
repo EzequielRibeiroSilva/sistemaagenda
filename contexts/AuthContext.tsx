@@ -66,6 +66,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           try {
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/validate`, {
               method: 'GET',
+              cache: 'no-store',
               headers: {
                 'Authorization': `Bearer ${storedToken}`,
                 'Content-Type': 'application/json'
@@ -77,6 +78,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
               const meResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                   'Authorization': `Bearer ${storedToken}`,
                   'Content-Type': 'application/json'
@@ -85,7 +87,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
               const mePayload = meResponse.ok ? await meResponse.json() : null;
               const meUser = mePayload?.data?.user;
-              const userData = meUser || validationData.data;
+              const validateUser = validationData?.data?.user || validationData?.data;
+              const userData = meUser || validateUser;
 
               // Restaurar estado do usuário baseado no token válido
               let frontendRole: User['role'] = 'none';
