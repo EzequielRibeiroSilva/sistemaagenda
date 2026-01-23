@@ -69,6 +69,7 @@ interface FilterDropdownProps {
 
 const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selectedValue, onSelect }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [openUpwards, setOpenUpwards] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -82,6 +83,17 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!dropdownRef.current) return;
+
+        const rect = dropdownRef.current.getBoundingClientRect();
+        const estimatedMenuHeight = 260;
+        const spaceBelow = window.innerHeight - rect.bottom;
+
+        setOpenUpwards(spaceBelow < estimatedMenuHeight);
+    }, [isOpen]);
     
     const selectedOptionLabel = options.find(opt => opt.value === selectedValue)?.label || options[0]?.label;
 
@@ -95,7 +107,9 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
                 <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1">
+                <div
+                    className={`absolute left-0 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1 max-h-60 overflow-y-auto ${openUpwards ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+                >
                     {options.map(option => (
                         <a
                             key={option.value}
@@ -205,6 +219,7 @@ interface PreviewSectionProps {
   backendAgentes?: BackendAgente[]; // ✅ NOVO: Agentes do backend para detalhes
   calendarExceptions?: Record<string, CalendarException[]>; // ✅ NOVO: Exceções de calendário
   isDateBlockedByException?: (date: Date, locationId: string) => CalendarException | null; // ✅ NOVO: Função para verificar bloqueios
+  onFilterChange?: (filters: { date: Date; location: string }) => void; // ✅ NOVO: Callback para mudar filtros
 }
 
 const PreviewSection: React.FC<PreviewSectionProps> = ({
@@ -589,6 +604,8 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
     return Math.max(600, columns * 140);
   }, [hours.length]);
 
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+
   // ✅ CORREÇÃO: Remover opção "Todos os Locais" (igual CalendarPage)
   // Sempre deve haver um local específico selecionado
   const locationOptions = locations.map(loc => ({ 
@@ -623,10 +640,53 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
           </div>
         </div>
 
-         <button className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden">
+         <button
+            className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden"
+            onClick={() => setIsMobileFiltersOpen(true)}
+            aria-label="Abrir filtros"
+         >
             <MoreHorizontal className="h-5 w-5" />
         </button>
       </div>
+
+      {isMobileFiltersOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-40 z-30 lg:hidden"
+            onClick={() => setIsMobileFiltersOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
+            <div className="bg-white rounded-t-2xl shadow-2xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-base font-semibold">Filtros</div>
+                <button
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                  onClick={() => setIsMobileFiltersOpen(false)}
+                  aria-label="Fechar filtros"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <DatePicker
+                  mode="single"
+                  selectedDate={selectedDate}
+                  onDateChange={(date) => handleDateChange(date as Date)}
+                />
+
+                <FilterDropdown
+                  label=""
+                  options={locationOptions}
+                  selectedValue={selectedLocation}
+                  onSelect={setSelectedLocation}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       
       <div className="relative" ref={scheduleContainerRef}>
         <div className="overflow-x-auto overflow-y-hidden">
@@ -775,7 +835,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                     return (
                       <div
                         key={slotId}
-                        className="absolute h-full cursor-pointer z-30"
+                        className="absolute h-full cursor-pointer z-0"
                         style={{
                           ...getSlotStyle(hour, hour + 1)
                         }}
@@ -834,11 +894,11 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   return (
                     <div
                       key={card.id}
-                      className={`absolute inset-y-0 box-border px-2 py-1 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-40 flex flex-col justify-center`}
+                      className={`absolute inset-y-0 box-border px-2 py-1 rounded-lg ${cardClasses} cursor-pointer hover:opacity-90 transition-opacity z-10 flex flex-col justify-center`}
                       style={{
                         ...positionStyle,
                         backgroundColor,
-                        zIndex: 40
+                        zIndex: 10
                       }}
                       onMouseEnter={(e) => handleAppointmentCardMouseEnter(e, card)}
                       onMouseLeave={handleSlotMouseLeave}

@@ -11,6 +11,19 @@ interface DatePickerProps {
 
 const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, selectedRange, onDateChange }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [dropdownWidth, setDropdownWidth] = useState<number>(() => {
+        if (typeof window === 'undefined') {
+            return mode === 'range' ? 480 : 280;
+        }
+
+        const isMobile = window.innerWidth < 1024;
+        const ideal = isMobile ? 360 : (mode === 'range' ? 480 : 280);
+        return Math.min(ideal, Math.max(240, window.innerWidth - 16));
+    });
+    const [isMobileView, setIsMobileView] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        return window.innerWidth < 1024;
+    });
     
     // State for range selection
     const [startDate, setStartDate] = useState<Date | null>(() => {
@@ -44,12 +57,32 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
         };
     }, []);
 
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobileView(window.innerWidth < 1024);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+        };
+    }, []);
+
     // Calcular posição do dropdown quando abrir
     useEffect(() => {
         if (isOpen && buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
-            const calendarWidth = mode === 'range' ? 480 : 280; // Reduzido: 480px para range, 280px para single
-            const calendarHeight = mode === 'range' ? 320 : 300; // Reduzido: altura mais compacta
+            const idealWidth = isMobileView ? 360 : (mode === 'range' ? 480 : 280);
+            const clampedWidth = Math.min(idealWidth, Math.max(240, window.innerWidth - 16));
+            setDropdownWidth(clampedWidth);
+
+            const calendarWidth = clampedWidth;
+            const calendarHeight = mode === 'range' ? 360 : 320;
+
+            if (window.innerWidth < 1024) {
+                setDropdownPosition({ top: 0, left: 0 });
+                return;
+            }
             
             // Calcular posição ideal (alinhado à direita do botão)
             let leftPosition = rect.right - calendarWidth;
@@ -87,7 +120,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                 left: leftPosition
             });
         }
-    }, [isOpen, mode]);
+    }, [isOpen, mode, isMobileView]);
 
     useEffect(() => {
         if (isOpen) {
@@ -249,14 +282,28 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     const calendarDropdown = isOpen && portalRoot ? (
-        <div
-            ref={datePickerRef}
-            className={`fixed ${mode === 'range' ? 'w-[480px]' : 'w-[280px]'} bg-white rounded-lg shadow-xl border border-gray-200 z-[100]`}
-            style={{
-                top: `${dropdownPosition.top}px`,
-                left: `${dropdownPosition.left}px`
-            }}
-        >
+        <div className="fixed inset-0 z-[100]">
+            {isMobileView && (
+                <div
+                    className="absolute inset-0 bg-black bg-opacity-40"
+                    onClick={() => setIsOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
+
+            <div
+                ref={datePickerRef}
+                className={`absolute bg-white rounded-lg shadow-xl border border-gray-200 max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-auto ${isMobileView ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2' : ''}`}
+                style={
+                    isMobileView
+                        ? { width: `${dropdownWidth}px` }
+                        : {
+                              top: `${dropdownPosition.top}px`,
+                              left: `${dropdownPosition.left}px`,
+                              width: `${dropdownWidth}px`
+                          }
+                }
+            >
                     <div className="flex justify-between items-center p-3 border-b">
                         <button type="button" onClick={prevMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronLeft className="h-4 w-4 text-gray-600" /></button>
                         <div className="flex-1 flex justify-around">
@@ -264,9 +311,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                         </div>
                         <button type="button" onClick={nextMonth} className="p-1.5 rounded-full hover:bg-gray-100"><ChevronRight className="h-4 w-4 text-gray-600" /></button>
                     </div>
-                    <div className="flex">
-                        <div className={mode === 'range' ? 'w-1/2 border-r' : 'w-full'}>{renderCalendar(currentMonth, currentYear)}</div>
-                        {mode === 'range' && <div className="w-1/2">{renderCalendar(nextCalendarMonth, nextCalendarYear)}</div>}
+                    <div className="flex flex-col sm:flex-row">
+                        <div className={mode === 'range' ? 'w-full sm:w-1/2 sm:border-r' : 'w-full'}>{renderCalendar(currentMonth, currentYear)}</div>
+                        {mode === 'range' && <div className="w-full sm:w-1/2">{renderCalendar(nextCalendarMonth, nextCalendarYear)}</div>}
                     </div>
                     {mode === 'range' && (
                         <div className="flex justify-end p-3 border-t">
@@ -274,6 +321,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                             <button type="button" onClick={handleApply} className="ml-2 px-3 py-1.5 text-xs font-semibold text-white bg-[#2663EB] rounded-lg hover:bg-[#1d4ed8]">Aplicar</button>
                         </div>
                     )}
+            </div>
         </div>
     ) : null;
 

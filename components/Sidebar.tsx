@@ -344,13 +344,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
   return (
     <>
        <div 
-        className={`fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden transition-opacity ${isOpenOnMobile ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden transition-opacity ${isOpenOnMobile ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ pointerEvents: isOpenOnMobile ? 'auto' : 'none' }}
         onClick={() => setOpenOnMobile(false)}
         aria-hidden="true"
       ></div>
        <div
-        className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-gray-200 flex flex-col w-64 transition-transform duration-300 ease-in-out lg:relative lg:z-30 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64 transition-transform duration-300 ease-in-out lg:relative lg:z-30 lg:translate-x-0 ${
           isOpenOnMobile ? 'translate-x-0' : '-translate-x-full'
         } ${ isCollapsed ? 'lg:w-20' : 'lg:w-64' }`}
       >

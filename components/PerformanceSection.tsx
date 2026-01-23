@@ -129,6 +129,8 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
   const now = new Date();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   
   const [dateRange, setDateRange] = useState<{ startDate: Date | null; endDate: Date | null }>({
     startDate: firstDayOfMonth,
@@ -205,10 +207,71 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
             onDateChange={(range) => setDateRange(range as { startDate: Date | null; endDate: Date | null })} 
           />
         </div>
-        <button className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden">
+        <button
+          className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden"
+          onClick={() => setIsMobileFiltersOpen(true)}
+          aria-label="Abrir filtros"
+        >
             <MoreHorizontal className="h-5 w-5" />
         </button>
       </div>
+
+      {isMobileFiltersOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-40 z-30 lg:hidden"
+            onClick={() => setIsMobileFiltersOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
+            <div className="bg-white rounded-t-2xl shadow-2xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-base font-semibold">Filtros</div>
+                <button
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                  onClick={() => setIsMobileFiltersOpen(false)}
+                  aria-label="Fechar filtros"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {shouldShowLocationFilter && (
+                  <FilterDropdown
+                    label=""
+                    options={locationOptions}
+                    selectedValue={selectedLocation}
+                    onSelect={setSelectedLocation}
+                    disabled={shouldDisableLocationFilter}
+                  />
+                )}
+
+                <FilterDropdown
+                  label="Agentes"
+                  options={agentOptions}
+                  selectedValue={selectedAgent}
+                  onSelect={setSelectedAgent}
+                  disabled={!!loggedInAgentId}
+                />
+
+                <FilterDropdown
+                  label="Serviços"
+                  options={serviceOptions}
+                  selectedValue={selectedService}
+                  onSelect={setSelectedService}
+                />
+
+                <DatePicker
+                  mode="range"
+                  selectedRange={dateRange}
+                  onDateChange={(range) => setDateRange(range as { startDate: Date | null; endDate: Date | null })}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {metrics.map((metric, index) => (
