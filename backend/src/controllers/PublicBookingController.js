@@ -871,6 +871,32 @@ class PublicBookingController {
     const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
     const diaSemana = weekdayMap[weekdayStr] ?? new Date(data + 'T00:00:00').getDay();
 
+    const configuracoes = await db('configuracoes_sistema')
+      .where('unidade_id', unidadeIdParaUsar)
+      .select('tempo_limite_agendar_horas', 'periodo_futuro_dias')
+      .first();
+
+    const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
+    const periodoFuturoDias = Number.isFinite(configuracoes?.periodo_futuro_dias)
+      ? configuracoes.periodo_futuro_dias
+      : 365;
+
+    const hojeStr = this.getDateStrInTimeZone(tz);
+    const maxDiaAbs = this.dayNumberFromDateStr(hojeStr) * 1440 + (periodoFuturoDias * 1440);
+    const dataAbs = this.dayNumberFromDateStr(data) * 1440;
+
+    if (dataAbs > maxDiaAbs) {
+      return {
+        agente_id: parseInt(agenteId),
+        data: data,
+        dia_semana: diaSemana,
+        duracao_minutos: duracaoMinutos,
+        slots_disponiveis: [],
+        total_slots: 0,
+        message: `Data fora do período permitido para agendamento (máximo: ${periodoFuturoDias} dia(s))`
+      };
+    }
+
       // ✅ CRÍTICO: Bloquear datas com exceções do AGENTE (DIA INTEIRO)
     const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(parseInt(agenteId), data);
     if (excecaoAgenteDiaInteiro) {
@@ -906,13 +932,6 @@ class PublicBookingController {
       };
     }
 
-      // ✅ NOVO: Buscar configurações da unidade para tempo_limite_agendar_horas
-    const configuracoes = await db('configuracoes_sistema')
-      .where('unidade_id', unidadeIdParaUsar)
-      .select('tempo_limite_agendar_horas')
-      .first();
-
-    const tempoLimiteHoras = configuracoes?.tempo_limite_agendar_horas || 0;
     logger.log(`[PublicBooking] 🔍 Tempo limite para agendar: ${tempoLimiteHoras} hora(s)`);
 
       // 1. HIERARQUIA: Buscar horários de funcionamento da UNIDADE
@@ -1071,7 +1090,14 @@ class PublicBookingController {
         });
       }
 
-    const horariosDisponiveis = slotsDisponiveis;
+    const uniqueSlotsMap = new Map();
+    for (const slot of (Array.isArray(slotsDisponiveis) ? slotsDisponiveis : [])) {
+      const key = `${slot.hora_inicio}-${slot.hora_fim}`;
+      if (!uniqueSlotsMap.has(key)) {
+        uniqueSlotsMap.set(key, slot);
+      }
+    }
+    const horariosDisponiveis = Array.from(uniqueSlotsMap.values());
 
     return {
       agente_id: parseInt(agenteId),

@@ -574,7 +574,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
           candidate = new Date(today);
         }
 
-        for (let i = 0; i <= maxDaysToSearch; i++) {
+        for (let i = 0; i < maxDaysToSearch; i++) {
           if (autoSelectDateRequestRef.current !== requestId) return;
 
           const dayOfWeek = candidate.getDay();
@@ -1122,6 +1122,20 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     // ✅ CORREÇÃO: Usar formatDateToYYYYMMDD em vez de toISOString para evitar problemas de timezone
     const dateStr = formatDateToYYYYMMDD(date);
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const maxDaysAllowed = (salonData?.configuracoes?.periodo_futuro_dias ?? 365);
+    const maxDateAllowed = new Date(today);
+    maxDateAllowed.setDate(maxDateAllowed.getDate() + maxDaysAllowed);
+
+    if (date > maxDateAllowed) {
+      setNoSlotsMessage(`Data fora do período permitido para agendamento (máximo: ${maxDaysAllowed} dia(s)).`);
+      setAvailableTimeSlots([]);
+      setSelectedTime(null);
+      setTempSelectedTime('');
+      return;
+    }
+
     // ✅ IMPORTANTE: Cancelar qualquer auto-seleção em andamento para não sobrescrever o clique do usuário
     autoSelectDateRequestRef.current++;
 
@@ -1207,8 +1221,48 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     };
 
     const Calendar = () => {
-      const handlePrevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
-      const handleNextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const maxDaysAllowed = (salonData?.configuracoes?.periodo_futuro_dias ?? 365);
+      const maxDateAllowed = new Date(today);
+      maxDateAllowed.setDate(maxDateAllowed.getDate() + maxDaysAllowed);
+      const maxMonthStart = new Date(maxDateAllowed.getFullYear(), maxDateAllowed.getMonth(), 1);
+
+      const clearSelectionIfOutOfView = (nextView: Date) => {
+        if (!selectedDate) return;
+        const sameMonth = selectedDate.getFullYear() === nextView.getFullYear() && selectedDate.getMonth() === nextView.getMonth();
+        if (!sameMonth) {
+          setSelectedDate(null);
+          setSelectedTime(null);
+          setTempSelectedTime('');
+          setAvailableTimeSlots([]);
+          setNoSlotsMessage(null);
+        }
+      };
+
+      const handlePrevMonth = () => {
+        const prev = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
+        clearSelectionIfOutOfView(prev);
+        setViewDate(prev);
+      };
+      const handleNextMonth = () => {
+        const next = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1);
+        if (next.getTime() > maxMonthStart.getTime()) {
+          clearSelectionIfOutOfView(maxMonthStart);
+          setViewDate(new Date(maxMonthStart));
+          return;
+        }
+        clearSelectionIfOutOfView(next);
+        setViewDate(next);
+      };
+
+      useEffect(() => {
+        const maxMonthTime = maxMonthStart.getTime();
+        if (viewDate.getTime() > maxMonthTime) {
+          setViewDate(new Date(maxMonthStart));
+        }
+      }, [maxMonthStart, viewDate]);
 
       const year = viewDate.getFullYear();
       const month = viewDate.getMonth();
@@ -1216,8 +1270,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
       const dayOfWeekOffset = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const isNextMonthDisabled = new Date(year, month + 1, 1).getTime() > maxMonthStart.getTime();
 
       return (
         <div className="bg-white p-3 rounded-lg border border-gray-200">
@@ -1228,7 +1281,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             <h3 className="font-bold text-gray-800 capitalize">
               {viewDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}
             </h3>
-            <button onClick={handleNextMonth} className="p-2 rounded-full hover:bg-gray-100">
+            <button
+              onClick={handleNextMonth}
+              disabled={isNextMonthDisabled}
+              className={`p-2 rounded-full ${isNextMonthDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-100'}`}
+            >
               <ChevronLeft className="w-5 h-5 text-gray-500 rotate-180" />
             </button>
           </div>
@@ -1245,7 +1302,8 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               const dayOfWeek = date.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
               const isDayAvailable = availableDays.includes(dayOfWeek); // ✅ CORREÇÃO: Usar interseção unidade + agente
               const isPastDate = date < today;
-              const isAvailable = date >= today && isDayAvailable; // ✅ Só disponível se for futuro E (unidade aberta E agente trabalha)
+              const isBeyondLimit = date > maxDateAllowed;
+              const isAvailable = date >= today && !isBeyondLimit && isDayAvailable;
               const isSelected = selectedDate?.toDateString() === date.toDateString();
 
               // Determinar estilo baseado no status do dia
@@ -1276,6 +1334,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                   className={`relative flex flex-col items-center justify-center h-12 rounded-lg transition-colors focus:outline-none ${buttonStyle}`}
                   title={
                     isPastDate ? 'Data já passou' :
+                    isBeyondLimit ? 'Data fora do período permitido para agendamento' :
                     !isDayAvailable ? 'Local fechado ou agente não trabalha neste dia' :
                     'Clique para selecionar'
                   }
@@ -1321,7 +1380,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {availableTimeSlots.map(slot => (
                     <button
-                      key={slot.hora_inicio}
+                      key={`${slot.hora_inicio}-${slot.hora_fim}`}
                       onClick={() => setTempSelectedTime(slot.hora_inicio)}
                       className={`p-3 rounded-lg border font-semibold text-center transition-colors ${
                         tempSelectedTime === slot.hora_inicio ? 'bg-[#2663EB] text-white border-[#2663EB]' :
