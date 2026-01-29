@@ -37,7 +37,7 @@ class WhatsAppTestController {
         unidade: {
           nome: 'Unidade 1'
         },
-        data_agendamento: new Date().toISOString().split('T')[0],
+        data_agendamento: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
         hora_inicio: '14:00:00',
         hora_fim: '15:00:00',
         valor_total: '50.00',
@@ -127,7 +127,7 @@ class WhatsAppTestController {
         unidade: {
           nome: 'Unidade 1'
         },
-        data_agendamento: new Date().toISOString().split('T')[0],
+        data_agendamento: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
         hora_inicio: '14:00:00',
         hora_fim: '15:00:00',
         valor_total: '50.00',

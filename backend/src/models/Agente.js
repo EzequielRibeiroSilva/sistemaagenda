@@ -86,7 +86,7 @@ class Agente extends BaseModel {
           try {
             // ✅ CORREÇÃO: Contar apenas agendamentos do dia corrente
             const hoje = new Date();
-            const dataHoje = hoje.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+            const dataHoje = hoje.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // Formato YYYY-MM-DD
             
             const agendamentosCount = await this.db('agendamentos')
               .where('agente_id', agente.id)

@@ -138,7 +138,7 @@ class AgendamentoController extends BaseController {
               const agendamentoDate = agendamento.data_agendamento;
               // Converter Date para string no formato YYYY-MM-DD
               const dateString = agendamentoDate instanceof Date
-                ? agendamentoDate.toISOString().split('T')[0]
+                ? agendamentoDate.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
                 : agendamentoDate;
               return dateString === data_agendamento;
             });
@@ -276,7 +276,7 @@ class AgendamentoController extends BaseController {
           if (time_filter) {
 
             const now = new Date();
-            const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+            const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // YYYY-MM-DD
             const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
 
 
@@ -770,7 +770,7 @@ class AgendamentoController extends BaseController {
             pontos: pontosGerados,
             valor_real: valorTotal,
             descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
-            data_validade: dataValidade.toISOString().split('T')[0],
+            data_validade: dataValidade.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
             expirado: false,
             created_at: new Date()
           });
@@ -1197,11 +1197,11 @@ class AgendamentoController extends BaseController {
             const cycleEnd = new Date(cycleStart);
             cycleEnd.setDate(cycleEnd.getDate() + validadeDias - 1);
             
-            const cycleStartStr = cycleStart.toISOString().split('T')[0];
-            const cycleEndStr = cycleEnd.toISOString().split('T')[0];
+            const cycleStartStr = cycleStart.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+            const cycleEndStr = cycleEnd.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
             const cycleEndExclusive = new Date(cycleEnd);
             cycleEndExclusive.setDate(cycleEndExclusive.getDate() + 1);
-            const cycleEndExclusiveStr = cycleEndExclusive.toISOString().split('T')[0];
+            const cycleEndExclusiveStr = cycleEndExclusive.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
             const itens = await planoAssinaturaModel.findItens(planoAssinatura.id);
             const itemIds = (itens || []).map(i => parseInt(i.id, 10)).filter(n => Number.isFinite(n));

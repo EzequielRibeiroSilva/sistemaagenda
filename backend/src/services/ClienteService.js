@@ -190,7 +190,7 @@ class ClienteService {
       data_nascimento: dadosCliente.data_nascimento || null,
       is_assinante: Boolean(dadosCliente.is_assinante),
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || 
-        (dadosCliente.is_assinante ? new Date().toISOString().split('T')[0] : null),
+        (dadosCliente.is_assinante ? new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) : null),
       status: dadosCliente.status || 'Ativo',
       whatsapp_id: dadosCliente.whatsapp_id || null
     };

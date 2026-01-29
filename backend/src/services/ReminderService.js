@@ -22,6 +22,12 @@ class ReminderService {
     return new Date(nowSP);
   }
 
+  getDateStrInSaoPaulo(daysOffset = 0) {
+    const dt = this.getNowInSaoPaulo();
+    dt.setDate(dt.getDate() + daysOffset);
+    return dt.toLocaleDateString('en-CA');
+  }
+
   getTodayStrInSaoPaulo() {
     const nowDate = this.getNowInSaoPaulo();
     return nowDate.toLocaleDateString('en-CA');
@@ -367,9 +373,7 @@ class ReminderService {
     try {
       logger.log('🔍 [ReminderService] Buscando agendamentos para lembrete de 24h...');
 
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const tomorrowStr = this.getDateStrInSaoPaulo(1);
 
       const appointments = await db('agendamentos as a')
         .leftJoin('lembretes_enviados as le', function() {
@@ -1005,7 +1009,7 @@ class ReminderService {
           let result;
           if (tipo_notificacao === 'convite_retorno') {
             // ✅ ANTI-SPAM: se já existe agendamento futuro na mesma unidade, não enviar
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = this.getTodayStrInSaoPaulo();
             const hasFutureAppointment = await db('agendamentos')
               .where('cliente_id', reminder.cliente_id)
               .where('unidade_id', reminder.unidade_id)

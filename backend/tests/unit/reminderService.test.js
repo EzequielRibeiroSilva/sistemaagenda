@@ -47,12 +47,13 @@ describe('⏰ Testes do Sistema de Lembretes (Cron Jobs)', () => {
       // Criar agendamento cancelado para amanhã
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       
       const [agendamentoCancelado] = await db('agendamentos').insert({
         cliente_id: cliente.id,
         agente_id: agente.id,
         unidade_id: unidade.id,
-        data_agendamento: tomorrow.toISOString().split('T')[0],
+        data_agendamento: tomorrowStr,
         hora_inicio: '16:00',
         hora_fim: '16:30',
         status: 'Cancelado', // Status cancelado

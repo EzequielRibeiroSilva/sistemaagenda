@@ -2090,7 +2090,7 @@ class PublicBookingController {
               pontos: pontosGerados,
               valor_real: valorTotal,
               descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
-              data_validade: dataValidade.toISOString().split('T')[0],
+              data_validade: dataValidade.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
               expirado: false,
               created_at: new Date()
             });

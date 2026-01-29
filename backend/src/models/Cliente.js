@@ -187,7 +187,7 @@ class Cliente extends BaseModel {
 
     // Validar dados de assinante
     if (dadosCliente.is_assinante && !dadosCliente.data_inicio_assinatura) {
-      dadosCliente.data_inicio_assinatura = new Date().toISOString().split('T')[0];
+      dadosCliente.data_inicio_assinatura = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     }
 
     if (dadosCliente.is_assinante) {
@@ -251,7 +251,7 @@ class Cliente extends BaseModel {
 
     // Validar dados de assinante
     if (dadosCliente.is_assinante && !dadosCliente.data_inicio_assinatura && !clienteExistente.data_inicio_assinatura) {
-      dadosCliente.data_inicio_assinatura = new Date().toISOString().split('T')[0];
+      dadosCliente.data_inicio_assinatura = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     }
 
     const isAssinanteFinal = typeof dadosCliente.is_assinante === 'boolean'
@@ -426,7 +426,7 @@ class Cliente extends BaseModel {
    */
   async calcularPontosDisponiveis(clienteId, unidadeId) {
     try {
-      const hoje = new Date().toISOString().split('T')[0];
+      const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
       // Buscar todos os créditos não expirados
       const creditos = await this.db('pontos_historico')
