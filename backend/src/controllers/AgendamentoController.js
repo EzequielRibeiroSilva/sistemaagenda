@@ -3,12 +3,15 @@ const Agendamento = require('../models/Agendamento');
 const WhatsAppService = require('../services/WhatsAppService'); // ✅ CORREÇÃO: Usar WhatsAppService
 const AuthService = require('../services/AuthService');
 const logger = require('../utils/logger');
+const RecurringAppointmentService = require('../services/RecurringAppointmentService');
+const ScheduledReminderService = require('../services/ScheduledReminderService');
 
 class AgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
     this.whatsAppService = new WhatsAppService(); // ✅ CORREÇÃO: Usar WhatsAppService
     this.authService = new AuthService();
+    this.scheduledReminderService = new ScheduledReminderService();
   }
 
   // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
@@ -348,7 +351,7 @@ class AgendamentoController extends BaseController {
 
 
 
-        await this.model.attachServicosAndExtras(data, { includeComissao: true });
+        await this.model.attachServicosAndExtras(data, { includeComissao: true, includeExtras: true });
 
         const total = await baseQuery.clone()
           .clearSelect()
@@ -448,7 +451,7 @@ class AgendamentoController extends BaseController {
           .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
-        await this.model.attachServicosAndExtras(data, { includeComissao: true });
+        await this.model.attachServicosAndExtras(data, { includeComissao: true, includeExtras: true });
 
       }
 
@@ -570,6 +573,7 @@ class AgendamentoController extends BaseController {
         servico_ids = [],
         servico_extra_ids = [],
         servicos = [], // Formato antigo para compatibilidade
+        recorrencia,
         ...outrosDados
       } = req.body;
 
@@ -705,41 +709,142 @@ class AgendamentoController extends BaseController {
         ...outrosDados
       };
 
-      // Criar agendamento com proteção contra race conditions
-      const agendamento = await this.model.createWithLock(dadosAgendamento);
+      // ✅ NOVO: Agendamento recorrente (MVP: fail_all com rollback)
+      // Se o payload incluir "recorrencia", criar série materializada.
+      if (recorrencia && typeof recorrencia === 'object') {
+        const recurringService = new RecurringAppointmentService({ agendamentoModel: this.model });
 
-      // Criar relacionamentos com serviços principais
-      if (servicosData.length > 0) {
-        const agendamentoServicos = servicosData.map(servico => ({
-          agendamento_id: agendamento.id,
-          servico_id: servico.id,
-          preco_aplicado: servico.preco
-        }));
+        try {
+          const result = await recurringService.createRecurringAppointments({
+            baseAgendamentoData: dadosAgendamento,
+            servicosData,
+            servicosExtrasData,
+            servicosLegacy: servicos,
+            recurrence: {
+              frequency: recorrencia.frequency,
+              range: recorrencia.range
+            }
+          });
 
-        await this.model.db('agendamento_servicos').insert(agendamentoServicos);
+          // ✅ Background: confirmação apenas da 1ª ocorrência + lembretes para todas as ocorrências
+          // - Confirmação: apenas primeira data da série
+          // - Lembretes: programar 24h e 1h (tipo_lembrete=2h) para CADA ocorrência
+          // Não bloqueia a resposta e funciona mesmo com WhatsApp desconectado (programação no DB).
+          setImmediate(async () => {
+            try {
+              const ocorrencias = Array.isArray(result?.ocorrencias) ? result.ocorrencias : [];
+
+              // 1) Enviar confirmação apenas para a 1ª ocorrência
+              const primeira = ocorrencias[0];
+              if (primeira?.id) {
+                try {
+                  const dadosCompletosPrimeira = await this.buscarDadosCompletos(primeira.id);
+                  if (dadosCompletosPrimeira?.cliente_telefone || dadosCompletosPrimeira?.agente_telefone) {
+                    logger.log(`📤 [AgendamentoController] (bg/recorrencia) Enviando confirmação WhatsApp para 1ª ocorrência #${primeira.id}`);
+                    await this.whatsAppService.sendAppointmentConfirmation(dadosCompletosPrimeira);
+                  }
+                } catch (confirmErr) {
+                  logger.error('❌ [AgendamentoController] (bg/recorrencia) Erro ao enviar confirmação da 1ª ocorrência:', confirmErr);
+                }
+              }
+
+              // 2) Programar lembretes para todas as ocorrências
+              for (const occ of ocorrencias) {
+                if (!occ?.id) continue;
+                try {
+                  await this.scheduledReminderService.criarLembretesProgramados({
+                    agendamento_id: occ.id,
+                    unidade_id: unidade_id,
+                    data_agendamento: occ.data_agendamento,
+                    hora_inicio: occ.hora_inicio,
+                    cliente_telefone: cliente_telefone
+                  });
+                } catch (scheduleErr) {
+                  logger.error(`❌ [AgendamentoController] (bg/recorrencia) Erro ao programar lembretes para ocorrência #${occ.id}:`, scheduleErr);
+                }
+              }
+            } catch (bgErr) {
+              logger.error('❌ [AgendamentoController] (bg/recorrencia) Erro geral no fluxo de notificação/lembretes:', bgErr);
+            }
+          });
+
+          return res.status(201).json({
+            success: true,
+            data: {
+              recorrencia_group_id: result.recorrencia_group_id,
+              recorrencia_config: result.recorrencia_config,
+              ocorrencias: result.ocorrencias
+            },
+            message: 'Agendamentos recorrentes criados com sucesso'
+          });
+        } catch (err) {
+          if (err && (err.code === 'RECURRENCE_CONFLICT' || err.code === 'CONFLICT')) {
+            return res.status(400).json({
+              success: false,
+              error: 'Conflito de horário',
+              message: 'Um ou mais agendamentos da recorrência colidem com horários já ocupados',
+              conflict: err.conflict
+            });
+          }
+
+          if (err && (err.code === 'INVALID_FREQUENCY' || err.code === 'INVALID_RANGE_MODE' || err.code === 'INVALID_RANGE_COUNT' || err.code === 'INVALID_RANGE_UNTIL' || err.code === 'INVALID_START_DATE')) {
+            return res.status(400).json({
+              success: false,
+              error: 'Recorrência inválida',
+              message: err.message
+            });
+          }
+
+          logger.error('❌ [AgendamentoController.store] Erro ao criar recorrência:', err);
+          return res.status(500).json({
+            success: false,
+            error: 'Erro interno do servidor',
+            message: 'Não foi possível criar agendamentos recorrentes'
+          });
+        }
       }
 
-      // Criar relacionamentos com serviços extras
-      if (servicosExtrasData.length > 0) {
-        const agendamentoServicosExtras = servicosExtrasData.map(extra => ({
-          agendamento_id: agendamento.id,
-          servico_extra_id: extra.id,
-          preco_aplicado: extra.preco
-        }));
+      // ✅ FASE 3: Persistência transacional (agendamento + vínculos em uma única trx)
+      const db = this.model.db;
+      let agendamento;
 
-        await this.model.db('agendamento_servicos_extras').insert(agendamentoServicosExtras);
-      }
+      await db.transaction(async (trx) => {
+        // Criar agendamento com proteção contra race conditions dentro da trx
+        agendamento = await this.model.createWithLockUsingTrx(trx, dadosAgendamento);
 
-      // Compatibilidade com formato antigo de serviços
-      if (servicos.length > 0) {
-        const agendamentoServicos = servicos.map(servico => ({
-          agendamento_id: agendamento.id,
-          servico_id: servico.servico_id,
-          preco_aplicado: servico.preco_aplicado
-        }));
+        // Criar relacionamentos com serviços principais
+        if (servicosData.length > 0) {
+          const agendamentoServicos = servicosData.map(servico => ({
+            agendamento_id: agendamento.id,
+            servico_id: servico.id,
+            preco_aplicado: servico.preco
+          }));
 
-        await this.model.db('agendamento_servicos').insert(agendamentoServicos);
-      }
+          await trx('agendamento_servicos').insert(agendamentoServicos);
+        }
+
+        // Criar relacionamentos com serviços extras
+        if (servicosExtrasData.length > 0) {
+          const agendamentoServicosExtras = servicosExtrasData.map(extra => ({
+            agendamento_id: agendamento.id,
+            servico_extra_id: extra.id,
+            preco_aplicado: extra.preco
+          }));
+
+          await trx('agendamento_servicos_extras').insert(agendamentoServicosExtras);
+        }
+
+        // Compatibilidade com formato antigo de serviços
+        if (servicos.length > 0) {
+          const agendamentoServicos = servicos.map(servico => ({
+            agendamento_id: agendamento.id,
+            servico_id: servico.servico_id,
+            preco_aplicado: servico.preco_aplicado
+          }));
+
+          await trx('agendamento_servicos').insert(agendamentoServicos);
+        }
+      });
 
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
@@ -893,6 +998,8 @@ class AgendamentoController extends BaseController {
         hora_fim,
         agente_id,
         data_agendamento,
+        servico_ids,
+        servico_extra_ids,
         status,
         forma_pagamento, // Frontend envia forma_pagamento
         observacoes,
@@ -952,8 +1059,74 @@ class AgendamentoController extends BaseController {
       if (cliente_id !== undefined) dadosParaAtualizar.cliente_id = cliente_id;
       if (unidade_id !== undefined) dadosParaAtualizar.unidade_id = unidade_id;
 
+      const shouldUpdateServicos = Array.isArray(servico_ids);
+      const shouldUpdateExtras = Array.isArray(servico_extra_ids);
 
+      const unidadeIdFinal = unidade_id !== undefined ? unidade_id : agendamento.unidade_id;
 
+      if ((shouldUpdateServicos || shouldUpdateExtras) && !unidadeIdFinal) {
+        return res.status(400).json({
+          success: false,
+          error: 'Unidade inválida',
+          message: 'unidade_id é obrigatório para atualizar serviços'
+        });
+      }
+
+      if (shouldUpdateServicos && servico_ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Serviços obrigatórios',
+          message: 'Deve selecionar pelo menos um serviço'
+        });
+      }
+
+      let servicosData = null;
+      let servicosExtrasData = null;
+
+      if (shouldUpdateServicos) {
+        servicosData = await this.model.db('servicos')
+          .join('unidade_servicos', 'servicos.id', 'unidade_servicos.servico_id')
+          .whereIn('servicos.id', servico_ids)
+          .where('servicos.status', 'Ativo')
+          .where('unidade_servicos.unidade_id', unidadeIdFinal)
+          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos');
+
+        if (servicosData.length !== servico_ids.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Serviços inválidos',
+            message: 'Um ou mais serviços não estão disponíveis nesta unidade'
+          });
+        }
+      }
+
+      if (shouldUpdateExtras) {
+        servicosExtrasData = await this.model.db('servicos_extras')
+          .whereIn('id', servico_extra_ids)
+          .where('status', 'Ativo')
+          .where('unidade_id', unidadeIdFinal)
+          .select('id', 'nome', 'preco', 'duracao_minutos');
+
+        if (servicosExtrasData.length !== servico_extra_ids.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Serviços extras inválidos',
+            message: 'Um ou mais serviços extras não estão disponíveis'
+          });
+        }
+      }
+
+      if (shouldUpdateServicos || shouldUpdateExtras) {
+        const valorServicos = Array.isArray(servicosData)
+          ? servicosData.reduce((total, servico) => total + parseFloat(servico.preco), 0)
+          : 0;
+
+        const valorExtras = Array.isArray(servicosExtrasData)
+          ? servicosExtrasData.reduce((total, extra) => total + parseFloat(extra.preco), 0)
+          : 0;
+
+        dadosParaAtualizar.valor_total = valorServicos + valorExtras;
+      }
       // Verificar conflito de horário se horário foi alterado
       if ((hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
           (hora_fim && hora_fim !== agendamento.hora_fim) ||
@@ -981,7 +1154,50 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      const data = await this.model.update(id, dadosParaAtualizar); // ✅ CORREÇÃO: usar dados filtrados
+      const db = this.model.db;
+
+      await db.transaction(async (trx) => {
+        await trx(this.model.tableName)
+          .where('id', id)
+          .update({
+            ...dadosParaAtualizar,
+            updated_at: new Date()
+          });
+
+        if (shouldUpdateServicos) {
+          await trx('agendamento_servicos')
+            .where('agendamento_id', id)
+            .del();
+
+          if (servicosData && servicosData.length > 0) {
+            const agendamentoServicos = servicosData.map(servico => ({
+              agendamento_id: parseInt(id),
+              servico_id: servico.id,
+              preco_aplicado: servico.preco
+            }));
+
+            await trx('agendamento_servicos').insert(agendamentoServicos);
+          }
+        }
+
+        if (shouldUpdateExtras) {
+          await trx('agendamento_servicos_extras')
+            .where('agendamento_id', id)
+            .del();
+
+          if (servicosExtrasData && servicosExtrasData.length > 0) {
+            const agendamentoServicosExtras = servicosExtrasData.map(extra => ({
+              agendamento_id: parseInt(id),
+              servico_extra_id: extra.id,
+              preco_aplicado: extra.preco
+            }));
+
+            await trx('agendamento_servicos_extras').insert(agendamentoServicosExtras);
+          }
+        }
+      });
+
+      const data = await this.model.findWithServicos(parseInt(id));
       
       // ✅ PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
       const foiCancelado = (status === 'Cancelado' && agendamento.status !== 'Cancelado');

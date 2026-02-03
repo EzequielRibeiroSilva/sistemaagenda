@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import type { AgentSchedule, Location, Service, ScheduleSlot, Agent } from '../types';
-import { ChevronDown, Check, MoreHorizontal, Plus, Cake } from './Icons';
+import type { ScheduleSlot, Location, Service, Agent, AgentSchedule } from '../types';
+import { ChevronDown, Check, Plus, Cake, RefreshCw, MoreHorizontal } from './Icons';
 import DatePicker from './DatePicker';
 import { getAssetUrl } from '../utils/api';
 import { useTimelineCalculations } from '../hooks/useTimelineCalculations';
-import { useAgentFiltering } from '../hooks/useAgentFiltering';
 import { usePreviewAppointments } from '../hooks/usePreviewAppointments';
+import { useAgentFiltering } from '../hooks/useAgentFiltering';
 
 // ✅ Helper: Formatar data como YYYY-MM-DD em timezone LOCAL (evita bugs de UTC/toISOString em mobile)
 const toLocalDateString = (date: Date): string => {
@@ -29,7 +29,19 @@ const AppointmentPopover: React.FC<{ appointment: NonNullable<ScheduleSlot['deta
                     <p className="text-gray-500">{appointment.date}</p>
                     <p className="font-semibold text-blue-600">{appointment.time}</p>
                 </div>
-                <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+                <div className="flex items-center gap-2">
+                    {appointment.recorrenciaGroupId && (
+                        <div className="flex items-center gap-1" title="Agendamento recorrente">
+                            <RefreshCw className="h-4 w-4 text-blue-600" />
+                            {appointment.isLastOfSeries && (
+                                <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
+                                    Final
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+                </div>
             </div>
             
             {/* Cliente */}
@@ -341,6 +353,41 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
 
   // ✅ REFATORADO: Usar hook customizado para processar agendamentos
   const agentAppointmentCards = usePreviewAppointments(appointments, selectedDate, services, backendAgentes);
+
+  const previewRecurrenceMetaByAppointmentId = useMemo(() => {
+    const meta: Record<string, { isLastOfSeries: boolean }> = {};
+    const groups: Record<string, Array<{ id: string; sortKey: string; expectedCount?: number }>> = {};
+
+    const safeApps = appointments
+      .filter(a => (a as any)?.recorrencia_group_id && a.status !== 'Cancelado')
+      .map(a => {
+        const date = a.data_agendamento.split('T')[0];
+        const startTime = (a.hora_inicio as string).toString().substring(0, 5);
+        return {
+          id: a.id,
+          groupId: (a as any).recorrencia_group_id as string,
+          sortKey: `${date}T${startTime}`,
+          expectedCount: (a as any)?.recorrencia_config?.range?.mode === 'count'
+            ? Number((a as any)?.recorrencia_config?.range?.count)
+            : undefined
+        };
+      });
+
+    for (const a of safeApps) {
+      if (!groups[a.groupId]) groups[a.groupId] = [];
+      groups[a.groupId].push({ id: a.id.toString(), sortKey: a.sortKey, expectedCount: a.expectedCount });
+    }
+
+    Object.values(groups).forEach((items) => {
+      const expected = items.find(i => Number.isFinite(i.expectedCount))?.expectedCount;
+      if (!expected) return;
+      if (items.length !== expected) return;
+      const last = items.reduce((acc, cur) => (cur.sortKey > acc.sortKey ? cur : acc), items[0]);
+      meta[last.id] = { isLastOfSeries: true };
+    });
+
+    return meta;
+  }, [appointments]);
 
 
   const filteredSchedules = useMemo(() => {
@@ -888,6 +935,12 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                   const hasSpecialStatus = isApproved || isCompleted || isCancelled || isNoShow;
 
                   const isBirthday = isClientBirthday(card.clientBirthDate, card.dateISO);
+                  const isRecurring = !!(card as any).recorrenciaGroupId;
+                  const isLastOfSeries = !!previewRecurrenceMetaByAppointmentId[card.id.toString()]?.isLastOfSeries;
+
+                  const extrasText = Array.isArray((card as any).extras) && (card as any).extras.length > 0
+                    ? ` + ${(card as any).extras.join(', ')}`
+                    : '';
 
                   const positionStyle = getAppointmentCardStyle(card.startTime, card.endTime);
 
@@ -926,25 +979,40 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                           endTime: card.endTime,
                           dateISO: card.dateISO, // Data no formato ISO (YYYY-MM-DD)
                           status: card.status as any,
-                          clientPhone: card.clientPhone || ''
+                          clientPhone: card.clientPhone || '',
+                          recorrenciaGroupId: (card as any).recorrenciaGroupId || null,
+                          isLastOfSeries
                         };
                         
 
                         onAppointmentClick(details);
                       }}
                     >
+                      <div className="flex items-center gap-1">
+                        {isRecurring && (
+                          <RefreshCw
+                            className={`h-5 w-5 ${isApproved ? 'text-white/90' : 'text-blue-600'}`}
+                            title="Agendamento recorrente"
+                          />
+                        )}
+                        <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}{extrasText}</p>
+                      </div>
                       {isBirthday && (
                         <div className="absolute top-0 right-0 bg-amber-400 rounded-full p-1 shadow-md border border-amber-400">
                           <Cake className="w-3 h-3 text-white" />
                         </div>
                       )}
-                      <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.serviceName}</p>
                       {/* Horário e ID na mesma linha (PreviewSection) */}
                       <div className="flex items-center gap-1.5">
                         <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
                         <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
                           #{card.numeroAgendamento || card.id}
                         </div>
+                        {isRecurring && isLastOfSeries && (
+                          <div className="inline-flex bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200 shadow-sm">
+                            Final
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

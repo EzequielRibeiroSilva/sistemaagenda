@@ -5,6 +5,8 @@ interface BackendAgendamento {
   agente_id: number;
   servico_id?: number;
   unidade_id: number;
+  recorrencia_group_id?: string | null;
+  recorrencia_config?: any;
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;
@@ -18,6 +20,13 @@ interface BackendAgendamento {
     id: number;
     nome: string;
     preco: string;
+  }>;
+  extras?: Array<{
+    id: number;
+    nome: string;
+    preco?: string;
+    duracao_minutos?: number;
+    preco_aplicado?: string;
   }>;
 }
 
@@ -39,6 +48,7 @@ interface AppointmentCard {
   startTime: string;
   endTime: string;
   serviceName: string;
+  extras?: string[];
   clientName: string;
   status: string;
   agentName: string;
@@ -50,6 +60,8 @@ interface AppointmentCard {
   serviceId?: number;
   clientPhone?: string;
   dateISO: string;
+  recorrenciaGroupId?: string | null;
+  recorrenciaConfig?: any;
 }
 
 const toLocalDateString = (date: Date): string => {
@@ -88,11 +100,15 @@ export const usePreviewAppointments = (
 
       let serviceName = 'Serviço';
       if (apt.servicos && apt.servicos.length > 0) {
-        serviceName = apt.servicos.map(s => s.nome).join(', ');
+        serviceName = apt.servicos[0].nome;
       } else if (apt.servico_id) {
         const service = services.find(s => s.id === apt.servico_id!.toString());
         serviceName = service?.name || 'Serviço';
       }
+
+      const extras = Array.isArray(apt.extras)
+        ? apt.extras.map(e => e.nome).filter(Boolean)
+        : [];
 
       const backendAgent = backendAgentes.find(a => a.id === apt.agente_id);
       
@@ -109,6 +125,7 @@ export const usePreviewAppointments = (
         startTime: apt.hora_inicio,
         endTime: apt.hora_fim,
         serviceName,
+        extras,
         clientName: apt.cliente_nome || 'Cliente',
         status: apt.status,
         agentName,
@@ -119,7 +136,9 @@ export const usePreviewAppointments = (
         agentId: apt.agente_id,
         serviceId: apt.servico_id,
         clientPhone: apt.cliente_telefone,
-        dateISO: aptDateStr
+        dateISO: aptDateStr,
+        recorrenciaGroupId: apt.recorrencia_group_id || null,
+        recorrenciaConfig: apt.recorrencia_config
       });
     });
 

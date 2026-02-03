@@ -55,6 +55,8 @@ export interface BackendAgendamento {
   cliente_id: number;
   agente_id: number;
   unidade_id: number;
+  recorrencia_group_id?: string | null;
+  recorrencia_config?: any;
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;
@@ -71,6 +73,13 @@ export interface BackendAgendamento {
     id: number;
     nome: string;
     preco: string;
+  }>;
+  extras?: Array<{
+    id: number;
+    nome: string;
+    preco?: string;
+    duracao_minutos?: number;
+    preco_aplicado?: string;
   }>;
 }
 
@@ -109,6 +118,9 @@ export interface CalendarAppointment {
   clientPhone?: string;
   clientBirthDate?: string;
   status?: string;
+  recorrenciaGroupId?: string | null;
+  recorrenciaConfig?: any;
+  extras?: string[];
 }
 
 export interface CalendarUnavailableBlock {
@@ -250,6 +262,10 @@ export const useCalendarData = () => {
       ? backendAgendamento.servicos[0].id.toString()
       : '1'; // Fallback temporário - o backend deve sempre retornar serviços
 
+    const extras = Array.isArray(backendAgendamento.extras)
+      ? backendAgendamento.extras.map(e => e.nome).filter(Boolean)
+      : [];
+
     return {
       id: backendAgendamento.id.toString(),
       numeroAgendamento: backendAgendamento.numero_agendamento,
@@ -262,7 +278,10 @@ export const useCalendarData = () => {
       clientName: backendAgendamento.cliente_nome,
       clientPhone: backendAgendamento.cliente_telefone,
       clientBirthDate: birthDateString,
-      status: backendAgendamento.status
+      status: backendAgendamento.status,
+      recorrenciaGroupId: backendAgendamento.recorrencia_group_id || null,
+      recorrenciaConfig: backendAgendamento.recorrencia_config,
+      extras
     };
   }, []); // ← SEM DEPENDÊNCIAS para evitar loop infinito
 

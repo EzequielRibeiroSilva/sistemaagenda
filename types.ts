@@ -25,6 +25,8 @@ export interface Appointment {
     startTime: string; // "HH:mm"
     endTime: string;   // "HH:mm"
     clientBirthDate?: string; // "YYYY-MM-DD"
+    recorrenciaGroupId?: string | null;
+    recorrenciaConfig?: any;
 }
 
 export interface UpcomingAppointment {
@@ -83,6 +85,8 @@ export interface ScheduleSlot {
         dateISO?: string; // Data ISO (YYYY-MM-DD)
         clientPhone?: string; // Telefone do cliente
         observacoes?: string; // Observações sobre o serviço realizado
+        recorrenciaGroupId?: string | null;
+        isLastOfSeries?: boolean;
     }
 }
 

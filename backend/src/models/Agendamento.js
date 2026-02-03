@@ -263,6 +263,90 @@ class Agendamento extends BaseModel {
 
   /**
    * Criar agendamento de forma atômica com proteção contra race conditions
+   * (variante que usa uma transação externa - evita transações aninhadas)
+   */
+  async createWithLockUsingTrx(trx, dadosAgendamento) {
+    const { agente_id, data_agendamento, hora_inicio, hora_fim, usuario_id } = dadosAgendamento;
+
+    if (!trx) {
+      const error = new Error('Transação (trx) é obrigatória');
+      error.code = 'MISSING_TRX';
+      throw error;
+    }
+
+    if (!usuario_id) {
+      const error = new Error('usuario_id é obrigatório para criar agendamento');
+      error.code = 'MISSING_USUARIO_ID';
+      throw error;
+    }
+
+    await trx.raw(`
+      SELECT pg_advisory_xact_lock(
+        hashtext(?::text)
+      )
+    `, [`agendamento_numero_usuario_${usuario_id}`]);
+
+    let numeroAgendamento = dadosAgendamento.numero_agendamento;
+    if (!numeroAgendamento) {
+      const lastRow = await trx(this.tableName)
+        .where('usuario_id', usuario_id)
+        .max('numero_agendamento as max')
+        .first();
+
+      const last = lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0;
+      numeroAgendamento = last + 1;
+    }
+
+    // 1. Adquirir lock exclusivo no agente para a data específica
+    await trx.raw(`
+      SELECT pg_advisory_xact_lock(
+        hashtext(?::text || ?::text)
+      )
+    `, [agente_id.toString(), data_agendamento]);
+
+    // 2. Verificar conflitos dentro da transação
+    const conflicts = await trx(this.tableName)
+      .where('agente_id', agente_id)
+      .where('data_agendamento', data_agendamento)
+      .where('status', '!=', 'Cancelado')
+      .where(function() {
+        this.where(function() {
+          this.where('hora_inicio', '<=', hora_inicio)
+            .where('hora_fim', '>', hora_inicio);
+        })
+        .orWhere(function() {
+          this.where('hora_inicio', '<', hora_fim)
+            .where('hora_fim', '>=', hora_fim);
+        })
+        .orWhere(function() {
+          this.where('hora_inicio', '>=', hora_inicio)
+            .where('hora_fim', '<=', hora_fim);
+        });
+      })
+      .select('id');
+
+    if (conflicts.length > 0) {
+      const error = new Error('Conflito de horário');
+      error.code = 'CONFLICT';
+      throw error;
+    }
+
+    // 3. Criar o agendamento
+    const [agendamento] = await trx(this.tableName)
+      .insert({
+        ...dadosAgendamento,
+        usuario_id,
+        numero_agendamento: numeroAgendamento,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .returning('*');
+
+    return agendamento;
+  }
+
+  /**
+   * Criar agendamento de forma atômica com proteção contra race conditions
    * Usa transação com SERIALIZABLE isolation level para garantir consistência
    */
   async createWithLock(dadosAgendamento) {

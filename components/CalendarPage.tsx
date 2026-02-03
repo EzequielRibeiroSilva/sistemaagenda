@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent, Service, Appointment, UnavailableBlock, ScheduleSlot, Location } from '../types';
-import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus, Cake } from './Icons';
+import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus, Cake, RefreshCw } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import { useCalendarData } from '../hooks/useCalendarData';
 import type { CalendarAgent, CalendarService, CalendarLocation, CalendarAppointment } from '../hooks/useCalendarData';
@@ -202,7 +202,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const isSinglePlan = user.plano === 'Single' || locations.length === 1;
     const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
 
-    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string })[] = useMemo(() => {
+    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string; extras?: string[] })[] = useMemo(() => {
         return backendAppointments.map(appointment => ({
             id: appointment.id,
             numeroAgendamento: appointment.numeroAgendamento,
@@ -215,9 +215,42 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             status: appointment.status, // ✅ INCLUIR STATUS PARA DESTAQUE VISUAL
             clientName: appointment.clientName, // ✅ CRÍTICO: Incluir nome do cliente
             clientPhone: appointment.clientPhone, // ✅ CRÍTICO: Incluir telefone do cliente
-            clientBirthDate: appointment.clientBirthDate
+            clientBirthDate: appointment.clientBirthDate,
+            extras: (appointment as any).extras,
+            recorrenciaGroupId: (appointment as any).recorrenciaGroupId || null,
+            recorrenciaConfig: (appointment as any).recorrenciaConfig
         }));
     }, [backendAppointments]);
+
+    const recurrenceMetaByAppointmentId = useMemo(() => {
+        const meta: Record<string, { isLastOfSeries: boolean } > = {};
+        const groups: Record<string, Array<{ id: string; sortKey: string; expectedCount?: number }>> = {};
+
+        const safeApps = appointments.filter(a => !!a.recorrenciaGroupId && a.status !== 'Cancelado');
+        for (const a of safeApps) {
+            const groupId = a.recorrenciaGroupId as string;
+            const expectedCount = (a.recorrenciaConfig as any)?.range?.mode === 'count'
+                ? Number((a.recorrenciaConfig as any)?.range?.count)
+                : undefined;
+            const sortKey = `${a.date}T${a.startTime}`;
+
+            if (!groups[groupId]) {
+                groups[groupId] = [];
+            }
+            groups[groupId].push({ id: a.id.toString(), sortKey, expectedCount });
+        }
+
+        Object.entries(groups).forEach(([groupId, items]) => {
+            const expected = items.find(i => Number.isFinite(i.expectedCount))?.expectedCount;
+            if (!expected) return;
+            if (items.length !== expected) return; // só marcar como "Final" quando temos a série completa carregada
+
+            const last = items.reduce((acc, cur) => (cur.sortKey > acc.sortKey ? cur : acc), items[0]);
+            meta[last.id] = { isLastOfSeries: true };
+        });
+
+        return meta;
+    }, [appointments]);
 
     const unavailableBlocks: (UnavailableBlock & { date?: string })[] = useMemo(() => {
         return backendUnavailableBlocks.map(block => ({
@@ -1002,7 +1035,19 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                         <p className="text-gray-500">{appointment.date}</p>
                         <p className="font-semibold text-blue-600">{appointment.time}</p>
                     </div>
-                    <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+                    <div className="flex items-center gap-2">
+                        {appointment.recorrenciaGroupId && (
+                            <div className="flex items-center gap-1" title="Agendamento recorrente">
+                                <RefreshCw className="h-4 w-4 text-blue-600" />
+                                {appointment.isLastOfSeries && (
+                                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
+                                        Final
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        <div className="w-3 h-3 rounded-full bg-blue-600 border-4 border-blue-100"></div>
+                    </div>
                 </div>
                 
                 {/* Cliente */}
@@ -1064,7 +1109,9 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
             time: formattedTime,
             serviceId: appointment.serviceId,
             locationId: appointment.locationId,
-            status: appointment.status as any || 'Aprovado'
+            status: appointment.status as any || 'Aprovado',
+            recorrenciaGroupId: (appointment as any).recorrenciaGroupId || null,
+            isLastOfSeries: !!recurrenceMetaByAppointmentId[appointment.id]?.isLastOfSeries
         };
 
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1402,11 +1449,11 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                     if (isApproved) {
                                         // ✅ APROVADO: #2663EB (azul escuro)
                                         cardClasses = 'text-white border border-blue-600';
-                                        iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-white" />;
+                                        iconComponent = null;
                                     } else if (isCompleted) {
                                         // ✅ CONCLUÍDO: #DBEAFE (azul claro)
                                         cardClasses = 'text-blue-800 border border-blue-300';
-                                        iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-blue-600" />;
+                                        iconComponent = null;
                                     } else if (isCancelled) {
                                         // ❌ CANCELADO: #FFE2E2 (vermelho claro)
                                         cardClasses = 'text-red-800 border border-red-300';
@@ -1436,6 +1483,12 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
 
                                     // ✅ NOVO: Verificar se é aniversário do cliente
                                     const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+                                    const isRecurring = !!(app as any).recorrenciaGroupId;
+                                    const isLastOfSeries = !!recurrenceMetaByAppointmentId[app.id]?.isLastOfSeries;
+
+                                    const extrasText = Array.isArray((app as any).extras) && (app as any).extras.length > 0
+                                      ? ` + ${(app as any).extras.join(', ')}`
+                                      : '';
 
                                     return (
                                         <div
@@ -1449,9 +1502,25 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                               height: `${height}%`,
                                               ...(backgroundColor && { backgroundColor })
                                           }}>
-                                            {/* Badge do ID no canto superior direito */}
-                                            <div className="absolute top-1 right-1 bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
-                                                #{app.numeroAgendamento || app.id}
+                                            <div className="flex items-center gap-1">
+                                                {isRecurring && (
+                                                    <RefreshCw
+                                                        className="h-5 w-5 text-white/90"
+                                                        title="Agendamento recorrente"
+                                                    />
+                                                )}
+                                                <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}{extrasText}</p>
+                                            </div>
+                                            {/* Badge do ID no canto superior direito + Final */}
+                                            <div className="absolute top-1 right-1 flex items-center gap-1">
+                                                <div className="bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
+                                                    #{app.numeroAgendamento || app.id}
+                                                </div>
+                                                {isRecurring && isLastOfSeries && (
+                                                    <div className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200 shadow-sm">
+                                                        Final
+                                                    </div>
+                                                )}
                                             </div>
                                             {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
                                             {isBirthday && (
@@ -1459,7 +1528,6 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                     <Cake className="w-5 h-5 text-white" />
                                                 </div>
                                             )}
-                                            <p className={`font-bold text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                             <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                             {/* Ícones para estados especiais */}
                                             {iconComponent}
@@ -1725,11 +1793,11 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                         if (isApproved) {
                                             // ✅ APROVADO: #2663EB (azul escuro)
                                             cardClasses = 'text-white border border-blue-600';
-                                            iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-white" />;
+                                            iconComponent = null;
                                         } else if (isCompleted) {
                                             // ✅ CONCLUÍDO: #DBEAFE (azul claro)
                                             cardClasses = 'text-blue-800 border border-blue-300';
-                                            iconComponent = <Check className="absolute top-1 left-1 h-3 w-3 text-blue-600" />;
+                                            iconComponent = null;
                                         } else if (isCancelled) {
                                             // ❌ CANCELADO: #FFE2E2 (vermelho claro)
                                             cardClasses = 'text-red-800 border border-red-300';
@@ -1759,6 +1827,12 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
 
                                         // ✅ NOVO: Verificar se é aniversário do cliente
                                         const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+                                        const isRecurring = !!(app as any).recorrenciaGroupId;
+                                        const isLastOfSeries = !!recurrenceMetaByAppointmentId[app.id]?.isLastOfSeries;
+
+                                        const extrasText = Array.isArray((app as any).extras) && (app as any).extras.length > 0
+                                          ? ` + ${(app as any).extras.join(', ')}`
+                                          : '';
 
                                         return (
                                             <div
@@ -1771,6 +1845,16 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                   ...style,
                                                   ...(backgroundColor && { backgroundColor })
                                               }}>
+                                                <div className="flex items-center gap-1">
+                                                    {isRecurring && (
+                                                        <RefreshCw
+                                                            className="h-5 w-5 text-white/90"
+                                                            title="Agendamento recorrente"
+                                                        />
+                                                    )}
+                                                    <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}{extrasText}</p>
+                                                </div>
+                                                
                                                 {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
                                                 {isBirthday && (
                                                     <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-amber-400 rounded-full p-1.5 shadow-lg border-2 border-amber-400">
@@ -1779,13 +1863,17 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                 )}
                                                 {/* Ícones para estados especiais */}
                                                 {iconComponent}
-                                                <p className={`font-bold text-xs whitespace-nowrap overflow-hidden text-ellipsis ${hasSpecialStatus ? 'opacity-80' : ''}`}>{service.name}</p>
                                                 {/* Horário e ID na mesma linha (Grid Semana) */}
                                                 <div className="flex items-center gap-1.5">
                                                     <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
                                                     <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
                                                         #{app.id}
                                                     </div>
+                                                    {isRecurring && isLastOfSeries && (
+                                                        <div className="inline-flex bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200 shadow-sm">
+                                                            Final
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )
@@ -2008,6 +2096,8 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
 
                                             // ✅ NOVO: Verificar se é aniversário do cliente
                                             const isBirthday = isClientBirthday(app.clientBirthDate, app.date);
+                                            const isRecurring = !!(app as any).recorrenciaGroupId;
+                                            const isLastOfSeries = !!recurrenceMetaByAppointmentId[app.id]?.isLastOfSeries;
 
                                             return (
                                                 <div
@@ -2019,6 +2109,19 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                   style={positionStyle}
                                                   title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}${isBirthday ? ' 🎂 Aniversário!' : ''}`}
                                                 >
+                                                    {isRecurring && (
+                                                        <div
+                                                            className="absolute top-0.5 left-0.5 bg-white/90 rounded p-0.5 border border-gray-200 shadow-sm"
+                                                            title="Agendamento recorrente"
+                                                        >
+                                                            <RefreshCw className="h-3 w-3 text-blue-600" />
+                                                        </div>
+                                                    )}
+                                                    {isRecurring && isLastOfSeries && (
+                                                        <div className="absolute bottom-0.5 left-0.5 bg-amber-100 text-amber-800 px-1 py-0.5 rounded text-[9px] font-bold border border-amber-200 shadow-sm">
+                                                            Final
+                                                        </div>
+                                                    )}
                                                     {/* ✅ NOVO: Ícone de aniversário no topo centralizado */}
                                                     {isBirthday && (
                                                         <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-amber-400 rounded-full p-1 shadow-md border border-amber-400">

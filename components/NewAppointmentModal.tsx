@@ -65,6 +65,28 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode; actions?
     </div>
 );
 
+const Toggle: React.FC<{
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    disabled?: boolean;
+}> = ({ checked, onChange, disabled }) => (
+    <button
+        type="button"
+        onClick={() => !disabled && onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+            checked ? 'bg-blue-600' : 'bg-gray-200'
+        } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+        aria-pressed={checked}
+        aria-disabled={disabled}
+    >
+        <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                checked ? 'translate-x-5' : 'translate-x-0'
+            }`}
+        />
+    </button>
+);
+
 // MultiSelect Dropdown Component para Serviços
 const ServiceMultiSelectDropdown: React.FC<{
     label: string;
@@ -295,6 +317,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [paymentMethod, setPaymentMethod] = useState('');
     const [observacoes, setObservacoes] = useState('');
 
+    // ✅ FASE 4: Recorrência (UI)
+    const [repeatAppointment, setRepeatAppointment] = useState(false);
+    const [repeatFrequency, setRepeatFrequency] = useState<'weekly' | 'biweekly'>('weekly');
+    const [repeatCount, setRepeatCount] = useState<number>(2);
+
     const [isSearchingClient, setIsSearchingClient] = useState(false);
     const [clientSearchQuery, setClientSearchQuery] = useState('');
     const [totalPrice, setTotalPrice] = useState(0);
@@ -348,6 +375,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             // Modal aberto - dados carregados
         }
     }, [isOpen, isEditing, appointmentData, newSlotData, propAppointmentId]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        // Em modo edição, não permitir recorrência (MVP)
+        if (isEditing) {
+            setRepeatAppointment(false);
+            return;
+        }
+        // Defaults consistentes ao abrir o modal
+        setRepeatAppointment(false);
+        setRepeatFrequency('weekly');
+        setRepeatCount(2);
+    }, [isOpen, isEditing]);
 
     // ✅ NOVO: Buscar dados do agendamento quando appointmentId for passado via prop
     useEffect(() => {
@@ -1220,6 +1260,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 hora_fim: endTime,
                 unidade_id: parseInt(effectiveLocationId),
                 observacoes: observacoes.trim() || '',
+                ...(repeatAppointment
+                    ? {
+                        recorrencia: {
+                            frequency: repeatFrequency,
+                            range: { mode: 'count', count: repeatCount }
+                        }
+                    }
+                    : {}),
                 ...(selectedClient
                     ? { cliente_id: selectedClient.id }
                     : {
@@ -1489,6 +1537,52 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                     Mostrar Calendário
                                 </button>
                             </div>
+
+                            {/* ✅ FASE 4: Recorrência */}
+                            {!isEditing && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label>Repetir agendamento?</Label>
+                                            <p className="text-xs text-gray-500">Cria uma série de agendamentos com o mesmo horário e serviços</p>
+                                        </div>
+                                        <Toggle
+                                            checked={repeatAppointment}
+                                            onChange={(checked) => {
+                                                setRepeatAppointment(checked);
+                                                if (!checked) {
+                                                    setRepeatFrequency('weekly');
+                                                    setRepeatCount(2);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+
+                                    {repeatAppointment && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <FormField label="Frequência">
+                                                <Select
+                                                    value={repeatFrequency}
+                                                    onChange={(e) => setRepeatFrequency(e.target.value as 'weekly' | 'biweekly')}
+                                                >
+                                                    <option value="weekly">Semanal</option>
+                                                    <option value="biweekly">Quinzenal</option>
+                                                </Select>
+                                            </FormField>
+                                            <FormField label="Quantidade">
+                                                <Select
+                                                    value={repeatCount}
+                                                    onChange={(e) => setRepeatCount(parseInt(e.target.value, 10))}
+                                                >
+                                                    {Array.from({ length: 11 }, (_, idx) => idx + 2).map((n) => (
+                                                        <option key={n} value={n}>{n} vezes</option>
+                                                    ))}
+                                                </Select>
+                                            </FormField>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <FormField label="Hora De Início">
                                     {availableTimeSlots.length > 0 ? (
