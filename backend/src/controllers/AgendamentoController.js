@@ -5,6 +5,7 @@ const AuthService = require('../services/AuthService');
 const logger = require('../utils/logger');
 const RecurringAppointmentService = require('../services/RecurringAppointmentService');
 const ScheduledReminderService = require('../services/ScheduledReminderService');
+const BookingAvailabilityService = require('../services/BookingAvailabilityService');
 
 class AgendamentoController extends BaseController {
   constructor() {
@@ -12,6 +13,7 @@ class AgendamentoController extends BaseController {
     this.whatsAppService = new WhatsAppService(); // ✅ CORREÇÃO: Usar WhatsAppService
     this.authService = new AuthService();
     this.scheduledReminderService = new ScheduledReminderService();
+    this.bookingAvailabilityService = new BookingAvailabilityService();
   }
 
   // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
@@ -809,6 +811,15 @@ class AgendamentoController extends BaseController {
       let agendamento;
 
       await db.transaction(async (trx) => {
+        await this.bookingAvailabilityService.validateOrThrow({
+          unidade_id,
+          agente_id,
+          data_agendamento,
+          hora_inicio,
+          hora_fim,
+          trx
+        });
+
         // Criar agendamento com proteção contra race conditions dentro da trx
         agendamento = await this.model.createWithLockUsingTrx(trx, dadosAgendamento);
 
@@ -923,6 +934,14 @@ class AgendamentoController extends BaseController {
 
       return;
     } catch (error) {
+      if (error && error.httpStatus) {
+        return res.status(error.httpStatus).json({
+          success: false,
+          error: 'Horário indisponível',
+          message: error.message
+        });
+      }
+
       logger.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
 
       // Tratar erro de conflito do createWithLock ou da constraint do banco
@@ -1127,36 +1146,34 @@ class AgendamentoController extends BaseController {
 
         dadosParaAtualizar.valor_total = valorServicos + valorExtras;
       }
-      // Verificar conflito de horário se horário foi alterado
-      if ((hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
-          (hora_fim && hora_fim !== agendamento.hora_fim) ||
-          (agente_id && agente_id !== agendamento.agente_id) ||
-          (data_agendamento && data_agendamento !== agendamento.data_agendamento)) {
 
-        const novoAgenteId = agente_id || agendamento.agente_id;
-        const novaData = data_agendamento || agendamento.data_agendamento;
-        const novaHoraInicio = hora_inicio || agendamento.hora_inicio;
-        const novaHoraFim = hora_fim || agendamento.hora_fim;
+      const shouldValidateDisponibilidade = (
+        (hora_inicio && hora_inicio !== agendamento.hora_inicio) ||
+        (hora_fim && hora_fim !== agendamento.hora_fim) ||
+        (agente_id && agente_id !== agendamento.agente_id) ||
+        (data_agendamento && data_agendamento !== agendamento.data_agendamento)
+      );
 
-        const hasConflict = await this.model.checkConflict(
-          novoAgenteId,
-          novaData,
-          novaHoraInicio,
-          novaHoraFim,
-          parseInt(id)
-        );
-
-        if (hasConflict) {
-          return res.status(400).json({
-            error: 'Conflito de horário',
-            message: 'O agente já possui um agendamento neste horário'
-          });
-        }
-      }
+      const novoAgenteId = shouldValidateDisponibilidade ? (agente_id || agendamento.agente_id) : null;
+      const novaData = shouldValidateDisponibilidade ? (data_agendamento || agendamento.data_agendamento) : null;
+      const novaHoraInicio = shouldValidateDisponibilidade ? (hora_inicio || agendamento.hora_inicio) : null;
+      const novaHoraFim = shouldValidateDisponibilidade ? (hora_fim || agendamento.hora_fim) : null;
 
       const db = this.model.db;
 
       await db.transaction(async (trx) => {
+        if (shouldValidateDisponibilidade) {
+          await this.bookingAvailabilityService.validateOrThrow({
+            unidade_id: unidadeIdFinal,
+            agente_id: novoAgenteId,
+            data_agendamento: novaData,
+            hora_inicio: novaHoraInicio,
+            hora_fim: novaHoraFim,
+            exclude_agendamento_id: parseInt(id),
+            trx
+          });
+        }
+
         await trx(this.model.tableName)
           .where('id', id)
           .update({
@@ -1301,6 +1318,14 @@ class AgendamentoController extends BaseController {
         message: 'Agendamento atualizado com sucesso' 
       });
     } catch (error) {
+      if (error && error.httpStatus) {
+        return res.status(error.httpStatus).json({
+          success: false,
+          error: 'Horário indisponível',
+          message: error.message
+        });
+      }
+
       logger.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
       return res.status(500).json({ 
         success: false,

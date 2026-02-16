@@ -1,9 +1,11 @@
 const crypto = require('crypto');
 const { db } = require('../config/knex');
+const BookingAvailabilityService = require('./BookingAvailabilityService');
 
 class RecurringAppointmentService {
   constructor({ agendamentoModel }) {
     this.agendamentoModel = agendamentoModel;
+    this.bookingAvailabilityService = new BookingAvailabilityService();
   }
 
   normalizeDateStr(dateStr) {
@@ -184,6 +186,15 @@ class RecurringAppointmentService {
           recorrencia_group_id: groupId,
           recorrencia_config: recorrenciaConfig
         };
+
+        await this.bookingAvailabilityService.validateOrThrow({
+          unidade_id: dadosAgendamento.unidade_id,
+          agente_id: dadosAgendamento.agente_id,
+          data_agendamento: dadosAgendamento.data_agendamento,
+          hora_inicio: dadosAgendamento.hora_inicio,
+          hora_fim: dadosAgendamento.hora_fim,
+          trx
+        });
 
         let agendamento;
         try {

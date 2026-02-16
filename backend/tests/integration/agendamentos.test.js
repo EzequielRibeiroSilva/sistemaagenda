@@ -318,12 +318,198 @@ describe('📅 Testes do Sistema de Agendamentos', () => {
       expect(created.length).toBe(0);
     });
   });
+
+  describe('🔒 Disponibilidade - Reagendamento Público', () => {
+    let agendamentoParaReagendar;
+
+    beforeAll(async () => {
+      const dateBase = new Date();
+      dateBase.setDate(dateBase.getDate() + 10);
+      const dataStr = dateBase.toISOString().split('T')[0];
+
+      const lastRow = await db('agendamentos')
+        .where('usuario_id', admin.id)
+        .max('numero_agendamento as max')
+        .first();
+      const nextNumeroAgendamento = (lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0) + 1;
+
+      const [ag] = await db('agendamentos').insert({
+        cliente_id: cliente.id,
+        agente_id: agente.id,
+        unidade_id: unidade.id,
+        usuario_id: admin.id,
+        data_agendamento: dataStr,
+        hora_inicio: '09:00',
+        hora_fim: '09:30',
+        status: 'Aprovado',
+        valor_total: 50.00,
+        observacoes: 'AGEND_TEST reagendar base',
+        created_at: new Date(),
+        updated_at: new Date(),
+        numero_agendamento: nextNumeroAgendamento
+      }).returning('*');
+
+      await db('agendamento_servicos').insert({
+        agendamento_id: ag.id,
+        servico_id: servico.id,
+        preco_aplicado: 50.00
+      });
+
+      agendamentoParaReagendar = ag;
+    });
+
+    test('Deve bloquear reagendamento para um dia com bloqueio total (exceção dia inteiro)', async () => {
+      const dateBlocked = new Date();
+      dateBlocked.setDate(dateBlocked.getDate() + 12);
+      const dataStr = dateBlocked.toISOString().split('T')[0];
+
+      await db('unidade_excecoes_calendario').insert({
+        unidade_id: unidade.id,
+        data_inicio: dataStr,
+        data_fim: dataStr,
+        hora_inicio: null,
+        hora_fim: null,
+        tipo: 'Manutenção',
+        descricao: 'AGEND_TEST bloqueio dia inteiro',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      const response = await request(app)
+        .put(`/api/public/agendamento/${agendamentoParaReagendar.id}/reagendar`)
+        .send({
+          telefone: cliente.telefone,
+          data_agendamento: dataStr,
+          hora_inicio: '10:00'
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Horário indisponível');
+      expect(String(response.body.message || '')).toMatch(/Não é possível agendar nesta data/i);
+    });
+
+    test('Deve bloquear reagendamento quando colide por apenas 15 minutos com exceção parcial', async () => {
+      const dateBlocked = new Date();
+      dateBlocked.setDate(dateBlocked.getDate() + 13);
+      const dataStr = dateBlocked.toISOString().split('T')[0];
+
+      await db('unidade_excecoes_calendario').insert({
+        unidade_id: unidade.id,
+        data_inicio: dataStr,
+        data_fim: dataStr,
+        hora_inicio: '10:15',
+        hora_fim: '10:30',
+        tipo: 'Evento Especial',
+        descricao: 'AGEND_TEST bloqueio parcial 15min',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      // Serviço tem 30 minutos (setup). 10:00-10:30 colide com 10:15-10:30.
+      const response = await request(app)
+        .put(`/api/public/agendamento/${agendamentoParaReagendar.id}/reagendar`)
+        .send({
+          telefone: cliente.telefone,
+          data_agendamento: dataStr,
+          hora_inicio: '10:00'
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Horário indisponível');
+    });
+
+    test('Deve bloquear reagendamento para um dia com bloqueio total do AGENTE (exceção dia inteiro)', async () => {
+      const dateBlocked = new Date();
+      dateBlocked.setDate(dateBlocked.getDate() + 14);
+      const dataStr = dateBlocked.toISOString().split('T')[0];
+
+      await db('agente_excecoes_calendario').insert({
+        agente_id: agente.id,
+        data_inicio: dataStr,
+        data_fim: dataStr,
+        hora_inicio: null,
+        hora_fim: null,
+        tipo: 'Férias',
+        descricao: 'AGEND_TEST bloqueio agente dia inteiro',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      const response = await request(app)
+        .put(`/api/public/agendamento/${agendamentoParaReagendar.id}/reagendar`)
+        .send({
+          telefone: cliente.telefone,
+          data_agendamento: dataStr,
+          hora_inicio: '10:00'
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Horário indisponível');
+      expect(String(response.body.message || '')).toMatch(/Agente indisponível/i);
+    });
+
+    test('Deve bloquear reagendamento quando colide com bloqueio parcial do AGENTE', async () => {
+      const dateBlocked = new Date();
+      dateBlocked.setDate(dateBlocked.getDate() + 15);
+      const dataStr = dateBlocked.toISOString().split('T')[0];
+
+      await db('agente_excecoes_calendario').insert({
+        agente_id: agente.id,
+        data_inicio: dataStr,
+        data_fim: dataStr,
+        hora_inicio: '10:15',
+        hora_fim: '10:30',
+        tipo: 'Evento Especial',
+        descricao: 'AGEND_TEST bloqueio agente parcial 15min',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      // Serviço tem 30 minutos (setup). 10:00-10:30 colide com 10:15-10:30.
+      const response = await request(app)
+        .put(`/api/public/agendamento/${agendamentoParaReagendar.id}/reagendar`)
+        .send({
+          telefone: cliente.telefone,
+          data_agendamento: dataStr,
+          hora_inicio: '10:00'
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Horário indisponível');
+      expect(String(response.body.message || '')).toMatch(/Agente indisponível/i);
+    });
+
+    test('Deve permitir reagendar para o mesmo slot (excludeId evita auto-conflito)', async () => {
+      const response = await request(app)
+        .put(`/api/public/agendamento/${agendamentoParaReagendar.id}/reagendar`)
+        .send({
+          telefone: cliente.telefone,
+          data_agendamento: agendamentoParaReagendar.data_agendamento,
+          hora_inicio: agendamentoParaReagendar.hora_inicio
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toBeDefined();
+      expect(response.body.data.id.toString()).toBe(agendamentoParaReagendar.id.toString());
+    });
+  });
 });
 
 // Funções auxiliares
 
 async function cleanupAgendamentoTestData() {
   await db('lembretes_enviados').whereRaw("1=1").del().catch(() => {});
+  await db('agente_excecoes_calendario').where('descricao', 'like', '%AGEND_TEST%').del().catch(() => {});
+  await db('unidade_excecoes_calendario').where('descricao', 'like', '%AGEND_TEST%').del().catch(() => {});
+  await db('horarios_funcionamento_unidade')
+    .whereRaw("unidade_id IN (SELECT id FROM unidades WHERE nome LIKE '%AGEND_TEST%')")
+    .del()
+    .catch(() => {});
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%AGEND_TEST%')`).del().catch(() => {});
   await db('agendamentos').where('observacoes', 'like', '%AGEND_TEST%').del().catch(() => {});
   await db('agente_servicos').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%agend_test%')`).del().catch(() => {});
@@ -353,6 +539,26 @@ async function createCompleteSetup() {
     telefone: '11999999999', status: 'Ativo',
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
+
+  // Garantir que a unidade esteja "aberta" em todos os dias da semana para não bloquear reagendamentos públicos
+  // (reagendarAgendamento valida horarios_funcionamento_unidade por dia_semana)
+  const horariosJson = [{ inicio: '08:00', fim: '18:00' }];
+  const dias = [0, 1, 2, 3, 4, 5, 6];
+  for (const dia_semana of dias) {
+    await db('horarios_funcionamento_unidade')
+      .where({ unidade_id: unidade.id, dia_semana })
+      .del()
+      .catch(() => {});
+
+    await db('horarios_funcionamento_unidade').insert({
+      unidade_id: unidade.id,
+      dia_semana,
+      is_aberto: true,
+      horarios_json: JSON.stringify(horariosJson),
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  }
 
   await db('usuarios').where('id', admin.id).update({ unidade_id: unidade.id });
 

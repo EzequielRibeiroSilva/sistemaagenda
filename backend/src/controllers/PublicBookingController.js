@@ -15,6 +15,7 @@ const ExcecaoCalendario = require('../models/ExcecaoCalendario');
 const AgenteExcecaoCalendario = require('../models/AgenteExcecaoCalendario');
 const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
+const BookingAvailabilityService = require('../services/BookingAvailabilityService');
 const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
@@ -27,6 +28,7 @@ class PublicBookingController {
     this.servicoModel = new Servico();
     this.clienteModel = new Cliente();
     this.agendamentoModel = new Agendamento();
+    this.bookingAvailabilityService = new BookingAvailabilityService();
     this.configuracaoModel = new ConfiguracaoSistema(db);
     this.horarioFuncionamentoUnidadeModel = new HorarioFuncionamentoUnidade();
     this.excecaoCalendarioModel = new ExcecaoCalendario();
@@ -2653,12 +2655,14 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO DE DATA: Bloquear reagendamento de agendamentos passados
-      const dataAgendamentoAtual = new Date(agendamento.data_agendamento);
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      
-      if (dataAgendamentoAtual < hoje) {
-        const diasPassados = Math.floor((hoje - dataAgendamentoAtual) / (1000 * 60 * 60 * 24));
+      const tz = 'America/Sao_Paulo';
+      const hojeStr = this.getDateStrInTimeZone(tz);
+      const dataAgendamentoAtualStr = typeof agendamento.data_agendamento === 'string'
+        ? agendamento.data_agendamento.toString().substring(0, 10)
+        : agendamento.data_agendamento.toLocaleDateString('en-CA', { timeZone: tz });
+
+      if (dataAgendamentoAtualStr < hojeStr) {
+        const diasPassados = this.dayNumberFromDateStr(hojeStr) - this.dayNumberFromDateStr(dataAgendamentoAtualStr);
         logger.log(`[PublicBooking] ❌ Tentativa de reagendar agendamento #${id} que já passou há ${diasPassados} dia(s)`);
         return res.status(410).json({
           success: false,
@@ -2685,8 +2689,12 @@ class PublicBookingController {
       }
 
       // ✅ VALIDAÇÃO CRÍTICA: Verificar se a unidade está aberta no dia da nova data
-      const dataObj = new Date(data_agendamento + 'T00:00:00');
-      const diaSemana = dataObj.getDay(); // 0 = Domingo, 6 = Sábado
+      // ✅ CORREÇÃO CRÍTICA: Tornar timezone-aware (America/Sao_Paulo) para evitar bugs de timezone
+      const [y, m, d] = data_agendamento.split('-').map(n => parseInt(n, 10));
+      const dataNoonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(dataNoonUtc);
+      const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const diaSemana = weekdayMap[weekdayStr] ?? new Date(data_agendamento + 'T00:00:00').getDay(); // 0 = Domingo, 6 = Sábado
 
       logger.log(`[PublicBooking] Validando dia de funcionamento: ${data_agendamento} (dia_semana: ${diaSemana})`);
 
@@ -2721,15 +2729,27 @@ class PublicBookingController {
       horaFimDate.setHours(horas, minutos + duracaoTotal, 0, 0);
       const hora_fim = horaFimDate.toTimeString().slice(0, 5);
 
-      // Atualizar agendamento
-      await this.agendamentoModel.db('agendamentos')
-        .where('id', id)
-        .update({
+      // ✅ CRÍTICO: Validar disponibilidade no write-path de reagendamento
+      await db.transaction(async (trx) => {
+        await this.bookingAvailabilityService.validateOrThrow({
+          unidade_id: agendamento.unidade_id,
+          agente_id: agendamento.agente_id,
           data_agendamento,
           hora_inicio,
           hora_fim,
-          updated_at: this.agendamentoModel.db.fn.now()
+          exclude_agendamento_id: parseInt(id),
+          trx
         });
+
+        await trx('agendamentos')
+          .where('id', id)
+          .update({
+            data_agendamento,
+            hora_inicio,
+            hora_fim,
+            updated_at: this.agendamentoModel.db.fn.now()
+          });
+      });
 
       logger.log(`✅ [PublicBooking] Agendamento #${id} reagendado para ${data_agendamento} às ${hora_inicio}`);
 
@@ -2784,6 +2804,14 @@ class PublicBookingController {
       })();
 
     } catch (error) {
+      if (error && error.httpStatus) {
+        return res.status(error.httpStatus).json({
+          success: false,
+          error: 'Horário indisponível',
+          message: error.message
+        });
+      }
+
       logger.error('[PublicBooking] Erro ao reagendar agendamento:', error);
       res.status(500).json({
         success: false,
