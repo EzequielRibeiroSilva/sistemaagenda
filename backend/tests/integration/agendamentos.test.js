@@ -63,6 +63,85 @@ describe('📅 Testes do Sistema de Agendamentos', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('id');
     });
+
+    test('Deve bloquear criação no painel para um dia com bloqueio total (Manutenção)', async () => {
+      const dateBlocked = new Date();
+      dateBlocked.setDate(dateBlocked.getDate() + 6);
+      const dataStr = dateBlocked.toISOString().split('T')[0];
+
+      await db('unidade_excecoes_calendario').insert({
+        unidade_id: unidade.id,
+        data_inicio: dataStr,
+        data_fim: dataStr,
+        hora_inicio: null,
+        hora_fim: null,
+        tipo: 'Manutenção',
+        descricao: 'AGEND_TEST bloqueio painel dia inteiro',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      const response = await request(app)
+        .post('/api/agendamentos')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          agente_id: agente.id,
+          unidade_id: unidade.id,
+          servico_ids: [servico.id],
+          data_agendamento: dataStr,
+          hora_inicio: '09:00',
+          hora_fim: '09:30',
+          cliente_nome: cliente.primeiro_nome + ' ' + cliente.ultimo_nome,
+          cliente_telefone: cliente.telefone,
+          observacoes: 'AGEND_TEST tentativa painel em manutencao'
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Horário indisponível');
+      expect(String(response.body.message || '')).toMatch(/Não é possível agendar nesta data/i);
+    });
+
+    test('Deve criar agendamento no painel com serviço extra (tenant por usuario_id, sem SQL unidade_id)', async () => {
+      const dateBase = new Date();
+      dateBase.setDate(dateBase.getDate() + 7);
+      const dataStr = dateBase.toISOString().split('T')[0];
+
+      const [extra] = await db('servicos_extras')
+        .insert({
+          usuario_id: admin.id,
+          nome: 'AGEND_TEST Extra',
+          descricao: 'AGEND_TEST Extra desc',
+          preco: 10.0,
+          duracao_minutos: 10,
+          status: 'Ativo',
+          created_at: new Date(),
+          updated_at: new Date()
+        })
+        .returning('*');
+
+      const extraId = extra?.id || extra;
+
+      const response = await request(app)
+        .post('/api/agendamentos')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          agente_id: agente.id,
+          unidade_id: unidade.id,
+          servico_ids: [servico.id],
+          servico_extra_ids: [extraId],
+          data_agendamento: dataStr,
+          hora_inicio: '10:00',
+          hora_fim: '10:30',
+          cliente_nome: cliente.primeiro_nome + ' ' + cliente.ultimo_nome,
+          cliente_telefone: cliente.telefone,
+          observacoes: 'AGEND_TEST criado via teste com extra'
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('id');
+    });
     
     test('Deve fazer rollback se falhar ao inserir vínculos de serviço (atomicidade trx)', async () => {
       const tomorrow = new Date();

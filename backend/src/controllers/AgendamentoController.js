@@ -667,7 +667,7 @@ class AgendamentoController extends BaseController {
         servicosExtrasData = await this.model.db('servicos_extras')
           .whereIn('id', servico_extra_ids)
           .where('status', 'Ativo')
-          .where('unidade_id', unidade_id)
+          .where('usuario_id', unidade.usuario_id)
           .select('id', 'nome', 'preco', 'duracao_minutos');
 
         if (servicosExtrasData.length !== servico_extra_ids.length) {
@@ -953,7 +953,9 @@ class AgendamentoController extends BaseController {
       }
       return res.status(500).json({
         error: 'Erro interno do servidor',
-        message: error.message
+        message: process.env.NODE_ENV === 'production'
+          ? 'Erro ao processar serviços extras'
+          : error.message
       });
     }
   }
@@ -1120,10 +1122,17 @@ class AgendamentoController extends BaseController {
       }
 
       if (shouldUpdateExtras) {
+        const unidadeForExtras = await this.model.db('unidades')
+          .where('id', unidadeIdFinal)
+          .select('usuario_id')
+          .first();
+
+        const tenantUsuarioId = unidadeForExtras?.usuario_id || usuarioId;
+
         servicosExtrasData = await this.model.db('servicos_extras')
           .whereIn('id', servico_extra_ids)
           .where('status', 'Ativo')
-          .where('unidade_id', unidadeIdFinal)
+          .where('usuario_id', tenantUsuarioId)
           .select('id', 'nome', 'preco', 'duracao_minutos');
 
         if (servicosExtrasData.length !== servico_extra_ids.length) {
@@ -1330,7 +1339,9 @@ class AgendamentoController extends BaseController {
       return res.status(500).json({ 
         success: false,
         error: 'Erro interno do servidor',
-        message: error.message 
+        message: process.env.NODE_ENV === 'production'
+          ? 'Erro ao processar serviços extras'
+          : error.message 
       });
     }
   }
