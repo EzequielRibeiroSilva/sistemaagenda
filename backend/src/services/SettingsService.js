@@ -14,6 +14,39 @@ class SettingsService {
     this.configuracaoModel = new ConfiguracaoSistema(db);
   }
 
+  normalizeSlug(value) {
+    if (!value) return '';
+    return value
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '')
+      .replace(/(^-|-$)+/g, '');
+  }
+
+  isDnsSafeSubdomainSlug(slug) {
+    if (!slug) return false;
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug);
+  }
+
+  isReservedSubdomain(slug) {
+    const reserved = new Set([
+      'app',
+      'api',
+      'admin',
+      'www',
+      'suporte',
+      'static',
+      'assets',
+      'docs',
+      'status',
+      'mail'
+    ]);
+    return reserved.has(slug);
+  }
+
   /**
    * Busca configurações da unidade
    * Se não existir, cria com valores padrão
@@ -185,6 +218,14 @@ class SettingsService {
     if (dadosConfiguracao.hasOwnProperty('nome_negocio')) {
       if (!dadosConfiguracao.nome_negocio || dadosConfiguracao.nome_negocio.trim().length === 0) {
         erros.push('Nome do negócio é obrigatório');
+      } else {
+        const slug = this.normalizeSlug(dadosConfiguracao.nome_negocio);
+        if (!this.isDnsSafeSubdomainSlug(slug)) {
+          erros.push('Nome do negócio inválido para link. Use apenas letras e números (sem caracteres especiais)');
+        }
+        if (this.isReservedSubdomain(slug)) {
+          erros.push('Nome do negócio não permitido (reservado pelo sistema)');
+        }
       }
     }
 

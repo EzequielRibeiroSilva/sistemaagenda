@@ -56,6 +56,10 @@ export const useSettingsManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const stripUrlProtocol = useCallback((url: string) => {
+    return url.replace(/^https?:\/\//i, '');
+  }, []);
+
   const slugify = useCallback((value: string) => {
     return value
       .toString()
@@ -63,8 +67,29 @@ export const useSettingsManagement = () => {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/[^a-z0-9]+/g, '')
       .replace(/(^-|-$)+/g, '');
+  }, []);
+
+  const isDnsSafeSubdomainSlug = useCallback((slug: string) => {
+    if (!slug) return false;
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug);
+  }, []);
+
+  const isReservedSubdomain = useCallback((slug: string) => {
+    const reserved = new Set([
+      'app',
+      'api',
+      'admin',
+      'www',
+      'suporte',
+      'static',
+      'assets',
+      'docs',
+      'status',
+      'mail'
+    ]);
+    return reserved.has(slug);
   }, []);
 
   // Função para fazer requisições autenticadas
@@ -235,12 +260,33 @@ export const useSettingsManagement = () => {
     }
 
     const businessSlug = settings?.nome_negocio ? slugify(settings.nome_negocio) : '';
-    if (businessSlug) {
-      return `${window.location.origin}/booking/${businessSlug}`;
+    const hasValidSlug =
+      Boolean(businessSlug) &&
+      isDnsSafeSubdomainSlug(businessSlug) &&
+      !isReservedSubdomain(businessSlug);
+
+    if (!hasValidSlug) {
+      return `${window.location.origin}/booking/${user.id}`;
     }
 
-    return `${window.location.origin}/booking/${user.id}`;
-  }, [user?.id, settings?.nome_negocio, slugify]);
+    const baseDomain = (import.meta as any)?.env?.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
+    const isDev =
+      Boolean((import.meta as any)?.env?.DEV) ||
+      window.location.port === '5173' ||
+      baseDomain === 'lvh.me';
+
+    if (isDev) {
+      return `http://${businessSlug}.${baseDomain}:5173`;
+    }
+
+    return `https://${businessSlug}.${baseDomain}`;
+  }, [user?.id, settings?.nome_negocio, slugify, isDnsSafeSubdomainSlug, isReservedSubdomain]);
+
+  const generateBookingLinkShort = useCallback(() => {
+    const full = generateBookingLink();
+    if (!full) return '';
+    return stripUrlProtocol(full);
+  }, [generateBookingLink, stripUrlProtocol]);
 
   // Copiar link para clipboard
   const copyBookingLink = useCallback(async () => {
@@ -255,6 +301,19 @@ export const useSettingsManagement = () => {
     }
     return false;
   }, [generateBookingLink]);
+
+  const copyBookingLinkShort = useCallback(async () => {
+    const link = generateBookingLinkShort();
+    if (link) {
+      try {
+        await navigator.clipboard.writeText(link);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+    return false;
+  }, [generateBookingLinkShort]);
 
   // Função unificada para salvar todas as definições
   const saveAllSettings = useCallback(async (data: {
@@ -361,7 +420,9 @@ export const useSettingsManagement = () => {
 
     // Utilitários
     generateBookingLink,
+    generateBookingLinkShort,
     copyBookingLink,
+    copyBookingLinkShort,
 
     // Limpar erro
     clearError: () => setError(null),

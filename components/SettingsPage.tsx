@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Copy, Check, MessageSquare, Eye, Upload } from './Icons';
+import { Copy, Check, MessageSquare, Upload } from './Icons';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
@@ -55,7 +55,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         loadSettings,
         saveAllSettings,
         generateBookingLink,
+        generateBookingLinkShort,
         copyBookingLink,
+        copyBookingLinkShort,
         clearError
     } = useSettingsManagement();
 
@@ -192,7 +194,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
 
     // Função para copiar link de agendamento
     const handleCopyLink = async () => {
-        const success = await copyBookingLink();
+        const success = await copyBookingLinkShort();
         if (success) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -202,7 +204,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     };
 
     // Gerar link de reserva usando nome do negócio e unidade_id
-    const bookingLink = generateBookingLink() || 'Carregando...';
+    const bookingLink = generateBookingLink() || '';
+    const bookingLinkShort = generateBookingLinkShort() || 'Carregando...';
 
     // Função para salvar todas as definições (transação unificada)
     const handleSaveAllSettings = async () => {
@@ -317,7 +320,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                   <input
                       type="text"
                       readOnly
-                      value={bookingLink}
+                      value={bookingLinkShort}
                       className="w-full bg-gray-100 border border-gray-300 text-gray-600 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                       onClick={handleCopyLink}
                   />

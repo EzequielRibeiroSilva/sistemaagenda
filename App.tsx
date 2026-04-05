@@ -247,8 +247,56 @@ const App: React.FC = () => {
     );
   }
 
+  const getTenantFromHostname = (hostname: string): string | null => {
+    const baseDomain = (import.meta as any)?.env?.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
+    const reserved = new Set([
+      'app',
+      'api',
+      'admin',
+      'www',
+      'suporte',
+      'static',
+      'assets',
+      'docs',
+      'status',
+      'mail'
+    ]);
+
+    if (!hostname) return null;
+
+    const lower = hostname.toLowerCase().split(':')[0];
+    if (lower === 'localhost' || lower === '127.0.0.1') return null;
+
+    const baseParts = baseDomain.split('.').filter(Boolean);
+    const hostParts = lower.split('.').filter(Boolean);
+    if (hostParts.length <= baseParts.length) return null;
+
+    const tail = hostParts.slice(hostParts.length - baseParts.length).join('.');
+    if (tail !== baseDomain) return null;
+
+    const subdomainParts = hostParts.slice(0, hostParts.length - baseParts.length);
+    if (subdomainParts.length !== 1) return null;
+
+    const tenant = subdomainParts[0];
+    if (!tenant) return null;
+    if (reserved.has(tenant)) return null;
+
+    const isDnsSafe = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(tenant);
+    if (!isDnsSafe) return null;
+
+    return tenant;
+  };
+
   // Simple Router
-  const path = window.location.pathname;
+  let path = window.location.pathname;
+
+  const tenant = getTenantFromHostname(window.location.hostname);
+  if (tenant && !path.startsWith('/booking/')) {
+    if (path === '/' || path === '') {
+      window.history.replaceState(null, '', `/booking/${tenant}`);
+      path = window.location.pathname;
+    }
+  }
 
   // ROTAS PÚBLICAS (DEVEM VIR PRIMEIRO - SEM AUTENTICAÇÃO)
 

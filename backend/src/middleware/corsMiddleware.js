@@ -35,6 +35,13 @@ function isOriginAllowed(origin, allowedOrigins) {
         logger.warn(`⚠️  [CORS] Origem localhost permitida em DEV: ${origin}`);
         return true;
       }
+
+      // Permitir lvh.me (e subdomínios) para simular tenants localmente
+      // Ex: http://cliente.lvh.me:5173
+      if (url.hostname === 'lvh.me' || url.hostname.endsWith('.lvh.me')) {
+        logger.warn(`⚠️  [CORS] Origem lvh.me permitida em DEV: ${origin}`);
+        return true;
+      }
     } catch (error) {
       // URL inválida
       return false;
