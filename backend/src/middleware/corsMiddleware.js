@@ -48,6 +48,51 @@ function isOriginAllowed(origin, allowedOrigins) {
     return true;
   }
 
+  // Em produção, permitir subdomínios do domínio base (ex: https://<slug>.tally.com.br)
+  // Isso é necessário para o booking público via subdomínio funcionar sem abrir wildcard geral.
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const url = new URL(origin);
+      const baseDomain = (process.env.CORS_BASE_DOMAIN || 'tally.com.br').toLowerCase();
+      const hostname = (url.hostname || '').toLowerCase();
+
+      // Restringir a HTTPS (evita liberar origens inseguras em produção)
+      if (url.protocol !== 'https:') return false;
+
+      // Permitir o domínio base (se for usado)
+      if (hostname === baseDomain) {
+        return true;
+      }
+
+      // Permitir exatamente um nível de subdomínio: <tenant>.<baseDomain>
+      if (hostname.endsWith(`.${baseDomain}`)) {
+        const tenant = hostname.slice(0, -(baseDomain.length + 1));
+        if (!tenant || tenant.includes('.')) return false;
+
+        const reserved = new Set([
+          'app',
+          'api',
+          'admin',
+          'www',
+          'suporte',
+          'static',
+          'assets',
+          'docs',
+          'status',
+          'mail'
+        ]);
+        if (reserved.has(tenant)) return false;
+
+        const isDnsSafe = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(tenant);
+        if (!isDnsSafe) return false;
+
+        return true;
+      }
+    } catch (error) {
+      return false;
+    }
+  }
+
   // Em desenvolvimento, permitir localhost com qualquer porta
   if (process.env.NODE_ENV === 'development') {
     try {
