@@ -9,6 +9,28 @@
 const logger = require('../utils/logger');
 const config = require('../config/config');
 
+function isReservedSubdomain(slug) {
+  const reserved = new Set([
+    'app',
+    'api',
+    'admin',
+    'www',
+    'suporte',
+    'static',
+    'assets',
+    'docs',
+    'status',
+    'mail'
+  ]);
+
+  return reserved.has(slug);
+}
+
+function isDnsSafeSubdomainSlug(slug) {
+  if (!slug) return false;
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug);
+}
+
 /**
  * Validar se uma origem é permitida
  * @param {string} origin - Origem da requisição
@@ -44,6 +66,46 @@ function isOriginAllowed(origin, allowedOrigins) {
       }
     } catch (error) {
       // URL inválida
+      return false;
+    }
+  }
+
+  // Em produção, permitir tenants via subdomínio de forma restrita
+  // Ex: https://cliente.tally.com.br
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const url = new URL(origin);
+      const baseDomain = process.env.PUBLIC_BASE_DOMAIN || process.env.VITE_PUBLIC_BASE_DOMAIN;
+      if (!baseDomain) {
+        return false;
+      }
+
+      if (url.protocol !== 'https:') {
+        return false;
+      }
+
+      const hostname = url.hostname.toLowerCase();
+      const base = baseDomain.toLowerCase();
+
+      if (hostname === base) {
+        return true;
+      }
+
+      if (!hostname.endsWith(`.${base}`)) {
+        return false;
+      }
+
+      const tenant = hostname.slice(0, hostname.length - (base.length + 1));
+      if (!tenant || tenant.includes('.')) {
+        return false;
+      }
+
+      if (!isDnsSafeSubdomainSlug(tenant) || isReservedSubdomain(tenant)) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
       return false;
     }
   }

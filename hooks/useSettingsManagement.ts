@@ -269,9 +269,9 @@ export const useSettingsManagement = () => {
       return `${window.location.origin}/booking/${user.id}`;
     }
 
-    const baseDomain = (import.meta as any)?.env?.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
+    const baseDomain = import.meta.env.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
     const isDev =
-      Boolean((import.meta as any)?.env?.DEV) ||
+      Boolean(import.meta.env.DEV) ||
       window.location.port === '5173' ||
       baseDomain === 'lvh.me';
 
