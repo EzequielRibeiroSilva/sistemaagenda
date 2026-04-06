@@ -88,6 +88,7 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_BASE_URL: http://localhost:3001/api
+      VITE_PUBLIC_BASE_DOMAIN: lvh.me
       VITE_APP_NAME: Painel de Agendamento
     ports:
       - "5173:5173"

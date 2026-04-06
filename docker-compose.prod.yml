@@ -172,6 +172,7 @@ services:
       dockerfile: Dockerfile.frontend.prod
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_PUBLIC_BASE_DOMAIN: ${VITE_PUBLIC_BASE_DOMAIN}
     container_name: painel_frontend_app_prod
     restart: always
     depends_on:

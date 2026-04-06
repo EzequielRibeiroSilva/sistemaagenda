@@ -248,7 +248,7 @@ const App: React.FC = () => {
   }
 
   const getTenantFromHostname = (hostname: string): string | null => {
-    const baseDomain = (import.meta as any)?.env?.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
+    const baseDomain = import.meta.env.VITE_PUBLIC_BASE_DOMAIN || 'lvh.me';
     const reserved = new Set([
       'app',
       'api',
