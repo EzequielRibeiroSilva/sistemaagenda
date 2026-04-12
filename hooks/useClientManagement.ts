@@ -332,8 +332,13 @@ export const useClientManagement = () => {
       });
 
       if (response.success) {
-        // Recarregar lista após atualização
-        await fetchClients();
+        const updatedClient = response?.data;
+        if (updatedClient && typeof updatedClient === 'object') {
+          setClients(prev => prev.map(client => (client.id === id ? { ...client, ...updatedClient } : client)));
+        } else {
+          // Fallback mínimo: aplicar apenas os campos que conseguimos mapear com segurança
+          setClients(prev => prev.map(client => (client.id === id ? { ...client, status: clientData.status ?? client.status } : client)));
+        }
         return true;
       } else {
         throw new Error(response.message || 'Erro ao atualizar cliente');
@@ -343,7 +348,7 @@ export const useClientManagement = () => {
       setError(errorMessage);
       return false;
     }
-  }, [authenticatedFetch, fetchClients]);
+  }, [authenticatedFetch]);
 
   /**
    * Excluir cliente (soft delete)

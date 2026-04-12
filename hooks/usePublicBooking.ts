@@ -235,17 +235,22 @@ export const usePublicBooking = () => {
         },
         body: JSON.stringify(agendamentoData),
       });
-      
-      const data = await response.json();
-      
+
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
       if (!response.ok) {
-        throw new Error(data.message || 'Erro ao criar agendamento');
+        throw new Error(data?.message || 'Erro ao criar agendamento');
       }
-      
-      if (!data.success) {
-        throw new Error(data.message || 'Falha ao criar agendamento');
+
+      if (!data?.success) {
+        throw new Error(data?.message || 'Falha ao criar agendamento');
       }
-      
+
       return data.data;
       
     } catch (err) {

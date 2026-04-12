@@ -1648,7 +1648,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     } catch (error) {
       // Mensagens de erro mais específicas
       let errorMessage = 'Erro ao criar agendamento';
-      if (error.message.includes('Horário indisponível')) {
+      if (error.message.includes('Você possui restrições para agendamentos automáticos')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Horário indisponível')) {
         errorMessage = 'Este horário já foi ocupado. Por favor, escolha outro horário.';
       } else if (error.message.includes('WhatsApp')) {
         errorMessage = 'Agendamento criado, mas houve problema no envio do WhatsApp. Entre em contato conosco.';

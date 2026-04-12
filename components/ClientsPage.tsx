@@ -4,6 +4,7 @@ import { Plus, CheckCircle, X } from './Icons';
 import { useClientManagement, type ClientFilters, type AssinaturaSaldoResponse } from '../hooks/useClientManagement';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { BaseTable, TableColumn } from './BaseTable';
+import ToggleSwitch from './common/ToggleSwitch';
 
 let lastClientsPageRequestKey: string | null = null;
 let lastClientsPageRequestAt = 0;
@@ -39,7 +40,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         clearError,
         totalCount,
         subscriberCount,
-        fetchClientAssinaturaSaldo
+        fetchClientAssinaturaSaldo,
+        updateClient
     } = useClientManagement();
 
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
@@ -47,6 +49,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     const [assinaturaSaldoByClientId, setAssinaturaSaldoByClientId] = useState<Record<number, AssinaturaSaldoResponse | null>>({});
     const [assinaturaSaldoLoadingByClientId, setAssinaturaSaldoLoadingByClientId] = useState<Record<number, boolean>>({});
     const [assinaturaModalClientId, setAssinaturaModalClientId] = useState<number | null>(null);
+    const [statusSavingByClientId, setStatusSavingByClientId] = useState<Record<number, boolean>>({});
 
     // Hook de configurações para verificar se sistema de pontos está ativo
     const { settings, loadSettings } = useSettingsManagement();
@@ -268,7 +271,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 e.preventDefault();
                                 onEditClient(client.id);
                             }}
-                            className="text-blue-600 hover:underline font-bold"
+                            className={client.status === 'Bloqueado'
+                                ? 'text-gray-500 hover:underline font-bold'
+                                : 'text-blue-600 hover:underline font-bold'
+                            }
                         >
                             {client.name}
                         </a>
@@ -279,6 +285,39 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                         )}
                     </div>
                 ),
+            },
+            {
+                key: 'access',
+                label: 'ACESSO',
+                width: 'w-32',
+                align: 'center',
+                filterType: 'none',
+                render: (client: any) => {
+                    const clientId = Number(client.id);
+                    const isSaving = Number.isFinite(clientId) ? Boolean(statusSavingByClientId[clientId]) : false;
+                    const isBlocked = client.status === 'Bloqueado';
+
+                    return (
+                        <div className="flex items-center justify-center">
+                            <ToggleSwitch
+                                enabled={isBlocked}
+                                disabled={isSaving}
+                                setEnabled={async (enabled) => {
+                                    if (!Number.isFinite(clientId)) return;
+                                    if (isSaving) return;
+
+                                    setStatusSavingByClientId(prev => ({ ...prev, [clientId]: true }));
+                                    try {
+                                        const nextStatus = enabled ? 'Bloqueado' : 'Ativo';
+                                        await updateClient(clientId, { status: nextStatus });
+                                    } finally {
+                                        setStatusSavingByClientId(prev => ({ ...prev, [clientId]: false }));
+                                    }
+                                }}
+                            />
+                        </div>
+                    );
+                },
             },
             {
                 key: 'phone',
@@ -379,7 +418,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, statusSavingByClientId, updateClient]);
 
     return (
         <div className="space-y-6">
@@ -411,6 +450,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 loadingMessage="Carregando clientes..."
                 emptyMessage={hasActiveFilters ? '🔍 Nenhum cliente encontrado com esses filtros' : ''}
                 error={error}
+                rowClassName={(client: any) => (client?.status === 'Bloqueado' ? 'opacity-60' : '')}
                 pagination={{
                     currentPage,
                     totalPages: pagination.pages,

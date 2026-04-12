@@ -55,8 +55,10 @@ class PublicBookingController {
     // Limpar telefone (apenas números)
     let limpo = telefone.replace(/\D/g, '');
 
-    // Remover código do país se presente (+55)
+    // Capturar variação com DDI (legado) e sem DDI (padrão)
+    let comDDI = null;
     if (limpo.startsWith('55') && limpo.length >= 12) {
+      comDDI = limpo;
       limpo = limpo.substring(2);
     }
 
@@ -81,8 +83,24 @@ class PublicBookingController {
       variacoes.push(limpo);
     }
 
-    logger.log(` [TelefoneNormalizer] Input: "${telefone}" → Variações: [${variacoes.join(', ')}]`);
-    return variacoes;
+    // ✅ Compatibilidade: muitos registros antigos podem ter telefone_limpo com '55'
+    // Incluir variações com DDI para garantir match e impedir bypass do bloqueio.
+    const variacoesComDDI = [];
+    for (const v of variacoes) {
+      if (typeof v === 'string' && v.length >= 10) {
+        variacoesComDDI.push(`55${v}`);
+      }
+    }
+
+    // Incluir também a forma original com DDI se detectada (antes de remover)
+    if (comDDI) {
+      variacoesComDDI.push(comDDI);
+    }
+
+    const finalVariacoes = Array.from(new Set([...variacoes, ...variacoesComDDI]));
+
+    logger.log(` [TelefoneNormalizer] Input: "${telefone}" → Variações: [${finalVariacoes.join(', ')}]`);
+    return finalVariacoes;
   }
 
   normalizeDateStr(dateValue) {
@@ -1856,6 +1874,11 @@ class PublicBookingController {
         .first();
 
       if (!cliente) {
+        logger.log(`⚠️ [PublicBooking] Cliente NÃO encontrado. Vai criar novo cliente.`, {
+          unidade_id,
+          cliente_telefone,
+          variacoesTelefone
+        });
         // Dividir nome em primeiro e último nome
         const nomePartes = cliente_nome.trim().split(' ');
         const primeiro_nome = nomePartes[0];
@@ -1899,6 +1922,7 @@ class PublicBookingController {
           cliente_id: cliente?.id,
           unidade_id,
           telefone_limpo: cliente.telefone_limpo,
+          status: cliente.status,
           variacoes_buscadas: variacoesTelefone
         });
 
@@ -1912,6 +1936,22 @@ class PublicBookingController {
             cliente = clienteAtualizado;
           }
         }
+      }
+
+      // 🚫 BARREIRA: Cliente bloqueado não pode criar agendamento
+      logger.log(`🧱 [PublicBooking] Checando bloqueio do cliente:`, {
+        cliente_id: cliente?.id,
+        unidade_id,
+        status: cliente?.status,
+        telefone_limpo: cliente?.telefone_limpo
+      });
+      if (cliente?.status === 'Bloqueado') {
+        await trx.rollback();
+        return res.status(403).json({
+          success: false,
+          error: 'Cliente bloqueado',
+          message: 'Você possui restrições para agendamentos automáticos. Por favor, entre em contato via WhatsApp.'
+        });
       }
 
       const hasAssinaturaSelection = servicosCobertos.size > 0 || extrasCobertos.size > 0;

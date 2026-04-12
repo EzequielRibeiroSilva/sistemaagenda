@@ -639,6 +639,22 @@ class AgendamentoController extends BaseController {
         }
       }
 
+      // 🚫 BARREIRA: Cliente bloqueado (painel interno)
+      if (clienteIdFinal) {
+        const clienteRecord = await this.model.db('clientes')
+          .where('id', clienteIdFinal)
+          .where('unidade_id', unidade_id)
+          .select('id', 'status')
+          .first();
+
+        if (clienteRecord?.status === 'Bloqueado') {
+          return res.status(403).json({
+            error: 'Cliente bloqueado',
+            message: 'Este cliente está marcado como Bloqueado no sistema.'
+          });
+        }
+      }
+
       // NOTA: A verificação de conflito agora é feita DENTRO da transação
       // no método createWithLock() para evitar race conditions
 

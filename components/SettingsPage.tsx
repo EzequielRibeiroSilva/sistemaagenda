@@ -7,6 +7,7 @@ import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
 import WhatsAppConnectModal from './WhatsAppConnectModal';
 import { useWhatsAppConnection } from '../hooks/useWhatsAppConnection';
+import ToggleSwitch from './common/ToggleSwitch';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${className}`}>
@@ -24,21 +25,6 @@ const FormRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 
 const Input: React.FC<{ defaultValue?: string, type?: string, value?: string, onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder?: string, autoComplete?: string }> = ({ defaultValue, type = "text", value, onChange, placeholder, autoComplete }) => (
     <input type={type} defaultValue={defaultValue} value={value} onChange={onChange} placeholder={placeholder} autoComplete={autoComplete} className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" />
-);
-
-const ToggleSwitch: React.FC<{ enabled: boolean; setEnabled: (enabled: boolean) => void }> = ({ enabled, setEnabled }) => (
-    <button
-        type="button"
-        className={`${enabled ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none`}
-        role="switch"
-        aria-checked={enabled}
-        onClick={() => setEnabled(!enabled)}
-    >
-        <span
-            aria-hidden="true"
-            className={`${enabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-        />
-    </button>
 );
 
 interface SettingsPageProps {
