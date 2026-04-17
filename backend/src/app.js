@@ -229,7 +229,7 @@ app.get('/', (req, res) => {
 app.use('/api', apiRoutes);
 
 // Webhooks (sem autenticação JWT; segurança tratada no handler)
-app.use('/webhooks', webhooksRoutes);
+app.use('/api/webhooks', webhooksRoutes);
 
 // Middleware de tratamento de erros 404
 app.use('*', (req, res) => {
