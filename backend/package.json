@@ -21,6 +21,7 @@
     "migrate": "npx knex migrate:latest",
     "migrate:rollback": "npx knex migrate:rollback",
     "seed": "npx knex seed:run",
+    "tunnel": "ngrok http 3001",
     "validate:env": "node scripts/validate-env.js",
     "db:maintenance": "node scripts/db-maintenance.js",
     "db:maintenance:full": "node scripts/db-maintenance.js --full",

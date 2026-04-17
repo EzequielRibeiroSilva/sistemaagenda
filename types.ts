@@ -59,6 +59,11 @@ export interface PerformanceMetric {
     subtitle?: string; // ✅ Informação adicional (ex: "Confirmadas: 30")
     icon?: string; // ✅ Ícone para o card (opcional)
     adminOnly?: boolean; // ✅ Flag para indicar que apenas ADMIN pode ver este card
+    breakdown?: Array<{
+        label: string;
+        value: string;
+        colorClassName?: string;
+    }>;
 }
 
 export interface ScheduleSlot {

@@ -61,6 +61,39 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const renderAssinaturaStatusBadge = useCallback((status?: any) => {
+        if (!status) return null;
+
+        const normalized = String(status);
+        if (normalized === 'Ativo') {
+            return (
+                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                    Ativo
+                </span>
+            );
+        }
+        if (normalized === 'Pagamento Pendente') {
+            return (
+                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                    Pagamento Pendente
+                </span>
+            );
+        }
+        if (normalized === 'Cancelado') {
+            return (
+                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                    Cancelado
+                </span>
+            );
+        }
+
+        return (
+            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                {normalized}
+            </span>
+        );
+    }, []);
+
     // ✅ CORREÇÃO: Memoizar para não recriar a cada render
     const buildAssinaturaResumo = useCallback((saldo: AssinaturaSaldoResponse | null) => {
         if (!saldo?.assinatura_ativa || !Array.isArray(saldo.saldos) || saldo.saldos.length === 0) return '';
@@ -387,7 +420,13 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 const clientId = Number(client.id);
                 const saldo = Number.isFinite(clientId) ? (assinaturaSaldoByClientId[clientId] || null) : null;
                 const isSaldoLoading = Number.isFinite(clientId) ? Boolean(assinaturaSaldoLoadingByClientId[clientId]) : false;
-                const resumo = buildAssinaturaResumo(saldo);
+                const assinaturaStatus = String(client.assinaturaStatus || '').trim();
+                const assinaturaAtiva = Boolean(saldo?.assinatura_ativa);
+                const podeExibirSaldo = assinaturaStatus === 'Ativo' && assinaturaAtiva;
+                const resumo = podeExibirSaldo ? buildAssinaturaResumo(saldo) : '';
+                const saldoLabel = assinaturaStatus === 'Pagamento Pendente'
+                    ? 'Sem Saldo (Pagamento Pendente)'
+                    : 'Sem Saldo';
 
                 return (
                     <button
@@ -398,7 +437,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                         }}
                         title={resumo || 'Ver detalhes da assinatura'}
                     >
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
                             <CheckCircle className="w-5 h-5" style={{ color: '#2663EB' }} />
                             <span className="text-xs font-medium" style={{ color: '#2663EB' }}>
                                 Assinante
@@ -408,9 +447,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                     </span>
                                 )}
                             </span>
+                            {renderAssinaturaStatusBadge(client.assinaturaStatus)}
                         </div>
                         <span className="text-[11px] text-gray-600 text-center leading-tight">
-                            {isSaldoLoading ? 'Carregando cotas...' : (resumo || 'Sem dados de cotas')}
+                            {isSaldoLoading ? 'Carregando...' : (podeExibirSaldo ? (resumo || '0/0') : saldoLabel)}
                         </span>
                     </button>
                 );
@@ -418,7 +458,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, statusSavingByClientId, updateClient]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, statusSavingByClientId, updateClient, renderAssinaturaStatusBadge]);
 
     return (
         <div className="space-y-6">
@@ -473,9 +513,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h2 className="text-lg font-bold text-gray-800">Detalhes da Assinatura</h2>
-                                        <p className="text-sm text-gray-500">
-                                            {selectedAssinaturaSaldo?.cliente?.nome || `Cliente #${assinaturaModalClientId}`}
-                                        </p>
+                                        <div className="text-sm text-gray-500 space-y-0.5">
+                                            <div>
+                                                {selectedAssinaturaSaldo?.cliente?.nome || `Cliente #${assinaturaModalClientId}`}
+                                            </div>
+                                            <div>
+                                                Telefone: {selectedAssinaturaSaldo?.cliente?.telefone || '-'}
+                                            </div>
+                                        </div>
                                     </div>
                                     <button type="button" onClick={closeAssinaturaModal} className="p-1 rounded-full hover:bg-gray-200">
                                         <X className="w-5 h-5 text-gray-600" />
@@ -484,70 +529,79 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                             </div>
 
                             <div className="p-6 space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                        <div className="text-xs text-gray-500">Plano</div>
-                                        <div className="text-sm font-semibold text-gray-800">
-                                            {selectedAssinaturaSaldo?.plano?.nome || '-'}
+                                {selectedAssinaturaSaldo && !selectedAssinaturaSaldo.assinatura_ativa && (
+                                    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3">
+                                        <div className="text-sm font-bold">ASSINATURA INATIVA: Pendência de pagamento detectada</div>
+                                    </div>
+                                )}
+                                {selectedAssinaturaSaldo?.assinatura_ativa && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <div className="text-xs text-gray-500">Plano</div>
+                                            <div className="text-sm font-semibold text-gray-800">
+                                                {selectedAssinaturaSaldo?.plano?.nome || '-'}
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                Validade do ciclo: {selectedAssinaturaSaldo?.plano?.validade_dias ? `${selectedAssinaturaSaldo.plano.validade_dias} dias` : '-'}
+                                            </div>
                                         </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            Validade do ciclo: {selectedAssinaturaSaldo?.plano?.validade_dias ? `${selectedAssinaturaSaldo.plano.validade_dias} dias` : '-'}
+
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <div className="text-xs text-gray-500">Ciclo atual</div>
+                                            <div className="text-sm font-semibold text-gray-800">
+                                                {selectedAssinaturaSaldo?.ciclo?.inicio && selectedAssinaturaSaldo?.ciclo?.fim
+                                                    ? `${new Date(`${selectedAssinaturaSaldo.ciclo.inicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${selectedAssinaturaSaldo.ciclo.fim}T12:00:00`).toLocaleDateString('pt-BR')}`
+                                                    : '-'
+                                                }
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                Índice: {typeof selectedAssinaturaSaldo?.ciclo?.indice === 'number' ? selectedAssinaturaSaldo.ciclo.indice : '-'}
+                                            </div>
                                         </div>
                                     </div>
+                                )}
 
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                        <div className="text-xs text-gray-500">Ciclo atual</div>
-                                        <div className="text-sm font-semibold text-gray-800">
-                                            {selectedAssinaturaSaldo?.ciclo?.inicio && selectedAssinaturaSaldo?.ciclo?.fim
-                                                ? `${new Date(`${selectedAssinaturaSaldo.ciclo.inicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${selectedAssinaturaSaldo.ciclo.fim}T12:00:00`).toLocaleDateString('pt-BR')}`
-                                                : '-'
-                                            }
+                                {selectedAssinaturaSaldo?.assinatura_ativa && (
+                                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                                            <div className="text-sm font-semibold text-gray-800">Itens do plano</div>
                                         </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            Índice: {typeof selectedAssinaturaSaldo?.ciclo?.indice === 'number' ? selectedAssinaturaSaldo.ciclo.indice : '-'}
-                                        </div>
-                                    </div>
-                                </div>
+                                        <div className="divide-y divide-gray-200">
+                                            {(selectedAssinaturaSaldo?.saldos || []).map((item) => {
+                                                const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
+                                                const quotaLabel = item.quantidade_por_ciclo === null ? '∞' : String(item.quantidade_por_ciclo);
+                                                const usadosLabel = String(item.usados || 0);
+                                                const restantesLabel = item.restantes === null ? '∞' : String(item.restantes);
 
-                                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                                        <div className="text-sm font-semibold text-gray-800">Itens do plano</div>
-                                    </div>
-                                    <div className="divide-y divide-gray-200">
-                                        {(selectedAssinaturaSaldo?.saldos || []).map((item) => {
-                                            const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
-                                            const quotaLabel = item.quantidade_por_ciclo === null ? '∞' : String(item.quantidade_por_ciclo);
-                                            const usadosLabel = String(item.usados || 0);
-                                            const restantesLabel = item.restantes === null ? '∞' : String(item.restantes);
-
-                                            return (
-                                                <div key={item.plano_item_id} className="px-4 py-3 flex items-center justify-between gap-4">
-                                                    <div className="min-w-0">
-                                                        <div className="text-sm font-medium text-gray-800 truncate">{nome}</div>
-                                                        <div className="text-xs text-gray-500">{item.tipo === 'SERVICO' ? 'Serviço' : 'Extra'}</div>
+                                                return (
+                                                    <div key={item.plano_item_id} className="px-4 py-3 flex items-center justify-between gap-4">
+                                                        <div className="min-w-0">
+                                                            <div className="text-sm font-medium text-gray-800 truncate">{nome}</div>
+                                                            <div className="text-xs text-gray-500">{item.tipo === 'SERVICO' ? 'Serviço' : 'Extra'}</div>
+                                                        </div>
+                                                        <div className="flex items-center gap-6 flex-shrink-0">
+                                                            <div className="text-right">
+                                                                <div className="text-xs text-gray-500">Usado</div>
+                                                                <div className="text-sm font-semibold text-gray-800">{usadosLabel}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-xs text-gray-500">Total</div>
+                                                                <div className="text-sm font-semibold text-gray-800">{quotaLabel}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-xs text-gray-500">Restante</div>
+                                                                <div className="text-sm font-semibold" style={{ color: '#2663EB' }}>{restantesLabel}</div>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-6 flex-shrink-0">
-                                                        <div className="text-right">
-                                                            <div className="text-xs text-gray-500">Usado</div>
-                                                            <div className="text-sm font-semibold text-gray-800">{usadosLabel}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-xs text-gray-500">Total</div>
-                                                            <div className="text-sm font-semibold text-gray-800">{quotaLabel}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-xs text-gray-500">Restante</div>
-                                                            <div className="text-sm font-semibold" style={{ color: '#2663EB' }}>{restantesLabel}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {(selectedAssinaturaSaldo?.saldos || []).length === 0 && (
-                                            <div className="px-4 py-6 text-sm text-gray-500 text-center">Nenhum item encontrado</div>
-                                        )}
+                                                );
+                                            })}
+                                            {(selectedAssinaturaSaldo?.saldos || []).length === 0 && (
+                                                <div className="px-4 py-6 text-sm text-gray-500 text-center">Nenhum item encontrado</div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">

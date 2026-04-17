@@ -14,6 +14,7 @@ interface BackendAgendamento {
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;
+  coberto_clube?: boolean;
   status: 'Pendente' | 'Aprovado' | 'Cancelado' | 'Concluído' | 'Não Compareceu';
   valor_total: number;
   cliente_data_nascimento?: string;
@@ -75,6 +76,24 @@ interface DashboardFilters {
   data_fim: string;
 }
 
+interface DashboardClubStats {
+  assinaturas_ativas: number;
+  assinaturas_pendentes: number;
+  cotas_consumidas: number;
+}
+
+interface DashboardClubIntelligence {
+  mrr: number;
+  receita_avulsa: number;
+  receita_total: number;
+  percentual_clube: number;
+  ticket_medio_assinante: number;
+  ticket_medio_comum: number;
+  churn_pct: number;
+  canceladas_periodo: number;
+  ativas_atuais: number;
+}
+
 // Função utilitária para formatar valores monetários no padrão brasileiro
 const formatCurrency = (value: number): string => {
   return value.toLocaleString('pt-BR', {
@@ -91,6 +110,8 @@ export const useDashboardData = () => {
   const [servicos, setServicos] = useState<BackendServico[]>([]);
   const [unidades, setUnidades] = useState<BackendUnidade[]>([]);
   const [unitSchedules, setUnitSchedules] = useState<Record<string, UnitSchedule[]>>({}); // Horários por unidade
+  const [clubStats, setClubStats] = useState<DashboardClubStats | null>(null);
+  const [clubIntelligence, setClubIntelligence] = useState<DashboardClubIntelligence | null>(null);
   const [isLoading, setIsLoading] = useState(true); // ✅ CORREÇÃO: Inicializar como true para evitar flash
   const [initialLoadComplete, setInitialLoadComplete] = useState(false); // ✅ NOVO: Flag para controle de carregamento inicial
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +171,89 @@ export const useDashboardData = () => {
       
     } catch (err) {
       throw err;
+    }
+  }, [makeAuthenticatedRequest]);
+
+  const fetchClubIntelligence = useCallback(async (filters: DashboardFilters) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('data_inicio', filters.data_inicio);
+      params.append('data_fim', filters.data_fim);
+      if (filters.unidade_id) {
+        params.append('unidade_id', filters.unidade_id.toString());
+      }
+
+      const url = `${API_BASE_URL}/dashboard/club-intelligence?${params.toString()}`;
+      const response = await makeAuthenticatedRequest(url);
+
+      const payload = response && response.success && response.data ? response.data : (response?.data || response);
+
+      if (payload) {
+        setClubIntelligence({
+          mrr: Number(payload.mrr) || 0,
+          receita_avulsa: Number(payload.receita_avulsa) || 0,
+          receita_total: Number(payload.receita_total) || 0,
+          percentual_clube: Number(payload.percentual_clube) || 0,
+          ticket_medio_assinante: Number(payload.ticket_medio_assinante) || 0,
+          ticket_medio_comum: Number(payload.ticket_medio_comum) || 0,
+          churn_pct: Number(payload.churn_pct) || 0,
+          canceladas_periodo: Number(payload.canceladas_periodo) || 0,
+          ativas_atuais: Number(payload.ativas_atuais) || 0
+        });
+      } else {
+        setClubIntelligence({
+          mrr: 0,
+          receita_avulsa: 0,
+          receita_total: 0,
+          percentual_clube: 0,
+          ticket_medio_assinante: 0,
+          ticket_medio_comum: 0,
+          churn_pct: 0,
+          canceladas_periodo: 0,
+          ativas_atuais: 0
+        });
+      }
+    } catch (_) {
+      setClubIntelligence({
+        mrr: 0,
+        receita_avulsa: 0,
+        receita_total: 0,
+        percentual_clube: 0,
+        ticket_medio_assinante: 0,
+        ticket_medio_comum: 0,
+        churn_pct: 0,
+        canceladas_periodo: 0,
+        ativas_atuais: 0
+      });
+    }
+  }, [makeAuthenticatedRequest]);
+
+  const fetchClubStats = useCallback(async (filters: DashboardFilters) => {
+    const params = new URLSearchParams();
+    params.append('data_inicio', filters.data_inicio);
+    params.append('data_fim', filters.data_fim);
+
+    const url = `${API_BASE_URL}/dashboard/stats?${params.toString()}`;
+    const response = await makeAuthenticatedRequest(url);
+
+    if (response && response.success && response.data) {
+      setClubStats({
+        assinaturas_ativas: Number(response.data.assinaturas_ativas) || 0,
+        assinaturas_pendentes: Number(response.data.assinaturas_pendentes) || 0,
+        cotas_consumidas: Number(response.data.cotas_consumidas) || 0
+      });
+    } else if (response && response.data) {
+      setClubStats({
+        assinaturas_ativas: Number(response.data.assinaturas_ativas) || 0,
+        assinaturas_pendentes: Number(response.data.assinaturas_pendentes) || 0,
+        cotas_consumidas: Number(response.data.cotas_consumidas) || 0
+      });
+    } else {
+      setClubStats({
+        assinaturas_ativas: 0,
+        assinaturas_pendentes: 0,
+        cotas_consumidas: 0
+      });
     }
   }, [makeAuthenticatedRequest]);
 
@@ -346,7 +450,14 @@ export const useDashboardData = () => {
 
     
     // 9. AGENDAMENTOS PENDENTES (Aprovados aguardando finalização)
-    const totalPendentes = pendingAppointments.length;
+    const now = new Date();
+    const totalPendentes = pendingAppointments.filter(a => {
+      const dateStr = String(a.data_agendamento || '').split('T')[0];
+      if (!dateStr || !a.hora_fim) return false;
+      const endTs = new Date(`${dateStr}T${a.hora_fim}-03:00`);
+      if (Number.isNaN(endTs.getTime())) return false;
+      return endTs < now;
+    }).length;
     
 
 
@@ -496,7 +607,7 @@ export const useDashboardData = () => {
         value: totalPendentes.toString(),
         isPositive: totalPendentes < 5, // Verde se < 5, amarelo/vermelho se >= 5
         change: '', // ✅ Removido: Variação não é relevante para este card
-        subtitle: 'Aguardando finalização'
+        subtitle: 'Aprovados com término já passado'
       }
     ];
   }, []);
@@ -539,6 +650,8 @@ export const useDashboardData = () => {
     servicos,
     unidades,
     unitSchedules, // Horários de funcionamento por unidade
+    clubStats,
+    clubIntelligence,
 
     // Estado
     isLoading,
@@ -548,6 +661,8 @@ export const useDashboardData = () => {
     // Funções
     fetchAgendamentos,
     fetchAgendamentosRaw, // Função que retorna dados sem salvar no estado
+    fetchClubStats,
+    fetchClubIntelligence,
     calculateMetrics,
     loadInitialData
   };

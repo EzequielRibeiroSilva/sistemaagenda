@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Agent, Service, Appointment, UnavailableBlock, ScheduleSlot, Location } from '../types';
-import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus, Cake, RefreshCw } from './Icons';
+import { ChevronLeft, ChevronRight, Check, MoreHorizontal, ChevronDown, Plus, Cake, RefreshCw, Crown } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
 import { useCalendarData } from '../hooks/useCalendarData';
 import type { CalendarAgent, CalendarService, CalendarLocation, CalendarAppointment } from '../hooks/useCalendarData';
@@ -202,7 +202,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     const isSinglePlan = user.plano === 'Single' || locations.length === 1;
     const isMultiPlan = user.plano === 'Multi' && locations.length > 1;
 
-    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string; extras?: string[] })[] = useMemo(() => {
+    const appointments: (Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string; clientBirthDate?: string; extras?: string[]; isClubCovered?: boolean })[] = useMemo(() => {
         return backendAppointments.map(appointment => ({
             id: appointment.id,
             numeroAgendamento: appointment.numeroAgendamento,
@@ -216,6 +216,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
             clientName: appointment.clientName, // ✅ CRÍTICO: Incluir nome do cliente
             clientPhone: appointment.clientPhone, // ✅ CRÍTICO: Incluir telefone do cliente
             clientBirthDate: appointment.clientBirthDate,
+            isClubCovered: (appointment as any).isClubCovered,
             extras: (appointment as any).extras,
             recorrenciaGroupId: (appointment as any).recorrenciaGroupId || null,
             recorrenciaConfig: (appointment as any).recorrenciaConfig
@@ -1513,6 +1514,14 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                             </div>
                                             {/* Badge do ID no canto superior direito + Final */}
                                             <div className="absolute top-1 right-1 flex items-center gap-1">
+                                                {app.isClubCovered && (
+                                                    <div
+                                                        className="bg-white/90 rounded p-0.5 border border-gray-200 shadow-sm"
+                                                        title="Coberto pelo Clube"
+                                                    >
+                                                        <Crown className="h-6 w-6 drop-shadow" style={{ color: '#f8b933' }} />
+                                                    </div>
+                                                )}
                                                 <div className="bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
                                                     #{app.numeroAgendamento || app.id}
                                                 </div>
@@ -1866,6 +1875,14 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                 {/* Horário e ID na mesma linha (Grid Semana) */}
                                                 <div className="flex items-center gap-1.5">
                                                     <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{app.startTime} - {app.endTime}</p>
+                                                    {app.isClubCovered && (
+                                                        <div
+                                                            className="inline-flex bg-white/90 rounded p-0.5 border border-gray-200 shadow-sm"
+                                                            title="Coberto pelo Clube"
+                                                        >
+                                                            <Crown className="h-5 w-5 drop-shadow" style={{ color: '#f8b933' }} />
+                                                        </div>
+                                                    )}
                                                     <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
                                                         #{app.id}
                                                     </div>
@@ -2109,6 +2126,14 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                   style={positionStyle}
                                                   title={`${service.name} (${app.startTime}-${app.endTime})${tooltipSuffix}${isBirthday ? ' 🎂 Aniversário!' : ''}`}
                                                 >
+                                                    {app.isClubCovered && (
+                                                        <div
+                                                            className="absolute -top-1 -right-1 bg-white/90 rounded p-0.5 border border-gray-200 shadow-sm"
+                                                            title="Coberto pelo Clube"
+                                                        >
+                                                            <Crown className="h-6 w-6 drop-shadow" style={{ color: '#f8b933' }} />
+                                                        </div>
+                                                    )}
                                                     {isRecurring && (
                                                         <div
                                                             className="absolute top-0.5 left-0.5 bg-white/90 rounded p-0.5 border border-gray-200 shadow-sm"

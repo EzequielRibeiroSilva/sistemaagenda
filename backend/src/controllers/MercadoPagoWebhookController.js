@@ -1,0 +1,576 @@
+const crypto = require('crypto');
+const logger = require('../utils/logger');
+const { db } = require('../config/knex');
+const AssinaturaRenovacaoService = require('../services/AssinaturaRenovacaoService');
+const WhatsAppService = require('../services/WhatsAppService');
+
+class MercadoPagoWebhookController {
+  constructor() {
+    this.assinaturaRenovacaoService = new AssinaturaRenovacaoService();
+    this.whatsAppService = new WhatsAppService();
+  }
+
+  getWebhookSecret() {
+    return process.env.MP_WEBHOOK_SECRET || process.env.MERCADOPAGO_WEBHOOK_SECRET || null;
+  }
+
+  parseMercadoPagoSignatureHeader(xSignature) {
+    if (!xSignature) return { type: 'missing' };
+    const received = Array.isArray(xSignature) ? xSignature[0] : String(xSignature);
+
+    // Formato antigo/simples: "<hex>"
+    if (!received.includes('=') && received.length >= 32) {
+      return { type: 'simple', signature: received.trim() };
+    }
+
+    // Formato documentado pelo MP: "ts=...,v1=..." (às vezes com mais pares)
+    const parts = received.split(',').map((p) => p.trim()).filter(Boolean);
+    const kv = {};
+    for (const part of parts) {
+      const idx = part.indexOf('=');
+      if (idx === -1) continue;
+      const k = part.slice(0, idx).trim();
+      const v = part.slice(idx + 1).trim();
+      if (k) kv[k] = v;
+    }
+
+    if (kv.v1 && kv.ts) {
+      return { type: 'v1', ts: kv.ts, signature: kv.v1 };
+    }
+
+    return { type: 'unknown', raw: received };
+  }
+
+  timingSafeEqual(a, b) {
+    const ab = Buffer.from(String(a || ''), 'utf8');
+    const bb = Buffer.from(String(b || ''), 'utf8');
+    if (ab.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ab, bb);
+  }
+
+  computeHmacSignature(rawBody, secret) {
+    return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  }
+
+  computeHmacSignatureWithTs(rawBody, secret, ts) {
+    const base = `${String(ts)}.${rawBody.toString('utf8')}`;
+    return crypto.createHmac('sha256', secret).update(base).digest('hex');
+  }
+
+  validateSignature(req) {
+    const secret = this.getWebhookSecret();
+    if (!secret) {
+      return { ok: false, error: 'Webhook secret não configurado' };
+    }
+
+    const xSignature = req.headers['x-signature'];
+    const parsed = this.parseMercadoPagoSignatureHeader(xSignature);
+    if (parsed.type === 'missing') {
+      return { ok: false, error: 'Header x-signature ausente' };
+    }
+
+    const raw = req.rawBody;
+    if (!raw || !Buffer.isBuffer(raw)) {
+      return { ok: false, error: 'rawBody indisponível para validação' };
+    }
+
+    // Aceitar 2 formatos para evitar falso-negativo durante rollout:
+    // 1) hex puro (compatibilidade)
+    // 2) ts=...,v1=... (formato Mercado Pago)
+    const expectedSimple = this.computeHmacSignature(raw, secret);
+    const receivedSimple = parsed.type === 'simple' ? parsed.signature : null;
+
+    const okSimple = receivedSimple ? this.timingSafeEqual(receivedSimple, expectedSimple) : false;
+
+    let okV1 = false;
+    if (parsed.type === 'v1') {
+      const expectedV1 = this.computeHmacSignatureWithTs(raw, secret, parsed.ts);
+      okV1 = this.timingSafeEqual(parsed.signature, expectedV1);
+    }
+
+    if (!okSimple && !okV1) {
+      return { ok: false, error: 'Assinatura inválida' };
+    }
+
+    return { ok: true };
+  }
+
+  extractEventMeta(payload) {
+    const topic = payload?.type || payload?.topic || null;
+    const action = payload?.action || null;
+
+    const resourceId =
+      payload?.data?.id ||
+      payload?.resource?.id ||
+      payload?.id ||
+      payload?.resource_id ||
+      null;
+
+    return { topic, action, resourceId: resourceId ? String(resourceId) : null };
+  }
+
+  getAccessToken() {
+    return process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || null;
+  }
+
+  async mpFetchJson(url) {
+    const accessToken = this.getAccessToken();
+    if (!accessToken) {
+      throw new Error('MP_ACCESS_TOKEN não configurado');
+    }
+
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok) {
+      const msg = json?.message || json?.error || `HTTP ${resp.status}`;
+      throw new Error(`Mercado Pago API erro: ${msg}`);
+    }
+
+    return json;
+  }
+
+  async fetchPreapproval(preapprovalId) {
+    if (!preapprovalId) return null;
+    return this.mpFetchJson(`https://api.mercadopago.com/preapproval/${encodeURIComponent(String(preapprovalId))}`);
+  }
+
+  async fetchPayment(paymentId) {
+    if (!paymentId) return null;
+    return this.mpFetchJson(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(String(paymentId))}`);
+  }
+
+  mapPreapprovalToTally(preapprovalStatus) {
+    const s = (preapprovalStatus || '').toLowerCase();
+    if (s === 'cancelled' || s === 'canceled' || s === 'paused') return 'Cancelado';
+    if (s === 'authorized') return 'Ativo';
+    if (s === 'pending') return 'Pagamento Pendente';
+    return 'Pagamento Pendente';
+  }
+
+  mapPaymentToTally(paymentStatus) {
+    const s = (paymentStatus || '').toLowerCase();
+    if (s === 'approved') return 'Ativo';
+    return 'Pagamento Pendente';
+  }
+
+  derivePreapprovalIdFromPayment(payment) {
+    const candidate =
+      payment?.preapproval_id ||
+      payment?.subscription_id ||
+      payment?.order?.id ||
+      payment?.metadata?.preapproval_id ||
+      payment?.metadata?.subscription_id ||
+      null;
+
+    return candidate ? String(candidate) : null;
+  }
+
+  derivePayerEmail({ preapproval, payment }) {
+    const email =
+      preapproval?.payer_email ||
+      preapproval?.payer?.email ||
+      payment?.payer?.email ||
+      payment?.additional_info?.payer?.email ||
+      null;
+
+    return email ? String(email).trim().toLowerCase() : null;
+  }
+
+  buildEventWhereClause(qb, { topic, action, resourceId, xRequestId }) {
+    if (topic == null) qb.whereNull('topic');
+    else qb.where('topic', topic);
+
+    if (resourceId == null) qb.whereNull('resource_id');
+    else qb.where('resource_id', resourceId);
+
+    if (action == null) qb.whereNull('action');
+    else qb.where('action', action);
+
+    if (xRequestId == null) qb.whereNull('x_request_id');
+    else qb.where('x_request_id', xRequestId);
+  }
+
+  async resolveCliente({ preapprovalId, payerEmail }) {
+    if (preapprovalId) {
+      const cliente = await db('clientes')
+        .where('mp_preapproval_id', preapprovalId)
+        .first();
+      if (cliente) return { cliente, via: 'mp_preapproval_id', ambiguous: false };
+    }
+
+    if (payerEmail) {
+      const rows = await db('clientes')
+        .whereRaw('LOWER(mp_customer_email) = ?', [payerEmail])
+        .select('id', 'mp_preapproval_id');
+
+      if (rows.length === 1) {
+        const cliente = await db('clientes').where('id', rows[0].id).first();
+        return { cliente, via: 'mp_customer_email', ambiguous: false };
+      }
+
+      if (rows.length > 1) {
+        return { cliente: null, via: 'mp_customer_email', ambiguous: true };
+      }
+    }
+
+    return { cliente: null, via: null, ambiguous: false };
+  }
+
+  computeFinalTallyStatus({ preapproval, payment }) {
+    const preapprovalStatus = preapproval?.status;
+    const paymentStatus = payment?.status;
+
+    const pre = (preapprovalStatus || '').toLowerCase();
+    if (pre === 'cancelled' || pre === 'canceled' || pre === 'paused') {
+      return 'Cancelado';
+    }
+
+    if (paymentStatus) {
+      return this.mapPaymentToTally(paymentStatus);
+    }
+
+    if (preapprovalStatus) {
+      return this.mapPreapprovalToTally(preapprovalStatus);
+    }
+
+    return 'Pagamento Pendente';
+  }
+
+  async mercadopago(req, res) {
+    let eventRowId = null;
+    let eventMetaForUpdate = null;
+    try {
+      const payload = req.body || {};
+      const { topic, action, resourceId } = this.extractEventMeta(payload);
+
+      const xRequestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']) : null;
+      const xSignature = req.headers['x-signature'] ? String(req.headers['x-signature']) : null;
+
+      eventMetaForUpdate = { topic, action, resourceId, xRequestId };
+
+      const signatureResult = this.validateSignature(req);
+      if (!signatureResult.ok) {
+        // Importante para troubleshooting: registrar tentativa mesmo com assinatura inválida.
+        await db('mercadopago_webhook_events')
+          .insert({
+            topic,
+            action,
+            resource_id: resourceId,
+            x_request_id: xRequestId,
+            x_signature: xSignature,
+            payload,
+            received_at: new Date(),
+            processed_at: new Date(),
+            processing_error: signatureResult.error
+          })
+          .onConflict(['topic', 'resource_id', 'action', 'x_request_id'])
+          .ignore();
+
+        return res.status(401).json({ success: false, error: 'Webhook não autorizado' });
+      }
+
+      await db('mercadopago_webhook_events')
+        .insert({
+          topic,
+          action,
+          resource_id: resourceId,
+          x_request_id: xRequestId,
+          x_signature: xSignature,
+          payload,
+          received_at: new Date()
+        })
+        .onConflict(['topic', 'resource_id', 'action', 'x_request_id'])
+        .ignore();
+
+      const eventRow = await db('mercadopago_webhook_events')
+        .modify((qb) => this.buildEventWhereClause(qb, { topic, action, resourceId, xRequestId }))
+        .orderBy('id', 'desc')
+        .first();
+
+      eventRowId = eventRow?.id || null;
+
+      let payment = null;
+      let preapproval = null;
+
+      // Suporte a testes internos: permitir objetos inline no payload
+      if (payload?.payment && typeof payload.payment === 'object') {
+        payment = payload.payment;
+      }
+      if (payload?.preapproval && typeof payload.preapproval === 'object') {
+        preapproval = payload.preapproval;
+      }
+
+      const topicLower = topic ? String(topic).toLowerCase() : null;
+      if (topicLower === 'payment') {
+        if (!payment) {
+          payment = await this.fetchPayment(resourceId);
+        }
+        if (!preapproval) {
+          const preapprovalId = this.derivePreapprovalIdFromPayment(payment);
+          if (preapprovalId) {
+            preapproval = await this.fetchPreapproval(preapprovalId);
+          }
+        }
+      } else if (topicLower === 'preapproval') {
+        if (!preapproval) {
+          preapproval = await this.fetchPreapproval(resourceId);
+        }
+      } else {
+        // Tópico desconhecido: ainda assim tentamos tratar se vier com IDs reconhecíveis
+        // (ex.: payload sem 'type' mas com data.id). Preferimos não falhar o endpoint.
+        if (resourceId) {
+          try {
+            if (!preapproval) {
+              preapproval = await this.fetchPreapproval(resourceId);
+            }
+          } catch (_) {
+            try {
+              if (!payment) {
+                payment = await this.fetchPayment(resourceId);
+              }
+            } catch (_) {
+              // Ignorar: será marcado como processado sem atualização.
+            }
+          }
+        }
+      }
+
+      const preapprovalIdFinal =
+        (preapproval?.id ? String(preapproval.id) : null) ||
+        (payment ? this.derivePreapprovalIdFromPayment(payment) : null);
+
+      const payerEmail = this.derivePayerEmail({ preapproval, payment });
+      const resolveResult = await this.resolveCliente({ preapprovalId: preapprovalIdFinal, payerEmail });
+
+      if (resolveResult.ambiguous) {
+        throw new Error('Ambiguidade: múltiplos clientes com o mesmo mp_customer_email');
+      }
+
+      if (!resolveResult.cliente) {
+        // Não atualizar nada; apenas marcar como processado (evento útil para reconciliação manual)
+        if (eventRowId) {
+          await db('mercadopago_webhook_events')
+            .where('id', eventRowId)
+            .update({
+              processed_at: new Date(),
+              processing_error: 'Cliente não encontrado para o evento'
+            });
+        }
+        return res.status(200).json({ success: true, ignored: true });
+      }
+
+      const finalStatus = this.computeFinalTallyStatus({ preapproval, payment });
+
+      const mpStatus =
+        (preapproval?.status ? String(preapproval.status) : null) ||
+        (payment?.status ? String(payment.status) : null) ||
+        null;
+
+      const updateData = {
+        assinatura_status: finalStatus,
+        mp_status: mpStatus,
+        mp_last_event_at: new Date()
+      };
+
+      if (payment && String(payment.status || '').toLowerCase() === 'approved') {
+        const mpPaymentId = payment?.id ? String(payment.id) : null;
+        const planoId = resolveResult?.cliente?.assinatura_plano_id || null;
+
+        if (mpPaymentId && planoId) {
+          const plano = await db('planos_assinatura')
+            .where('id', planoId)
+            .select('id', 'validade_dias')
+            .first();
+
+          await this.assinaturaRenovacaoService.registrarPagamento({
+            clienteId: resolveResult.cliente.id,
+            planoId: planoId,
+            mpPaymentId: mpPaymentId,
+            mpPreapprovalId: preapprovalIdFinal,
+            dataRenovacao: payment?.date_approved || payment?.date_created || null,
+            valorPago: payment?.transaction_amount != null ? Number(payment.transaction_amount) : null,
+            validadeDias: plano?.validade_dias || 31,
+            dbConn: db
+          });
+        }
+      }
+
+      if (preapprovalIdFinal && !resolveResult.cliente.mp_preapproval_id) {
+        updateData.mp_preapproval_id = preapprovalIdFinal;
+      }
+
+      if (payerEmail && !resolveResult.cliente.mp_customer_email) {
+        updateData.mp_customer_email = payerEmail;
+      }
+
+      if (preapproval?.preapproval_plan_id && !resolveResult.cliente.mp_plan_id) {
+        updateData.mp_plan_id = String(preapproval.preapproval_plan_id);
+      }
+
+      const payerId = preapproval?.payer_id || payment?.payer?.id || null;
+      if (payerId && !resolveResult.cliente.mp_payer_id) {
+        updateData.mp_payer_id = String(payerId);
+      }
+
+      await db('clientes')
+        .where('id', resolveResult.cliente.id)
+        .update(updateData);
+
+      // Notificações WhatsApp financeiras (idempotentes)
+      try {
+        const unidade = await db('unidades as u')
+          .join('usuarios as us', 'u.usuario_id', 'us.id')
+          .where('u.id', resolveResult.cliente.unidade_id)
+          .select(
+            'u.id as unidade_id',
+            'u.nome as unidade_nome',
+            'u.telefone as unidade_telefone',
+            'us.telefone as admin_telefone'
+          )
+          .first();
+
+        const clienteNome = `${resolveResult.cliente.primeiro_nome || ''} ${resolveResult.cliente.ultimo_nome || ''}`.trim() || 'Cliente';
+        const clienteTelefone = resolveResult.cliente.telefone;
+        const unidadeNome = unidade?.unidade_nome || 'Unidade';
+        const unidadeTelefone = unidade?.unidade_telefone || unidade?.admin_telefone || null;
+        const adminTelefone = unidade?.admin_telefone || null;
+
+        const planoNome = resolveResult?.cliente?.assinatura_plano_id
+          ? (await db('planos_assinatura').where('id', resolveResult.cliente.assinatura_plano_id).select('nome').first())?.nome
+          : null;
+
+        const wppLocal = unidadeTelefone ? this.whatsAppService.generateWhatsAppLink(unidadeTelefone) : null;
+        const valorStr = payment?.transaction_amount != null ? this.whatsAppService.formatCurrencyBRL(payment.transaction_amount) : null;
+
+        const mpPaymentId = payment?.id ? String(payment.id) : null;
+        const assinaturaRef = mpPaymentId || preapprovalIdFinal;
+
+        const paymentStatusLower = payment?.status ? String(payment.status).toLowerCase() : null;
+        const preapprovalStatusLower = preapproval?.status ? String(preapproval.status).toLowerCase() : null;
+
+        if (assinaturaRef && unidade?.unidade_id && resolveResult.cliente.id) {
+          if (paymentStatusLower === 'approved') {
+            const msgCliente = this.whatsAppService.generatePagamentoAprovadoClienteMessage({
+              clienteNome,
+              unidadeNome,
+              wppLocal: wppLocal || '-',
+              planoNome,
+              valorStr
+            });
+            const msgAdmin = this.whatsAppService.generatePagamentoAprovadoAdminMessage({
+              clienteNome,
+              unidadeNome,
+              planoNome,
+              valorStr,
+              refId: assinaturaRef
+            });
+
+            await this.whatsAppService.sendFinanceNotification({
+              unidade_id: unidade.unidade_id,
+              cliente_id: resolveResult.cliente.id,
+              cliente_telefone: clienteTelefone,
+              admin_telefone: adminTelefone,
+              unidade_telefone: unidadeTelefone,
+              tipoBase: 'assinatura_pagamento_aprovado',
+              assinatura_referencia: assinaturaRef,
+              messageCliente: msgCliente,
+              messageAdmin: msgAdmin
+            });
+          } else if (paymentStatusLower === 'rejected') {
+            const msgCliente = this.whatsAppService.generatePagamentoRecusadoClienteMessage({
+              clienteNome,
+              unidadeNome,
+              wppLocal: wppLocal || '-',
+              planoNome,
+              valorStr
+            });
+            const msgAdmin = this.whatsAppService.generatePagamentoRecusadoAdminMessage({
+              clienteNome,
+              unidadeNome,
+              planoNome,
+              valorStr,
+              refId: assinaturaRef
+            });
+
+            await this.whatsAppService.sendFinanceNotification({
+              unidade_id: unidade.unidade_id,
+              cliente_id: resolveResult.cliente.id,
+              cliente_telefone: clienteTelefone,
+              admin_telefone: adminTelefone,
+              unidade_telefone: unidadeTelefone,
+              tipoBase: 'assinatura_pagamento_recusado',
+              assinatura_referencia: assinaturaRef,
+              messageCliente: msgCliente,
+              messageAdmin: msgAdmin
+            });
+          } else if (preapprovalStatusLower === 'cancelled' || preapprovalStatusLower === 'canceled' || preapprovalStatusLower === 'paused') {
+            const statusLabel = preapprovalStatusLower === 'paused' ? 'Suspenso' : 'Cancelado';
+            const msgCliente = this.whatsAppService.generateAssinaturaCanceladaClienteMessage({
+              clienteNome,
+              unidadeNome,
+              wppLocal: wppLocal || '-',
+              planoNome,
+              statusLabel
+            });
+            const msgAdmin = this.whatsAppService.generateAssinaturaCanceladaAdminMessage({
+              clienteNome,
+              unidadeNome,
+              planoNome,
+              statusLabel,
+              refId: assinaturaRef
+            });
+
+            await this.whatsAppService.sendFinanceNotification({
+              unidade_id: unidade.unidade_id,
+              cliente_id: resolveResult.cliente.id,
+              cliente_telefone: clienteTelefone,
+              admin_telefone: adminTelefone,
+              unidade_telefone: unidadeTelefone,
+              tipoBase: 'assinatura_cancelada',
+              assinatura_referencia: assinaturaRef,
+              messageCliente: msgCliente,
+              messageAdmin: msgAdmin
+            });
+          }
+        }
+      } catch (notifyError) {
+        logger.error('❌ [MercadoPagoWebhook] Erro ao disparar notificações WhatsApp financeiras:', notifyError);
+      }
+
+      if (eventRowId) {
+        await db('mercadopago_webhook_events')
+          .where('id', eventRowId)
+          .update({
+            processed_at: new Date(),
+            processing_error: null
+          });
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      if (eventRowId) {
+        try {
+          await db('mercadopago_webhook_events')
+            .where('id', eventRowId)
+            .update({
+              processed_at: new Date(),
+              processing_error: String(error?.message || 'Erro desconhecido')
+            });
+        } catch (_) {
+          // Evitar falha adicional
+        }
+      }
+      logger.error('❌ [MercadoPagoWebhook] Erro ao processar webhook:', error);
+      return res.status(500).json({ success: false });
+    }
+  }
+}
+
+module.exports = MercadoPagoWebhookController;

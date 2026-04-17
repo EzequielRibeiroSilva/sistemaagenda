@@ -37,6 +37,7 @@ export interface InternalCliente {
   ultimo_nome: string;
   telefone: string;
   is_assinante: boolean;
+  assinatura_status?: string | null;
 }
 
 export interface AgendamentoDetalhes {

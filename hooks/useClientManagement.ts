@@ -8,8 +8,10 @@ export interface Client {
   firstName: string;
   lastName: string;
   phone: string;
+  mpCustomerEmail?: string | null;
   birthDate?: string;
   isSubscriber: boolean;
+  assinaturaStatus?: 'Ativo' | 'Pagamento Pendente' | 'Cancelado' | null;
   subscriptionStartDate?: string;
   subscriptionPlanId?: number | null;
   status: 'Ativo' | 'Bloqueado';
@@ -53,8 +55,10 @@ export interface CreateClientData {
   primeiro_nome: string;
   ultimo_nome?: string;
   telefone: string;
+  mp_customer_email?: string | null;
   data_nascimento?: string;
   is_assinante?: boolean;
+  assinatura_status?: 'Ativo' | 'Pagamento Pendente' | 'Cancelado' | null;
   data_inicio_assinatura?: string;
   assinatura_plano_id?: number | null;
   status?: 'Ativo' | 'Bloqueado';
@@ -128,7 +132,7 @@ export const useClientManagement = () => {
   const inFlightKeyRef = useRef<string | null>(null);
 
   // Hook de autenticação
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
 
   // Função para fazer requisições autenticadas
   const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}) => {
@@ -277,7 +281,13 @@ export const useClientManagement = () => {
 
   const fetchClientAssinaturaSaldo = useCallback(async (clientId: number): Promise<AssinaturaSaldoResponse | null> => {
     try {
-      const response = await authenticatedFetch(`/clientes/${clientId}/assinatura-saldo`);
+      const unidadeId = user?.unidade_id;
+      if (!unidadeId) return null;
+
+      const params = new URLSearchParams();
+      params.append('unidade_id', String(unidadeId));
+
+      const response = await authenticatedFetch(`/clientes/${clientId}/assinatura-saldo?${params.toString()}`);
       if (response?.success) {
         return (response.data || null) as AssinaturaSaldoResponse | null;
       }
@@ -285,7 +295,7 @@ export const useClientManagement = () => {
     } catch {
       return null;
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, user?.unidade_id]);
 
   /**
    * Criar novo cliente
@@ -337,7 +347,16 @@ export const useClientManagement = () => {
           setClients(prev => prev.map(client => (client.id === id ? { ...client, ...updatedClient } : client)));
         } else {
           // Fallback mínimo: aplicar apenas os campos que conseguimos mapear com segurança
-          setClients(prev => prev.map(client => (client.id === id ? { ...client, status: clientData.status ?? client.status } : client)));
+          setClients(prev => prev.map(client => {
+            if (client.id !== id) return client;
+            return {
+              ...client,
+              status: clientData.status ?? client.status,
+              ...(Object.prototype.hasOwnProperty.call(clientData, 'assinatura_status')
+                ? { assinaturaStatus: (clientData as any).assinatura_status as any }
+                : {})
+            };
+          }));
         }
         return true;
       } else {

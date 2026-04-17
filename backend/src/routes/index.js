@@ -22,6 +22,7 @@ const auditLogsRoutes = require('./auditLogs');
 const planosAssinaturaRoutes = require('./planosAssinatura');
 const metricasRoutes = require('./metricas');
 const whatsAppRoutes = require('./whatsapp');
+const dashboardRoutes = require('./dashboard');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -56,6 +57,7 @@ router.use('/cupons', cuponsRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/notificacoes', notificacoesRoutes);
 router.use('/whatsapp', whatsAppRoutes);
+router.use('/dashboard', authenticate(), dashboardRoutes);
 
 // Rotas públicas (sem autenticação)
 router.use('/public', publicRoutes);

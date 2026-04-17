@@ -13,6 +13,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [mpCustomerEmail, setMpCustomerEmail] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birthDateText, setBirthDateText] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
@@ -122,6 +123,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
         primeiro_nome: firstName.trim(),
         ultimo_nome: lastName.trim(),
         telefone: phone.trim().startsWith('+55') ? phone.trim() : `+55${phone.trim()}`,
+        mp_customer_email: mpCustomerEmail.trim() ? mpCustomerEmail.trim() : null,
         data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : undefined,
         is_assinante: isSubscriber,
         data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
@@ -241,7 +243,17 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
                       </p>
                   </div>
 
-                  {/* Campo Email removido - clientes não precisam de email (comunicação via WhatsApp) */}
+                  <div>
+                      <label className="text-sm font-medium text-gray-600 mb-2 block">E-mail</label>
+                      <input
+                        type="email"
+                        value={mpCustomerEmail}
+                        onChange={(e) => setMpCustomerEmail(e.target.value)}
+                        placeholder="cliente@exemplo.com"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                        disabled={isSubmitting}
+                      />
+                  </div>
 
                   <div>
                       <label className="text-sm font-medium text-gray-600 mb-2 block">Data de nascimento</label>

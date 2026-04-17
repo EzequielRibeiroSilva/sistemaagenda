@@ -16,30 +16,52 @@ class Cliente extends BaseModel {
     super('clientes');
   }
 
+  static _hasAssinaturaStatusColumn = null;
+
+  async hasAssinaturaStatusColumn() {
+    if (Cliente._hasAssinaturaStatusColumn !== null) return Cliente._hasAssinaturaStatusColumn;
+
+    try {
+      const exists = await this.db.schema.hasColumn(this.tableName, 'assinatura_status');
+      Cliente._hasAssinaturaStatusColumn = Boolean(exists);
+      return Cliente._hasAssinaturaStatusColumn;
+    } catch (error) {
+      Cliente._hasAssinaturaStatusColumn = false;
+      return false;
+    }
+  }
+
   /**
    * Sobrescrever findById para usar apenas campos existentes na tabela clientes
    * @param {number} id - ID do cliente
    * @returns {Promise<Object|null>} Cliente encontrado ou null
    */
   async findById(id) {
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
+    const columns = [
+      `${this.tableName}.id`,
+      `${this.tableName}.primeiro_nome`,
+      `${this.tableName}.ultimo_nome`,
+      `${this.tableName}.telefone`,
+      `${this.tableName}.telefone_limpo`,
+      `${this.tableName}.data_nascimento`,
+      `${this.tableName}.is_assinante`,
+      ...(hasAssinaturaStatus
+        ? [`${this.tableName}.assinatura_status`]
+        : [this.db.raw('NULL as assinatura_status')]),
+      `${this.tableName}.data_inicio_assinatura`,
+      `${this.tableName}.assinatura_plano_id`,
+      `${this.tableName}.status`,
+      `${this.tableName}.whatsapp_id`,
+      `${this.tableName}.unidade_id`,
+      `${this.tableName}.created_at`,
+      `${this.tableName}.updated_at`
+    ];
+
     return await this.db(this.tableName)
-      .where('id', id)
-      .select(
-        'id',
-        'primeiro_nome',
-        'ultimo_nome',
-        'telefone',
-        'telefone_limpo',
-        'data_nascimento',
-        'is_assinante',
-        'data_inicio_assinatura',
-        'assinatura_plano_id',
-        'status',
-        'whatsapp_id',
-        'unidade_id',
-        'created_at',
-        'updated_at'
-      )
+      .where(`${this.tableName}.id`, id)
+      .select(columns)
       .first();
   }
 
@@ -55,50 +77,59 @@ class Cliente extends BaseModel {
    * @returns {Promise<Array>} Lista de clientes
    */
   async findByUnidade(unidadeId, filtros = {}) {
+    const tableName = this.tableName;
+
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
+    const columns = [
+      `${this.tableName}.id`,
+      `${this.tableName}.primeiro_nome`,
+      `${this.tableName}.ultimo_nome`,
+      `${this.tableName}.telefone`,
+      `${this.tableName}.telefone_limpo`,
+      `${this.tableName}.data_nascimento`,
+      `${this.tableName}.is_assinante`,
+      ...(hasAssinaturaStatus
+        ? [`${this.tableName}.assinatura_status`]
+        : [this.db.raw('NULL as assinatura_status')]),
+      `${this.tableName}.data_inicio_assinatura`,
+      `${this.tableName}.assinatura_plano_id`,
+      `${this.tableName}.status`,
+      `${this.tableName}.whatsapp_id`,
+      `${this.tableName}.created_at`,
+      `${this.tableName}.updated_at`
+    ];
+
     let query = this.db(this.tableName)
-      .where('unidade_id', unidadeId)
-      .select(
-        'id',
-        'primeiro_nome',
-        'ultimo_nome',
-        'telefone',
-        'telefone_limpo',
-        'data_nascimento',
-        'is_assinante',
-        'data_inicio_assinatura',
-        'assinatura_plano_id',
-        'status',
-        'whatsapp_id',
-        'created_at',
-        'updated_at'
-      )
-      .orderBy('primeiro_nome', 'asc');
+      .where(`${this.tableName}.unidade_id`, unidadeId)
+      .select(columns)
+      .orderBy(`${this.tableName}.primeiro_nome`, 'asc');
 
     // Aplicar filtros
     if (filtros.id) {
-      query = query.where('id', filtros.id);
+      query = query.where(`${this.tableName}.id`, filtros.id);
     }
 
     if (filtros.nome) {
       const nomeFilter = `%${filtros.nome.toLowerCase()}%`;
       query = query.where(function() {
-        this.whereRaw('LOWER(primeiro_nome) LIKE ?', [nomeFilter])
-            .orWhereRaw('LOWER(ultimo_nome) LIKE ?', [nomeFilter])
-            .orWhereRaw('LOWER(CONCAT(primeiro_nome, \' \', ultimo_nome)) LIKE ?', [nomeFilter]);
+        this.whereRaw(`LOWER(${tableName}.primeiro_nome) LIKE ?`, [nomeFilter])
+            .orWhereRaw(`LOWER(${tableName}.ultimo_nome) LIKE ?`, [nomeFilter])
+            .orWhereRaw(`LOWER(CONCAT(${tableName}.primeiro_nome, ' ', ${tableName}.ultimo_nome)) LIKE ?`, [nomeFilter]);
       });
     }
 
     if (filtros.telefone) {
       const telefoneFilter = filtros.telefone.replace(/\D/g, ''); // Limpar telefone
-      query = query.where('telefone_limpo', 'LIKE', `%${telefoneFilter}%`);
+      query = query.where(`${this.tableName}.telefone_limpo`, 'LIKE', `%${telefoneFilter}%`);
     }
 
     if (typeof filtros.is_assinante === 'boolean') {
-      query = query.where('is_assinante', filtros.is_assinante);
+      query = query.where(`${this.tableName}.is_assinante`, filtros.is_assinante);
     }
 
     if (filtros.status) {
-      query = query.where('status', filtros.status);
+      query = query.where(`${this.tableName}.status`, filtros.status);
     }
 
     // ✅ NOVO: Aplicar paginação (LIMIT e OFFSET)
@@ -120,24 +151,32 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object|null>} Cliente encontrado ou null
    */
   async findByIdAndUnidade(id, unidadeId) {
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
+    const columns = [
+      `${this.tableName}.id`,
+      `${this.tableName}.primeiro_nome`,
+      `${this.tableName}.ultimo_nome`,
+      `${this.tableName}.telefone`,
+      `${this.tableName}.telefone_limpo`,
+      `${this.tableName}.mp_customer_email`,
+      `${this.tableName}.data_nascimento`,
+      `${this.tableName}.is_assinante`,
+      ...(hasAssinaturaStatus
+        ? [`${this.tableName}.assinatura_status`]
+        : [this.db.raw('NULL as assinatura_status')]),
+      `${this.tableName}.data_inicio_assinatura`,
+      `${this.tableName}.assinatura_plano_id`,
+      `${this.tableName}.status`,
+      `${this.tableName}.whatsapp_id`,
+      `${this.tableName}.created_at`,
+      `${this.tableName}.updated_at`
+    ];
+
     return await this.db(this.tableName)
-      .where('id', id)
-      .where('unidade_id', unidadeId)
-      .select(
-        'id',
-        'primeiro_nome',
-        'ultimo_nome',
-        'telefone',
-        'telefone_limpo',
-        'data_nascimento',
-        'is_assinante',
-        'data_inicio_assinatura',
-        'assinatura_plano_id',
-        'status',
-        'whatsapp_id',
-        'created_at',
-        'updated_at'
-      )
+      .where(`${this.tableName}.id`, id)
+      .where(`${this.tableName}.unidade_id`, unidadeId)
+      .select(columns)
       .first();
   }
 
@@ -148,24 +187,32 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object|null>} Cliente encontrado ou null
    */
   async findByTelefoneAndUnidade(telefoneLimpo, unidadeId) {
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
+    const columns = [
+      `${this.tableName}.id`,
+      `${this.tableName}.primeiro_nome`,
+      `${this.tableName}.ultimo_nome`,
+      `${this.tableName}.telefone`,
+      `${this.tableName}.telefone_limpo`,
+      `${this.tableName}.mp_customer_email`,
+      `${this.tableName}.data_nascimento`,
+      `${this.tableName}.is_assinante`,
+      ...(hasAssinaturaStatus
+        ? [`${this.tableName}.assinatura_status`]
+        : [this.db.raw('NULL as assinatura_status')]),
+      `${this.tableName}.data_inicio_assinatura`,
+      `${this.tableName}.assinatura_plano_id`,
+      `${this.tableName}.status`,
+      `${this.tableName}.whatsapp_id`,
+      `${this.tableName}.created_at`,
+      `${this.tableName}.updated_at`
+    ];
+
     return await this.db(this.tableName)
-      .where('telefone_limpo', telefoneLimpo)
-      .where('unidade_id', unidadeId)
-      .select(
-        'id',
-        'primeiro_nome',
-        'ultimo_nome',
-        'telefone',
-        'telefone_limpo',
-        'data_nascimento',
-        'is_assinante',
-        'data_inicio_assinatura',
-        'assinatura_plano_id',
-        'status',
-        'whatsapp_id',
-        'created_at',
-        'updated_at'
-      )
+      .where(`${this.tableName}.telefone_limpo`, telefoneLimpo)
+      .where(`${this.tableName}.unidade_id`, unidadeId)
+      .select(columns)
       .first();
   }
 
@@ -176,6 +223,15 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object>} Cliente criado
    */
   async create(dadosCliente, unidadeId) {
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+    if (!hasAssinaturaStatus) {
+      delete dadosCliente.assinatura_status;
+    }
+
+    const mpCustomerEmail = dadosCliente.mp_customer_email
+      ? String(dadosCliente.mp_customer_email).trim().toLowerCase()
+      : null;
+
     // Limpar telefone
     const telefoneLimpo = this.limparTelefone(dadosCliente.telefone);
 
@@ -206,8 +262,10 @@ class Cliente extends BaseModel {
       ultimo_nome: dadosCliente.ultimo_nome?.trim() || '',
       telefone: dadosCliente.telefone?.trim() || '',
       telefone_limpo: telefoneLimpo,
+      mp_customer_email: mpCustomerEmail,
       data_nascimento: dadosCliente.data_nascimento || null,
       is_assinante: dadosCliente.is_assinante || false,
+      ...(hasAssinaturaStatus ? { assinatura_status: dadosCliente.assinatura_status ?? null } : {}),
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || null,
       assinatura_plano_id: dadosCliente.is_assinante ? parseInt(dadosCliente.assinatura_plano_id) : null,
       status: dadosCliente.status || 'Ativo',
@@ -226,6 +284,17 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object>} Cliente atualizado
    */
   async update(id, dadosCliente, unidadeId) {
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+    if (!hasAssinaturaStatus) {
+      delete dadosCliente.assinatura_status;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(dadosCliente, 'mp_customer_email')) {
+      dadosCliente.mp_customer_email = dadosCliente.mp_customer_email
+        ? String(dadosCliente.mp_customer_email).trim().toLowerCase()
+        : null;
+    }
+
     // Verificar se cliente existe na unidade
     const clienteExistente = await this.findByIdAndUnidade(id, unidadeId);
     if (!clienteExistente) {
@@ -316,30 +385,32 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object>} Contadores
    */
   async countByUnidade(unidadeId, filtros = {}) {
-    let query = this.db(this.tableName).where('unidade_id', unidadeId);
+    const tableName = this.tableName;
+
+    let query = this.db(this.tableName).where(`${this.tableName}.unidade_id`, unidadeId);
 
     // Aplicar mesmos filtros da listagem
     if (filtros.nome) {
       const nomeFilter = `%${filtros.nome.toLowerCase()}%`;
       query = query.where(function() {
-        this.whereRaw('LOWER(primeiro_nome) LIKE ?', [nomeFilter])
-            .orWhereRaw('LOWER(ultimo_nome) LIKE ?', [nomeFilter])
-            .orWhereRaw('LOWER(CONCAT(primeiro_nome, \' \', ultimo_nome)) LIKE ?', [nomeFilter]);
+        this.whereRaw(`LOWER(${tableName}.primeiro_nome) LIKE ?`, [nomeFilter])
+            .orWhereRaw(`LOWER(${tableName}.ultimo_nome) LIKE ?`, [nomeFilter])
+            .orWhereRaw(`LOWER(CONCAT(${tableName}.primeiro_nome, ' ', ${tableName}.ultimo_nome)) LIKE ?`, [nomeFilter]);
       });
     }
 
     if (filtros.telefone) {
       const telefoneFilter = filtros.telefone.replace(/\D/g, '');
-      query = query.where('telefone_limpo', 'LIKE', `%${telefoneFilter}%`);
+      query = query.where(`${this.tableName}.telefone_limpo`, 'LIKE', `%${telefoneFilter}%`);
     }
 
     if (filtros.status) {
-      query = query.where('status', filtros.status);
+      query = query.where(`${this.tableName}.status`, filtros.status);
     }
 
     const [total, assinantes] = await Promise.all([
-      query.clone().count('id as count').first(),
-      query.clone().where('is_assinante', true).count('id as count').first()
+      query.clone().count(`${this.tableName}.id as count`).first(),
+      query.clone().where(`${this.tableName}.is_assinante`, true).count('id as count').first()
     ]);
 
     return {
@@ -395,6 +466,8 @@ class Cliente extends BaseModel {
   async searchByNameOrPhone(unidadeId, searchQuery) {
     const query = searchQuery.toLowerCase().trim();
 
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
     return await this.db(this.tableName)
       .where('unidade_id', unidadeId)
       .where('status', 'Ativo')
@@ -411,6 +484,9 @@ class Cliente extends BaseModel {
         'ultimo_nome',
         'telefone',
         'is_assinante',
+        ...(hasAssinaturaStatus
+          ? ['assinatura_status']
+          : [this.db.raw('NULL as assinatura_status')]),
         this.db.raw('CONCAT(primeiro_nome, \' \', ultimo_nome) as nome_completo')
       )
       .orderBy('primeiro_nome', 'asc')

@@ -1,19 +1,22 @@
 const BaseController = require('./BaseController');
 const Agendamento = require('../models/Agendamento');
-const WhatsAppService = require('../services/WhatsAppService'); // ✅ CORREÇÃO: Usar WhatsAppService
+const WhatsAppService = require('../services/WhatsAppService'); // 
 const AuthService = require('../services/AuthService');
 const logger = require('../utils/logger');
 const RecurringAppointmentService = require('../services/RecurringAppointmentService');
 const ScheduledReminderService = require('../services/ScheduledReminderService');
 const BookingAvailabilityService = require('../services/BookingAvailabilityService');
+const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
+const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
 
 class AgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
-    this.whatsAppService = new WhatsAppService(); // ✅ CORREÇÃO: Usar WhatsAppService
+    this.whatsAppService = new WhatsAppService(); // 
     this.authService = new AuthService();
     this.scheduledReminderService = new ScheduledReminderService();
     this.bookingAvailabilityService = new BookingAvailabilityService();
+    this.assinaturaEstornoService = new AssinaturaEstornoService();
   }
 
   // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
@@ -69,7 +72,7 @@ class AgendamentoController extends BaseController {
         data: agendamentoCompleto
       });
     } catch (error) {
-      logger.error('❌ [AgendamentoController.showByNumero] Erro ao buscar agendamento:', error);
+      logger.error(' [AgendamentoController.showByNumero] Erro ao buscar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -84,14 +87,6 @@ class AgendamentoController extends BaseController {
       const usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
-
-      // 🔍 DEBUG CRÍTICO: Log completo do req.user para AGENTE
-      logger.info(`🔍 [AgendamentoController.index] Requisição recebida:`, {
-        usuarioId,
-        userRole,
-        userAgenteId,
-        queryParams: req.query
-      });
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -108,48 +103,42 @@ class AgendamentoController extends BaseController {
         status,
         unidade_id,
         time_filter,
-        // ✅ CORREÇÃO CRÍTICA: Adicionar filtros de período e serviço
+        // CORREÇÃO CRÍTICA: Adicionar filtros de período e serviço
         data_inicio,
         data_fim,
         servico_id
       } = req.query;
 
-
       let data;
 
       if (data_agendamento) {
-        // ✅ CORREÇÃO CRÍTICA: Para AGENTE, filtrar por agente_id diretamente
+        // CORREÇÃO CRÍTICA: Para AGENTE, filtrar por agente_id diretamente
         if (userRole === 'AGENTE') {
-          // ✅ Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
+          // Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
           // Fallback: se token não tiver agente_id, buscar na tabela agentes por usuario_id
           let agenteIdFinal = userAgenteId;
           if (!agenteIdFinal) {
-            logger.warn(`⚠️ [AgendamentoController] AGENTE sem agente_id no token, buscando na tabela agentes...`);
+            logger.warn(` [AgendamentoController] AGENTE sem agente_id no token, buscando na tabela agentes...`);
             const agenteRecord = await this.model.db('agentes')
               .where('usuario_id', usuarioId)
               .select('id')
               .first();
             agenteIdFinal = agenteRecord?.id;
-            logger.info(`🔍 [AgendamentoController] Agente encontrado via usuario_id: ${agenteIdFinal}`);
           }
 
           if (agenteIdFinal) {
-            logger.info(`✅ [AgendamentoController] Buscando agendamentos para AGENTE (agente_id=${agenteIdFinal}, data=${data_agendamento})`);
             const allAgendamentos = await this.model.findByAgente(agenteIdFinal);
-            logger.info(`📊 [AgendamentoController] Total de agendamentos do agente: ${allAgendamentos.length}`);
 
             // Filtrar apenas pela data específica
             data = allAgendamentos.filter(agendamento => {
-              const agendamentoDate = agendamento.data_agendamento;
-              // Converter Date para string no formato YYYY-MM-DD
+              const agendamentoDate = new Date(agendamento.data_agendamento);
               const dateString = agendamentoDate instanceof Date
                 ? agendamentoDate.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
                 : agendamentoDate;
               return dateString === data_agendamento;
             });
-            logger.info(`📊 [AgendamentoController] Agendamentos filtrados por data: ${data.length}`);
           } else {
-            logger.error(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${usuarioId}`);
+            logger.error(` [AgendamentoController] AGENTE não encontrado para usuario_id=${usuarioId}`);
             data = [];
           }
         } else {
@@ -157,11 +146,11 @@ class AgendamentoController extends BaseController {
           data = await this.model.findByData(data_agendamento, usuarioId);
         }
       } else if (agente_id && !unidade_id && !page && !limit && !data_inicio && !data_fim) {
-        // ✅ CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
+        // CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
         // - Tem APENAS agente_id (sem page/limit, sem data_inicio/data_fim, sem unidade_id)
         // - Isso evita bloquear requests legítimos de AGENTE com filtros de período
         
-        // ✅ Multi-tenant safety: nunca permitir que query param bypass o isolamento
+        // CORREÇÃO CRÍTICA: Multi-tenant safety: nunca permitir que query param bypass o isolamento
         if (userRole === 'MASTER') {
           data = await this.model.findByAgente(parseInt(agente_id));
         } else if (userRole === 'ADMIN') {
@@ -179,19 +168,19 @@ class AgendamentoController extends BaseController {
               .first();
 
             if (agenteExisteEmOutroTenant) {
-              logger.warn(`🚨 [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por agente_id=${agente_id} de outro tenant`);
+              logger.warn(` [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por agente_id=${agente_id} de outro tenant`);
             }
           }
         } else {
-          // ✅ CORREÇÃO: AGENTE não pode usar APENAS agente_id isolado, mas pode usar com data_inicio/data_fim
+          // CORREÇÃO: AGENTE não pode usar APENAS agente_id isolado, mas pode usar com data_inicio/data_fim
           return res.status(403).json({ error: 'Acesso negado' });
         }
       } else if (cliente_id && !unidade_id && !page && !limit && !data_inicio && !data_fim) {
-        // ✅ CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
+        // CORREÇÃO CRÍTICA: Este bloco só deve ser executado quando:
         // - Tem APENAS cliente_id (sem page/limit, sem data_inicio/data_fim, sem unidade_id)
         // - Isso evita bloquear requests legítimos com filtros de período
         
-        // ✅ Multi-tenant safety: nunca permitir que query param bypass o isolamento
+        // CORREÇÃO CRÍTICA: Multi-tenant safety: nunca permitir que query param bypass o isolamento
         if (userRole === 'MASTER') {
           data = await this.model.findByCliente(parseInt(cliente_id));
         } else if (userRole === 'ADMIN') {
@@ -206,11 +195,11 @@ class AgendamentoController extends BaseController {
               .first();
 
             if (clienteExisteEmOutroTenant) {
-              logger.warn(`🚨 [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por cliente_id=${cliente_id} de outro tenant`);
+              logger.warn(` [AgendamentoController.index] Tentativa suspeita: ADMIN usuario_id=${usuarioId} consultou agendamentos por cliente_id=${cliente_id} de outro tenant`);
             }
           }
         } else {
-          // ✅ CORREÇÃO: Bloquear apenas uso isolado de cliente_id
+          // CORREÇÃO: Bloquear apenas uso isolado de cliente_id
           return res.status(403).json({ error: 'Acesso negado' });
         }
       } else if (page && limit) {
@@ -222,7 +211,7 @@ class AgendamentoController extends BaseController {
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
         // IMPLEMENTAÇÃO RBAC E ORDENAÇÃO INTELIGENTE
-        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
+        // CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
         // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
         let baseQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
@@ -232,25 +221,23 @@ class AgendamentoController extends BaseController {
         // RBAC: Aplicar filtros baseados no role do usuário
         let agenteIdFinal = null;
         if (req.user?.role === 'AGENTE') {
-          // ✅ Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
+          // Para AGENTE, usar sempre req.user.agente_id (id da tabela agentes)
           // Fallback: se token não tiver agente_id, buscar na tabela agentes por usuario_id
           agenteIdFinal = userAgenteId;
           if (!agenteIdFinal) {
-            logger.warn(`⚠️ [AgendamentoController] AGENTE sem agente_id no token (paginação), buscando na tabela agentes...`);
+            logger.warn(` [AgendamentoController] AGENTE sem agente_id no token (paginação), buscando na tabela agentes...`);
             const agenteRecord = await this.model.db('agentes')
               .where('usuario_id', req.user.id)
               .select('id')
               .first();
             agenteIdFinal = agenteRecord?.id;
-            logger.info(`🔍 [AgendamentoController] Agente encontrado via usuario_id (paginação): ${agenteIdFinal}`);
           }
 
           if (agenteIdFinal) {
-            logger.info(`✅ [AgendamentoController] Aplicando filtro AGENTE (agente_id=${agenteIdFinal}) na query paginada`);
             baseQuery = baseQuery.where('agendamentos.agente_id', agenteIdFinal);
           } else {
             // Se não encontrou agente, retornar vazio
-            logger.error(`❌ [AgendamentoController] AGENTE não encontrado para usuario_id=${req.user.id} (paginação)`);
+            logger.error(` [AgendamentoController] AGENTE não encontrado para usuario_id=${req.user.id} (paginação)`);
             return res.json({
               data: [],
               pagination: {
@@ -272,12 +259,12 @@ class AgendamentoController extends BaseController {
             queryBuilder.where('agendamentos.status', status);
           }
 
-          // ✅ NOVO: Filtrar por unidade_id se fornecido
+          // CORREÇÃO: Filtrar por unidade_id se fornecido
           if (unidade_id) {
             queryBuilder.where('agendamentos.unidade_id', parseInt(unidade_id));
           }
 
-          // ✅ NOVO: Filtro temporal (futuro/passado/hoje)
+          // CORREÇÃO: Filtro temporal (futuro/passado/hoje)
           if (time_filter) {
 
             const now = new Date();
@@ -313,7 +300,7 @@ class AgendamentoController extends BaseController {
             }
           }
 
-          // ✅ CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
+          // CORREÇÃO CRÍTICA: REMOVER filtro de agendamentos passados
           // Todos os agendamentos do dia devem ser exibidos para permitir edição
           // O usuário pode editar agendamentos no final do expediente
           // Comentado o filtro que estava ocultando agendamentos passados:
@@ -339,38 +326,26 @@ class AgendamentoController extends BaseController {
             'clientes.telefone as cliente_telefone',
             'clientes.data_nascimento as cliente_data_nascimento',
             this.model.db.raw("CONCAT(COALESCE(agentes.nome, ''), ' ', COALESCE(agentes.sobrenome, '')) as agente_nome"),
-            'agentes.avatar_url as agente_avatar_url', // ✅ CORREÇÃO CRÍTICA: Incluir avatar do agente
+            'agentes.avatar_url as agente_avatar_url', // CORREÇÃO CRÍTICA: Incluir avatar do agente
             'unidades.nome as unidade_nome'
           )
           .limit(parseInt(limit))
           .offset(offset)
-          // ✅ ORDENAÇÃO INTELIGENTE: Agendamentos mais próximos da data atual primeiro
+          // CORREÇÃO: ORDENAÇÃO INTELIGENTE: Agendamentos mais próximos da data atual primeiro
           // Ordena por proximidade: futuros próximos > hoje > passados recentes
           // Correção: usar diferença de dias (INTEGER) ao invés de EPOCH
           .orderBy(this.model.db.raw("ABS(agendamentos.data_agendamento - CURRENT_DATE)"), 'asc')
           .orderBy('agendamentos.data_agendamento', 'desc')
           .orderBy('agendamentos.hora_inicio', 'asc');
 
-
-
         await this.model.attachServicosAndExtras(data, { includeComissao: true, includeExtras: true });
+        await this.model.attachAssinaturaCobertura(data);
 
         const total = await baseQuery.clone()
           .clearSelect()
           .clearOrder()
           .countDistinct('agendamentos.id as count')
           .first();
-
-        // 🔍 DEBUG CRÍTICO: Log da resposta final
-        logger.info(`📤 [AgendamentoController] Retornando resposta:`, {
-          totalAgendamentos: data.length,
-          pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: parseInt(total.count),
-            pages: Math.ceil(parseInt(total.count) / parseInt(limit))
-          }
-        });
 
         return res.json({
           data,
@@ -382,10 +357,10 @@ class AgendamentoController extends BaseController {
           }
         });
       } else {
-        // ✅ CORREÇÃO CRÍTICA: Implementar filtros de período, agente e serviço
+        // CORREÇÃO CRÍTICA: Implementar filtros de período, agente e serviço
 
         // Construir query base com RBAC
-        // ✅ CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
+        // CORREÇÃO: Removido JOIN com agente_unidades que excluía agendamentos de agentes
         // que pertencem à unidade apenas via coluna agentes.unidade_id (não via M:N)
         let baseQuery = this.model.db('agendamentos')
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
@@ -410,24 +385,24 @@ class AgendamentoController extends BaseController {
           baseQuery = baseQuery.where('unidades.usuario_id', usuarioId);
         }
 
-        // ✅ APLICAR FILTROS DE PERÍODO
+        // CORREÇÃO CRÍTICA: APLICAR FILTROS DE PERÍODO
         if (data_inicio && data_fim) {
           baseQuery = baseQuery
             .where('agendamentos.data_agendamento', '>=', data_inicio)
             .where('agendamentos.data_agendamento', '<=', data_fim);
         }
 
-        // ✅ APLICAR FILTRO DE UNIDADE
+        // CORREÇÃO CRÍTICA: APLICAR FILTRO DE UNIDADE
         if (unidade_id) {
           baseQuery = baseQuery.where('agendamentos.unidade_id', parseInt(unidade_id));
         }
 
-        // ✅ APLICAR FILTRO DE AGENTE
+        // CORREÇÃO CRÍTICA: APLICAR FILTRO DE AGENTE
         if (agente_id) {
           baseQuery = baseQuery.where('agendamentos.agente_id', parseInt(agente_id));
         }
 
-        // ✅ APLICAR FILTRO DE SERVIÇO
+        // CORREÇÃO CRÍTICA: APLICAR FILTRO DE SERVIÇO
         if (servico_id) {
           // Evitar duplicação de linhas (1 agendamento pode ter múltiplos serviços)
           // e manter a query eficiente usando EXISTS em vez de JOIN
@@ -454,12 +429,13 @@ class AgendamentoController extends BaseController {
           .orderBy('agendamentos.hora_inicio', 'asc');
 
         await this.model.attachServicosAndExtras(data, { includeComissao: true, includeExtras: true });
+        await this.model.attachAssinaturaCobertura(data);
 
       }
 
       return res.json({ data });
     } catch (error) {
-      logger.error('❌ [AgendamentoController.index] Erro ao buscar agendamentos:', error);
+      logger.error(' [AgendamentoController.index] Erro ao buscar agendamentos:', error);
       return res.status(500).json({ 
         error: 'Erro interno do servidor',
         message: error.message 
@@ -482,7 +458,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
+      // CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
       if (userRole === 'AGENTE' && userAgenteId) {
         const Agente = require('../models/Agente');
         const agenteModel = new Agente();
@@ -501,8 +477,15 @@ class AgendamentoController extends BaseController {
         });
       }
 
+      // CORREÇÃO CRÍTICA: Clube: indicar explicitamente se este agendamento teve consumo de assinatura
+      try {
+        await this.model.attachAssinaturaCobertura([data]);
+      } catch (e) {
+        // Falha ao anexar cobertura não deve bloquear o show
+      }
 
-      // ✅ CORREÇÃO CRÍTICA: Verificação de permissões específica por role
+
+      // CORREÇÃO CRÍTICA: Verificação de permissões específica por role
       if (userRole === 'AGENTE') {
         // Para AGENTE: verificar se o agendamento é dele
         if (userAgenteId && data.agente_id !== userAgenteId) {
@@ -522,7 +505,7 @@ class AgendamentoController extends BaseController {
 
         if (!agendamento) {
 
-          // 🔍 DEBUG: Buscar informações adicionais para debug
+          // DEBUG: Buscar informações adicionais para debug
           const debugInfo = await this.model.db(this.model.tableName)
             .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
             .where('agendamentos.id', id)
@@ -542,7 +525,7 @@ class AgendamentoController extends BaseController {
         data: data
       });
     } catch (error) {
-      logger.error('❌ [AgendamentoController.show] Erro no show:', error);
+      logger.error(' [AgendamentoController.show] Erro no show:', error);
       return res.status(500).json({
         error: 'Interno do servidor',
         message: error.message
@@ -576,6 +559,7 @@ class AgendamentoController extends BaseController {
         servico_extra_ids = [],
         servicos = [], // Formato antigo para compatibilidade
         recorrencia,
+        usar_assinatura_itens,
         ...outrosDados
       } = req.body;
 
@@ -595,7 +579,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN dono da unidade
+      // CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN dono da unidade
       if (userRole === 'AGENTE' && userAgenteId) {
         // Buscar o usuario_id do ADMIN dono da unidade onde o AGENTE trabalha
         const unidadeInfo = await this.model.db('unidades').where('id', unidade_id).first();
@@ -615,7 +599,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // 🔧 CRIAR CLIENTE AUTOMATICAMENTE SE NECESSÁRIO
+      // CRIAR CLIENTE AUTOMATICAMENTE SE NECESSÁRIO
       let clienteIdFinal = cliente_id;
       if (!cliente_id && cliente_nome && cliente_telefone) {
         try {
@@ -639,7 +623,7 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      // 🚫 BARREIRA: Cliente bloqueado (painel interno)
+      // BARREIRA: Cliente bloqueado (painel interno)
       if (clienteIdFinal) {
         const clienteRecord = await this.model.db('clientes')
           .where('id', clienteIdFinal)
@@ -661,7 +645,7 @@ class AgendamentoController extends BaseController {
       // Buscar dados dos serviços principais
       let servicosData = [];
       if (servico_ids.length > 0) {
-        // ✅ NOVA ARQUITETURA MANY-TO-MANY: Verificar se os serviços estão associados à unidade
+        // NOVA ARQUITETURA MANY-TO-MANY: Verificar se os serviços estão associados à unidade
         servicosData = await this.model.db('servicos')
           .join('unidade_servicos', 'servicos.id', 'unidade_servicos.servico_id')
           .whereIn('servicos.id', servico_ids)
@@ -697,9 +681,10 @@ class AgendamentoController extends BaseController {
       // Calcular valor total
       const valorServicos = servicosData.reduce((total, servico) => total + parseFloat(servico.preco), 0);
       const valorExtras = servicosExtrasData.reduce((total, extra) => total + parseFloat(extra.preco), 0);
-      const valorTotal = valorServicos + valorExtras;
+      const valorTotalBase = valorServicos + valorExtras;
+      let valorTotalFinal = valorTotalBase;
 
-      // ✅ REGRA DE NEGÓCIO: Verificar se cliente pode usar pontos (apenas a partir do 2º agendamento)
+      // REGRA DE NEGÓCIO: Verificar se cliente pode usar pontos (apenas a partir do 2º agendamento)
       const pontosUsados = parseInt(outrosDados.pontos_usados || 0);
       if (pontosUsados > 0) {
         const ClienteModel = require('../models/Cliente');
@@ -715,19 +700,19 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      const dadosAgendamento = {
-        cliente_id: clienteIdFinal, // ✅ USAR O ID DO CLIENTE (CRIADO OU EXISTENTE)
+      let dadosAgendamento = {
+        cliente_id: clienteIdFinal, // USAR O ID DO CLIENTE (CRIADO OU EXISTENTE)
         agente_id,
         unidade_id,
         data_agendamento,
         hora_inicio,
         hora_fim,
         usuario_id: usuarioId,
-        valor_total: valorTotal,
+        valor_total: valorTotalFinal,
         ...outrosDados
       };
 
-      // ✅ NOVO: Agendamento recorrente (MVP: fail_all com rollback)
+      // NOVO: Agendamento recorrente (MVP: fail_all com rollback)
       // Se o payload incluir "recorrencia", criar série materializada.
       if (recorrencia && typeof recorrencia === 'object') {
         const recurringService = new RecurringAppointmentService({ agendamentoModel: this.model });
@@ -744,7 +729,7 @@ class AgendamentoController extends BaseController {
             }
           });
 
-          // ✅ Background: confirmação apenas da 1ª ocorrência + lembretes para todas as ocorrências
+          // Background: confirmação apenas da 1ª ocorrência + lembretes para todas as ocorrências
           // - Confirmação: apenas primeira data da série
           // - Lembretes: programar 24h e 1h (tipo_lembrete=2h) para CADA ocorrência
           // Não bloqueia a resposta e funciona mesmo com WhatsApp desconectado (programação no DB).
@@ -758,11 +743,10 @@ class AgendamentoController extends BaseController {
                 try {
                   const dadosCompletosPrimeira = await this.buscarDadosCompletos(primeira.id);
                   if (dadosCompletosPrimeira?.cliente_telefone || dadosCompletosPrimeira?.agente_telefone) {
-                    logger.log(`📤 [AgendamentoController] (bg/recorrencia) Enviando confirmação WhatsApp para 1ª ocorrência #${primeira.id}`);
                     await this.whatsAppService.sendAppointmentConfirmation(dadosCompletosPrimeira);
                   }
                 } catch (confirmErr) {
-                  logger.error('❌ [AgendamentoController] (bg/recorrencia) Erro ao enviar confirmação da 1ª ocorrência:', confirmErr);
+                  logger.error(' [AgendamentoController] (bg/recorrencia) Erro ao enviar confirmação da 1ª ocorrência:', confirmErr);
                 }
               }
 
@@ -778,11 +762,11 @@ class AgendamentoController extends BaseController {
                     cliente_telefone: cliente_telefone
                   });
                 } catch (scheduleErr) {
-                  logger.error(`❌ [AgendamentoController] (bg/recorrencia) Erro ao programar lembretes para ocorrência #${occ.id}:`, scheduleErr);
+                  logger.error(` [AgendamentoController] (bg/recorrencia) Erro ao programar lembretes para ocorrência #${occ.id}:`, scheduleErr);
                 }
               }
             } catch (bgErr) {
-              logger.error('❌ [AgendamentoController] (bg/recorrencia) Erro geral no fluxo de notificação/lembretes:', bgErr);
+              logger.error(' [AgendamentoController] (bg/recorrencia) Erro geral no fluxo de notificação/lembretes:', bgErr);
             }
           });
 
@@ -813,7 +797,7 @@ class AgendamentoController extends BaseController {
             });
           }
 
-          logger.error('❌ [AgendamentoController.store] Erro ao criar recorrência:', err);
+          logger.error(' [AgendamentoController.store] Erro ao criar recorrência:', err);
           return res.status(500).json({
             success: false,
             error: 'Erro interno do servidor',
@@ -822,7 +806,7 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      // ✅ FASE 3: Persistência transacional (agendamento + vínculos em uma única trx)
+      // FASE 3: Persistência transacional (agendamento + vínculos em uma única trx)
       const db = this.model.db;
       let agendamento;
 
@@ -836,6 +820,164 @@ class AgendamentoController extends BaseController {
           trx
         });
 
+        const addDaysStr = (dateStr, days) => {
+          const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+          const dt = new Date(y, m - 1, d);
+          dt.setDate(dt.getDate() + days);
+          const pad = (num) => num.toString().padStart(2, '0');
+          return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        };
+
+        const getDateStrInTimeZone = (tz, date = new Date()) => {
+          return new Intl.DateTimeFormat('en-CA', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).format(date);
+        };
+
+        const normalizeDateStr = (dateValue) => {
+          if (!dateValue) return null;
+          if (dateValue instanceof Date) return dateValue.toISOString().slice(0, 10);
+          const s = String(dateValue);
+          if (s.length >= 10 && s.includes('T')) return s.slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+          const dt = new Date(s);
+          if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+          return null;
+        };
+
+        const dayNumberFromDateStr = (dateStr) => {
+          const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+          return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+        };
+
+        const diffDays = (a, b) => {
+          return dayNumberFromDateStr(a) - dayNumberFromDateStr(b);
+        };
+
+        const getCycleBounds = ({ startDateStr, validadeDias, referenceDateStr }) => {
+          const delta = diffDays(referenceDateStr, startDateStr);
+          const idx = delta > 0 ? Math.floor(delta / validadeDias) : 0;
+          const cycleStart = addDaysStr(startDateStr, idx * validadeDias);
+          const cycleEndExclusive = addDaysStr(cycleStart, validadeDias);
+          const cycleEndInclusive = addDaysStr(cycleEndExclusive, -1);
+          return { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex: idx };
+        };
+
+        const shouldTryAssinatura = Boolean(usar_assinatura_itens) && typeof usar_assinatura_itens === 'object';
+        const requestedServicoIds = Array.isArray(usar_assinatura_itens?.servico_ids)
+          ? usar_assinatura_itens.servico_ids.map(id => parseInt(id, 10)).filter(n => Number.isFinite(n))
+          : [];
+        const requestedExtraIds = Array.isArray(usar_assinatura_itens?.servico_extra_ids)
+          ? usar_assinatura_itens.servico_extra_ids.map(id => parseInt(id, 10)).filter(n => Number.isFinite(n))
+          : [];
+
+        let coveredServicoIds = [];
+        let coveredExtraIds = [];
+        let planItemIdsToConsume = [];
+        let assinaturaCycleStart = null;
+        let assinaturaCycleEndExclusive = null;
+        let assinaturaCycleStartTs = null;
+        let assinaturaCycleEndExclusiveTs = null;
+        let planoId = null;
+
+        if (shouldTryAssinatura) {
+          const cliente = await trx('clientes')
+            .leftJoin('unidades as u', 'clientes.unidade_id', 'u.id')
+            .where('clientes.id', clienteIdFinal)
+            .where('u.usuario_id', unidade.usuario_id)
+            .select(
+              'clientes.id',
+              'clientes.primeiro_nome',
+              'clientes.ultimo_nome',
+              'clientes.telefone',
+              'clientes.data_nascimento',
+              'clientes.is_assinante',
+              'clientes.assinatura_status',
+              'clientes.data_inicio_assinatura',
+              'clientes.assinatura_plano_id',
+              'clientes.status',
+              'clientes.unidade_id'
+            )
+            .first();
+
+          const assinaturaStatus = cliente?.assinatura_status || null;
+          const assinaturaElegivel = Boolean(cliente?.is_assinante)
+            && assinaturaStatus === 'Ativo'
+            && Boolean(cliente?.assinatura_plano_id)
+            && Boolean(cliente?.data_inicio_assinatura)
+            && cliente?.status === 'Ativo';
+
+          if (assinaturaElegivel) {
+            await trx.raw('SELECT pg_advisory_xact_lock(?::int, ?::int)', [7001, parseInt(cliente.id, 10)]);
+
+            const assinaturaSaldoService = new AssinaturaSaldoService({
+              db: this.model.db,
+              getDateStrInTimeZone,
+              normalizeDateStr,
+              getCycleBounds
+            });
+
+            const saldoResult = await assinaturaSaldoService.compute({
+              cliente,
+              unidadeUsuarioId: unidade.usuario_id,
+              unidadeId: unidade_id,
+              dataReferencia: null,
+              servicoIds: requestedServicoIds,
+              servicoExtraIds: requestedExtraIds,
+              dbConn: trx
+            });
+
+            const cobertura = saldoResult?.data?.cobertura_sugerida;
+            coveredServicoIds = Array.isArray(cobertura?.servico_ids) ? cobertura.servico_ids : [];
+            coveredExtraIds = Array.isArray(cobertura?.servico_extra_ids) ? cobertura.servico_extra_ids : [];
+
+            planoId = saldoResult?.data?.plano?.id || null;
+            const validadeDias = saldoResult?.data?.plano?.validade_dias || null;
+            assinaturaCycleStart = saldoResult?.data?.ciclo?.inicio || null;
+            assinaturaCycleStartTs = saldoResult?.data?.ciclo?.inicio_ts || null;
+            assinaturaCycleEndExclusiveTs = saldoResult?.data?.ciclo?.fim_exclusivo_ts || null;
+            if (assinaturaCycleStart && validadeDias) {
+              assinaturaCycleEndExclusive = addDaysStr(assinaturaCycleStart, parseInt(validadeDias, 10) || 31);
+            }
+
+            const saldos = Array.isArray(saldoResult?.data?.saldos) ? saldoResult.data.saldos : [];
+            const planItemByServicoId = new Map();
+            const planItemByExtraId = new Map();
+            for (const s of saldos) {
+              if (s.tipo === 'SERVICO' && s.servico_id) {
+                planItemByServicoId.set(parseInt(s.servico_id, 10), parseInt(s.plano_item_id, 10));
+              }
+              if (s.tipo === 'EXTRA' && s.servico_extra_id) {
+                planItemByExtraId.set(parseInt(s.servico_extra_id, 10), parseInt(s.plano_item_id, 10));
+              }
+            }
+
+            const planItemIds = [];
+            for (const sid of coveredServicoIds) {
+              const itemId = planItemByServicoId.get(parseInt(sid, 10));
+              if (itemId) planItemIds.push(itemId);
+            }
+            for (const eid of coveredExtraIds) {
+              const itemId = planItemByExtraId.get(parseInt(eid, 10));
+              if (itemId) planItemIds.push(itemId);
+            }
+            planItemIdsToConsume = Array.from(new Set(planItemIds)).filter(n => Number.isFinite(n));
+
+            const descontoServicos = servicosData
+              .filter(s => coveredServicoIds.includes(parseInt(s.id, 10)))
+              .reduce((acc, s) => acc + (parseFloat(s.preco) || 0), 0);
+            const descontoExtras = servicosExtrasData
+              .filter(e => coveredExtraIds.includes(parseInt(e.id, 10)))
+              .reduce((acc, e) => acc + (parseFloat(e.preco) || 0), 0);
+
+            valorTotalFinal = Math.max(0, valorTotalBase - (descontoServicos + descontoExtras));
+            dadosAgendamento = { ...dadosAgendamento, valor_total: valorTotalFinal };
+          }
+        }
+
         // Criar agendamento com proteção contra race conditions dentro da trx
         agendamento = await this.model.createWithLockUsingTrx(trx, dadosAgendamento);
 
@@ -844,7 +986,7 @@ class AgendamentoController extends BaseController {
           const agendamentoServicos = servicosData.map(servico => ({
             agendamento_id: agendamento.id,
             servico_id: servico.id,
-            preco_aplicado: servico.preco
+            preco_aplicado: (coveredServicoIds || []).includes(parseInt(servico.id, 10)) ? 0 : servico.preco
           }));
 
           await trx('agendamento_servicos').insert(agendamentoServicos);
@@ -855,10 +997,125 @@ class AgendamentoController extends BaseController {
           const agendamentoServicosExtras = servicosExtrasData.map(extra => ({
             agendamento_id: agendamento.id,
             servico_extra_id: extra.id,
-            preco_aplicado: extra.preco
+            preco_aplicado: (coveredExtraIds || []).includes(parseInt(extra.id, 10)) ? 0 : extra.preco
           }));
 
           await trx('agendamento_servicos_extras').insert(agendamentoServicosExtras);
+        }
+
+        if (planoId && planItemIdsToConsume.length > 0 && assinaturaCycleStart && assinaturaCycleEndExclusive) {
+          const usoRows = [];
+
+          const saldosRows = await trx('planos_assinatura_itens')
+            .where('plano_id', planoId)
+            .select('id', 'tipo', 'servico_id', 'servico_extra_id', 'quantidade_por_ciclo');
+
+          const itemByServicoId = new Map();
+          const itemByExtraId = new Map();
+          for (const row of (saldosRows || [])) {
+            if (row.tipo === 'SERVICO' && row.servico_id) {
+              itemByServicoId.set(parseInt(row.servico_id, 10), row);
+            }
+            if (row.tipo === 'EXTRA' && row.servico_extra_id) {
+              itemByExtraId.set(parseInt(row.servico_extra_id, 10), row);
+            }
+          }
+
+          for (const sid of coveredServicoIds) {
+            const item = itemByServicoId.get(parseInt(sid, 10));
+            if (!item?.id) continue;
+            usoRows.push({
+              cliente_id: clienteIdFinal,
+              plano_id: planoId,
+              plano_item_id: item.id,
+              agendamento_id: agendamento.id,
+              data_uso: new Date(`${data_agendamento}T${hora_inicio || '00:00'}:00-03:00`),
+              quantidade: 1,
+              created_at: new Date()
+            });
+          }
+
+          for (const eid of coveredExtraIds) {
+            const item = itemByExtraId.get(parseInt(eid, 10));
+            if (!item?.id) continue;
+            usoRows.push({
+              cliente_id: clienteIdFinal,
+              plano_id: planoId,
+              plano_item_id: item.id,
+              agendamento_id: agendamento.id,
+              data_uso: new Date(`${data_agendamento}T${hora_inicio || '00:00'}:00-03:00`),
+              quantidade: 1,
+              created_at: new Date()
+            });
+          }
+
+          if (usoRows.length > 0) {
+            try {
+              const planItemsToConsume = await trx('planos_assinatura_itens')
+                .whereIn('id', planItemIdsToConsume)
+                .select('id', 'quantidade_por_ciclo');
+
+              const requiredByItemId = usoRows.reduce((acc, row) => {
+                const key = String(row.plano_item_id);
+                acc[key] = (acc[key] || 0) + (parseInt(row.quantidade, 10) || 0);
+                return acc;
+              }, {});
+
+              const usadosRows = await trx('assinatura_usos')
+                .where('cliente_id', clienteIdFinal)
+                .whereIn('plano_item_id', planItemIdsToConsume)
+                .where('data_uso', '>=', assinaturaCycleStartTs ? new Date(assinaturaCycleStartTs) : assinaturaCycleStart)
+                .where('data_uso', '<', assinaturaCycleEndExclusiveTs ? new Date(assinaturaCycleEndExclusiveTs) : assinaturaCycleEndExclusive)
+                .groupBy('plano_item_id')
+                .select('plano_item_id')
+                .sum({ total: 'quantidade' });
+
+              const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+                acc[String(row.plano_item_id)] = parseInt(row.total, 10) || 0;
+                return acc;
+              }, {});
+
+              const semSaldo = (planItemsToConsume || []).some((item) => {
+                const quota = item.quantidade_por_ciclo === null || item.quantidade_por_ciclo === undefined
+                  ? null
+                  : parseInt(item.quantidade_por_ciclo, 10);
+                if (quota === null) return false;
+                const used = usadosByItemId[String(item.id)] || 0;
+                const required = requiredByItemId[String(item.id)] || 0;
+                return (quota - used - required) < 0;
+              });
+
+              if (semSaldo) {
+                throw new Error('Cota do clube esgotada.');
+              }
+
+              await trx('assinatura_usos').insert(usoRows);
+            } catch (err) {
+              if (err && err.code === '42P01') {
+                logger.warn('[AgendamentoController] Tabela assinatura_usos não existe ainda; ignorando registro de uso de assinatura.');
+              } else if (String(err?.message || '') === 'Cota do clube esgotada.') {
+                valorTotalFinal = valorTotalBase;
+
+                await trx('agendamentos')
+                  .where('id', agendamento.id)
+                  .update({ valor_total: valorTotalFinal, updated_at: new Date() });
+
+                for (const servico of servicosData) {
+                  await trx('agendamento_servicos')
+                    .where({ agendamento_id: agendamento.id, servico_id: servico.id })
+                    .update({ preco_aplicado: servico.preco });
+                }
+
+                for (const extra of servicosExtrasData) {
+                  await trx('agendamento_servicos_extras')
+                    .where({ agendamento_id: agendamento.id, servico_extra_id: extra.id })
+                    .update({ preco_aplicado: extra.preco });
+                }
+              } else {
+                throw err;
+              }
+            }
+          }
         }
 
         // Compatibilidade com formato antigo de serviços
@@ -876,18 +1133,18 @@ class AgendamentoController extends BaseController {
       // Buscar agendamento completo para retorno
       const agendamentoCompleto = await this.model.findWithServicos(agendamento.id);
 
-      // ✅ NOVO: GATILHO DE PONTOS - Gerar pontos automaticamente ao criar agendamento
+      // NOVO: GATILHO DE PONTOS - Gerar pontos automaticamente ao criar agendamento
       try {
         // Buscar configurações de pontos da unidade
         const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
-        const configuracaoModel = new ConfiguracaoSistema(this.model.db); // ✅ CORREÇÃO: Passar db
+        const configuracaoModel = new ConfiguracaoSistema(this.model.db); // CORREÇÃO: Passar db
         const configuracao = await configuracaoModel.findByUnidade(unidade_id);
 
-        if (configuracao && configuracao.pontos_ativo && valorTotal > 0) {
+        if (configuracao && configuracao.pontos_ativo && valorTotalFinal > 0) {
           // Calcular pontos: pontos = valor_total * pontos_por_real
           const pontosPorReal = parseFloat(configuracao.pontos_por_real) || 1.00;
           const pontosValidade = configuracao.pontos_validade_meses || 12;
-          const pontosGerados = Math.floor(valorTotal * pontosPorReal);
+          const pontosGerados = Math.floor(valorTotalFinal * pontosPorReal);
 
           // Calcular data de validade
           const dataValidade = new Date();
@@ -900,23 +1157,22 @@ class AgendamentoController extends BaseController {
             agendamento_id: agendamento.id,
             tipo: 'CREDITO',
             pontos: pontosGerados,
-            valor_real: valorTotal,
+            valor_real: valorTotalFinal,
             descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
             data_validade: dataValidade.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
             expirado: false,
             created_at: new Date()
           });
 
-          logger.log(`✅ [AgendamentoController] Pontos gerados: ${pontosGerados} pts para cliente #${clienteIdFinal} (R$ ${valorTotal.toFixed(2)})`);
         }
       } catch (pontosError) {
-        logger.error('❌ [AgendamentoController] Erro ao gerar pontos:', pontosError);
+        logger.error(' [AgendamentoController] Erro ao gerar pontos:', pontosError);
         // Não falhar a criação do agendamento por erro nos pontos
       }
 
-      // 🚀 GATILHO 1: Novo Agendamento Criado (Cliente)
+      // GATILHO 1: Novo Agendamento Criado (Cliente)
       // Enviar notificação WhatsApp para o cliente
-      // ✅ OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
+      // OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
       // Em DEV pode haver delay proposital (15-40s) e fila, causando "Salvando..." por muito tempo.
       // Responder imediatamente e disparar envio em background.
       res.status(201).json({
@@ -927,24 +1183,20 @@ class AgendamentoController extends BaseController {
 
       setImmediate(async () => {
         try {
-          logger.log(`📱 [AgendamentoController] (bg) Iniciando envio de WhatsApp para agendamento #${agendamento.id}`);
-
           const dadosCompletos = await this.buscarDadosCompletos(agendamento.id);
 
           if (!dadosCompletos) {
-            logger.error('❌ [AgendamentoController] (bg) Dados completos não encontrados para agendamento #' + agendamento.id);
+            logger.error(' [AgendamentoController] (bg) Dados completos não encontrados para agendamento #' + agendamento.id);
             return;
           }
 
           if (dadosCompletos?.cliente_telefone || dadosCompletos?.agente_telefone) {
-            logger.log(`📤 [AgendamentoController] (bg) Enviando confirmação WhatsApp (cliente/agente) para agendamento #${agendamento.id}`);
             const resultadoWhatsApp = await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
-            logger.log('📊 [AgendamentoController] (bg) Resultado do envio:', JSON.stringify(resultadoWhatsApp, null, 2));
           } else {
-            logger.error('❌ [AgendamentoController] (bg) Nenhum telefone encontrado (cliente/agente) nos dados completos');
+            logger.error(' [AgendamentoController] (bg) Nenhum telefone encontrado (cliente/agente) nos dados completos');
           }
         } catch (whatsappError) {
-          logger.error('❌ [AgendamentoController] (bg) Erro no envio de WhatsApp:', whatsappError);
+          logger.error(' [AgendamentoController] (bg) Erro no envio de WhatsApp:', whatsappError);
         }
       });
 
@@ -958,7 +1210,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      logger.error('❌ [AgendamentoController.store] Erro ao criar agendamento:', error);
+      logger.error(' [AgendamentoController.store] Erro ao criar agendamento:', error);
 
       // Tratar erro de conflito do createWithLock ou da constraint do banco
       if (error && (error.code === 'CONFLICT' || error.code === '23P01' || error.constraint === 'agendamentos_no_overlap')) {
@@ -1000,7 +1252,7 @@ class AgendamentoController extends BaseController {
 
       // 2. Aplicar filtro de escopo para encontrar o agendamento
       if (userRole === 'AGENTE' && userAgenteId) {
-        // ✅ SOLUÇÃO CRÍTICA: AGENTE só pode encontrar agendamentos em seu nome.
+        // SOLUÇÃO CRÍTICA: AGENTE só pode encontrar agendamentos em seu nome.
         // Foca o filtro diretamente na coluna do agente.
         agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
       } else if (userRole === 'ADMIN' || userRole === 'MASTER') {
@@ -1017,7 +1269,7 @@ class AgendamentoController extends BaseController {
 
 
       if (!agendamento) {
-        // ✅ CORREÇÃO: O 404 agora significa que o agendamento não existe DENTRO DO ESCOPO DO USUÁRIO
+        // CORREÇÃO: O 404 agora significa que o agendamento não existe DENTRO DO ESCOPO DO USUÁRIO
         return res.status(404).json({ 
           success: false,
           error: 'Agendamento não encontrado ou acesso negado' 
@@ -1029,7 +1281,7 @@ class AgendamentoController extends BaseController {
       // mas se o usuário for ADMIN, ele já passou pelo filtro de unidade.
       // Manter apenas o filtro no SQL simplifica.
 
-      // ✅ CORREÇÃO: Extrair apenas campos válidos da tabela agendamentos
+      // CORREÇÃO: Extrair apenas campos válidos da tabela agendamentos
       const {
         hora_inicio,
         hora_fim,
@@ -1044,18 +1296,18 @@ class AgendamentoController extends BaseController {
         unidade_id
       } = req.body;
 
-      // ✅ REGRA DE NEGÓCIO (FINANCEIRO):
+      // REGRA DE NEGÓCIO (FINANCEIRO):
       // - Concluído: exige método de pagamento e força status_pagamento = 'Pago'
       // - Aprovado/Cancelado/Não Compareceu: NÃO pode ter pagamento (limpar metodo_pagamento/status_pagamento)
       const statusFinal = status !== undefined ? status : agendamento.status;
 
-      // ✅ CORREÇÃO: Mapear forma_pagamento para metodo_pagamento (nome correto na tabela)
+      // CORREÇÃO: Mapear forma_pagamento para metodo_pagamento (nome correto na tabela)
       const dadosParaAtualizar = {};
 
       if (hora_inicio !== undefined) dadosParaAtualizar.hora_inicio = hora_inicio;
       if (hora_fim !== undefined) dadosParaAtualizar.hora_fim = hora_fim;
       
-      // ✅ REGRA DE NEGÓCIO: AGENTE só pode atualizar seu próprio agente_id. ADMIN pode trocar.
+      // REGRA DE NEGÓCIO: AGENTE só pode atualizar seu próprio agente_id. ADMIN pode trocar.
       if (userRole === 'AGENTE' && agente_id !== undefined && agente_id !== userAgenteId) {
          return res.status(403).json({ success: false, error: 'Acesso negado: AGENTE não pode alterar agente_id' });
       } else if (agente_id !== undefined) {
@@ -1065,7 +1317,7 @@ class AgendamentoController extends BaseController {
       if (data_agendamento !== undefined) dadosParaAtualizar.data_agendamento = data_agendamento;
       if (status !== undefined) dadosParaAtualizar.status = status;
 
-      // ✅ REGRA DE NEGÓCIO: Pagamento só existe quando status = 'Concluído'
+      // REGRA DE NEGÓCIO: Pagamento só existe quando status = 'Concluído'
       if (statusFinal === 'Concluído') {
         const metodoPagamentoFinal = (forma_pagamento !== undefined ? forma_pagamento : agendamento.metodo_pagamento);
 
@@ -1079,7 +1331,7 @@ class AgendamentoController extends BaseController {
         }
 
         if (forma_pagamento !== undefined) {
-          dadosParaAtualizar.metodo_pagamento = forma_pagamento; // ✅ CORREÇÃO
+          dadosParaAtualizar.metodo_pagamento = forma_pagamento; // CORREÇÃO
         }
 
         // Concluído implica pagamento confirmado
@@ -1184,6 +1436,8 @@ class AgendamentoController extends BaseController {
       const novaHoraInicio = shouldValidateDisponibilidade ? (hora_inicio || agendamento.hora_inicio) : null;
       const novaHoraFim = shouldValidateDisponibilidade ? (hora_fim || agendamento.hora_fim) : null;
 
+      const statusAnterior = agendamento.status;
+
       const db = this.model.db;
 
       await db.transaction(async (trx) => {
@@ -1205,6 +1459,41 @@ class AgendamentoController extends BaseController {
             ...dadosParaAtualizar,
             updated_at: new Date()
           });
+
+        // Motor de Estados (Clube): gerenciar assinatura_usos de forma atômica com o status
+        // - Cancelado (Painel/Admin): estorno total (DELETE)
+        // - Não Compareceu (No-Show): punição (manter uso no ciclo), mas desvincular agendamento_id (NULL)
+        // - Concluído: baixa definitiva já foi registrada no momento do agendamento (manter vínculo)
+        if (status !== undefined && status !== statusAnterior) {
+          let agendamentoConsumiuCota = false;
+          try {
+            const usoRow = await trx('assinatura_usos')
+              .where('agendamento_id', parseInt(id, 10))
+              .select('id')
+              .first();
+            agendamentoConsumiuCota = Boolean(usoRow?.id);
+          } catch (err) {
+            if (!(err && err.code === '42P01')) {
+              throw err;
+            }
+          }
+
+          if (agendamentoConsumiuCota) {
+            if (status === 'Cancelado') {
+              await this.assinaturaEstornoService.aplicarEstornoOuRetencao({
+                agendamentoId: parseInt(id, 10),
+                deveEstornar: true,
+                dbConn: trx
+              });
+            } else if (status === 'Não Compareceu') {
+              await this.assinaturaEstornoService.aplicarEstornoOuRetencao({
+                agendamentoId: parseInt(id, 10),
+                deveEstornar: false,
+                dbConn: trx
+              });
+            }
+          }
+        }
 
         if (shouldUpdateServicos) {
           await trx('agendamento_servicos')
@@ -1241,11 +1530,11 @@ class AgendamentoController extends BaseController {
 
       const data = await this.model.findWithServicos(parseInt(id));
       
-      // ✅ PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
+      // PRIORIDADE 1: Verificar se o status mudou para "Cancelado"
       const foiCancelado = (status === 'Cancelado' && agendamento.status !== 'Cancelado');
       const foiConcluido = (statusFinal === 'Concluído' && agendamento.status !== 'Concluído');
 
-      // ✅ OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
+      // OTIMIZAÇÃO: NUNCA bloquear a resposta aguardando WhatsApp.
       // O envio pode ter delay em DEV e fila, causando "Salvando..." por muito tempo.
       // Disparar em background para manter UX rápida.
       const houveReagendamento = !foiCancelado && (
@@ -1262,18 +1551,16 @@ class AgendamentoController extends BaseController {
 
             if (foiCancelado) {
               await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-              logger.log(`✅ [AgendamentoController] Notificações de CANCELAMENTO enviadas para agendamento #${id}`);
             } else if (houveReagendamento) {
               await this.whatsAppService.sendRescheduleNotification(dadosCompletos);
-              logger.log(`✅ [AgendamentoController] Notificações de REAGENDAMENTO enviadas para agendamento #${id}`);
             }
           } catch (whatsappError) {
-            logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações em background:`, whatsappError);
+            logger.error(` [AgendamentoController] Erro ao enviar notificações em background:`, whatsappError);
           }
         });
       }
 
-      // ✅ Convite de retorno: agendar quando status mudar para Concluído
+      // Convite de retorno: agendar quando status mudar para Concluído
       // Executar em background para não bloquear a resposta HTTP
       if (foiConcluido) {
         setImmediate(async () => {
@@ -1332,7 +1619,7 @@ class AgendamentoController extends BaseController {
             if (error && (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo_notificacao')) {
               return;
             }
-            logger.error(`⚠️ [AgendamentoController] Erro ao agendar convite de retorno em background:`, error);
+            logger.error(` [AgendamentoController] Erro ao agendar convite de retorno em background:`, error);
           }
         });
       }
@@ -1351,7 +1638,7 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      logger.error('❌ [AgendamentoController.update] Erro ao atualizar agendamento:', error);
+      logger.error(' [AgendamentoController.update] Erro ao atualizar agendamento:', error);
       return res.status(500).json({ 
         success: false,
         error: 'Erro interno do servidor',
@@ -1362,11 +1649,183 @@ class AgendamentoController extends BaseController {
     }
   }
 
+  // PATCH /api/agendamentos/:id/cancel - Cancelar agendamento
+  async cancel(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Buscar agendamento com filtro de escopo
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.id', id);
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+      } else {
+        agendamentoQuery = agendamentoQuery
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('unidades.usuario_id', usuarioId);
+      }
+
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      if (agendamento.status === 'Cancelado') {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento já está cancelado'
+        });
+      }
+
+      const trxResult = await this.model.db.transaction(async (trx) => {
+        await this.assinaturaEstornoService.aplicarEstornoOuRetencao({
+          agendamentoId: parseInt(id, 10),
+          deveEstornar: true,
+          dbConn: trx
+        });
+
+        await trx(this.model.tableName)
+          .where('id', id)
+          .update({
+            status: 'Cancelado',
+            updated_at: new Date()
+          });
+
+        return { ok: true };
+      });
+
+      if (trxResult?.notFound) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      if (trxResult?.alreadyCancelled) {
+        return res.status(400).json({
+          success: false,
+          error: 'Agendamento já está cancelado'
+        });
+      }
+
+      // Buscar dados completos para enviar notificações
+      const dadosCompletos = await this.buscarDadosCompletos(id);
+
+      if (dadosCompletos) {
+        // Enviar notificações de cancelamento para cliente e agente
+        try {
+          await this.whatsAppService.sendCancellationNotification(dadosCompletos);
+        } catch (whatsappError) {
+          logger.error(` [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
+          // Não falhar a requisição se o WhatsApp falhar
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Agendamento cancelado com sucesso',
+        data: {
+          id: parseInt(id),
+          status: 'Cancelado'
+        }
+      });
+
+    } catch (error) {
+      logger.error(' [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
+  async finalize(req, res) {
+    try {
+      const { id } = req.params;
+      const { paymentMethod } = req.body;
+      let usuarioId = req.user?.id;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      // Buscar agendamento com filtro de escopo
+      let agendamentoQuery = this.model.db(this.model.tableName)
+        .where('agendamentos.id', id);
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
+      } else {
+        agendamentoQuery = agendamentoQuery
+          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+          .where('unidades.usuario_id', usuarioId);
+      }
+
+      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
+
+      if (!agendamento) {
+        return res.status(404).json({
+          success: false,
+          error: 'Agendamento não encontrado'
+        });
+      }
+
+      // Atualizar agendamento com status Concluído e método de pagamento
+      await this.model.db(this.model.tableName)
+        .where('id', id)
+        .update({
+          status: 'Concluído',
+          metodo_pagamento: paymentMethod,
+          status_pagamento: 'Pago',
+          updated_at: new Date()
+        });
+
+      return res.json({
+        success: true,
+        message: 'Agendamento finalizado com sucesso',
+        data: {
+          id: parseInt(id),
+          status: 'Concluído'
+        }
+      });
+
+    } catch (error) {
+      logger.error(' [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
   // Método auxiliar para buscar dados completos do agendamento
   async buscarDadosCompletos(agendamentoId) {
     try {
 
-      // ✅ CORREÇÃO CRÍTICA: Buscar dados separadamente para evitar problemas de JOIN
+      // CORREÇÃO CRÍTICA: Buscar dados separadamente para evitar problemas de JOIN
       const agendamento = await this.model.db('agendamentos')
         .where('id', agendamentoId)
         .first();
@@ -1396,16 +1855,16 @@ class AgendamentoController extends BaseController {
         return null;
       }
 
-      // ✅ CORREÇÃO: Buscar serviços separadamente
+      // CORREÇÃO: Buscar serviços separadamente
       const servicos = await this.model.db('agendamento_servicos')
         .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
         .where('agendamento_servicos.agendamento_id', agendamentoId)
         .select('servicos.nome', 'servicos.preco');
 
-      // ✅ CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
+      // CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
       const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
-      // ✅ NOVO: Calcular informações de pontos do cliente
+      // NOVO: Calcular informações de pontos do cliente
       let pontosInfo = null;
       try {
         const ClienteModel = require('../models/Cliente');
@@ -1431,115 +1890,92 @@ class AgendamentoController extends BaseController {
           ganhos: ganhos,
           podeUsar: !isPrimeiro // Pode usar se NÃO for o primeiro
         };
-        
-        logger.log(`💎 [AgendamentoController] Pontos calculados para cliente #${agendamento.cliente_id}:`, pontosInfo);
       } catch (pontosError) {
-        logger.error('❌ [AgendamentoController] Erro ao calcular pontos:', pontosError);
+        logger.error(' [AgendamentoController] Erro ao calcular pontos:', pontosError);
         // Continuar sem informação de pontos
       }
 
-      // ✅ NOVO: Calcular informações de assinatura do cliente
+      // NOVO: Calcular informações de assinatura do cliente
       let assinaturaSaldo = null;
       try {
-        if (cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo') {
-          const PlanoAssinaturaModel = require('../models/PlanoAssinatura');
-          const planoAssinaturaModel = new PlanoAssinaturaModel();
-          
-          const planoAssinatura = await this.model.db('planos_assinatura')
-            .where('id', cliente.assinatura_plano_id)
-            .where('status', 'Ativo')
+        const assinaturaStatus = cliente?.assinatura_status || null;
+        if (cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo' && assinaturaStatus === 'Ativo') {
+          const addDaysStr = (dateStr, days) => {
+            const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+            const dt = new Date(y, m - 1, d);
+            dt.setDate(dt.getDate() + days);
+            const pad = (num) => num.toString().padStart(2, '0');
+            return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+          };
+
+          const getDateStrInTimeZone = (tz, date = new Date()) => {
+            return new Intl.DateTimeFormat('en-CA', {
+              timeZone: tz,
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            }).format(date);
+          };
+
+          const normalizeDateStr = (dateValue) => {
+            if (!dateValue) return null;
+            if (dateValue instanceof Date) return dateValue.toISOString().slice(0, 10);
+            const s = String(dateValue);
+            if (s.length >= 10 && s.includes('T')) return s.slice(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            const dt = new Date(s);
+            if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+            return null;
+          };
+
+          const dayNumberFromDateStr = (dateStr) => {
+            const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+            return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+          };
+
+          const diffDays = (a, b) => {
+            return dayNumberFromDateStr(a) - dayNumberFromDateStr(b);
+          };
+
+          const getCycleBounds = ({ startDateStr, validadeDias, referenceDateStr }) => {
+            const delta = diffDays(referenceDateStr, startDateStr);
+            const idx = delta > 0 ? Math.floor(delta / validadeDias) : 0;
+            const cycleStart = addDaysStr(startDateStr, idx * validadeDias);
+            const cycleEndExclusive = addDaysStr(cycleStart, validadeDias);
+            const cycleEndInclusive = addDaysStr(cycleEndExclusive, -1);
+            return { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex: idx };
+          };
+
+          const unidadeTenant = await this.model.db('unidades')
+            .where('id', agendamento.unidade_id)
+            .select('id', 'usuario_id')
             .first();
 
-          if (planoAssinatura) {
-            const validadeDias = parseInt(planoAssinatura.validade_dias, 10) || 31;
-            const hoje = new Date();
-            const dataInicio = new Date(cliente.data_inicio_assinatura + 'T12:00:00');
-            
-            // Calcular ciclo atual
-            const diffMs = hoje - dataInicio;
-            const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            const cicloAtual = Math.floor(diffDias / validadeDias);
-            
-            const cycleStart = new Date(dataInicio);
-            cycleStart.setDate(cycleStart.getDate() + (cicloAtual * validadeDias));
-            const cycleEnd = new Date(cycleStart);
-            cycleEnd.setDate(cycleEnd.getDate() + validadeDias - 1);
-            
-            const cycleStartStr = cycleStart.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-            const cycleEndStr = cycleEnd.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-            const cycleEndExclusive = new Date(cycleEnd);
-            cycleEndExclusive.setDate(cycleEndExclusive.getDate() + 1);
-            const cycleEndExclusiveStr = cycleEndExclusive.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+          if (unidadeTenant?.usuario_id) {
+            const assinaturaSaldoService = new AssinaturaSaldoService({
+              db: this.model.db,
+              getDateStrInTimeZone,
+              normalizeDateStr,
+              getCycleBounds
+            });
 
-            const itens = await planoAssinaturaModel.findItens(planoAssinatura.id);
-            const itemIds = (itens || []).map(i => parseInt(i.id, 10)).filter(n => Number.isFinite(n));
+            const result = await assinaturaSaldoService.compute({
+              cliente,
+              unidadeUsuarioId: unidadeTenant.usuario_id,
+              unidadeId: agendamento.unidade_id,
+              dataReferencia: null,
+              servicoIds: null,
+              servicoExtraIds: null
+            });
 
-            let usadosRows = [];
-            if (itemIds.length > 0) {
-              try {
-                usadosRows = await this.model.db('assinatura_usos')
-                  .where('cliente_id', cliente.id)
-                  .whereIn('plano_item_id', itemIds)
-                  .where('data_uso', '>=', cycleStartStr)
-                  .where('data_uso', '<', cycleEndExclusiveStr)
-                  .groupBy('plano_item_id')
-                  .select('plano_item_id')
-                  .sum({ total: 'quantidade' });
-              } catch (err) {
-                if (!(err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos')))) {
-                  throw err;
-                }
-              }
-            }
-
-            const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
-              acc[String(row.plano_item_id)] = parseInt(row.total, 10) || 0;
-              return acc;
-            }, {});
-
-            const servicoIds = (itens || [])
-              .filter(i => i.tipo === 'SERVICO' && i.servico_id)
-              .map(i => parseInt(i.servico_id, 10))
-              .filter(n => Number.isFinite(n));
-
-            const servicosDoPlano = servicoIds.length > 0
-              ? await this.model.db('servicos').whereIn('id', servicoIds).select('id', 'nome')
-              : [];
-
-            const nomeServicoById = new Map((servicosDoPlano || []).map(s => [String(s.id), s.nome]));
-
-            const saldos = (itens || []).map(item => {
-              const quota = item.quantidade_por_ciclo === null || item.quantidade_por_ciclo === undefined
-                ? null
-                : (parseInt(item.quantidade_por_ciclo, 10) || 0);
-
-              const usados = usadosByItemId[String(item.id)] || 0;
-              const restantes = quota === null ? null : Math.max(0, quota - usados);
-
-              const nome = item.tipo === 'SERVICO'
-                ? (item.servico_id ? (nomeServicoById.get(String(item.servico_id)) || 'Serviço') : 'Serviço')
-                : 'Extra';
-
-              return {
-                tipo: item.tipo,
-                nome,
-                quantidade_por_ciclo: quota,
-                restantes
+            if (result?.data?.assinatura_ativa) {
+              assinaturaSaldo = {
+                assinatura_ativa: true,
+                plano: result.data.plano,
+                ciclo: result.data.ciclo,
+                saldos: result.data.saldos
               };
-            });
-
-            assinaturaSaldo = {
-              assinatura_ativa: true,
-              plano: { nome: planoAssinatura.nome },
-              ciclo: { inicio: cycleStartStr, fim: cycleEndStr },
-              saldos
-            };
-
-            logger.log(`🎟️ [AgendamentoController] Assinatura calculada para cliente #${agendamento.cliente_id}:`, {
-              plano: planoAssinatura.nome,
-              ciclo: `${cycleStartStr} até ${cycleEndStr}`,
-              saldos_count: saldos.length
-            });
+            }
           }
         }
       } catch (assinaturaError) {
@@ -1596,91 +2032,6 @@ class AgendamentoController extends BaseController {
     } catch (error) {
       logger.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
-    }
-  }
-
-  // PATCH /api/agendamentos/:id/cancel - Cancelar agendamento
-  async cancel(req, res) {
-    try {
-      const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
-      const userAgenteId = req.user?.agente_id;
-
-      if (!usuarioId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Usuário não autenticado'
-        });
-      }
-
-      // Buscar agendamento com filtro de escopo
-      let agendamentoQuery = this.model.db(this.model.tableName)
-        .where('agendamentos.id', id);
-
-      if (userRole === 'AGENTE' && userAgenteId) {
-        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
-      } else {
-        agendamentoQuery = agendamentoQuery
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .where('unidades.usuario_id', usuarioId);
-      }
-
-      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
-
-      if (!agendamento) {
-        return res.status(404).json({
-          success: false,
-          error: 'Agendamento não encontrado'
-        });
-      }
-
-      // Verificar se já está cancelado
-      if (agendamento.status === 'Cancelado') {
-        return res.status(400).json({
-          success: false,
-          error: 'Agendamento já está cancelado'
-        });
-      }
-
-      // Atualizar status para Cancelado
-      await this.model.db(this.model.tableName)
-        .where('id', id)
-        .update({
-          status: 'Cancelado',
-          updated_at: new Date()
-        });
-
-      // Buscar dados completos para enviar notificações
-      const dadosCompletos = await this.buscarDadosCompletos(id);
-
-      if (dadosCompletos) {
-        // Enviar notificações de cancelamento para cliente e agente
-        try {
-          await this.whatsAppService.sendCancellationNotification(dadosCompletos);
-          logger.log(`✅ [AgendamentoController] Notificações de cancelamento enviadas para agendamento #${id}`);
-        } catch (whatsappError) {
-          logger.error(`⚠️ [AgendamentoController] Erro ao enviar notificações de cancelamento:`, whatsappError);
-          // Não falhar a requisição se o WhatsApp falhar
-        }
-      }
-
-      return res.json({
-        success: true,
-        message: 'Agendamento cancelado com sucesso',
-        data: {
-          id: parseInt(id),
-          status: 'Cancelado'
-        }
-      });
-
-    } catch (error) {
-      logger.error('❌ [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: error.message
-      });
     }
   }
 
@@ -1812,8 +2163,6 @@ class AgendamentoController extends BaseController {
       await this.model.db(this.model.tableName)
         .where('id', id)
         .del();
-
-      logger.log(`✅ [AgendamentoController] Agendamento #${id} deletado por ADMIN (usuario_id: ${usuarioId})`);
 
       return res.json({
         success: true,

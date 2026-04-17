@@ -296,6 +296,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [filteredAgents, setFilteredAgents] = useState<InternalAgente[]>([]); // ✅ Agentes filtrados por unidade
     const [filteredClients, setFilteredClients] = useState<InternalCliente[]>([]);
     const [selectedClient, setSelectedClient] = useState<InternalCliente | null>(null);
+    const [assinaturaInfo, setAssinaturaInfo] = useState<any | null>(null);
+    const [isLoadingAssinaturaSaldo, setIsLoadingAssinaturaSaldo] = useState(false);
+    const [usarCotaAssinatura, setUsarCotaAssinatura] = useState(false);
+    const assinaturaSaldoDebounceRef = useRef<number | null>(null);
     const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
     const [unitSchedule, setUnitSchedule] = useState<{ inicio: string; fim: string }[]>([]); // ✅ Horários da unidade
 
@@ -355,6 +359,18 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const isConcluido = status === 'Concluído';
 
     const isEditing = !!appointmentData;
+
+    const coberturaSugerida = useMemo(() => {
+        const cobertura = assinaturaInfo?.cobertura_sugerida;
+        return {
+            servico_ids: Array.isArray(cobertura?.servico_ids) ? cobertura.servico_ids : [],
+            servico_extra_ids: Array.isArray(cobertura?.servico_extra_ids) ? cobertura.servico_extra_ids : []
+        };
+    }, [assinaturaInfo]);
+
+    const hasCoberturaDisponivel = (coberturaSugerida.servico_ids.length > 0 || coberturaSugerida.servico_extra_ids.length > 0);
+    const assinaturaStatusSelecionado = (selectedClient as any)?.assinatura_status ?? null;
+    const assinaturaBloqueada = Boolean((selectedClient as any)?.is_assinante) && assinaturaStatusSelecionado && assinaturaStatusSelecionado !== 'Ativo';
 
     const durationMinutes = useMemo(() => {
         let total = 0;
@@ -632,6 +648,96 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         const timeoutId = setTimeout(searchClientsDebounced, 300); // Debounce de 300ms
         return () => clearTimeout(timeoutId);
     }, [clientSearchQuery, searchClientes]);
+
+    // ✅ ETAPA 3 (CLUBE): consultar saldo automaticamente quando cliente + itens existirem
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (assinaturaSaldoDebounceRef.current) {
+            window.clearTimeout(assinaturaSaldoDebounceRef.current);
+            assinaturaSaldoDebounceRef.current = null;
+        }
+
+        if (!selectedClient?.id) {
+            setAssinaturaInfo(null);
+            setUsarCotaAssinatura(false);
+            return;
+        }
+
+        if (!effectiveLocationId) {
+            setAssinaturaInfo(null);
+            setUsarCotaAssinatura(false);
+            return;
+        }
+
+        const servicos = Array.isArray(selectedServices) ? selectedServices : [];
+        const extras = Array.isArray(selectedExtras) ? selectedExtras : [];
+        if (servicos.length === 0 && extras.length === 0) {
+            setAssinaturaInfo(null);
+            setUsarCotaAssinatura(false);
+            return;
+        }
+
+        // Se o cliente já estiver com pagamento pendente/inativo, não precisamos consultar saldo
+        if (assinaturaBloqueada) {
+            setAssinaturaInfo(null);
+            setUsarCotaAssinatura(false);
+            return;
+        }
+
+        assinaturaSaldoDebounceRef.current = window.setTimeout(async () => {
+            setIsLoadingAssinaturaSaldo(true);
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    setAssinaturaInfo(null);
+                    setUsarCotaAssinatura(false);
+                    return;
+                }
+
+                const params = new URLSearchParams();
+                params.append('unidade_id', String(parseInt(effectiveLocationId)));
+                if (servicos.length > 0) params.append('servico_ids', servicos.join(','));
+                if (extras.length > 0) params.append('servico_extra_ids', extras.join(','));
+
+                const response = await fetch(`${API_BASE_URL}/clientes/${selectedClient.id}/assinatura-saldo?${params.toString()}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    setAssinaturaInfo(null);
+                    setUsarCotaAssinatura(false);
+                    return;
+                }
+
+                const payload = await response.json();
+                const data = payload?.data || null;
+                setAssinaturaInfo(data);
+
+                const cobertura = data?.cobertura_sugerida;
+                const hasCobertura = (Array.isArray(cobertura?.servico_ids) && cobertura.servico_ids.length > 0)
+                    || (Array.isArray(cobertura?.servico_extra_ids) && cobertura.servico_extra_ids.length > 0);
+
+                // Default inteligente: ON quando existe cobertura
+                setUsarCotaAssinatura(Boolean(hasCobertura));
+            } catch (e) {
+                setAssinaturaInfo(null);
+                setUsarCotaAssinatura(false);
+            } finally {
+                setIsLoadingAssinaturaSaldo(false);
+            }
+        }, 300);
+
+        return () => {
+            if (assinaturaSaldoDebounceRef.current) {
+                window.clearTimeout(assinaturaSaldoDebounceRef.current);
+                assinaturaSaldoDebounceRef.current = null;
+            }
+        };
+    }, [isOpen, selectedClient?.id, selectedServices, selectedExtras, effectiveLocationId, assinaturaBloqueada]);
 
     const calculateEndTime = (startTimeStr: string, serviceIds: number[], extraIds: number[]): string => {
         if (!startTimeStr) return '';
@@ -1161,6 +1267,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         setClientPhone(client.telefone.replace('+55', '').trim());
         setIsSearchingClient(false);
         setClientSearchQuery('');
+
+        // Reset do estado do Clube ao trocar cliente
+        setAssinaturaInfo(null);
+        setUsarCotaAssinatura(false);
         
         // ✅ NOVO: Armazenar ID do cliente e buscar pontos
         setClienteId(client.id);
@@ -1260,6 +1370,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 hora_fim: endTime,
                 unidade_id: parseInt(effectiveLocationId),
                 observacoes: observacoes.trim() || '',
+                ...(usarCotaAssinatura && hasCoberturaDisponivel
+                    ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
+                    : {}),
                 ...(repeatAppointment
                     ? {
                         recorrencia: {
@@ -1289,6 +1402,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     status: status,
                     ...(isConcluido ? { forma_pagamento: paymentMethod } : {}),
                     observacoes: observacoes.trim() || '',
+                    ...(usarCotaAssinatura && hasCoberturaDisponivel
+                        ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
+                        : {}),
                     // ✅ NOVO: Incluir pontos usados se houver
                     ...(isConcluido && pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
                     // ✅ NOVO: Incluir cupom_id se houver cupom aplicado
@@ -1621,6 +1737,43 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             )}
                         >
                            {renderClientContent()}
+
+                           {/* ✅ ETAPA 3 (CLUBE): Área contextual de assinatura */}
+                           {selectedClient && (
+                               <div className="mt-4">
+                                   {assinaturaBloqueada ? (
+                                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                                           Clube: {assinaturaStatusSelecionado || 'Inativo'}
+                                       </div>
+                                   ) : isLoadingAssinaturaSaldo ? (
+                                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
+                                           Verificando saldo do Clube...
+                                       </div>
+                                   ) : hasCoberturaDisponivel ? (
+                                       <div className="bg-[#F0F6FF] border border-blue-200 rounded-lg p-3">
+                                           <div className="flex items-center justify-between gap-4">
+                                               <div>
+                                                   <div className="text-sm font-semibold text-gray-800">Clube disponível</div>
+                                                   <div className="text-xs text-gray-600">Itens cobertos serão zerados automaticamente</div>
+                                               </div>
+                                               <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                                   <input
+                                                       type="checkbox"
+                                                       checked={usarCotaAssinatura}
+                                                       onChange={(e) => setUsarCotaAssinatura(e.target.checked)}
+                                                       className="h-4 w-4"
+                                                   />
+                                                   Consumir cota
+                                               </label>
+                                           </div>
+                                       </div>
+                                   ) : (
+                                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
+                                           Clube: sem cobertura disponível para os itens selecionados.
+                                       </div>
+                                   )}
+                               </div>
+                           )}
                         </FormSection>
                         )}
 

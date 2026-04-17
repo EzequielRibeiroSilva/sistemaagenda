@@ -55,12 +55,13 @@ export interface BackendAgendamento {
   cliente_id: number;
   agente_id: number;
   unidade_id: number;
+  coberto_clube?: boolean;
   recorrencia_group_id?: string | null;
   recorrencia_config?: any;
   data_agendamento: string;
   hora_inicio: string;
   hora_fim: string;
-  status: 'PENDENTE' | 'CONFIRMADO' | 'CANCELADO' | 'CONCLUIDO';
+  status: string;
   valor_total: number;
   observacoes?: string;
   cliente_nome: string;
@@ -117,6 +118,7 @@ export interface CalendarAppointment {
   clientName?: string;
   clientPhone?: string;
   clientBirthDate?: string;
+  isClubCovered?: boolean;
   status?: string;
   recorrenciaGroupId?: string | null;
   recorrenciaConfig?: any;
@@ -266,6 +268,8 @@ export const useCalendarData = () => {
       ? backendAgendamento.extras.map(e => e.nome).filter(Boolean)
       : [];
 
+    const isClubCovered = backendAgendamento.coberto_clube === true;
+
     return {
       id: backendAgendamento.id.toString(),
       numeroAgendamento: backendAgendamento.numero_agendamento,
@@ -278,6 +282,7 @@ export const useCalendarData = () => {
       clientName: backendAgendamento.cliente_nome,
       clientPhone: backendAgendamento.cliente_telefone,
       clientBirthDate: birthDateString,
+      isClubCovered,
       status: backendAgendamento.status,
       recorrenciaGroupId: backendAgendamento.recorrencia_group_id || null,
       recorrenciaConfig: backendAgendamento.recorrencia_config,

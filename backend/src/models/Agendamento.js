@@ -5,6 +5,43 @@ class Agendamento extends BaseModel {
     super('agendamentos');
   }
 
+  async attachAssinaturaCobertura(agendamentos) {
+    if (!Array.isArray(agendamentos) || agendamentos.length === 0) {
+      return agendamentos;
+    }
+
+    const agendamentoIds = agendamentos
+      .map(a => a?.id)
+      .filter(id => Number.isFinite(id));
+
+    if (agendamentoIds.length === 0) {
+      return agendamentos;
+    }
+
+    let rows = [];
+    try {
+      rows = await this.db('assinatura_usos')
+        .whereIn('agendamento_id', agendamentoIds)
+        .distinct('agendamento_id');
+    } catch (err) {
+      // Se as migrations ainda não foram aplicadas, a tabela pode não existir.
+      // Neste caso, assumir que não há cobertura por clube.
+      if (err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos'))) {
+        rows = [];
+      } else {
+        throw err;
+      }
+    }
+
+    const coveredSet = new Set((rows || []).map(r => Number(r.agendamento_id)).filter(n => Number.isFinite(n)));
+
+    for (const agendamento of agendamentos) {
+      agendamento.coberto_clube = coveredSet.has(Number(agendamento.id));
+    }
+
+    return agendamentos;
+  }
+
   async attachServicosAndExtras(agendamentos, options = {}) {
     const { includeExtras = false, includeComissao = false } = options;
 

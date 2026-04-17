@@ -554,6 +554,150 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     }
   }
 
+  async hasNotificacaoByReferencia({ tipo_notificacao, cliente_id, assinatura_referencia }) {
+    if (!tipo_notificacao || !cliente_id || !assinatura_referencia) return false;
+    const row = await db('lembretes_enviados')
+      .where({
+        tipo_notificacao,
+        cliente_id,
+        assinatura_referencia: String(assinatura_referencia)
+      })
+      .first();
+    return !!row;
+  }
+
+  formatCurrencyBRL(value) {
+    try {
+      const num = typeof value === 'number' ? value : Number(value);
+      if (!Number.isFinite(num)) return null;
+      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    } catch {
+      return null;
+    }
+  }
+
+  generatePagamentoAprovadoClienteMessage({ clienteNome, unidadeNome, wppLocal, planoNome, valorStr }) {
+    const planoDisplay = planoNome || 'Clube de Assinatura';
+    const planoLine = `\nPlano: *${planoDisplay}*`;
+    const valorLine = valorStr ? `\nValor: *${valorStr}*` : '';
+
+    return `✅ Oi, *${clienteNome}*! Seu pagamento do *Clube de Assinatura* foi *aprovado*.${planoLine}${valorLine}\n\nSeu plano está ativo e você já pode usar os benefícios normalmente.\n\nSe aparecer qualquer erro no uso do Clube, fala com a gente aqui:\n${unidadeNome}: ${wppLocal}\n\n_Mensagem automática do Tally_`;
+  }
+
+  generatePagamentoAprovadoAdminMessage({ clienteNome, unidadeNome, planoNome, valorStr, refId }) {
+    const planoLine = planoNome ? `\nPlano: ${planoNome}` : '';
+    const valorLine = valorStr ? `\nValor: ${valorStr}` : '';
+    const refLine = refId ? `\nID Ref: ${refId}` : '';
+    return `✅ *Pagamento aprovado (Clube)*\n\nCliente: *${clienteNome}*\nUnidade: *${unidadeNome}*${planoLine}${valorLine}${refLine}\n\n_Mensagem automática do Tally_`;
+  }
+
+  generatePagamentoRecusadoClienteMessage({ clienteNome, unidadeNome, wppLocal, planoNome, valorStr }) {
+    const planoDisplay = planoNome || 'Clube de Assinatura';
+    const planoLine = `\nPlano: *${planoDisplay}*`;
+    const valorLine = valorStr ? `\nValor: *${valorStr}*` : '';
+
+    return `⚠️ Oi, *${clienteNome}*! Seu pagamento do *Clube de Assinatura* foi *recusado* e o plano não está ativo no momento.${planoLine}${valorLine}\n\nIsso pode acontecer por limite do cartão, dados incorretos ou bloqueio do banco.\n\nPara a gente te ajudar rapidinho, chama a barbearia aqui:\n${unidadeNome}: ${wppLocal}\n\n_Mensagem automática do Tally_`;
+  }
+
+  generatePagamentoRecusadoAdminMessage({ clienteNome, unidadeNome, planoNome, valorStr, refId }) {
+    const planoLine = planoNome ? `\nPlano: ${planoNome}` : '';
+    const valorLine = valorStr ? `\nValor: ${valorStr}` : '';
+    const refLine = refId ? `\nID Ref: ${refId}` : '';
+    return `⚠️ *Pagamento recusado (Clube)*\n\nCliente: *${clienteNome}*\nUnidade: *${unidadeNome}*${planoLine}${valorLine}${refLine}\n\nPlano permanece *inativo* até regularização.\n\n_Mensagem automática do Tally_`;
+  }
+
+  generateAssinaturaCanceladaClienteMessage({ clienteNome, unidadeNome, wppLocal, planoNome, statusLabel }) {
+    const planoDisplay = planoNome || 'Clube de Assinatura';
+    const planoLine = `\nPlano: *${planoDisplay}*`;
+    const statusLine = statusLabel ? `\nStatus: *${statusLabel}*` : '';
+
+    return `⚠️ Oi, *${clienteNome}*! Identificamos que o seu *Clube de Assinatura* está *${statusLabel || 'inativo'}* no momento.${planoLine}${statusLine}\n\nPara voltar a usar o Clube sem problemas, fala com a barbearia aqui:\n${unidadeNome}: ${wppLocal}\n\n_Mensagem automática do Tally_`;
+  }
+
+  generateAssinaturaCanceladaAdminMessage({ clienteNome, unidadeNome, planoNome, statusLabel, refId }) {
+    const planoLine = planoNome ? `\nPlano: ${planoNome}` : '';
+    const statusLine = statusLabel ? `\nStatus: ${statusLabel}` : '';
+    const refLine = refId ? `\nID Ref: ${refId}` : '';
+    return `⚠️ *Assinatura cancelada/suspensa (Clube)*\n\nCliente: *${clienteNome}*\nUnidade: *${unidadeNome}*${planoLine}${statusLine}${refLine}\n\nPlano deve ser considerado *inativo*.\n\n_Mensagem automática do Tally_`;
+  }
+
+  async sendFinanceNotification({
+    unidade_id,
+    cliente_id,
+    cliente_telefone,
+    admin_telefone,
+    unidade_telefone,
+    tipoBase,
+    assinatura_referencia,
+    messageCliente,
+    messageAdmin
+  }) {
+    const refKey = String(assinatura_referencia);
+
+    const results = { cliente: null, admin: null, skipped: { cliente: false, admin: false } };
+
+    const tipoCliente = `${tipoBase}_cliente`;
+    const tipoAdmin = `${tipoBase}_admin`;
+
+    if (cliente_telefone && messageCliente) {
+      const already = await this.hasNotificacaoByReferencia({
+        tipo_notificacao: tipoCliente,
+        cliente_id,
+        assinatura_referencia: refKey
+      });
+
+      if (already) {
+        results.skipped.cliente = true;
+      } else {
+        const resultCliente = await this.sendMessageForAgendamento({ unidade_id }, cliente_telefone, messageCliente);
+        results.cliente = resultCliente;
+        await this.registrarNotificacao({
+          agendamento_id: null,
+          unidade_id,
+          cliente_id,
+          assinatura_referencia: refKey,
+          tipo_notificacao: tipoCliente,
+          status: resultCliente.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: cliente_telefone,
+          mensagem_enviada: resultCliente.success ? messageCliente : null,
+          whatsapp_message_id: resultCliente.data?.messageId || resultCliente.data?.key?.id || null,
+          erro_detalhes: resultCliente.success ? null : JSON.stringify(resultCliente.error)
+        });
+      }
+    }
+
+    if (admin_telefone && messageAdmin) {
+      const already = await this.hasNotificacaoByReferencia({
+        tipo_notificacao: tipoAdmin,
+        cliente_id,
+        assinatura_referencia: refKey
+      });
+
+      if (already) {
+        results.skipped.admin = true;
+      } else {
+        const resultAdmin = await this.sendMessageForAgendamento({ unidade_id }, admin_telefone, messageAdmin);
+        results.admin = resultAdmin;
+        await this.registrarNotificacao({
+          agendamento_id: null,
+          unidade_id,
+          cliente_id,
+          assinatura_referencia: refKey,
+          tipo_notificacao: tipoAdmin,
+          status: resultAdmin.success ? 'enviado' : 'falha',
+          tentativas: 1,
+          telefone_destino: admin_telefone,
+          mensagem_enviada: resultAdmin.success ? messageAdmin : null,
+          whatsapp_message_id: resultAdmin.data?.messageId || resultAdmin.data?.key?.id || null,
+          erro_detalhes: resultAdmin.success ? null : JSON.stringify(resultAdmin.error)
+        });
+      }
+    }
+
+    return results;
+  }
+
   async sendSubscriptionEndingSoonClient({
     unidade_id,
     unidade_nome,
@@ -891,7 +1035,12 @@ _Mensagem automática do Tally_`;
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
 
+    const cotaMsg = agendamentoData?.cota_consumida
+      ? '\n\nComo o cancelamento foi feito fora do prazo limite, a cota do seu clube foi consumida.'
+      : '';
+
     return `❌ *Cancelado:* Olá, *${cliente.nome}*. O agendamento de ${servicoTexto} na *${unidade.nome}* para ${dataHora} foi cancelado conforme solicitado.
+${cotaMsg}
 
 Deseja realizar um novo agendamento? Acesse:
 

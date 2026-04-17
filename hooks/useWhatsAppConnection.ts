@@ -57,10 +57,6 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
 
       const json = await resp.json().catch(() => null);
       setLastStatusRaw(json);
-      if (process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
-        console.debug('[WhatsApp] status poll', { ok: resp.ok, json });
-      }
       if (!resp.ok || !json?.success) {
         setError(json?.message || 'Erro ao buscar status do WhatsApp');
         return;

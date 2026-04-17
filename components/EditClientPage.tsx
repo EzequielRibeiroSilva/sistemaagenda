@@ -14,9 +14,11 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [mpCustomerEmail, setMpCustomerEmail] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birthDateText, setBirthDateText] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'Ativo' | 'Pagamento Pendente' | 'Cancelado'>('Ativo');
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
   const [subscriptionStartDateText, setSubscriptionStartDateText] = useState('');
   const [subscriptionPlanId, setSubscriptionPlanId] = useState<string>('');
@@ -102,10 +104,18 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
           setFirstName(client.firstName || '');
           setLastName(client.lastName || '');
           setPhone(client.phone?.replace('+55', '') || '');
+          setMpCustomerEmail((client as any).mpCustomerEmail || '');
           const parsedBirthDate = parseApiDateToDate(client.birthDate);
           setBirthDate(parsedBirthDate);
           setBirthDateText(parsedBirthDate ? formatDateToDDMMYYYY(parsedBirthDate) : '');
           setIsSubscriber(client.isSubscriber || false);
+          if (client.isSubscriber) {
+            const fromApi = (client as any).assinaturaStatus;
+            const normalized = fromApi === 'Pagamento Pendente' || fromApi === 'Cancelado' || fromApi === 'Ativo'
+              ? fromApi
+              : 'Ativo';
+            setSubscriptionStatus(normalized);
+          }
           const parsedSubscriptionStartDate = parseApiDateToDate(client.subscriptionStartDate);
           setSubscriptionStartDate(parsedSubscriptionStartDate);
           setSubscriptionStartDateText(parsedSubscriptionStartDate ? formatDateToDDMMYYYY(parsedSubscriptionStartDate) : '');
@@ -128,6 +138,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
       const now = new Date();
       setSubscriptionStartDate(now);
       setSubscriptionStartDateText(formatDateToDDMMYYYY(now));
+      setSubscriptionStatus('Ativo');
     } else {
       setSubscriptionStartDate(null);
       setSubscriptionStartDateText('');
@@ -176,8 +187,10 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
         primeiro_nome: firstName.trim(),
         ultimo_nome: lastName.trim(),
         telefone: phone.trim().startsWith('+55') ? phone.trim() : `+55${phone.trim()}`,
+        mp_customer_email: mpCustomerEmail.trim() ? mpCustomerEmail.trim() : null,
         data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : null,
         is_assinante: isSubscriber,
+        assinatura_status: isSubscriber ? subscriptionStatus : null,
         data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
         assinatura_plano_id: isSubscriber ? parseInt(subscriptionPlanId) : null
       };
@@ -340,7 +353,17 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                       </p>
                   </div>
 
-                  {/* Campo Email removido - clientes não precisam de email (comunicação via WhatsApp) */}
+                  <div>
+                      <label className="text-sm font-medium text-gray-600 mb-2 block">E-mail</label>
+                      <input
+                        type="email"
+                        value={mpCustomerEmail}
+                        onChange={(e) => setMpCustomerEmail(e.target.value)}
+                        placeholder="cliente@exemplo.com"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                        disabled={isSubmitting}
+                      />
+                  </div>
 
                   <div>
                       <label className="text-sm font-medium text-gray-600 mb-2 block">Data de nascimento</label>
@@ -419,6 +442,25 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                               </option>
                             ))}
                           </select>
+                      </div>
+                  )}
+
+                  {isSubscriber && (
+                      <div className="md:col-span-2">
+                          <label className="text-sm font-medium text-gray-600 mb-2 block">Status do Clube</label>
+                          <select
+                            value={subscriptionStatus}
+                            onChange={(e) => setSubscriptionStatus(e.target.value as any)}
+                            className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                            disabled={isSubmitting}
+                          >
+                            <option value="Ativo">Ativo</option>
+                            <option value="Pagamento Pendente">Pagamento Pendente</option>
+                            <option value="Cancelado">Cancelado</option>
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Controle de acesso ao Clube: clientes com Pagamento Pendente ou Cancelado não conseguem usar cotas.
+                          </p>
                       </div>
                   )}
 

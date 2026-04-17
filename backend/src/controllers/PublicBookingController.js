@@ -17,6 +17,8 @@ const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService'); // ✅ NOVO
 const BookingAvailabilityService = require('../services/BookingAvailabilityService');
 const { getInstance: getPublicSessionService } = require('../services/PublicSessionService'); // ✅ CORREÇÃO 1.2
+const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
+const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 const PlanoAssinatura = require('../models/PlanoAssinatura');
@@ -38,6 +40,13 @@ class PublicBookingController {
     this.scheduledReminderService = new ScheduledReminderService(); // 
     this.publicSessionService = getPublicSessionService(); // 
     this.planoAssinaturaModel = new PlanoAssinatura();
+    this.assinaturaSaldoService = new AssinaturaSaldoService({
+      db,
+      getDateStrInTimeZone: this.getDateStrInTimeZone.bind(this),
+      normalizeDateStr: this.normalizeDateStr.bind(this),
+      getCycleBounds: this.getCycleBounds.bind(this)
+    });
+    this.assinaturaEstornoService = new AssinaturaEstornoService();
   }
 
   /**
@@ -98,8 +107,6 @@ class PublicBookingController {
     }
 
     const finalVariacoes = Array.from(new Set([...variacoes, ...variacoesComDDI]));
-
-    logger.log(` [TelefoneNormalizer] Input: "${telefone}" → Variações: [${finalVariacoes.join(', ')}]`);
     return finalVariacoes;
   }
 
@@ -212,6 +219,7 @@ class PublicBookingController {
           'clientes.telefone_limpo',
           'clientes.data_nascimento',
           'clientes.is_assinante',
+          'clientes.assinatura_status',
           'clientes.data_inicio_assinatura',
           'clientes.assinatura_plano_id',
           'clientes.status',
@@ -220,161 +228,16 @@ class PublicBookingController {
         .orderByRaw('CASE WHEN clientes.unidade_id = ? THEN 0 ELSE 1 END', [unidade_id])
         .first();
 
-      if (!cliente || !cliente.is_assinante || !cliente.assinatura_plano_id || !cliente.data_inicio_assinatura || cliente.status !== 'Ativo') {
-        return res.json({
-          success: true,
-          data: {
-            cliente: cliente
-              ? {
-                id: cliente.id,
-                nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-                telefone: cliente.telefone,
-                data_nascimento: cliente.data_nascimento,
-                is_assinante: Boolean(cliente.is_assinante)
-              }
-              : null,
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const plano = await db('planos_assinatura')
-        .where('id', cliente.assinatura_plano_id)
-        .where('usuario_id', unidade.usuario_id)
-        .where('status', 'Ativo')
-        .select('id', 'nome', 'validade_dias', 'usuario_id')
-        .first();
-
-      if (!plano) {
-        return res.json({
-          success: true,
-          data: {
-            cliente: {
-              id: cliente.id,
-              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-              telefone: cliente.telefone,
-              data_nascimento: cliente.data_nascimento,
-              is_assinante: Boolean(cliente.is_assinante)
-            },
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const validadeDias = parseInt(plano.validade_dias, 10) || 31;
-      const tz = 'America/Sao_Paulo';
-      const referencia = data_referencia ? String(data_referencia) : this.getDateStrInTimeZone(tz);
-
-      const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
-      if (!dataInicioAssinaturaStr) {
-        return res.json({
-          success: true,
-          data: {
-            cliente: {
-              id: cliente.id,
-              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-              telefone: cliente.telefone,
-              data_nascimento: cliente.data_nascimento,
-              is_assinante: Boolean(cliente.is_assinante),
-              data_inicio_assinatura: cliente.data_inicio_assinatura,
-              assinatura_plano_id: cliente.assinatura_plano_id
-            },
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex } = this.getCycleBounds({
-        startDateStr: dataInicioAssinaturaStr,
-        validadeDias,
-        referenceDateStr: referencia
+      const result = await this.assinaturaSaldoService.compute({
+        cliente,
+        unidadeUsuarioId: unidade.usuario_id,
+        unidadeId: parseInt(unidade_id, 10),
+        dataReferencia: data_referencia ? String(data_referencia) : null,
+        servicoIds: null,
+        servicoExtraIds: null
       });
 
-      const itens = await this.planoAssinaturaModel.findItens(plano.id);
-      const itemIds = itens.map(i => i.id);
-
-      let usadosRows = [];
-      if (itemIds.length > 0) {
-        try {
-          usadosRows = await db('assinatura_usos')
-            .where('cliente_id', cliente.id)
-            .whereIn('plano_item_id', itemIds)
-            .where('data_uso', '>=', cycleStart)
-            .where('data_uso', '<', cycleEndExclusive)
-            .groupBy('plano_item_id')
-            .select('plano_item_id')
-            .sum({ total: 'quantidade' });
-        } catch (err) {
-          // Se as migrations ainda não foram aplicadas, a tabela pode não existir.
-          // Neste caso, assumir 0 usos e permitir que o fluxo do Booking funcione.
-          if (err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos'))) {
-            usadosRows = [];
-          } else {
-            throw err;
-          }
-        }
-      }
-
-      const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
-        const id = String(row.plano_item_id);
-        acc[id] = parseInt(row.total, 10) || 0;
-        return acc;
-      }, {});
-
-      const saldoItens = itens.map(i => {
-        const usados = usadosByItemId[String(i.id)] || 0;
-        const quota = i.quantidade_por_ciclo === null || i.quantidade_por_ciclo === undefined
-          ? null
-          : parseInt(i.quantidade_por_ciclo, 10);
-        const restante = quota === null ? null : Math.max(0, quota - usados);
-
-        return {
-          plano_item_id: i.id,
-          tipo: i.tipo,
-          servico_id: i.servico_id,
-          servico_extra_id: i.servico_extra_id,
-          quantidade_por_ciclo: quota,
-          usados,
-          restantes: restante
-        };
-      });
-
-      return res.json({
-        success: true,
-        data: {
-          cliente: {
-            id: cliente.id,
-            nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-            telefone: cliente.telefone,
-            data_nascimento: cliente.data_nascimento,
-            is_assinante: Boolean(cliente.is_assinante),
-            data_inicio_assinatura: cliente.data_inicio_assinatura,
-            assinatura_plano_id: cliente.assinatura_plano_id
-          },
-          assinatura_ativa: true,
-          plano: {
-            id: plano.id,
-            nome: plano.nome,
-            validade_dias: validadeDias
-          },
-          ciclo: {
-            referencia: referencia,
-            inicio: cycleStart,
-            fim: cycleEndInclusive,
-            indice: cycleIndex
-          },
-          saldos: saldoItens
-        }
-      });
+      return res.json(result);
     } catch (error) {
       logger.error('[PublicBooking] Erro ao buscar assinatura/saldo:', error);
       return res.status(500).json({
@@ -1856,8 +1719,6 @@ class PublicBookingController {
       // 🔧 CORREÇÃO: Buscar cliente considerando variações do 9º dígito
       // Evita duplicação de clientes (ex: 8591082000 vs 85991082000)
       const variacoesTelefone = this.normalizarTelefoneVariacoes(cliente_telefone);
-      
-      logger.log(`🔍 [CriarAgendamento] Buscando cliente com variações: [${variacoesTelefone.join(', ')}]`);
 
       let cliente = await trx('clientes')
         .where('unidade_id', unidade_id)
@@ -1871,6 +1732,7 @@ class PublicBookingController {
             }
           });
         })
+        .select('*')
         .first();
 
       if (!cliente) {
@@ -1954,9 +1816,21 @@ class PublicBookingController {
         });
       }
 
+      // 🛡️ FASE 2.1 (DEFESA EM PROFUNDIDADE): mesmo que o payload envie usar_assinatura_itens,
+      // só permitir consumo de cota se assinatura_status === 'Ativo'. Caso contrário, cobrar normal.
+      const assinaturaStatusCliente = cliente?.assinatura_status || null;
+      if (assinaturaStatusCliente !== 'Ativo') {
+        servicosCobertos.clear();
+        extrasCobertos.clear();
+      }
+
       const hasAssinaturaSelection = servicosCobertos.size > 0 || extrasCobertos.size > 0;
-      if (hasAssinaturaSelection && cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo') {
+      if (hasAssinaturaSelection && cliente?.is_assinante && cliente?.assinatura_plano_id && cliente?.data_inicio_assinatura && cliente?.status === 'Ativo' && cliente?.assinatura_status === 'Ativo') {
         try {
+          // ✅ FASE 3 (BLINDAGEM DE CONCORRÊNCIA): Serializar consumo de cotas por cliente
+          // Garante que saldo (leitura) e uso (insert) sejam atômicos no mesmo trx.
+          await trx.raw('SELECT pg_advisory_xact_lock(?::int, ?::int)', [7001, parseInt(cliente.id, 10)]);
+
           plano = await trx('planos_assinatura')
             .where('id', cliente.assinatura_plano_id)
             .where(function() {
@@ -1978,6 +1852,9 @@ class PublicBookingController {
                 validadeDias,
                 referenceDateStr: referencia
               });
+
+              const cycleStartTs = new Date(`${cycleStart}T00:00:00-03:00`);
+              const cycleEndExclusiveTs = new Date(`${cycleEndExclusive}T00:00:00-03:00`);
 
               const itens = await this.planoAssinaturaModel.findItens(plano.id);
               const itensById = new Map((itens || []).map(i => [String(i.id), i]));
@@ -2008,8 +1885,8 @@ class PublicBookingController {
                 usadosRows = await trx('assinatura_usos')
                   .where('cliente_id', cliente.id)
                   .whereIn('plano_item_id', uniqueItemIds)
-                  .where('data_uso', '>=', cycleStart)
-                  .where('data_uso', '<', cycleEndExclusive)
+                  .where('data_uso', '>=', cycleStartTs)
+                  .where('data_uso', '<', cycleEndExclusiveTs)
                   .groupBy('plano_item_id')
                   .select('plano_item_id')
                   .sum({ total: 'quantidade' });
@@ -2189,7 +2066,7 @@ class PublicBookingController {
             plano_id: plano.id,
             plano_item_id: item.id,
             agendamento_id: agendamento.id,
-            data_uso: data_agendamento,
+            data_uso: new Date(`${data_agendamento}T${hora_inicio || '00:00'}:00-03:00`),
             quantidade: 1,
             created_at: new Date()
           });
@@ -2203,7 +2080,7 @@ class PublicBookingController {
             plano_id: plano.id,
             plano_item_id: item.id,
             agendamento_id: agendamento.id,
-            data_uso: data_agendamento,
+            data_uso: new Date(`${data_agendamento}T${hora_inicio || '00:00'}:00-03:00`),
             quantidade: 1,
             created_at: new Date()
           });
@@ -2211,12 +2088,93 @@ class PublicBookingController {
 
         if (usoRows.length > 0) {
           try {
+            const validadeDias = parseInt(plano?.validade_dias, 10) || 31;
+            const tz = 'America/Sao_Paulo';
+            const referencia = this.getDateStrInTimeZone(tz);
+            const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
+
+            if (!dataInicioAssinaturaStr) {
+              throw new Error('Cota do clube esgotada.');
+            }
+
+            const { cycleStart, cycleEndExclusive } = this.getCycleBounds({
+              startDateStr: dataInicioAssinaturaStr,
+              validadeDias,
+              referenceDateStr: referencia
+            });
+
+            const cycleStartTs = new Date(`${cycleStart}T00:00:00-03:00`);
+            const cycleEndExclusiveTs = new Date(`${cycleEndExclusive}T00:00:00-03:00`);
+
+            const planItemsToConsume = await trx('planos_assinatura_itens')
+              .whereIn('id', planItemIdsToConsume)
+              .select('id', 'quantidade_por_ciclo');
+
+            const requiredByItemId = usoRows.reduce((acc, row) => {
+              const key = String(row.plano_item_id);
+              acc[key] = (acc[key] || 0) + (parseInt(row.quantidade, 10) || 0);
+              return acc;
+            }, {});
+
+            const usadosRows = await trx('assinatura_usos')
+              .where('cliente_id', cliente.id)
+              .whereIn('plano_item_id', planItemIdsToConsume)
+              .where('data_uso', '>=', cycleStartTs)
+              .where('data_uso', '<', cycleEndExclusiveTs)
+              .groupBy('plano_item_id')
+              .select('plano_item_id')
+              .sum({ total: 'quantidade' });
+
+            const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
+              acc[String(row.plano_item_id)] = parseInt(row.total, 10) || 0;
+              return acc;
+            }, {});
+
+            const semSaldo = (planItemsToConsume || []).some((item) => {
+              const quota = item.quantidade_por_ciclo === null || item.quantidade_por_ciclo === undefined
+                ? null
+                : parseInt(item.quantidade_por_ciclo, 10);
+              if (quota === null) return false;
+              const used = usadosByItemId[String(item.id)] || 0;
+              const required = requiredByItemId[String(item.id)] || 0;
+              return (quota - used - required) < 0;
+            });
+
+            if (semSaldo) {
+              throw new Error('Cota do clube esgotada.');
+            }
+
             await trx('assinatura_usos').insert(usoRows);
           } catch (err) {
             // Se as migrations ainda não foram aplicadas, a tabela pode não existir.
             // Não falhar o agendamento por causa disso.
             if (err && (err.code === '42P01' || String(err.message || '').includes('assinatura_usos'))) {
               logger.warn('[PublicBooking] Tabela assinatura_usos não existe ainda; ignorando registro de uso de assinatura.');
+            } else if (String(err?.message || '') === 'Cota do clube esgotada.') {
+              const subtotalServicosRecalc = servicos.reduce((total, s) => total + (Number(s.preco) || 0), 0);
+              const subtotalExtrasRecalc = servicosExtras.reduce((total, e) => total + (Number(e.preco) || 0), 0);
+              valorTotal = Math.max(0, subtotalServicosRecalc + subtotalExtrasRecalc);
+
+              await trx('agendamentos')
+                .where('id', agendamento.id)
+                .update({ valor_total: valorTotal, updated_at: new Date() });
+
+              for (const servico of servicos) {
+                await trx('agendamento_servicos')
+                  .where({ agendamento_id: agendamento.id, servico_id: servico.id })
+                  .update({ preco_aplicado: servico.preco });
+              }
+
+              for (const extra of servicosExtras) {
+                await trx('agendamento_servicos_extras')
+                  .where({ agendamento_id: agendamento.id, servico_extra_id: extra.id })
+                  .update({ preco_aplicado: extra.preco });
+              }
+
+              assinaturaAtiva = false;
+              servicosCobertos.clear();
+              extrasCobertos.clear();
+              planItemIdsToConsume = [];
             } else {
               throw err;
             }
@@ -2967,7 +2925,7 @@ class PublicBookingController {
         dataAgendamentoStr = agendamento.data_agendamento;
       }
 
-      const dataHoraAgendamento = new Date(`${dataAgendamentoStr}T${agendamento.hora_inicio}`);
+      const dataHoraAgendamento = new Date(`${dataAgendamentoStr}T${agendamento.hora_inicio}-03:00`);
 
       // Validar se a data foi criada corretamente
       if (isNaN(dataHoraAgendamento.getTime())) {
@@ -3004,21 +2962,26 @@ class PublicBookingController {
         });
       }
 
-      // ✅ VALIDAÇÃO 5: Verificar se está dentro do prazo limite de cancelamento
-      if (diferencaHoras < configuracoes.tempo_limite_cancelar_horas) {
-        const horasRestantes = diferencaHoras.toFixed(1);
-        const horasNecessarias = configuracoes.tempo_limite_cancelar_horas;
-        
-        logger.log(`[PublicBooking] ❌ Cancelamento fora do prazo. Faltam ${horasRestantes}h, necessário ${horasNecessarias}h`);
-        
-        return res.status(403).json({
-          success: false,
-          error: 'Fora do prazo de cancelamento',
-          message: `Cancelamento não permitido. É necessário cancelar com pelo menos ${horasNecessarias} hora(s) de antecedência. Seu agendamento está a ${horasRestantes} hora(s) de acontecer.`
-        });
-      }
+      const decisaoEstorno = await this.assinaturaEstornoService.decidirEstorno({
+        origem: 'CLIENTE_PUBLICO',
+        agendamento: {
+          id: parseInt(id, 10),
+          unidade_id: agendamento.unidade_id,
+          data_agendamento: dataAgendamentoStr,
+          hora_inicio: agendamento.hora_inicio
+        },
+        agora,
+        dbConn: this.agendamentoModel.db
+      });
 
-      logger.log(`✅ [PublicBooking] Cancelamento dentro do prazo. Diferença: ${diferencaHoras.toFixed(2)}h, Limite: ${configuracoes.tempo_limite_cancelar_horas}h`);
+      const deveEstornarCota = Boolean(decisaoEstorno?.deve_estornar);
+
+      logger.log(`[PublicBooking] 🔁 Decisão de estorno (cliente):`, {
+        dentroDoPrazo: Boolean(decisaoEstorno?.dentro_do_prazo),
+        deveEstornarCota,
+        diferencaHoras: Number(diferencaHoras.toFixed(2)),
+        limiteHoras: decisaoEstorno?.limite_horas
+      });
 
       // ✅ VALIDAÇÃO 6: Verificar se já está cancelado
       if (agendamento.status === 'Cancelado') {
@@ -3038,14 +3001,21 @@ class PublicBookingController {
         });
       }
 
-      // Atualizar status para Cancelado
-      await this.agendamentoModel.db('agendamentos')
-        .where('id', id)
-        .update({
-          status: 'Cancelado',
-          observacoes: motivo ? `Cancelado pelo cliente: ${motivo}` : 'Cancelado pelo cliente',
-          updated_at: this.agendamentoModel.db.fn.now()
+      await this.agendamentoModel.db.transaction(async (trx) => {
+        await this.assinaturaEstornoService.aplicarEstornoOuRetencao({
+          agendamentoId: parseInt(id, 10),
+          deveEstornar: deveEstornarCota,
+          dbConn: trx
         });
+
+        await trx('agendamentos')
+          .where('id', id)
+          .update({
+            status: 'Cancelado',
+            observacoes: motivo ? `Cancelado pelo cliente: ${motivo}` : 'Cancelado pelo cliente',
+            updated_at: trx.fn.now()
+          });
+      });
 
       logger.log(`✅ [PublicBooking] Agendamento #${id} cancelado`);
 
@@ -3058,6 +3028,9 @@ class PublicBookingController {
         console.error(`[DEBUG] Dados completos buscados:`, dadosCompletos ? 'OK' : 'NULL');
 
         if (dadosCompletos) {
+          if (!deveEstornarCota) {
+            dadosCompletos.cota_consumida = true;
+          }
           console.error(`[DEBUG] Enviando notificação de cancelamento via WhatsApp...`);
           const resultWhatsApp = await this.whatsAppService.sendCancellationNotification(dadosCompletos);
           console.error(`[DEBUG] Resultado WhatsApp:`, JSON.stringify(resultWhatsApp));

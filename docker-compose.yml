@@ -35,6 +35,8 @@ services:
       TZ: America/Sao_Paulo  # ✅ CRÍTICO: Fuso horário do Brasil (UTC-3)
       NODE_ENV: development
       PORT: 3001
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET}
       SUBSCRIPTION_ENDING_SOON_DAYS: 3
       PG_HOST: db
       PG_PORT: 5432

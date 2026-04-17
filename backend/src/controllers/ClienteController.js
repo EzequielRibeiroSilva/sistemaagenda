@@ -2,6 +2,7 @@ const Cliente = require('../models/Cliente');
 const logger = require('./../utils/logger');
 const { db } = require('../config/knex');
 const PlanoAssinatura = require('../models/PlanoAssinatura');
+const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
 
 /**
  * Controller para gerenciamento de clientes
@@ -19,6 +20,12 @@ class ClienteController {
   constructor() {
     this.clienteModel = new Cliente();
     this.planoAssinaturaModel = new PlanoAssinatura();
+    this.assinaturaSaldoService = new AssinaturaSaldoService({
+      db,
+      getDateStrInTimeZone: this.getDateStrInTimeZone.bind(this),
+      normalizeDateStr: this.normalizeDateStr.bind(this),
+      getCycleBounds: this.getCycleBounds.bind(this)
+    });
   }
 
   normalizeDateStr(dateValue) {
@@ -171,6 +178,14 @@ class ClienteController {
         })
       );
 
+      const clienteIds = clientesComPontos.map(c => c.id).filter(Boolean);
+      const renovacoesRows = clienteIds.length > 0
+        ? await db('assinatura_renovacoes')
+          .whereIn('cliente_id', clienteIds)
+          .distinct('cliente_id')
+        : [];
+      const clientesComRenovacao = new Set((renovacoesRows || []).map(r => r.cliente_id));
+
       // Formatar dados para o frontend
       const clientesFormatados = clientesComPontos.map(cliente => ({
         id: cliente.id,
@@ -180,6 +195,9 @@ class ClienteController {
         phone: cliente.telefone,
         birthDate: cliente.data_nascimento,
         isSubscriber: cliente.is_assinante,
+        assinaturaStatus: (cliente.is_assinante && !clientesComRenovacao.has(cliente.id))
+          ? 'Pagamento Pendente'
+          : cliente.assinatura_status,
         subscriptionStartDate: cliente.data_inicio_assinatura,
         subscriptionPlanId: cliente.assinatura_plano_id,
         status: cliente.status,
@@ -268,6 +286,7 @@ class ClienteController {
           firstName: novoCliente.primeiro_nome,
           lastName: novoCliente.ultimo_nome,
           phone: novoCliente.telefone,
+          mpCustomerEmail: novoCliente.mp_customer_email,
           birthDate: novoCliente.data_nascimento,
           isSubscriber: novoCliente.is_assinante,
           subscriptionStartDate: novoCliente.data_inicio_assinatura,
@@ -335,8 +354,10 @@ class ClienteController {
           firstName: cliente.primeiro_nome,
           lastName: cliente.ultimo_nome,
           phone: cliente.telefone,
+          mpCustomerEmail: cliente.mp_customer_email,
           birthDate: cliente.data_nascimento,
           isSubscriber: cliente.is_assinante,
+          assinaturaStatus: cliente.assinatura_status,
           subscriptionStartDate: cliente.data_inicio_assinatura,
           subscriptionPlanId: cliente.assinatura_plano_id,
           status: cliente.status,
@@ -390,8 +411,10 @@ class ClienteController {
           firstName: clienteAtualizado.primeiro_nome,
           lastName: clienteAtualizado.ultimo_nome,
           phone: clienteAtualizado.telefone,
+          mpCustomerEmail: clienteAtualizado.mp_customer_email,
           birthDate: clienteAtualizado.data_nascimento,
           isSubscriber: clienteAtualizado.is_assinante,
+          assinaturaStatus: clienteAtualizado.assinatura_status,
           subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
           subscriptionPlanId: clienteAtualizado.assinatura_plano_id,
           status: clienteAtualizado.status
@@ -560,12 +583,13 @@ class ClienteController {
   async getAssinaturaSaldo(req, res) {
     try {
       const clienteId = parseInt(req.params.id, 10);
-      const unidadeId = req.user?.unidade_id;
+      const unidadeId = parseInt(req.query?.unidade_id, 10);
+      const { data_referencia, servico_ids, servico_extra_ids } = req.query;
 
       if (!unidadeId) {
         return res.status(400).json({
           success: false,
-          message: 'Usuário deve estar associado a uma unidade'
+          message: 'unidade_id é obrigatório'
         });
       }
 
@@ -599,6 +623,7 @@ class ClienteController {
           'clientes.telefone',
           'clientes.data_nascimento',
           'clientes.is_assinante',
+          'clientes.assinatura_status',
           'clientes.data_inicio_assinatura',
           'clientes.assinatura_plano_id',
           'clientes.status',
@@ -606,189 +631,16 @@ class ClienteController {
         )
         .first();
 
-      if (!cliente || !cliente.is_assinante || !cliente.assinatura_plano_id || !cliente.data_inicio_assinatura || cliente.status !== 'Ativo') {
-        return res.json({
-          success: true,
-          data: {
-            cliente: cliente
-              ? {
-                  id: cliente.id,
-                  nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-                  telefone: cliente.telefone,
-                  data_nascimento: cliente.data_nascimento,
-                  is_assinante: Boolean(cliente.is_assinante)
-                }
-              : null,
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const plano = await db('planos_assinatura')
-        .where('id', cliente.assinatura_plano_id)
-        .where('usuario_id', unidade.usuario_id)
-        .where('status', 'Ativo')
-        .select('id', 'nome', 'validade_dias')
-        .first();
-
-      if (!plano) {
-        return res.json({
-          success: true,
-          data: {
-            cliente: {
-              id: cliente.id,
-              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-              telefone: cliente.telefone,
-              data_nascimento: cliente.data_nascimento,
-              is_assinante: Boolean(cliente.is_assinante)
-            },
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const validadeDias = parseInt(plano.validade_dias, 10) || 31;
-      const tz = 'America/Sao_Paulo';
-      const referencia = this.getDateStrInTimeZone(tz);
-
-      const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
-      if (!dataInicioAssinaturaStr) {
-        return res.json({
-          success: true,
-          data: {
-            cliente: {
-              id: cliente.id,
-              nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-              telefone: cliente.telefone,
-              data_nascimento: cliente.data_nascimento,
-              is_assinante: Boolean(cliente.is_assinante),
-              data_inicio_assinatura: cliente.data_inicio_assinatura,
-              assinatura_plano_id: cliente.assinatura_plano_id
-            },
-            assinatura_ativa: false,
-            plano: null,
-            ciclo: null,
-            saldos: []
-          }
-        });
-      }
-
-      const { cycleStart, cycleEndExclusive, cycleEndInclusive, cycleIndex } = this.getCycleBounds({
-        startDateStr: dataInicioAssinaturaStr,
-        validadeDias,
-        referenceDateStr: referencia
+      const result = await this.assinaturaSaldoService.compute({
+        cliente,
+        unidadeUsuarioId: unidade.usuario_id,
+        unidadeId,
+        dataReferencia: data_referencia ? String(data_referencia) : null,
+        servicoIds: servico_ids,
+        servicoExtraIds: servico_extra_ids
       });
 
-      const itens = await this.planoAssinaturaModel.findItens(plano.id);
-      const itemIds = (itens || []).map(i => i.id);
-
-      const servicoIds = (itens || [])
-        .filter(i => i.tipo === 'SERVICO' && i.servico_id)
-        .map(i => parseInt(i.servico_id, 10))
-        .filter(n => Number.isFinite(n));
-
-      const extraIds = (itens || [])
-        .filter(i => i.tipo === 'EXTRA' && i.servico_extra_id)
-        .map(i => parseInt(i.servico_extra_id, 10))
-        .filter(n => Number.isFinite(n));
-
-      const [servicos, extras] = await Promise.all([
-        servicoIds.length > 0
-          ? db('servicos').whereIn('id', servicoIds).select('id', 'nome')
-          : Promise.resolve([]),
-        extraIds.length > 0
-          ? db('servicos_extras').whereIn('id', extraIds).select('id', 'nome')
-          : Promise.resolve([])
-      ]);
-
-      const servicoNomeById = (servicos || []).reduce((acc, row) => {
-        acc[String(row.id)] = row.nome;
-        return acc;
-      }, {});
-
-      const extraNomeById = (extras || []).reduce((acc, row) => {
-        acc[String(row.id)] = row.nome;
-        return acc;
-      }, {});
-
-      let usadosRows = [];
-      if (itemIds.length > 0) {
-        usadosRows = await db('assinatura_usos')
-          .where('cliente_id', cliente.id)
-          .whereIn('plano_item_id', itemIds)
-          .where('data_uso', '>=', cycleStart)
-          .where('data_uso', '<', cycleEndExclusive)
-          .groupBy('plano_item_id')
-          .select('plano_item_id')
-          .sum({ total: 'quantidade' });
-      }
-
-      const usadosByItemId = (usadosRows || []).reduce((acc, row) => {
-        const id = String(row.plano_item_id);
-        acc[id] = parseInt(row.total, 10) || 0;
-        return acc;
-      }, {});
-
-      const saldos = (itens || []).map(i => {
-        const usados = usadosByItemId[String(i.id)] || 0;
-        const quota = i.quantidade_por_ciclo === null || i.quantidade_por_ciclo === undefined
-          ? null
-          : parseInt(i.quantidade_por_ciclo, 10);
-        const restante = quota === null ? null : Math.max(0, quota - usados);
-
-        let nomeItem = null;
-        if (i.tipo === 'SERVICO' && i.servico_id) {
-          nomeItem = servicoNomeById[String(i.servico_id)] || null;
-        }
-        if (i.tipo === 'EXTRA' && i.servico_extra_id) {
-          nomeItem = extraNomeById[String(i.servico_extra_id)] || null;
-        }
-
-        return {
-          plano_item_id: i.id,
-          tipo: i.tipo,
-          servico_id: i.servico_id,
-          servico_extra_id: i.servico_extra_id,
-          nome: nomeItem,
-          quantidade_por_ciclo: quota,
-          usados,
-          restantes: restante
-        };
-      });
-
-      return res.json({
-        success: true,
-        data: {
-          cliente: {
-            id: cliente.id,
-            nome: `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim(),
-            telefone: cliente.telefone,
-            data_nascimento: cliente.data_nascimento,
-            is_assinante: Boolean(cliente.is_assinante),
-            data_inicio_assinatura: cliente.data_inicio_assinatura,
-            assinatura_plano_id: cliente.assinatura_plano_id
-          },
-          assinatura_ativa: true,
-          plano: {
-            id: plano.id,
-            nome: plano.nome,
-            validade_dias: validadeDias
-          },
-          ciclo: {
-            referencia,
-            inicio: cycleStart,
-            fim: cycleEndInclusive,
-            indice: cycleIndex
-          },
-          saldos
-        }
-      });
+      return res.json(result);
     } catch (error) {
       logger.error('❌ [ClienteController.getAssinaturaSaldo] Erro ao buscar saldo de assinatura:', error);
       return res.status(500).json({

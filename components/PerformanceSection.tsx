@@ -5,24 +5,55 @@ import DatePicker from './DatePicker';
 
 interface PerformanceCardProps {
   metric: PerformanceMetric;
+  onClick?: () => void;
 }
 
-const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric }) => (
-  <div className="bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-200 hover:border-[#2663EB] transition-all duration-200 hover:shadow-md overflow-hidden">
+const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) => (
+  <div
+    className={`bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-200 hover:border-[#2663EB] transition-all duration-200 hover:shadow-md overflow-hidden min-h-[160px] flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''}`}
+    onClick={onClick}
+    role={onClick ? 'button' : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onKeyDown={(e) => {
+      if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        onClick();
+      }
+    }}
+  >
     {/* Barra superior azul - identidade visual do sistema */}
     <div className="absolute top-0 left-0 right-0 h-1 bg-[#2663EB]"></div>
     
-    <div className="flex justify-between items-start mb-2 mt-1">
-      <div className="flex-1">
+    <div className="flex justify-between items-start gap-3">
+      <div className="flex-1 min-w-0">
         <p className="text-gray-500 text-xs sm:text-sm font-medium">{metric.title}</p>
         <div className="flex items-baseline mt-2">
-          <p className="text-2xl sm:text-3xl font-bold text-gray-900">{metric.value}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 break-words">{metric.value}</p>
         </div>
         {metric.subtitle && (
           <p className="text-xs text-gray-400 mt-2">{metric.subtitle}</p>
         )}
       </div>
+
+      {metric.icon && (
+        <div className="flex-shrink-0">
+          <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm font-semibold">
+            {metric.icon}
+          </div>
+        </div>
+      )}
     </div>
+
+    {Array.isArray(metric.breakdown) && metric.breakdown.length > 0 && (
+      <div className="mt-4 space-y-1">
+        {metric.breakdown.map((item, idx) => (
+          <div key={idx} className="flex items-center justify-between gap-3 text-xs">
+            <div className="text-gray-500">{item.label}</div>
+            <div className={`font-semibold ${item.colorClassName || 'text-gray-700'}`}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+    )}
   </div>
 );
 
@@ -94,6 +125,15 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ label, options, selecte
 
 interface PerformanceSectionProps {
   metrics: PerformanceMetric[];
+  clubMetrics?: PerformanceMetric[];
+  clubIntelligence?: {
+    mrr: number;
+    ticket_medio_assinante: number;
+    ticket_medio_comum: number;
+    churn_pct: number;
+    canceladas_periodo: number;
+    ativas_atuais: number;
+  };
   locations: Location[];
   agents: Agent[];
   services: Service[];
@@ -107,10 +147,13 @@ interface PerformanceSectionProps {
   userRole: 'ADMIN' | 'AGENTE';
   isMultiPlan: boolean;
   onDateRangeChange?: (range: { startDate: Date | null; endDate: Date | null }) => void;
+  onMetricClick?: (metric: PerformanceMetric) => void;
 }
 
 const PerformanceSection: React.FC<PerformanceSectionProps> = ({ 
     metrics, 
+    clubMetrics,
+    clubIntelligence,
     locations,
     agents,
     services,
@@ -123,7 +166,8 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
     loggedInAgentId,
     userRole,
     isMultiPlan,
-    onDateRangeChange
+    onDateRangeChange,
+    onMetricClick
 }) => {
   // Estado do período (mês atual por padrão)
   const now = new Date();
@@ -167,6 +211,43 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
   const shouldShowLocationFilter = isMultiPlan || locations.length > 1;
   const shouldDisableLocationFilter = locations.length === 1;
   
+  const clubIntelligenceCards: PerformanceMetric[] = React.useMemo(() => {
+    if (!clubIntelligence) return [];
+    const formatMoney = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return [
+      {
+        title: 'MRR (Clube)',
+        value: formatMoney(clubIntelligence.mrr),
+        isPositive: clubIntelligence.mrr >= 0,
+        change: '',
+        icon: '💰',
+        subtitle: 'Receita recorrente no período'
+      },
+      {
+        title: 'Ticket Médio (Assinante vs Comum)',
+        value: `${formatMoney(clubIntelligence.ticket_medio_assinante)} vs ${formatMoney(clubIntelligence.ticket_medio_comum)}`,
+        isPositive: clubIntelligence.ticket_medio_assinante >= clubIntelligence.ticket_medio_comum,
+        change: '',
+        icon: '🎟️',
+        subtitle: 'Caixa médio por membro vs cliente comum'
+      },
+      {
+        title: 'Churn (Clube)',
+        value: `${clubIntelligence.churn_pct.toFixed(1)}%`,
+        isPositive: clubIntelligence.churn_pct < 10,
+        change: '',
+        icon: '📉',
+        subtitle: `${clubIntelligence.canceladas_periodo} canceladas | ${clubIntelligence.ativas_atuais} ativas`
+      }
+    ];
+  }, [clubIntelligence]);
+
+  const combinedClubMetrics: PerformanceMetric[] = React.useMemo(() => {
+    const base = Array.isArray(clubMetrics) ? clubMetrics : [];
+    return [...base, ...clubIntelligenceCards];
+  }, [clubMetrics, clubIntelligenceCards]);
+
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -273,9 +354,16 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         </>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {metrics.map((metric, index) => (
-          <PerformanceCard key={index} metric={metric} />
+          <PerformanceCard
+            key={index}
+            metric={metric}
+            onClick={onMetricClick ? () => onMetricClick(metric) : undefined}
+          />
+        ))}
+        {Array.isArray(combinedClubMetrics) && combinedClubMetrics.map((metric, index) => (
+          <PerformanceCard key={`club-${index}`} metric={metric} />
         ))}
       </div>
     </div>
