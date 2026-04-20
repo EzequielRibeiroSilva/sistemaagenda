@@ -59,8 +59,18 @@ router.get('/:id',
   (req, res) => servicoController.show(req, res)
 );
 
+router.get('/:id/insumos',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER', 'AGENTE'),
+  (req, res) => servicoController.insumosIndex(req, res)
+);
+
 // ✅ Middleware para exigir role ADMIN ou MASTER APENAS em operações de escrita
 router.use(rbacMiddleware.requireRole('ADMIN', 'MASTER'));
+
+router.put('/:id/insumos',
+  rbacMiddleware.auditLog('ATUALIZAR_SERVICO_INSUMOS'),
+  (req, res) => servicoController.insumosUpsert(req, res)
+);
 
 /**
  * POST /api/servicos

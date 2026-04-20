@@ -8,6 +8,7 @@ const ScheduledReminderService = require('../services/ScheduledReminderService')
 const BookingAvailabilityService = require('../services/BookingAvailabilityService');
 const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
 const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
+const AgendamentoConclusaoService = require('../services/AgendamentoConclusaoService');
 
 class AgendamentoController extends BaseController {
   constructor() {
@@ -17,6 +18,7 @@ class AgendamentoController extends BaseController {
     this.scheduledReminderService = new ScheduledReminderService();
     this.bookingAvailabilityService = new BookingAvailabilityService();
     this.assinaturaEstornoService = new AssinaturaEstornoService();
+    this.agendamentoConclusaoService = new AgendamentoConclusaoService({ db: this.model.db });
   }
 
   // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
@@ -1565,60 +1567,15 @@ class AgendamentoController extends BaseController {
       if (foiConcluido) {
         setImmediate(async () => {
           try {
-            // Buscar serviços do agendamento com configuração de convite
-            const servicosElegiveis = await this.model.db('agendamento_servicos as ags')
-              .join('servicos as s', 'ags.servico_id', 's.id')
-              .where('ags.agendamento_id', id)
-              .where('s.convite_retorno_ativo', true)
-              .whereNotNull('s.convite_retorno_dias')
-              .select('s.id', 's.nome', 's.convite_retorno_dias');
+            await this.agendamentoConclusaoService.scheduleConviteRetorno({
+              agendamentoId: parseInt(id, 10)
+            });
 
-            if (!servicosElegiveis || servicosElegiveis.length === 0) {
-              return;
-            }
-
-            const diasMin = servicosElegiveis
-              .map(s => parseInt(s.convite_retorno_dias))
-              .filter(n => !Number.isNaN(n) && n > 0)
-              .sort((a, b) => a - b)[0];
-
-            if (!diasMin) {
-              return;
-            }
-
-            // Buscar telefone do cliente
-            const cliente = await this.model.db('clientes')
-              .where('id', agendamento.cliente_id)
-              .select('telefone')
-              .first();
-
-            if (!cliente?.telefone) {
-              return;
-            }
-
-            // Agendar envio para 10:00 (horário comercial)
-            const enviarEm = new Date();
-            enviarEm.setDate(enviarEm.getDate() + diasMin);
-            enviarEm.setHours(10, 0, 0, 0);
-
-            await this.model.db('lembretes_enviados')
-              .insert({
-                agendamento_id: parseInt(id),
-                unidade_id: agendamento.unidade_id,
-                tipo_lembrete: null,
-                tipo_notificacao: 'convite_retorno',
-                status: 'programado',
-                telefone_destino: cliente.telefone,
-                enviar_em: enviarEm,
-                tentativas: 0,
-                created_at: this.model.db.fn.now(),
-                updated_at: this.model.db.fn.now()
-              });
+            await this.agendamentoConclusaoService.handleConcluido({
+              agendamentoId: parseInt(id, 10),
+              triggeredByUserId: req.user?.id
+            });
           } catch (error) {
-            // Ignorar erro de duplicidade (índice único por agendamento + tipo_notificacao)
-            if (error && (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo_notificacao')) {
-              return;
-            }
             logger.error(` [AgendamentoController] Erro ao agendar convite de retorno em background:`, error);
           }
         });
@@ -2099,6 +2056,21 @@ class AgendamentoController extends BaseController {
       await this.model.db(this.model.tableName)
         .where('id', id)
         .update(updateData);
+
+      setImmediate(async () => {
+        try {
+          await this.agendamentoConclusaoService.scheduleConviteRetorno({
+            agendamentoId: parseInt(id, 10)
+          });
+
+          await this.agendamentoConclusaoService.handleConcluido({
+            agendamentoId: parseInt(id, 10),
+            triggeredByUserId: req.user?.id
+          });
+        } catch (error) {
+          logger.error(`❌ [AgendamentoController.finalize] Erro no hook de conclusão em background:`, error);
+        }
+      });
 
       return res.json({
         success: true,

@@ -7,6 +7,211 @@ class ServicoController extends BaseController {
     super(new Servico());
   }
 
+  async insumosIndex(req, res) {
+    try {
+      const { id } = req.params;
+      const userRole = req.user?.role;
+      const userAgenteId = req.user?.agente_id;
+      let usuarioId = req.user?.id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (userRole === 'AGENTE' && userAgenteId) {
+        const agente = await this.model.db('agentes')
+          .where('id', userAgenteId)
+          .select('unidade_id')
+          .first();
+
+        if (agente?.unidade_id) {
+          const unidade = await this.model.db('unidades')
+            .where('id', agente.unidade_id)
+            .select('usuario_id')
+            .first();
+
+          if (unidade?.usuario_id) {
+            usuarioId = unidade.usuario_id;
+          }
+        }
+      }
+
+      const servico = await this.model.db('servicos')
+        .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .select('id')
+        .first();
+
+      if (!servico) {
+        return res.status(404).json({
+          success: false,
+          error: 'Serviço não encontrado ou acesso negado'
+        });
+      }
+
+      const insumos = await this.model.db('servico_insumos as si')
+        .join('produtos as p', 'si.produto_id', 'p.id')
+        .where('si.servico_id', parseInt(id, 10))
+        .where('p.usuario_id', usuarioId)
+        .select(
+          'si.id',
+          'si.servico_id',
+          'si.produto_id',
+          'si.quantidade',
+          'si.created_at',
+          'p.nome as produto_nome',
+          'p.unidade_medida as produto_unidade_medida'
+        )
+        .orderBy('si.id', 'asc');
+
+      return res.status(200).json({
+        success: true,
+        data: insumos,
+        message: 'Insumos carregados com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao buscar insumos do serviço:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
+  async insumosUpsert(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user?.id;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      const { insumos } = req.body;
+      if (!Array.isArray(insumos)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Payload inválido',
+          message: 'insumos deve ser um array'
+        });
+      }
+
+      const servico = await this.model.db('servicos')
+        .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .select('id')
+        .first();
+
+      if (!servico) {
+        return res.status(404).json({
+          success: false,
+          error: 'Serviço não encontrado ou acesso negado'
+        });
+      }
+
+      const normalized = insumos.map((i) => ({
+        produto_id: i?.produto_id,
+        quantidade: i?.quantidade
+      }));
+
+      for (const item of normalized) {
+        const produtoId = Number(item.produto_id);
+        const qtd = Number(item.quantidade);
+
+        if (!Number.isFinite(produtoId) || produtoId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'produto_id inválido'
+          });
+        }
+
+        if (!Number.isFinite(qtd) || qtd <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'quantidade deve ser maior que zero'
+          });
+        }
+      }
+
+      const produtoIds = [...new Set(normalized.map((i) => Number(i.produto_id)))];
+
+      if (produtoIds.length > 0) {
+        const produtosValidos = await this.model.db('produtos')
+          .whereIn('id', produtoIds)
+          .where('usuario_id', usuarioId)
+          .select('id');
+
+        if (produtosValidos.length !== produtoIds.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Produtos inválidos',
+            message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+          });
+        }
+      }
+
+      await this.model.db.transaction(async (trx) => {
+        await trx('servico_insumos')
+          .where('servico_id', parseInt(id, 10))
+          .del();
+
+        if (normalized.length > 0) {
+          const rows = normalized.map((i) => ({
+            servico_id: parseInt(id, 10),
+            produto_id: Number(i.produto_id),
+            quantidade: Number(Number(i.quantidade).toFixed(3)),
+            created_at: new Date()
+          }));
+
+          await trx('servico_insumos').insert(rows);
+        }
+      });
+
+      const updated = await this.model.db('servico_insumos as si')
+        .join('produtos as p', 'si.produto_id', 'p.id')
+        .where('si.servico_id', parseInt(id, 10))
+        .where('p.usuario_id', usuarioId)
+        .select(
+          'si.id',
+          'si.servico_id',
+          'si.produto_id',
+          'si.quantidade',
+          'si.created_at',
+          'p.nome as produto_nome',
+          'p.unidade_medida as produto_unidade_medida'
+        )
+        .orderBy('si.id', 'asc');
+
+      return res.status(200).json({
+        success: true,
+        data: updated,
+        message: 'Insumos atualizados com sucesso'
+      });
+    } catch (error) {
+      if (error && error.code === '23505') {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados duplicados',
+          message: 'Já existe um insumo com este produto para o serviço'
+        });
+      }
+
+      logger.error('Erro ao atualizar insumos do serviço:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: error.message
+      });
+    }
+  }
+
   // GET /api/servicos/list - Listagem leve de serviços para formulários
   async list(req, res) {
     try {
