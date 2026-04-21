@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Check, ChevronDown, Leaf, ImagePlaceholder, FaUser } from './Icons';
+import { Plus, Check, ChevronDown, Leaf, ImagePlaceholder, FaUser, X } from './Icons';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { useToast } from '../contexts/ToastContext';
 import { getAssetUrl } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Helper components for UI elements to match the design
 const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -174,6 +177,42 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     } = useServiceManagement();
     const toast = useToast();
 
+    const { token, isAuthenticated } = useAuth();
+
+    type ProdutoRow = { id: number; nome: string; marca?: string | null; unidade_medida?: string | null };
+    const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
+    const [insumos, setInsumos] = useState<Array<{ produto_id: string; quantidade: string }>>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadProdutos = async () => {
+            if (!isAuthenticated || !token) return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/produtos`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                const rows = Array.isArray(data?.data) ? data.data : [];
+                setProdutos(rows);
+            } catch {
+                if (!cancelled) setProdutos([]);
+            }
+        };
+
+        loadProdutos();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isAuthenticated, token]);
+
     // Estados do formulário
     const [nome, setNome] = useState('');
     const [descricao, setDescricao] = useState('');
@@ -295,7 +334,10 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                 convite_retorno_ativo: conviteRetornoAtivo,
                 convite_retorno_dias: conviteRetornoAtivo ? conviteRetornoDias : null,
                 agentes_ids: agentesIds,
-                extras_ids: extrasIds
+                extras_ids: extrasIds,
+                insumos: insumos
+                    .map((i) => ({ produto_id: Number(i.produto_id), quantidade: Number(i.quantidade) }))
+                    .filter((i) => Number.isFinite(i.produto_id) && i.produto_id > 0 && Number.isFinite(i.quantidade) && i.quantidade > 0)
             };
 
             const result = await createService(serviceData);
@@ -381,21 +423,34 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                             <TextInput
                               label="Duração (minutos)"
                               type="number"
+                              min="0"
                               value={String(duracaoMinutos)}
-                              onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                              onChange={(e) => {
+                                const next = Math.max(0, Number(e.target.value));
+                                setDuracaoMinutos(Number.isFinite(next) ? next : 0);
+                              }}
                             />
                             <TextInput
                               label="Valor Final (R$)"
                               type="number"
                               step="0.01"
+                              min="0"
                               value={String(preco)}
-                              onChange={(e) => setPreco(Number(e.target.value))}
+                              onChange={(e) => {
+                                const next = Math.max(0, Number(e.target.value));
+                                setPreco(Number.isFinite(next) ? next : 0);
+                              }}
                             />
                             <TextInput
                               label="Comissão (%)"
                               type="number"
+                              min="0"
+                              max="100"
                               value={String(comissaoPercentual)}
-                              onChange={(e) => setComissaoPercentual(Number(e.target.value))}
+                              onChange={(e) => {
+                                const next = Math.max(0, Number(e.target.value));
+                                setComissaoPercentual(Number.isFinite(next) ? next : 0);
+                              }}
                             />
                         </div>
                     </FormCard>
@@ -507,6 +562,104 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                              </div>
                          )}
                     </FormCard>
+
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                        <div className="mb-6">
+                            <h2 className="text-xl font-semibold text-gray-800">Consumo de Estoque</h2>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Vincule produtos que são consumidos automaticamente a cada agendamento concluído.
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setInsumos((prev) => [...prev, { produto_id: '', quantidade: '' }])}
+                            className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            <span className="inline-flex items-center gap-2">
+                                <Plus className="w-4 h-4" />
+                                Vincular Produto
+                            </span>
+                        </button>
+
+                        {insumos.length === 0 ? (
+                            <div className="mt-6 text-center">
+                                <p className="text-sm text-gray-500">Nenhum insumo vinculado a este serviço.</p>
+                            </div>
+                        ) : (
+                            <div className="mt-4 space-y-3">
+                                {insumos.map((row, idx) => {
+                                    const unidadeMedida = produtos.find((p) => String(p.id) === String(row.produto_id))?.unidade_medida;
+
+                                    return (
+                                        <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                                            <div className="md:col-span-7">
+                                                <label className="text-sm font-medium text-gray-600 mb-1 block">Produto</label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={row.produto_id}
+                                                        onChange={(e) => {
+                                                            const v = e.target.value;
+                                                            setInsumos((prev) => prev.map((p, i) => (i === idx ? { ...p, produto_id: v } : p)));
+                                                        }}
+                                                        className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                                                    >
+                                                        <option value="">Selecione...</option>
+                                                        {produtos.map((p) => (
+                                                            <option key={p.id} value={String(p.id)}>
+                                                                {p.nome}{p.marca ? ` - ${p.marca}` : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                                                </div>
+                                            </div>
+
+                                            <div className="md:col-span-4">
+                                                <label className="text-sm font-medium text-gray-600 mb-1 block">Quantidade</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        step="0.001"
+                                                        min="0"
+                                                        placeholder="Ex: 0.050"
+                                                        value={row.quantidade}
+                                                        onChange={(e) => {
+                                                            const raw = e.target.value;
+                                                            if (raw === '') {
+                                                                setInsumos((prev) => prev.map((p, i) => (i === idx ? { ...p, quantidade: '' } : p)));
+                                                                return;
+                                                            }
+                                                            const parsed = parseFloat(raw);
+                                                            const clamped = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+                                                            setInsumos((prev) => prev.map((p, i) => (i === idx ? { ...p, quantidade: String(clamped) } : p)));
+                                                        }}
+                                                        className={`w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${unidadeMedida ? 'pr-16' : ''}`}
+                                                    />
+                                                    {unidadeMedida && (
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
+                                                            {unidadeMedida}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="md:col-span-1 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setInsumos((prev) => prev.filter((_, i) => i !== idx))}
+                                                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                                    title="Remover"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="pt-2">

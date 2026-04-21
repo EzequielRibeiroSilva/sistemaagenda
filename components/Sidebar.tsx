@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 // FIX: Removed unused 'BarChart3' import as it is not an exported member of './Icons'.
 import {
   Box, Briefcase, Calendar, ChevronDown, Cog, LayoutDashboard,
-  Users, ChevronRight, MapPin, Ticket, Bell, UserPlus, Gift
+  Users, ChevronRight, MapPin, Ticket, Bell, UserPlus, Gift, Package
 } from './Icons';
 
 interface NavItemProps {
@@ -246,6 +246,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
           <>
             <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Gestão</div>
             <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
+
+            <NavItem
+              icon={<Package className="h-5 w-5" />}
+              label="ESTOQUE"
+              isCollapsed={isCollapsed}
+              isActive={activeView === 'estoque'}
+              onClick={() => handleNavItemClick('estoque')}
+            />
 
             <div 
                 ref={servicesNavItemRef}

@@ -470,7 +470,8 @@ class ServicoController extends BaseController {
         convite_retorno_ativo,
         convite_retorno_dias,
         agentes_ids,
-        extras_ids
+        extras_ids,
+        insumos
       } = req.body;
 
       // Validações básicas
@@ -530,6 +531,59 @@ class ServicoController extends BaseController {
         }
       }
 
+      if (insumos !== undefined && !Array.isArray(insumos)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Payload inválido',
+          message: 'insumos deve ser um array'
+        });
+      }
+
+      const normalizedInsumos = Array.isArray(insumos)
+        ? insumos.map((i) => ({
+          produto_id: i?.produto_id,
+          quantidade: i?.quantidade
+        }))
+        : [];
+
+      for (const item of normalizedInsumos) {
+        const produtoId = Number(item.produto_id);
+        const qtd = Number(item.quantidade);
+
+        if (!Number.isFinite(produtoId) || produtoId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'produto_id inválido'
+          });
+        }
+
+        if (!Number.isFinite(qtd) || qtd <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'quantidade deve ser maior que zero'
+          });
+        }
+      }
+
+      const produtoIds = [...new Set(normalizedInsumos.map((i) => Number(i.produto_id)))];
+      if (produtoIds.length > 0) {
+        const produtosValidos = await this.model.db('produtos')
+          .whereIn('id', produtoIds)
+          .where('usuario_id', usuarioId)
+          .whereNull('deleted_at')
+          .select('id');
+
+        if (produtosValidos.length !== produtoIds.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Produtos inválidos',
+            message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+          });
+        }
+      }
+
       const servicoData = {
         nome: nome.trim(),
         descricao: descricao?.trim() || '',
@@ -548,7 +602,8 @@ class ServicoController extends BaseController {
       const servicoId = await this.model.createWithTransaction(
         servicoData,
         agentes_ids || [],
-        extras_ids || []
+        extras_ids || [],
+        normalizedInsumos
       );
 
       // Buscar serviço criado para retorno
@@ -610,7 +665,8 @@ class ServicoController extends BaseController {
         convite_retorno_ativo,
         convite_retorno_dias,
         agentes_ids,
-        extras_ids
+        extras_ids,
+        insumos
       } = req.body;
 
       // Validações básicas
@@ -621,11 +677,14 @@ class ServicoController extends BaseController {
         });
       }
 
-      if (preco !== undefined && preco < 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Preço deve ser maior ou igual a zero'
-        });
+      if (preco !== undefined) {
+        const precoNumero = Number(preco);
+        if (preco === null || Number.isNaN(precoNumero) || precoNumero < 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Preço deve ser maior ou igual a zero'
+          });
+        }
       }
 
       if (duracao_minutos !== undefined && (duracao_minutos === null || Number.isNaN(Number(duracao_minutos)) || Number(duracao_minutos) < 0)) {
@@ -633,6 +692,17 @@ class ServicoController extends BaseController {
           success: false,
           error: 'Duração deve ser maior ou igual a zero'
         });
+      }
+
+      if (comissao_percentual !== undefined && comissao_percentual !== null) {
+        const comissaoNumero = Number(comissao_percentual);
+        if (Number.isNaN(comissaoNumero) || comissaoNumero < 0 || comissaoNumero > 100) {
+          return res.status(400).json({
+            success: false,
+            error: 'Comissão inválida',
+            message: 'Comissão deve ser um número entre 0 e 100'
+          });
+        }
       }
 
       if (status !== undefined && !['Ativo', 'Bloqueado'].includes(status)) {
@@ -665,7 +735,7 @@ class ServicoController extends BaseController {
         ...(nome !== undefined && { nome: nome.trim() }),
         ...(descricao !== undefined && { descricao: descricao?.trim() || '' }),
         ...(duracao_minutos !== undefined && { duracao_minutos }),
-        ...(preco !== undefined && { preco: parseFloat(preco) }),
+        ...(preco !== undefined && { preco: Number(preco) }),
         ...(comissao_percentual !== undefined && { comissao_percentual }),
         ...(status !== undefined && { status }),
         ...(categoria_id !== undefined && { categoria_id }),
@@ -676,13 +746,69 @@ class ServicoController extends BaseController {
         updated_at: new Date()
       };
 
+      if (insumos !== undefined && !Array.isArray(insumos)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Payload inválido',
+          message: 'insumos deve ser um array'
+        });
+      }
+
+      const normalizedInsumos = Array.isArray(insumos)
+        ? insumos.map((i) => ({
+          produto_id: i?.produto_id,
+          quantidade: i?.quantidade
+        }))
+        : null;
+
+      if (Array.isArray(normalizedInsumos)) {
+        for (const item of normalizedInsumos) {
+          const produtoId = Number(item.produto_id);
+          const qtd = Number(item.quantidade);
+
+          if (!Number.isFinite(produtoId) || produtoId <= 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'Insumo inválido',
+              message: 'produto_id inválido'
+            });
+          }
+
+          if (!Number.isFinite(qtd) || qtd <= 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'Insumo inválido',
+              message: 'quantidade deve ser maior que zero'
+            });
+          }
+        }
+
+        const produtoIds = [...new Set(normalizedInsumos.map((i) => Number(i.produto_id)))];
+        if (produtoIds.length > 0) {
+          const produtosValidos = await this.model.db('produtos')
+            .whereIn('id', produtoIds)
+            .where('usuario_id', usuarioId)
+            .whereNull('deleted_at')
+            .select('id');
+
+          if (produtosValidos.length !== produtoIds.length) {
+            return res.status(400).json({
+              success: false,
+              error: 'Produtos inválidos',
+              message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+            });
+          }
+        }
+      }
+
       logger.log(`🔄 [ServicoController] Atualizando serviço ${id} com ${agentes_ids?.length || 0} agentes e ${extras_ids?.length || 0} extras`);
 
       await this.model.updateWithTransaction(
         id,
         servicoData,
         agentes_ids || [],
-        extras_ids || []
+        extras_ids || [],
+        normalizedInsumos
       );
 
       // Buscar serviço atualizado para retorno

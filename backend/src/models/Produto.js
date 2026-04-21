@@ -6,14 +6,20 @@ class Produto extends BaseModel {
   }
 
   async findByUsuario(usuarioId) {
-    return await this.db(this.tableName)
-      .where('usuario_id', usuarioId)
-      .orderBy('nome', 'asc');
+    return await this.db('produtos as p')
+      .leftJoin('categorias as c', 'c.id', 'p.categoria_id')
+      .where('p.usuario_id', usuarioId)
+      .whereNull('p.deleted_at')
+      .select('p.*', 'c.nome as categoria')
+      .orderBy('p.nome', 'asc');
   }
 
   async findByIdAndUsuario(id, usuarioId) {
-    return await this.db(this.tableName)
-      .where({ id, usuario_id: usuarioId })
+    return await this.db('produtos as p')
+      .leftJoin('categorias as c', 'c.id', 'p.categoria_id')
+      .where({ 'p.id': id, 'p.usuario_id': usuarioId })
+      .whereNull('p.deleted_at')
+      .select('p.*', 'c.nome as categoria')
       .first();
   }
 }

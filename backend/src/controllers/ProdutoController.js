@@ -197,6 +197,7 @@ class ProdutoController extends BaseController {
         descricao,
         sku_ean,
         marca,
+        categoria_id,
         unidade_medida,
         preco_custo_medio
       } = req.body;
@@ -229,15 +230,42 @@ class ProdutoController extends BaseController {
         });
       }
 
+      const categoriaIdFinal = categoria_id !== undefined && categoria_id !== null && String(categoria_id).trim() !== ''
+        ? Number(categoria_id)
+        : null;
+
+      if (categoriaIdFinal !== null && (!Number.isFinite(categoriaIdFinal) || categoriaIdFinal <= 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'categoria_id inválido'
+        });
+      }
+
       const db = this.model.db;
 
       const created = await db.transaction(async (trx) => {
+        if (categoriaIdFinal !== null) {
+          const categoria = await trx('categorias')
+            .where({ id: categoriaIdFinal, usuario_id: usuarioId })
+            .select('id')
+            .first();
+
+          if (!categoria) {
+            return res.status(400).json({
+              success: false,
+              error: 'Categoria inválida',
+              message: 'categoria_id não existe ou não pertence ao usuário'
+            });
+          }
+        }
+
         const produtoData = {
           usuario_id: usuarioId,
           nome: String(nome).trim(),
           descricao: descricao !== undefined ? (descricao ? String(descricao) : '') : null,
           sku_ean: sku_ean !== undefined && sku_ean !== null && String(sku_ean).trim() !== '' ? String(sku_ean).trim() : null,
           marca: marca !== undefined && marca !== null && String(marca).trim() !== '' ? String(marca).trim() : null,
+          categoria_id: categoriaIdFinal,
           unidade_medida: unidadeMedidaFinal,
           preco_custo_medio: precoCustoMedioFinal,
           created_at: new Date(),
@@ -361,6 +389,36 @@ class ProdutoController extends BaseController {
         patch.marca = marca !== null && String(marca).trim() !== '' ? String(marca).trim() : null;
       }
 
+      if (categoria_id !== undefined) {
+        const categoriaIdFinal = categoria_id !== null && String(categoria_id).trim() !== ''
+          ? Number(categoria_id)
+          : null;
+
+        if (categoriaIdFinal !== null && (!Number.isFinite(categoriaIdFinal) || categoriaIdFinal <= 0)) {
+          return res.status(400).json({
+            success: false,
+            error: 'categoria_id inválido'
+          });
+        }
+
+        if (categoriaIdFinal !== null) {
+          const categoria = await this.model.db('categorias')
+            .where({ id: categoriaIdFinal, usuario_id: usuarioId })
+            .select('id')
+            .first();
+
+          if (!categoria) {
+            return res.status(400).json({
+              success: false,
+              error: 'Categoria inválida',
+              message: 'categoria_id não existe ou não pertence ao usuário'
+            });
+          }
+        }
+
+        patch.categoria_id = categoriaIdFinal;
+      }
+
       if (unidade_medida !== undefined) {
         const unidadeMedidaFinal = unidade_medida || 'UN';
         if (!['UN', 'ML', 'G'].includes(unidadeMedidaFinal)) {
@@ -438,7 +496,9 @@ class ProdutoController extends BaseController {
 
       await this.model.db('produtos')
         .where({ id: parseInt(id), usuario_id: usuarioId })
-        .del();
+        .update({
+          deleted_at: new Date()
+        });
 
       return res.status(200).json({
         success: true,

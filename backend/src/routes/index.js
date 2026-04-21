@@ -24,6 +24,8 @@ const metricasRoutes = require('./metricas');
 const whatsAppRoutes = require('./whatsapp');
 const dashboardRoutes = require('./dashboard');
 const produtosRoutes = require('./produtos');
+const estoqueRoutes = require('./estoque');
+const categoriasRoutes = require('./categorias');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -60,6 +62,8 @@ router.use('/notificacoes', notificacoesRoutes);
 router.use('/whatsapp', whatsAppRoutes);
 router.use('/dashboard', authenticate(), dashboardRoutes);
 router.use('/produtos', produtosRoutes);
+router.use('/estoque', estoqueRoutes);
+router.use('/categorias', categoriasRoutes);
 
 // Rotas públicas (sem autenticação)
 router.use('/public', publicRoutes);

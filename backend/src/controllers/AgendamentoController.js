@@ -1528,6 +1528,21 @@ class AgendamentoController extends BaseController {
             await trx('agendamento_servicos_extras').insert(agendamentoServicosExtras);
           }
         }
+
+        // ✅ PATCH ESTOQUE (Sprint 3+): Reconciliação atômica e síncrona quando envolver Concluído ou troca de serviços
+        const statusMudou = (status !== undefined && status !== statusAnterior);
+        const envolveConcluido = (
+          (statusMudou && (statusAnterior === 'Concluído' || status === 'Concluído')) ||
+          ((shouldUpdateServicos || shouldUpdateExtras) && statusFinal === 'Concluído')
+        );
+
+        if (envolveConcluido) {
+          await this.agendamentoConclusaoService.reconcileEstoque({
+            agendamentoId: parseInt(id, 10),
+            triggeredByUserId: req.user?.id,
+            trx
+          });
+        }
       });
 
       const data = await this.model.findWithServicos(parseInt(id));
@@ -1569,11 +1584,6 @@ class AgendamentoController extends BaseController {
           try {
             await this.agendamentoConclusaoService.scheduleConviteRetorno({
               agendamentoId: parseInt(id, 10)
-            });
-
-            await this.agendamentoConclusaoService.handleConcluido({
-              agendamentoId: parseInt(id, 10),
-              triggeredByUserId: req.user?.id
             });
           } catch (error) {
             logger.error(` [AgendamentoController] Erro ao agendar convite de retorno em background:`, error);
@@ -2057,15 +2067,15 @@ class AgendamentoController extends BaseController {
         .where('id', id)
         .update(updateData);
 
+      await this.agendamentoConclusaoService.reconcileEstoque({
+        agendamentoId: parseInt(id, 10),
+        triggeredByUserId: req.user?.id
+      });
+
       setImmediate(async () => {
         try {
           await this.agendamentoConclusaoService.scheduleConviteRetorno({
             agendamentoId: parseInt(id, 10)
-          });
-
-          await this.agendamentoConclusaoService.handleConcluido({
-            agendamentoId: parseInt(id, 10),
-            triggeredByUserId: req.user?.id
           });
         } catch (error) {
           logger.error(`❌ [AgendamentoController.finalize] Erro no hook de conclusão em background:`, error);

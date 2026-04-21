@@ -110,7 +110,7 @@ class Servico extends BaseModel {
   }
 
   // Criar serviço com transação (incluindo associações com agentes e extras)
-  async createWithTransaction(servicoData, agentesIds, extrasIds) {
+  async createWithTransaction(servicoData, agentesIds, extrasIds, insumos = []) {
     return await this.db.transaction(async (trx) => {
       // 1. Criar o serviço
       const [servicoId] = await trx(this.tableName)
@@ -139,6 +139,18 @@ class Servico extends BaseModel {
         }));
 
         await trx('servico_servicos_extras').insert(extrasAssociacoes);
+      }
+
+      // 4. Associar insumos de estoque (opcional)
+      if (insumos && insumos.length > 0) {
+        const rows = insumos.map((i) => ({
+          servico_id: finalServicoId,
+          produto_id: Number(i.produto_id),
+          quantidade: Number(Number(i.quantidade).toFixed(3)),
+          created_at: new Date()
+        }));
+
+        await trx('servico_insumos').insert(rows);
       }
 
       return finalServicoId;
@@ -179,7 +191,7 @@ class Servico extends BaseModel {
   }
 
   // Atualizar serviço com transação (incluindo associações)
-  async updateWithTransaction(servicoId, servicoData, agentesIds, extrasIds) {
+  async updateWithTransaction(servicoId, servicoData, agentesIds, extrasIds, insumos = null) {
     return await this.db.transaction(async (trx) => {
       // 1. Atualizar dados do serviço
       await trx(this.tableName)
@@ -198,6 +210,13 @@ class Servico extends BaseModel {
       await trx('servico_servicos_extras')
         .where('servico_id', servicoId)
         .del();
+
+      // 3.1 Remover insumos existentes (se insumos foi fornecido no payload)
+      if (insumos !== null) {
+        await trx('servico_insumos')
+          .where('servico_id', servicoId)
+          .del();
+      }
 
       // 4. Criar novas associações com agentes (se fornecidas)
       if (agentesIds && agentesIds.length > 0) {
@@ -219,6 +238,18 @@ class Servico extends BaseModel {
         }));
 
         await trx('servico_servicos_extras').insert(extrasAssociacoes);
+      }
+
+      // 6. Criar novos insumos (replace atômico) - somente se insumos foi fornecido
+      if (insumos !== null && insumos.length > 0) {
+        const rows = insumos.map((i) => ({
+          servico_id: servicoId,
+          produto_id: Number(i.produto_id),
+          quantidade: Number(Number(i.quantidade).toFixed(3)),
+          created_at: new Date()
+        }));
+
+        await trx('servico_insumos').insert(rows);
       }
 
       return servicoId;

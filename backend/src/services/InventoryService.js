@@ -106,13 +106,6 @@ class InventoryService {
       const saldoAntes = snapshotBefore ? Number(snapshotBefore.saldo_atual) : 0;
       const saldoDepois = Number((saldoAntes + delta).toFixed(3));
 
-      if (saldoDepois < 0) {
-        const err = new Error('Saldo insuficiente para esta movimentação');
-        err.code = 'SALDO_INSUFICIENTE';
-        err.details = { saldoAntes, delta };
-        throw err;
-      }
-
       await trx('estoque_unidades')
         .where({ produto_id, unidade_id })
         .update({

@@ -32,6 +32,11 @@ interface ExtraService {
   preco: number;
 }
 
+interface ServiceInsumoInput {
+  produto_id: number;
+  quantidade: number;
+}
+
 interface CreateServiceData {
   nome: string;
   descricao?: string;
@@ -44,6 +49,7 @@ interface CreateServiceData {
   convite_retorno_dias?: number | null;
   agentes_ids: number[];
   extras_ids: number[];
+  insumos?: ServiceInsumoInput[];
 }
 
 export const useServiceManagement = () => {
