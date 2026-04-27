@@ -8,27 +8,36 @@ interface PerformanceCardProps {
   onClick?: () => void;
 }
 
-const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) => (
-  <div
-    className={`bg-white p-4 sm:p-6 rounded-lg flex-1 relative border border-gray-200 hover:border-[#2663EB] transition-all duration-200 hover:shadow-md overflow-hidden min-h-[160px] flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''}`}
-    onClick={onClick}
-    role={onClick ? 'button' : undefined}
-    tabIndex={onClick ? 0 : undefined}
-    onKeyDown={(e) => {
-      if (onClick && (e.key === 'Enter' || e.key === ' ')) {
-        e.preventDefault();
-        onClick();
-      }
-    }}
-  >
-    {/* Barra superior azul - identidade visual do sistema */}
-    <div className="absolute top-0 left-0 right-0 h-1 bg-[#2663EB]"></div>
+const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) => {
+  const isStockAlert = metric.title === 'Alerta de Estoque';
+  const stockAlertValue = isStockAlert ? Number(String(metric.value).replace(/[^0-9.-]/g, '')) : 0;
+  const isStockUrgent = isStockAlert && Number.isFinite(stockAlertValue) && stockAlertValue > 0;
+
+  const borderClass = isStockUrgent ? 'border-orange-300 hover:border-orange-500' : 'border-gray-200 hover:border-[#2663EB]';
+  const topBarClass = isStockUrgent ? 'bg-orange-500' : 'bg-[#2663EB]';
+  const valueClass = isStockUrgent ? 'text-orange-700' : 'text-gray-900';
+
+  return (
+    <div
+      className={`bg-white p-4 sm:p-6 rounded-lg flex-1 relative border ${borderClass} transition-all duration-200 hover:shadow-md overflow-hidden min-h-[160px] flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      {/* Barra superior - identidade visual / urgência */}
+      <div className={`absolute top-0 left-0 right-0 h-1 ${topBarClass}`}></div>
     
     <div className="flex justify-between items-start gap-3">
       <div className="flex-1 min-w-0">
         <p className="text-gray-500 text-xs sm:text-sm font-medium">{metric.title}</p>
         <div className="flex items-baseline mt-2">
-          <p className="text-xl sm:text-2xl font-bold text-gray-900 break-words">{metric.value}</p>
+          <p className={`text-xl sm:text-2xl font-bold break-words ${valueClass}`}>{metric.value}</p>
         </div>
         {metric.subtitle && (
           <p className="text-xs text-gray-400 mt-2">{metric.subtitle}</p>
@@ -55,7 +64,8 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) =>
       </div>
     )}
   </div>
-);
+  );
+};
 
 interface FilterDropdownProps {
     label: string;
@@ -150,6 +160,8 @@ interface PerformanceSectionProps {
   onMetricClick?: (metric: PerformanceMetric) => void;
 }
 
+type DashboardTab = 'Visão Operacional' | 'Financeiro' | 'Clube';
+
 const PerformanceSection: React.FC<PerformanceSectionProps> = ({ 
     metrics, 
     clubMetrics,
@@ -175,6 +187,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>('Visão Operacional');
   
   const [dateRange, setDateRange] = useState<{ startDate: Date | null; endDate: Date | null }>({
     startDate: firstDayOfMonth,
@@ -248,53 +261,87 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
     return [...base, ...clubIntelligenceCards];
   }, [clubMetrics, clubIntelligenceCards]);
 
+  const visibleMetrics = React.useMemo(() => {
+    const byTitle = (title: string) => metrics.find((m) => m.title === title);
+
+    if (activeTab === 'Visão Operacional') {
+      return [
+        byTitle('Reservas Totais'),
+        byTitle('Agendamentos Pendentes'),
+        byTitle('Taxa de Cancelamento'),
+        byTitle('Clientes Únicos'),
+        byTitle('Alerta de Estoque')
+      ].filter(Boolean) as PerformanceMetric[];
+    }
+
+    if (activeTab === 'Financeiro') {
+      return [
+        byTitle('Receita Bruta'),
+        byTitle('Comissões de Agentes'),
+        byTitle('Receita do Proprietário'),
+        byTitle('Ticket Médio')
+      ].filter(Boolean) as PerformanceMetric[];
+    }
+
+    const clubByTitle = (title: string) => combinedClubMetrics.find((m) => m.title === title);
+    return [
+      clubByTitle('Assinaturas Ativas'),
+      clubByTitle('MRR (Clube)'),
+      clubByTitle('Assinaturas Pendentes'),
+      clubByTitle('Cotas Consumidas'),
+      clubByTitle('Ticket Médio (Assinante vs Comum)'),
+      clubByTitle('Churn (Clube)')
+    ].filter(Boolean) as PerformanceMetric[];
+  }, [activeTab, combinedClubMetrics, metrics]);
+
   return (
-    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold">Desempenho</h2>
-        <div className="hidden lg:flex items-center gap-2 flex-wrap">
-          {/* ✅ DROPDOWN DE LOCAL - Aparece ANTES do dropdown de Agentes */}
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Desempenho</h1>
+
+        <div className="flex items-center gap-2">
           {shouldShowLocationFilter && (
-            <FilterDropdown 
+            <FilterDropdown
               label=""
-              options={locationOptions} 
-              selectedValue={selectedLocation} 
-              onSelect={setSelectedLocation} 
+              options={locationOptions}
+              selectedValue={selectedLocation}
+              onSelect={setSelectedLocation}
               disabled={shouldDisableLocationFilter}
             />
           )}
-          
-          {/* Dropdown de Agentes */}
-          <FilterDropdown 
-            label="Agentes" 
-            options={agentOptions} 
-            selectedValue={selectedAgent} 
-            onSelect={setSelectedAgent} 
-            disabled={!!loggedInAgentId} 
-          />
-          
-          {/* Dropdown de Serviços */}
-          <FilterDropdown 
-            label="Serviços" 
-            options={serviceOptions} 
-            selectedValue={selectedService} 
-            onSelect={setSelectedService} 
-          />
-          
-          {/* Seletor de Período */}
-          <DatePicker 
-            mode="range" 
-            selectedRange={dateRange} 
-            onDateChange={(range) => setDateRange(range as { startDate: Date | null; endDate: Date | null })} 
-          />
-        </div>
-        <button
-          className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden"
-          onClick={() => setIsMobileFiltersOpen(true)}
-          aria-label="Abrir filtros"
-        >
+
+          <div className="hidden lg:flex items-center gap-2 flex-wrap">
+            <FilterDropdown
+              label="Agentes"
+              options={agentOptions}
+              selectedValue={selectedAgent}
+              onSelect={setSelectedAgent}
+              disabled={!!loggedInAgentId}
+            />
+
+            <FilterDropdown
+              label="Serviços"
+              options={serviceOptions}
+              selectedValue={selectedService}
+              onSelect={setSelectedService}
+            />
+
+            <DatePicker
+              mode="range"
+              selectedRange={dateRange}
+              onDateChange={(range) => setDateRange(range as { startDate: Date | null; endDate: Date | null })}
+            />
+          </div>
+
+          <button
+            className="p-2 -mr-2 text-gray-500 hover:text-gray-700 lg:hidden"
+            onClick={() => setIsMobileFiltersOpen(true)}
+            aria-label="Abrir filtros"
+            type="button"
+          >
             <MoreHorizontal className="h-5 w-5" />
-        </button>
+          </button>
+        </div>
       </div>
 
       {isMobileFiltersOpen && (
@@ -318,16 +365,6 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
               </div>
 
               <div className="grid grid-cols-1 gap-2">
-                {shouldShowLocationFilter && (
-                  <FilterDropdown
-                    label=""
-                    options={locationOptions}
-                    selectedValue={selectedLocation}
-                    onSelect={setSelectedLocation}
-                    disabled={shouldDisableLocationFilter}
-                  />
-                )}
-
                 <FilterDropdown
                   label="Agentes"
                   options={agentOptions}
@@ -354,16 +391,31 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {metrics.map((metric, index) => (
+      <div className="flex items-center border-b border-gray-200 mb-6">
+        {(['Visão Operacional', 'Financeiro', 'Clube'] as DashboardTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-1 py-4 text-lg font-semibold mr-8 transition-colors duration-200 relative focus:outline-none ${
+              activeTab === tab ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
+            }`}
+            type="button"
+          >
+            {tab}
+            {activeTab === tab && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"></div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+        {visibleMetrics.map((metric, index) => (
           <PerformanceCard
             key={index}
             metric={metric}
-            onClick={onMetricClick ? () => onMetricClick(metric) : undefined}
+            onClick={onMetricClick && activeTab !== 'Clube' ? () => onMetricClick(metric) : undefined}
           />
-        ))}
-        {Array.isArray(combinedClubMetrics) && combinedClubMetrics.map((metric, index) => (
-          <PerformanceCard key={`club-${index}`} metric={metric} />
         ))}
       </div>
     </div>

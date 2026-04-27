@@ -7,7 +7,7 @@ class AgendamentoConclusaoService {
     this.inventoryService = new InventoryService(db);
   }
 
-  async reconcileEstoque({ agendamentoId, triggeredByUserId, trx: trxExternal }) {
+  async reconcileEstoque({ agendamentoId, triggeredByUserId, pagamentos, trx: trxExternal }) {
     const agendamentoIdNum = parseInt(agendamentoId, 10);
     if (!Number.isFinite(agendamentoIdNum)) {
       const err = new Error('agendamentoId inválido');
@@ -24,7 +24,7 @@ class AgendamentoConclusaoService {
 
       const agendamento = await trx('agendamentos')
         .where('id', agendamentoIdNum)
-        .select('id', 'unidade_id', 'cliente_id', 'status')
+        .select('id', 'unidade_id', 'cliente_id', 'status', 'metodo_pagamento', 'valor_total', 'venda_id')
         .first();
 
       if (!agendamento) {
@@ -44,6 +44,191 @@ class AgendamentoConclusaoService {
         throw err;
       }
 
+      if (agendamento.status === 'Concluído') {
+        try {
+          let vendaId = agendamento.venda_id ? Number(agendamento.venda_id) : null;
+
+          if (!vendaId) {
+            const vendaExistente = await trx('vendas')
+              .where('agendamento_id', agendamentoIdNum)
+              .select('id')
+              .first();
+
+            vendaId = vendaExistente?.id ? Number(vendaExistente.id) : null;
+          }
+
+          if (!vendaId) {
+            const servicosRows = await trx('agendamento_servicos as ags')
+              .join('servicos as s', 'ags.servico_id', 's.id')
+              .where('ags.agendamento_id', agendamentoIdNum)
+              .select(
+                's.id as servico_id',
+                's.nome as servico_nome',
+                'ags.preco_aplicado as preco_aplicado'
+              );
+
+            let produtosRows = [];
+            try {
+              produtosRows = await trx('agendamento_produtos as ap')
+                .join('produtos as p', 'ap.produto_id', 'p.id')
+                .where('ap.agendamento_id', agendamentoIdNum)
+                .where('p.usuario_id', unidade.usuario_id)
+                .select(
+                  'p.id as produto_id',
+                  'p.nome as produto_nome',
+                  'ap.quantidade as quantidade',
+                  'ap.preco_aplicado as preco_aplicado',
+                  'ap.agente_id as agente_id'
+                );
+            } catch (err) {
+              if (!(err && (err.code === '42P01' || String(err.message || '').includes('agendamento_produtos')))) {
+                throw err;
+              }
+              produtosRows = [];
+            }
+
+            const itens = [];
+            for (const s of servicosRows || []) {
+              const unit = Number(s.preco_aplicado) || 0;
+              itens.push({
+                item_type: 'SERVICO_AGENDAMENTO',
+                reference_id: Number(s.servico_id),
+                descricao_snapshot: String(s.servico_nome || 'Serviço'),
+                quantidade: 1,
+                preco_unitario_snapshot: unit,
+                total_snapshot: unit,
+                agente_id: null
+              });
+            }
+
+            for (const p of produtosRows || []) {
+              const qty = Number(p.quantidade) || 0;
+              const unit = Number(p.preco_aplicado) || 0;
+              if (!Number.isFinite(qty) || qty <= 0) continue;
+              itens.push({
+                item_type: 'PRODUTO',
+                reference_id: Number(p.produto_id),
+                descricao_snapshot: String(p.produto_nome || 'Produto'),
+                quantidade: qty,
+                preco_unitario_snapshot: unit,
+                total_snapshot: Number((qty * unit).toFixed(2)),
+                agente_id: p.agente_id ? Number(p.agente_id) : null
+              });
+            }
+
+            const subtotal = Number((itens.reduce((sum, i) => sum + (Number(i.total_snapshot) || 0), 0)).toFixed(2));
+            const totalFromAgendamento = Number(agendamento.valor_total);
+            const total = Number((Number.isFinite(totalFromAgendamento) && totalFromAgendamento > 0 ? totalFromAgendamento : subtotal).toFixed(2));
+
+            const [vendaRow] = await trx('vendas')
+              .insert({
+                usuario_id: unidade.usuario_id,
+                unidade_id: agendamento.unidade_id,
+                cliente_id: agendamento.cliente_id || null,
+                agendamento_id: agendamentoIdNum,
+                status: 'PAID',
+                subtotal,
+                desconto_total: 0,
+                total,
+                created_by: triggeredByUserId || null,
+                paid_at: trx.fn.now(),
+                created_at: trx.fn.now(),
+                updated_at: trx.fn.now()
+              })
+              .returning('*');
+
+            vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+
+            if (!vendaId) {
+              const err = new Error('Falha ao criar venda');
+              err.code = 'VENDA_CREATE_FAILED';
+              throw err;
+            }
+
+            if (itens.length > 0) {
+              await trx('venda_itens').insert(
+                itens.map((i) => ({
+                  venda_id: vendaId,
+                  item_type: i.item_type,
+                  reference_id: i.reference_id || null,
+                  descricao_snapshot: i.descricao_snapshot,
+                  quantidade: i.quantidade,
+                  preco_unitario_snapshot: i.preco_unitario_snapshot,
+                  total_snapshot: i.total_snapshot,
+                  agente_id: i.agente_id || null,
+                  created_at: trx.fn.now()
+                }))
+              );
+            }
+
+            const pagamentosRows = Array.isArray(pagamentos) ? pagamentos : [];
+            const pagamentosValidos = pagamentosRows
+              .map((p) => ({
+                metodo: String(p?.metodo || '').trim(),
+                valor: Number(p?.valor)
+              }))
+              .filter((p) => p.metodo && Number.isFinite(p.valor) && p.valor > 0);
+
+            const totalPago = Number((pagamentosValidos.reduce((sum, p) => sum + p.valor, 0)).toFixed(2));
+            const podeSplit = pagamentosValidos.length > 0 && Math.abs(totalPago - total) < 0.01;
+
+            if (podeSplit) {
+              await trx('venda_pagamentos').insert(
+                pagamentosValidos.map((p) => ({
+                  venda_id: vendaId,
+                  metodo: p.metodo,
+                  valor: Number(p.valor.toFixed(2)),
+                  status: 'CAPTURED',
+                  paid_at: trx.fn.now(),
+                  created_at: trx.fn.now()
+                }))
+              );
+            } else {
+              await trx('venda_pagamentos').insert({
+                venda_id: vendaId,
+                metodo: agendamento.metodo_pagamento || 'Não definido',
+                valor: total,
+                status: 'CAPTURED',
+                paid_at: trx.fn.now(),
+                created_at: trx.fn.now()
+              });
+            }
+
+            for (const p of produtosRows || []) {
+              const produtoId = Number(p.produto_id);
+              const qty = Number(p.quantidade);
+              if (!Number.isFinite(produtoId) || !Number.isFinite(qty) || qty <= 0) continue;
+
+              await this.inventoryService.movimentarEstoque({
+                usuario_id: unidade.usuario_id,
+                unidade_id: agendamento.unidade_id,
+                produto_id: produtoId,
+                tipo: 'SAIDA',
+                quantidade: qty,
+                motivo: `VENDA PDV - Venda ${vendaId} (Agendamento ${agendamentoIdNum})`,
+                origem_id: `VENDA:${vendaId}`,
+                created_by: triggeredByUserId || null,
+                trx
+              });
+            }
+          }
+
+          if (vendaId) {
+            await trx('agendamentos')
+              .where('id', agendamentoIdNum)
+              .update({
+                venda_id: vendaId,
+                status_pagamento: 'Pago',
+                updated_at: trx.fn.now()
+              });
+          }
+        } catch (err) {
+          if (!(err && (err.code === '42P01' || String(err.message || '').includes('vendas')))) {
+            throw err;
+          }
+        }
+      }
+
       // Desejado: se não estiver concluído => consumo desejado = 0
       const desiredRows = agendamento.status === 'Concluído'
         ? await trx('agendamento_servicos as ags')
@@ -51,7 +236,6 @@ class AgendamentoConclusaoService {
           .join('produtos as p', 'si.produto_id', 'p.id')
           .where('ags.agendamento_id', agendamentoIdNum)
           .where('p.usuario_id', unidade.usuario_id)
-          .whereNull('p.deleted_at')
           .groupBy('si.produto_id')
           .select('si.produto_id')
           .sum({ quantidade_total: 'si.quantidade' })

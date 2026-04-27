@@ -3,16 +3,36 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 import { useCalendarData } from '../hooks/useCalendarData';
-import { Plus, X, ChevronDown } from './Icons';
+import { Plus, X, ChevronDown, Pencil, Trash } from './Icons';
 
-type EstoqueTab = 'Produtos' | 'Inventário' | 'Movimentações';
+type EstoqueTab = 'Produtos' | 'Inventário' | 'Movimentações' | 'Vendas';
 
 type ProdutoRow = {
   id: number;
   nome: string;
   marca?: string | null;
   categoria?: string | null;
+  categoria_id?: number | null;
   preco_custo_medio?: number | string | null;
+  preco_venda?: number | string | null;
+  estoque_minimo?: number | string | null;
+  unidade_medida?: 'UN' | 'ML' | 'G' | string | null;
+};
+
+type VendaAvulsaRow = {
+  id: number;
+  unidade_id: number;
+  cliente_id?: number | null;
+  cliente_nome?: string | null;
+  total: number | string;
+  status: string;
+  created_at: string;
+  itens?: Array<{
+    descricao_snapshot?: string | null;
+    quantidade: number | string;
+    preco_unitario_snapshot?: number | string | null;
+    total_snapshot?: number | string | null;
+  }>;
 };
 
 type CategoriaRow = {
@@ -142,13 +162,22 @@ const EstoquePage: React.FC = () => {
   const [produtosError, setProdutosError] = useState<string | null>(null);
 
   const [novoProdutoOpen, setNovoProdutoOpen] = useState(false);
+  const [editProdutoId, setEditProdutoId] = useState<number | null>(null);
   const [novoProdutoNome, setNovoProdutoNome] = useState('');
   const [novoProdutoMarca, setNovoProdutoMarca] = useState('');
   const [novoProdutoUnidadeMedida, setNovoProdutoUnidadeMedida] = useState<'UN' | 'ML' | 'G'>('UN');
   const [novoProdutoPrecoCusto, setNovoProdutoPrecoCusto] = useState('');
+  const [novoProdutoPrecoVenda, setNovoProdutoPrecoVenda] = useState('');
+  const [novoProdutoEstoqueMinimo, setNovoProdutoEstoqueMinimo] = useState('');
+  const [novoProdutoCategoriaId, setNovoProdutoCategoriaId] = useState<number | null>(null);
   const [novoProdutoCategoriaNome, setNovoProdutoCategoriaNome] = useState('');
   const [novoProdutoSaving, setNovoProdutoSaving] = useState(false);
   const [novoProdutoError, setNovoProdutoError] = useState<string | null>(null);
+
+  const [deleteProdutoOpen, setDeleteProdutoOpen] = useState(false);
+  const [deleteProdutoRow, setDeleteProdutoRow] = useState<ProdutoRow | null>(null);
+  const [deleteProdutoSaving, setDeleteProdutoSaving] = useState(false);
+  const [deleteProdutoError, setDeleteProdutoError] = useState<string | null>(null);
 
   const [categorias, setCategorias] = useState<CategoriaRow[]>([]);
   const [categoriasLoading, setCategoriasLoading] = useState(false);
@@ -160,6 +189,26 @@ const EstoquePage: React.FC = () => {
   const [movs, setMovs] = useState<MovRow[]>([]);
   const [movsLoading, setMovsLoading] = useState(false);
   const [movsError, setMovsError] = useState<string | null>(null);
+
+  const [vendas, setVendas] = useState<VendaAvulsaRow[]>([]);
+  const [vendasLoading, setVendasLoading] = useState(false);
+  const [vendasError, setVendasError] = useState<string | null>(null);
+  const [estornoSavingId, setEstornoSavingId] = useState<number | null>(null);
+  const [estornoConfirmVenda, setEstornoConfirmVenda] = useState<VendaAvulsaRow | null>(null);
+  const [expandedVendaIds, setExpandedVendaIds] = useState<Set<number>>(new Set());
+
+  const snapshotByProdutoId = useMemo(() => {
+    return new Map<number, SnapshotRow>(snapshot.map((r) => [Number(r.produto_id), r]));
+  }, [snapshot]);
+
+  const toggleVendaExpanded = (vendaId: number) => {
+    setExpandedVendaIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(vendaId)) next.delete(vendaId);
+      else next.add(vendaId);
+      return next;
+    });
+  };
 
   const [entradaOpen, setEntradaOpen] = useState(false);
   const [entradaProdutoId, setEntradaProdutoId] = useState<string>('');
@@ -251,6 +300,63 @@ const EstoquePage: React.FC = () => {
       cancelled = true;
     };
   }, [isAuthenticated, token, selectedLocationId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    if (!selectedLocationId) return;
+    let cancelled = false;
+
+    const fetchVendas = async () => {
+      try {
+        setVendasLoading(true);
+        setVendasError(null);
+
+        const payload = await makeAuthenticatedRequest(
+          `${API_BASE_URL}/vendas/avulsas?unidade_id=${encodeURIComponent(selectedLocationId)}&limit=200&include_itens=1`
+        );
+        if (cancelled) return;
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        setVendas(rows);
+      } catch (e) {
+        if (cancelled) return;
+        setVendasError(e instanceof Error ? e.message : 'Erro ao carregar vendas');
+        setVendas([]);
+      } finally {
+        if (!cancelled) setVendasLoading(false);
+      }
+    };
+
+    (async () => {
+      if (activeTab === 'Vendas') {
+        await fetchVendas();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token, selectedLocationId, activeTab]);
+
+  const refetchVendas = async () => {
+    if (!isAuthenticated || !token) return;
+    if (!selectedLocationId) return;
+
+    setVendasLoading(true);
+    setVendasError(null);
+
+    try {
+      const payload = await makeAuthenticatedRequest(
+        `${API_BASE_URL}/vendas/avulsas?unidade_id=${encodeURIComponent(selectedLocationId)}&limit=200&include_itens=1`
+      );
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      setVendas(rows);
+    } catch (e) {
+      setVendasError(e instanceof Error ? e.message : 'Erro ao carregar vendas');
+      setVendas([]);
+    } finally {
+      setVendasLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated || !token) return;
@@ -368,10 +474,14 @@ const EstoquePage: React.FC = () => {
               type="button"
               onClick={() => {
                 setNovoProdutoError(null);
+                setEditProdutoId(null);
                 setNovoProdutoNome('');
                 setNovoProdutoMarca('');
                 setNovoProdutoUnidadeMedida('UN');
                 setNovoProdutoPrecoCusto('');
+                setNovoProdutoPrecoVenda('');
+                setNovoProdutoEstoqueMinimo('');
+                setNovoProdutoCategoriaId(null);
                 setNovoProdutoCategoriaNome('');
                 setNovoProdutoOpen(true);
               }}
@@ -530,9 +640,109 @@ const EstoquePage: React.FC = () => {
       })()}
 
       {(() => {
+        if (!deleteProdutoOpen) return null;
+        const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+        if (!portalRoot) return null;
+
+        const handleClose = () => {
+          if (deleteProdutoSaving) return;
+          setDeleteProdutoOpen(false);
+          setDeleteProdutoRow(null);
+          setDeleteProdutoError(null);
+        };
+
+        const handleConfirm = async () => {
+          if (deleteProdutoSaving) return;
+          if (!deleteProdutoRow) return;
+
+          setDeleteProdutoError(null);
+          setDeleteProdutoSaving(true);
+          try {
+            await makeAuthenticatedRequest(`${API_BASE_URL}/produtos/${deleteProdutoRow.id}`, {
+              method: 'DELETE'
+            });
+            setDeleteProdutoOpen(false);
+            setDeleteProdutoRow(null);
+            await fetchProdutos();
+          } catch (e) {
+            setDeleteProdutoError(e instanceof Error ? e.message : 'Erro ao excluir produto');
+          } finally {
+            setDeleteProdutoSaving(false);
+          }
+        };
+
+        return createPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-gray-800">Excluir Produto</h2>
+                  <button type="button" onClick={handleClose} className="p-1 rounded-full hover:bg-gray-200">
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {deleteProdutoError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">{deleteProdutoError}</p>
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-700">
+                  Tem certeza que deseja excluir este produto?
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="font-semibold text-gray-900">{deleteProdutoRow?.nome}</div>
+                  {deleteProdutoRow?.marca && (
+                    <div className="text-sm text-gray-600">{deleteProdutoRow.marca}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+                <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50" disabled={deleteProdutoSaving}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50" disabled={deleteProdutoSaving}>
+                  {deleteProdutoSaving ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          portalRoot
+        );
+      })()}
+
+      {(() => {
         if (!novoProdutoOpen) return null;
         const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
         if (!portalRoot) return null;
+
+        const getFriendlySaveErrorMessage = (err: unknown) => {
+          const raw = err instanceof Error ? err.message : String(err);
+          const msg = (raw || '').toLowerCase();
+
+          if (msg.includes('is not defined') || msg.includes('referenceerror')) {
+            return 'Ocorreu um erro ao salvar o produto. Tente novamente ou contate o suporte.';
+          }
+
+          if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network request failed')) {
+            return 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.';
+          }
+
+          if (
+            msg.includes('nome') && msg.includes('obrigat') ||
+            msg.includes('categoria') && msg.includes('obrigat') ||
+            msg.includes('categoria_id inválido') ||
+            msg.includes('categoria inválida')
+          ) {
+            return 'Verifique se todos os campos obrigatórios (como Categoria e Nome) estão preenchidos.';
+          }
+
+          return 'Ocorreu um erro ao salvar o produto. Tente novamente ou contate o suporte.';
+        };
 
         const handleClose = () => {
           if (novoProdutoSaving) return;
@@ -549,30 +759,52 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
+          const catNomePre = novoProdutoCategoriaNome.trim();
+          if (!catNomePre && novoProdutoCategoriaId === null) {
+            setNovoProdutoError('Verifique se todos os campos obrigatórios (como Categoria e Nome) estão preenchidos.');
+            return;
+          }
+
           const preco = novoProdutoPrecoCusto.trim() === '' ? 0 : Number(novoProdutoPrecoCusto);
           if (!Number.isFinite(preco) || preco < 0) {
             setNovoProdutoError('Preço de custo médio inválido');
             return;
           }
 
+          const precoVenda = novoProdutoPrecoVenda.trim() === '' ? 0 : Number(novoProdutoPrecoVenda);
+          if (!Number.isFinite(precoVenda) || precoVenda < 0) {
+            setNovoProdutoError('Preço de venda inválido');
+            return;
+          }
+
+          const estoqueMinimo = novoProdutoEstoqueMinimo.trim() === '' ? 0 : Number(novoProdutoEstoqueMinimo);
+          if (!Number.isFinite(estoqueMinimo) || estoqueMinimo < 0) {
+            setNovoProdutoError('Estoque mínimo inválido');
+            return;
+          }
+
           setNovoProdutoSaving(true);
 
           try {
-            let categoriaId: number | null = null;
-            const catNome = novoProdutoCategoriaNome.trim();
+            let categoriaId: number | null = novoProdutoCategoriaId;
+            const catNome = catNomePre;
 
-            if (catNome) {
+            if (categoriaId === null && catNome) {
               const existing = categorias.find((c) => c.nome.toLowerCase() === catNome.toLowerCase());
               if (existing) {
                 categoriaId = existing.id;
+                setNovoProdutoCategoriaId(existing.id);
               } else {
                 const payload = await makeAuthenticatedRequest(`${API_BASE_URL}/categorias`, {
                   method: 'POST',
-                  body: { nome: catNome }
+                  body: {
+                    nome: catNome
+                  }
                 });
                 const created = payload?.data;
                 if (created?.id) {
                   categoriaId = Number(created.id);
+                  setNovoProdutoCategoriaId(Number(created.id));
                   setCategorias((prev) => {
                     const next = prev.some((p) => p.id === created.id) ? prev : [...prev, created];
                     return next.sort((a, b) => a.nome.localeCompare(b.nome));
@@ -581,21 +813,39 @@ const EstoquePage: React.FC = () => {
               }
             }
 
-            await makeAuthenticatedRequest(`${API_BASE_URL}/produtos`, {
-              method: 'POST',
-              body: {
-                nome: nomeFinal,
-                marca: novoProdutoMarca.trim() ? novoProdutoMarca.trim() : null,
-                unidade_medida: novoProdutoUnidadeMedida,
-                preco_custo_medio: preco,
-                categoria_id: categoriaId
-              }
-            });
+            if (editProdutoId) {
+              await makeAuthenticatedRequest(`${API_BASE_URL}/produtos/${editProdutoId}`, {
+                method: 'PUT',
+                body: {
+                  nome: nomeFinal,
+                  marca: novoProdutoMarca.trim() ? novoProdutoMarca.trim() : null,
+                  unidade_medida: novoProdutoUnidadeMedida,
+                  preco_custo_medio: preco,
+                  preco_venda: precoVenda,
+                  estoque_minimo: estoqueMinimo,
+                  categoria_id: categoriaId
+                }
+              });
+            } else {
+              await makeAuthenticatedRequest(`${API_BASE_URL}/produtos`, {
+                method: 'POST',
+                body: {
+                  nome: nomeFinal,
+                  marca: novoProdutoMarca.trim() ? novoProdutoMarca.trim() : null,
+                  unidade_medida: novoProdutoUnidadeMedida,
+                  preco_custo_medio: preco,
+                  preco_venda: precoVenda,
+                  estoque_minimo: estoqueMinimo,
+                  categoria_id: categoriaId
+                }
+              });
+            }
 
             setNovoProdutoOpen(false);
+            setEditProdutoId(null);
             await fetchProdutos();
           } catch (e) {
-            setNovoProdutoError(e instanceof Error ? e.message : 'Erro ao criar produto');
+            setNovoProdutoError(getFriendlySaveErrorMessage(e));
           } finally {
             setNovoProdutoSaving(false);
           }
@@ -610,7 +860,7 @@ const EstoquePage: React.FC = () => {
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-800">Novo Produto</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h2>
                   <button
                     type="button"
                     onClick={handleClose}
@@ -656,7 +906,10 @@ const EstoquePage: React.FC = () => {
                   <input
                     type="text"
                     value={novoProdutoCategoriaNome}
-                    onChange={(e) => setNovoProdutoCategoriaNome(e.target.value)}
+                    onChange={(e) => {
+                      setNovoProdutoCategoriaNome(e.target.value);
+                      setNovoProdutoCategoriaId(null);
+                    }}
                     list="categorias-datalist"
                     className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
                     disabled={novoProdutoSaving}
@@ -702,6 +955,34 @@ const EstoquePage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Venda</label>
+                    <input
+                      type="number"
+                      value={novoProdutoPrecoVenda}
+                      onChange={(e) => setNovoProdutoPrecoVenda(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      step="0.01"
+                      min="0"
+                      disabled={novoProdutoSaving}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Estoque Mínimo</label>
+                    <input
+                      type="number"
+                      value={novoProdutoEstoqueMinimo}
+                      onChange={(e) => setNovoProdutoEstoqueMinimo(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      step="0.01"
+                      min="0"
+                      disabled={novoProdutoSaving}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
@@ -729,7 +1010,7 @@ const EstoquePage: React.FC = () => {
       })()}
 
       <div className="flex items-center border-b border-gray-200 mb-4">
-        {(['Produtos', 'Inventário', 'Movimentações'] as EstoqueTab[]).map((tab) => (
+        {(['Produtos', 'Inventário', 'Movimentações', 'Vendas'] as EstoqueTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -756,30 +1037,40 @@ const EstoquePage: React.FC = () => {
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">MARCA</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CUSTO MÉDIO</th>
+                  <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">PREÇO DE VENDA</th>
+                  <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">ESTOQUE ATUAL</th>
+                  <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">MÍNIMO</th>
+                  <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
                 </tr>
               </thead>
               <tbody>
                 {produtosLoading ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                    <td colSpan={9} className="p-8 text-center text-gray-500">
                       Carregando produtos...
                     </td>
                   </tr>
                 ) : produtosError ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-red-600">
+                    <td colSpan={9} className="p-8 text-center text-red-600">
                       Erro: {produtosError}
                     </td>
                   </tr>
                 ) : produtos.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                    <td colSpan={9} className="p-8 text-center text-gray-500">
                       Nenhum produto encontrado
                     </td>
                   </tr>
                 ) : (
                   produtos.map((p) => {
                     const custo = toNumber(p.preco_custo_medio);
+                    const venda = toNumber((p as any).preco_venda);
+                    const minimoProduto = toNumber((p as any).estoque_minimo);
+                    const snapshotRow = selectedLocationId ? snapshotByProdutoId.get(Number(p.id)) : undefined;
+                    const saldoAtual = snapshotRow ? (toNumber(snapshotRow.saldo_atual) ?? 0) : null;
+                    const minimo = snapshotRow ? toNumber(snapshotRow.estoque_minimo) : minimoProduto;
+                    const belowMin = saldoAtual !== null && minimo !== null && saldoAtual <= minimo;
                     return (
                       <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50">
                         <td className="p-3 w-28 whitespace-nowrap">{p.id}</td>
@@ -794,6 +1085,69 @@ const EstoquePage: React.FC = () => {
                         </td>
                         <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
                           {custo === null ? '—' : formatMoneyBR(custo)}
+                        </td>
+                        <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
+                          {venda === null ? '—' : formatMoneyBR(venda)}
+                        </td>
+                        <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
+                          {saldoAtual === null ? (
+                            '—'
+                          ) : (
+                            <span className={belowMin ? 'text-red-600 font-semibold' : 'text-gray-700'}>
+                              {saldoAtual.toFixed(3)}
+                            </span>
+                          )}
+                          <span className="text-gray-400 ml-2">{p.unidade_medida || ''}</span>
+                        </td>
+                        <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
+                          {minimo === null ? '—' : <span className={belowMin ? 'text-red-600 font-semibold' : ''}>{minimo.toFixed(3)}</span>}
+                        </td>
+                        <td className="p-3 w-40 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                              title="Editar"
+                              onClick={() => {
+                                setNovoProdutoError(null);
+                                setEditProdutoId(p.id);
+                                setNovoProdutoNome(String(p.nome || ''));
+                                setNovoProdutoMarca(String(p.marca || ''));
+                                const um = (p.unidade_medida as any) || 'UN';
+                                setNovoProdutoUnidadeMedida(['UN', 'ML', 'G'].includes(um) ? um : 'UN');
+                                setNovoProdutoPrecoCusto(custo === null ? '' : String(custo));
+                                setNovoProdutoPrecoVenda(venda === null ? '' : String(venda));
+                                const estMin = toNumber((p as any).estoque_minimo);
+                                setNovoProdutoEstoqueMinimo(estMin === null ? '' : String(estMin));
+                                setNovoProdutoCategoriaNome(String(p.categoria || ''));
+                                if (p.categoria_id !== undefined && p.categoria_id !== null) {
+                                  setNovoProdutoCategoriaId(Number(p.categoria_id));
+                                } else {
+                                  const catNome = String(p.categoria || '').trim();
+                                  const existing = catNome
+                                    ? categorias.find((c) => c.nome.toLowerCase() === catNome.toLowerCase())
+                                    : undefined;
+                                  setNovoProdutoCategoriaId(existing ? existing.id : null);
+                                }
+                                setNovoProdutoOpen(true);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4 text-gray-700" />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                              title="Excluir"
+                              onClick={() => {
+                                setDeleteProdutoError(null);
+                                setDeleteProdutoRow(p);
+                                setDeleteProdutoOpen(true);
+                              }}
+                            >
+                              <Trash className="w-4 h-4 text-red-600" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -961,6 +1315,225 @@ const EstoquePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'Vendas' && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
+          <div className="overflow-x-auto max-w-full">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap"></th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">DATA</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">CLIENTE</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">ITENS</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">TOTAL</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">STATUS</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!selectedLocationId ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                      Selecione uma unidade
+                    </td>
+                  </tr>
+                ) : vendasLoading ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                      Carregando vendas...
+                    </td>
+                  </tr>
+                ) : vendasError ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-red-600">
+                      Erro: {vendasError}
+                    </td>
+                  </tr>
+                ) : vendas.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                      Nenhuma venda avulsa encontrada
+                    </td>
+                  </tr>
+                ) : (
+                  vendas.map((v) => {
+                    const date = new Date(v.created_at);
+                    const dateStr = Number.isNaN(date.getTime())
+                      ? v.created_at
+                      : `${date.toLocaleDateString('pt-BR')} - ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+                    const total = toNumber(v.total) ?? 0;
+                    const canEstornar = String(v.status) === 'PAID';
+                    const isExpanded = expandedVendaIds.has(v.id);
+                    const itens = Array.isArray(v.itens) ? v.itens : [];
+                    const itensResumo = itens.length
+                      ? itens
+                          .slice(0, 3)
+                          .map((it) => {
+                            const qtd = toNumber(it.quantidade) ?? 0;
+                            return `${qtd}x ${String(it.descricao_snapshot || 'Produto')}`;
+                          })
+                          .join(', ')
+                      : '—';
+
+                    return (
+                      <React.Fragment key={v.id}>
+                        <tr className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
+                          <td className="p-4 whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                              onClick={() => toggleVendaExpanded(v.id)}
+                              title={isExpanded ? 'Ocultar itens' : 'Ver itens'}
+                            >
+                              <ChevronDown className={`w-4 h-4 text-gray-700 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                          </td>
+                          <td className="p-4 whitespace-nowrap text-gray-700">{dateStr}</td>
+                          <td className="p-4 text-gray-700 whitespace-nowrap">
+                            <span className="truncate block">{v.cliente_nome || '—'}</span>
+                          </td>
+                          <td className="p-4 text-gray-600">
+                            <span className="truncate block" title={itens.length ? itens.map((it) => `${toNumber(it.quantidade) ?? 0}x ${String(it.descricao_snapshot || 'Produto')}`).join(', ') : ''}>
+                              {itensResumo}{itens.length > 3 ? ` (+${itens.length - 3})` : ''}
+                            </span>
+                          </td>
+                          <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">{formatMoneyBR(total)}</td>
+                          <td className="p-4 whitespace-nowrap text-gray-600">{v.status || '—'}</td>
+                          <td className="p-4 whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="px-3 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed"
+                              disabled={!canEstornar || estornoSavingId === v.id}
+                              onClick={() => {
+                                if (estornoSavingId) return;
+                                if (!canEstornar) return;
+                                setEstornoConfirmVenda(v);
+                              }}
+                            >
+                              {canEstornar ? (estornoSavingId === v.id ? 'Estornando...' : 'Estornar') : '—'}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="border-t border-gray-200 bg-gray-50">
+                            <td colSpan={7} className="p-4">
+                              {itens.length === 0 ? (
+                                <div className="text-sm text-gray-600">Nenhum item encontrado</div>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr>
+                                        <th className="p-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">ITEM</th>
+                                        <th className="p-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">QTD</th>
+                                        <th className="p-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">PREÇO</th>
+                                        <th className="p-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">TOTAL</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {itens.map((it, idx) => {
+                                        const qtd = toNumber(it.quantidade) ?? 0;
+                                        const preco = toNumber(it.preco_unitario_snapshot ?? null);
+                                        const totalLinha = toNumber(it.total_snapshot ?? null);
+                                        return (
+                                          <tr key={idx} className="border-t border-gray-200">
+                                            <td className="p-2 text-gray-800 whitespace-nowrap">
+                                              <span className="truncate block">{String(it.descricao_snapshot || 'Produto')}</span>
+                                            </td>
+                                            <td className="p-2 text-gray-700 whitespace-nowrap">{qtd.toFixed(3)}</td>
+                                            <td className="p-2 text-gray-700 whitespace-nowrap">{preco === null ? '—' : formatMoneyBR(preco)}</td>
+                                            <td className="p-2 text-gray-800 font-semibold whitespace-nowrap">{totalLinha === null ? '—' : formatMoneyBR(totalLinha)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {(() => {
+        if (!estornoConfirmVenda) return null;
+        const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+        if (!portalRoot) return null;
+
+        const venda = estornoConfirmVenda;
+        const canEstornar = String(venda.status) === 'PAID';
+
+        const handleClose = () => {
+          if (estornoSavingId) return;
+          setEstornoConfirmVenda(null);
+        };
+
+        const handleConfirm = async () => {
+          if (!canEstornar) return;
+          if (estornoSavingId) return;
+
+          setEstornoSavingId(venda.id);
+          try {
+            await makeAuthenticatedRequest(`${API_BASE_URL}/vendas/${venda.id}/estorno`, {
+              method: 'POST'
+            });
+            setEstornoConfirmVenda(null);
+            await refetchVendas();
+            await refetchSnapshot();
+            await refetchMovs();
+          } catch (e) {
+            setVendasError(e instanceof Error ? e.message : 'Erro ao estornar venda');
+          } finally {
+            setEstornoSavingId(null);
+          }
+        };
+
+        return createPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-gray-800">Confirmar estorno</h2>
+                  <button type="button" onClick={handleClose} className="p-1 rounded-full hover:bg-gray-200">
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-6 space-y-3">
+                <p className="text-sm text-gray-700">
+                  Tem certeza que deseja estornar esta venda? Os itens retornarão ao estoque.
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Venda #{venda.id}</span>
+                    <span className="font-semibold">{formatMoneyBR(toNumber(venda.total) ?? 0)}</span>
+                  </div>
+                  <div className="mt-2 text-gray-600">Status: {venda.status || '—'}</div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+                <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" disabled={!!estornoSavingId}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 disabled:bg-red-300" disabled={!!estornoSavingId || !canEstornar}>
+                  {estornoSavingId === venda.id ? 'Estornando...' : 'Confirmar estorno'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          portalRoot
+        );
+      })()}
     </div>
   );
 };

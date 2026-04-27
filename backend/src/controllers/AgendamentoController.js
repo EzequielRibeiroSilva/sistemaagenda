@@ -522,6 +522,77 @@ class AgendamentoController extends BaseController {
         }
       }
 
+      // ✅ PDV (E2E): anexar produtos vendidos e pagamentos (para reabrir agendamento concluído)
+      try {
+        const agendamentoIdNum = parseInt(id, 10);
+
+        let produtosVendidos = [];
+        try {
+          produtosVendidos = await this.model.db('agendamento_produtos as ap')
+            .leftJoin('produtos as p', 'ap.produto_id', 'p.id')
+            .where('ap.agendamento_id', agendamentoIdNum)
+            .select(
+              'ap.produto_id',
+              'ap.quantidade',
+              'ap.preco_aplicado',
+              'ap.agente_id',
+              'p.nome as produto_nome'
+            );
+        } catch (err) {
+          // Se a tabela não existir em algum ambiente, não quebrar o show
+          if (!(err && (err.code === '42P01' || String(err.message || '').includes('agendamento_produtos')))) {
+            throw err;
+          }
+          produtosVendidos = [];
+        }
+
+        let vendaId = data?.venda_id ? Number(data.venda_id) : null;
+        if (!vendaId) {
+          try {
+            const vendaRow = await this.model.db('vendas')
+              .where('agendamento_id', agendamentoIdNum)
+              .select('id')
+              .first();
+            vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+          } catch (err) {
+            if (!(err && (err.code === '42P01' || String(err.message || '').includes('vendas')))) {
+              throw err;
+            }
+            vendaId = null;
+          }
+        }
+
+        let pagamentos = [];
+        if (vendaId) {
+          try {
+            pagamentos = await this.model.db('venda_pagamentos')
+              .where('venda_id', vendaId)
+              .orderBy('id', 'asc')
+              .select('metodo', 'valor');
+          } catch (err) {
+            if (!(err && (err.code === '42P01' || String(err.message || '').includes('venda_pagamentos')))) {
+              throw err;
+            }
+            pagamentos = [];
+          }
+        }
+
+        data.produtos_vendidos = (produtosVendidos || []).map((p) => ({
+          produto_id: p.produto_id,
+          nome: p.produto_nome,
+          quantidade: Number(p.quantidade),
+          preco_aplicado: Number(p.preco_aplicado),
+          agente_id: p.agente_id
+        }));
+
+        data.pagamentos = (pagamentos || []).map((p) => ({
+          metodo: p.metodo,
+          valor: Number(p.valor)
+        }));
+      } catch (e) {
+        // Não bloquear a visualização do agendamento por falha de hidratação do PDV
+      }
+
       return res.json({
         success: true,
         data: data
@@ -653,7 +724,7 @@ class AgendamentoController extends BaseController {
           .whereIn('servicos.id', servico_ids)
           .where('servicos.status', 'Ativo')
           .where('unidade_servicos.unidade_id', unidade_id)
-          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos');
+          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos', 'servicos.comissao_percentual');
 
         if (servicosData.length !== servico_ids.length) {
           return res.status(400).json({
@@ -988,7 +1059,8 @@ class AgendamentoController extends BaseController {
           const agendamentoServicos = servicosData.map(servico => ({
             agendamento_id: agendamento.id,
             servico_id: servico.id,
-            preco_aplicado: (coveredServicoIds || []).includes(parseInt(servico.id, 10)) ? 0 : servico.preco
+            preco_aplicado: (coveredServicoIds || []).includes(parseInt(servico.id, 10)) ? 0 : servico.preco,
+            comissao_percentual_aplicada: servico.comissao_percentual
           }));
 
           await trx('agendamento_servicos').insert(agendamentoServicos);
@@ -1122,10 +1194,24 @@ class AgendamentoController extends BaseController {
 
         // Compatibilidade com formato antigo de serviços
         if (servicos.length > 0) {
+          const legacyServicoIds = (servicos || [])
+            .map((s) => Number(s?.servico_id))
+            .filter((id) => Number.isFinite(id) && id > 0);
+
+          const legacyServicosRows = legacyServicoIds.length > 0
+            ? await trx('servicos').whereIn('id', legacyServicoIds).select('id', 'comissao_percentual')
+            : [];
+
+          const legacyPercentById = (legacyServicosRows || []).reduce((acc, row) => {
+            acc[String(row.id)] = row.comissao_percentual;
+            return acc;
+          }, {});
+
           const agendamentoServicos = servicos.map(servico => ({
             agendamento_id: agendamento.id,
             servico_id: servico.servico_id,
-            preco_aplicado: servico.preco_aplicado
+            preco_aplicado: servico.preco_aplicado,
+            comissao_percentual_aplicada: legacyPercentById[String(servico.servico_id)]
           }));
 
           await trx('agendamento_servicos').insert(agendamentoServicos);
@@ -1293,6 +1379,8 @@ class AgendamentoController extends BaseController {
         servico_extra_ids,
         status,
         forma_pagamento, // Frontend envia forma_pagamento
+        pagamentos,
+        produtos_vendidos,
         observacoes,
         cliente_id,
         unidade_id
@@ -1321,6 +1409,14 @@ class AgendamentoController extends BaseController {
 
       // REGRA DE NEGÓCIO: Pagamento só existe quando status = 'Concluído'
       if (statusFinal === 'Concluído') {
+        const pagamentosRows = Array.isArray(pagamentos) ? pagamentos : [];
+        const pagamentosValidos = pagamentosRows
+          .map((p) => ({
+            metodo: String(p?.metodo || '').trim(),
+            valor: Number(p?.valor)
+          }))
+          .filter((p) => p.metodo && Number.isFinite(p.valor) && p.valor > 0);
+
         const metodoPagamentoFinal = (forma_pagamento !== undefined ? forma_pagamento : agendamento.metodo_pagamento);
 
         // Concluído exige método de pagamento definido
@@ -1333,7 +1429,7 @@ class AgendamentoController extends BaseController {
         }
 
         if (forma_pagamento !== undefined) {
-          dadosParaAtualizar.metodo_pagamento = forma_pagamento; // CORREÇÃO
+          dadosParaAtualizar.metodo_pagamento = pagamentosValidos.length > 1 ? 'Split' : forma_pagamento; // CORREÇÃO
         }
 
         // Concluído implica pagamento confirmado
@@ -1380,7 +1476,7 @@ class AgendamentoController extends BaseController {
           .whereIn('servicos.id', servico_ids)
           .where('servicos.status', 'Ativo')
           .where('unidade_servicos.unidade_id', unidadeIdFinal)
-          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos');
+          .select('servicos.id', 'servicos.nome', 'servicos.preco', 'servicos.duracao_minutos', 'servicos.comissao_percentual');
 
         if (servicosData.length !== servico_ids.length) {
           return res.status(400).json({
@@ -1443,6 +1539,16 @@ class AgendamentoController extends BaseController {
       const db = this.model.db;
 
       await db.transaction(async (trx) => {
+        const produtosRows = Array.isArray(produtos_vendidos) ? produtos_vendidos : [];
+        const produtosValidos = produtosRows
+          .map((p) => ({
+            produto_id: Number(p?.produto_id),
+            quantidade: Number(p?.quantidade),
+            preco_aplicado: Number(p?.preco_aplicado),
+            agente_id: p?.agente_id ? Number(p.agente_id) : null
+          }))
+          .filter((p) => Number.isFinite(p.produto_id) && Number.isFinite(p.quantidade) && p.quantidade > 0);
+
         if (shouldValidateDisponibilidade) {
           await this.bookingAvailabilityService.validateOrThrow({
             unidade_id: unidadeIdFinal,
@@ -1506,7 +1612,8 @@ class AgendamentoController extends BaseController {
             const agendamentoServicos = servicosData.map(servico => ({
               agendamento_id: parseInt(id),
               servico_id: servico.id,
-              preco_aplicado: servico.preco
+              preco_aplicado: servico.preco,
+              comissao_percentual_aplicada: servico.comissao_percentual
             }));
 
             await trx('agendamento_servicos').insert(agendamentoServicos);
@@ -1529,6 +1636,26 @@ class AgendamentoController extends BaseController {
           }
         }
 
+        if (produtosRows && Array.isArray(produtosRows)) {
+          await trx('agendamento_produtos')
+            .where('agendamento_id', parseInt(id, 10))
+            .del();
+
+          if (produtosValidos.length > 0) {
+            await trx('agendamento_produtos').insert(
+              produtosValidos.map((p) => ({
+                agendamento_id: parseInt(id, 10),
+                produto_id: p.produto_id,
+                quantidade: Number(Number(p.quantidade).toFixed(3)),
+                preco_aplicado: Number((Number.isFinite(p.preco_aplicado) ? p.preco_aplicado : 0).toFixed(2)),
+                agente_id: Number.isFinite(p.agente_id) ? p.agente_id : null,
+                created_at: trx.fn.now(),
+                updated_at: trx.fn.now()
+              }))
+            );
+          }
+        }
+
         // ✅ PATCH ESTOQUE (Sprint 3+): Reconciliação atômica e síncrona quando envolver Concluído ou troca de serviços
         const statusMudou = (status !== undefined && status !== statusAnterior);
         const envolveConcluido = (
@@ -1540,6 +1667,7 @@ class AgendamentoController extends BaseController {
           await this.agendamentoConclusaoService.reconcileEstoque({
             agendamentoId: parseInt(id, 10),
             triggeredByUserId: req.user?.id,
+            pagamentos: Array.isArray(pagamentos) ? pagamentos : [],
             trx
           });
         }

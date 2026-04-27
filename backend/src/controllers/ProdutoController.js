@@ -199,7 +199,9 @@ class ProdutoController extends BaseController {
         marca,
         categoria_id,
         unidade_medida,
-        preco_custo_medio
+        preco_custo_medio,
+        preco_venda,
+        estoque_minimo
       } = req.body;
 
       if (!nome || !String(nome).trim()) {
@@ -222,11 +224,35 @@ class ProdutoController extends BaseController {
         ? Number(preco_custo_medio)
         : 0;
 
+      const precoVendaFinal = preco_venda !== undefined && preco_venda !== null
+        ? Number(preco_venda)
+        : 0;
+
+      const estoqueMinimoFinal = estoque_minimo !== undefined && estoque_minimo !== null
+        ? Number(estoque_minimo)
+        : 0;
+
       if (Number.isNaN(precoCustoMedioFinal) || precoCustoMedioFinal < 0) {
         return res.status(400).json({
           success: false,
           error: 'Preço de custo médio inválido',
           message: 'preco_custo_medio deve ser um número >= 0'
+        });
+      }
+
+      if (Number.isNaN(precoVendaFinal) || precoVendaFinal < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Preço de venda inválido',
+          message: 'preco_venda deve ser um número >= 0'
+        });
+      }
+
+      if (Number.isNaN(estoqueMinimoFinal) || estoqueMinimoFinal < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Estoque mínimo inválido',
+          message: 'estoque_minimo deve ser um número >= 0'
         });
       }
 
@@ -268,6 +294,8 @@ class ProdutoController extends BaseController {
           categoria_id: categoriaIdFinal,
           unidade_medida: unidadeMedidaFinal,
           preco_custo_medio: precoCustoMedioFinal,
+          preco_venda: precoVendaFinal,
+          estoque_minimo: estoqueMinimoFinal,
           created_at: new Date(),
           updated_at: new Date()
         };
@@ -288,7 +316,7 @@ class ProdutoController extends BaseController {
             produto_id: produtoId,
             unidade_id: u.id,
             saldo_atual: 0,
-            estoque_minimo: null,
+            estoque_minimo: estoqueMinimoFinal,
             estoque_maximo: null
           }));
 
@@ -359,9 +387,16 @@ class ProdutoController extends BaseController {
         descricao,
         sku_ean,
         marca,
+        categoria_id,
         unidade_medida,
-        preco_custo_medio
+        preco_custo_medio,
+        preco_venda,
+        estoque_minimo
       } = req.body;
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔎 [ProdutoController.update] req.body:', req.body);
+      }
 
       const patch = {
         updated_at: new Date()
@@ -441,6 +476,30 @@ class ProdutoController extends BaseController {
           });
         }
         patch.preco_custo_medio = preco;
+      }
+
+      if (preco_venda !== undefined) {
+        const preco = Number(preco_venda);
+        if (Number.isNaN(preco) || preco < 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Preço de venda inválido',
+            message: 'preco_venda deve ser um número >= 0'
+          });
+        }
+        patch.preco_venda = preco;
+      }
+
+      if (estoque_minimo !== undefined) {
+        const minimo = Number(estoque_minimo);
+        if (Number.isNaN(minimo) || minimo < 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Estoque mínimo inválido',
+            message: 'estoque_minimo deve ser um número >= 0'
+          });
+        }
+        patch.estoque_minimo = minimo;
       }
 
       await this.model.db('produtos')

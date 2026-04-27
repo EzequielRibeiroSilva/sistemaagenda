@@ -26,6 +26,7 @@ const dashboardRoutes = require('./dashboard');
 const produtosRoutes = require('./produtos');
 const estoqueRoutes = require('./estoque');
 const categoriasRoutes = require('./categorias');
+const vendasRoutes = require('./vendas');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
@@ -64,6 +65,7 @@ router.use('/dashboard', authenticate(), dashboardRoutes);
 router.use('/produtos', produtosRoutes);
 router.use('/estoque', estoqueRoutes);
 router.use('/categorias', categoriasRoutes);
+router.use('/vendas', vendasRoutes);
 
 // Rotas públicas (sem autenticação)
 router.use('/public', publicRoutes);

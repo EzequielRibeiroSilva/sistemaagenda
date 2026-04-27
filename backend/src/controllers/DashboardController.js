@@ -34,9 +34,31 @@ class DashboardController {
         }
       }
 
+      const unidadeId = unidade_id ? Number(unidade_id) : null;
+      if (unidade_id && (!Number.isFinite(unidadeId) || unidadeId <= 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'unidade_id inválido'
+        });
+      }
+
+      if (Number.isFinite(unidadeId)) {
+        const unidadeRow = await db('unidades')
+          .where({ id: unidadeId, usuario_id: usuarioId })
+          .select('id')
+          .first();
+
+        if (!unidadeRow) {
+          return res.status(404).json({
+            success: false,
+            error: 'Unidade não encontrada ou acesso negado'
+          });
+        }
+      }
+
       const baseUnidades = db('unidades').where('usuario_id', usuarioId);
-      if (unidade_id) {
-        baseUnidades.andWhere('id', parseInt(String(unidade_id), 10));
+      if (Number.isFinite(unidadeId)) {
+        baseUnidades.andWhere('id', unidadeId);
       }
 
       const unidadesRows = await baseUnidades.clone().select('id');
@@ -86,17 +108,33 @@ class DashboardController {
         }
       }
 
-      const completedAppointments = await db('agendamentos as a')
+      const hasAssinaturaUsos = await db.schema.hasTable('assinatura_usos');
+
+      const completedAppointmentsQuery = db('agendamentos as a')
         .join('clientes as c', 'a.cliente_id', 'c.id')
         .whereIn('a.unidade_id', unidadeIds)
         .where('a.status', 'Concluído')
         .where('a.data_agendamento', '>=', data_inicio)
-        .where('a.data_agendamento', '<=', data_fim)
-        .select(
+        .where('a.data_agendamento', '<=', data_fim);
+
+      if (hasAssinaturaUsos) {
+        completedAppointmentsQuery
+          .leftJoin('assinatura_usos as au', 'au.agendamento_id', 'a.id')
+          .groupBy('a.id', 'a.valor_total', 'c.assinatura_status')
+          .select(
+            'a.valor_total',
+            db.raw('COUNT(au.id) > 0 as coberto_clube'),
+            'c.assinatura_status'
+          );
+      } else {
+        completedAppointmentsQuery.select(
           'a.valor_total',
-          'a.coberto_clube',
+          db.raw('false as coberto_clube'),
           'c.assinatura_status'
         );
+      }
+
+      const completedAppointments = await completedAppointmentsQuery;
 
       let receitaAvulsa = 0;
       let receitaExtraAssinantes = 0;
@@ -167,6 +205,14 @@ class DashboardController {
         }
       });
     } catch (error) {
+      console.error('[DashboardController.clubIntelligence] Erro:', {
+        message: error?.message,
+        code: error?.code,
+        detail: error?.detail,
+        hint: error?.hint,
+        where: error?.where,
+        stack: error?.stack
+      });
       return res.status(500).json({
         success: false,
         error: 'Erro ao buscar inteligência do clube',

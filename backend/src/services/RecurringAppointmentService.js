@@ -217,7 +217,8 @@ class RecurringAppointmentService {
           const agendamentoServicos = servicosData.map(servico => ({
             agendamento_id: agendamento.id,
             servico_id: servico.id,
-            preco_aplicado: servico.preco
+            preco_aplicado: servico.preco,
+            comissao_percentual_aplicada: servico.comissao_percentual
           }));
           await trx('agendamento_servicos').insert(agendamentoServicos);
         }

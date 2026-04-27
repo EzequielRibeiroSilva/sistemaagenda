@@ -16,6 +16,29 @@ import { useToast } from '../contexts/ToastContext';
 import { useUnitManagement } from '../hooks/useUnitManagement';
 import { API_BASE_URL } from '../utils/api';
 
+type ProdutoRow = { id: number; nome: string; preco_custo_medio?: number | string | null; preco_venda?: number | string | null; unidade_medida?: string | null };
+
+type ProdutoCartItem = {
+    uid: string;
+    produto_id: number;
+    nome: string;
+    unidade_medida?: string | null;
+    quantidade: string;
+    preco_aplicado: string;
+    agente_id: string;
+};
+
+type PaymentLine = {
+    uid: string;
+    metodo: string;
+    valor: string;
+};
+
+const toNumber = (value: unknown) => {
+    const n = typeof value === 'string' ? Number(value.replace(',', '.')) : Number(value);
+    return Number.isFinite(n) ? n : 0;
+};
+
 // Helper components for styling consistency
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
     <input
@@ -278,7 +301,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const appointmentData = externalAppointmentData || loadedAppointmentData;
 
     // Hook para autenticação e configurações
-    const { user } = useAuth();
+    const { user, token, isAuthenticated } = useAuth();
     const { settings, loadSettings } = useSettingsManagement();
     const toast = useToast();
     const { units, fetchUnits } = useUnitManagement();
@@ -332,7 +355,35 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [appointmentId, setAppointmentId] = useState<number | null>(null);
     const [isLoadingAppointment, setIsLoadingAppointment] = useState(false);
 
-    // ✅ NOVO: Estados para sistema de pontos
+    const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
+    const [produtoSelecionadoId, setProdutoSelecionadoId] = useState<string>('');
+    const [produtosCarrinho, setProdutosCarrinho] = useState<ProdutoCartItem[]>([]);
+    const [pagamentos, setPagamentos] = useState<PaymentLine[]>([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
+
+    const handleAddProdutoToCarrinho = () => {
+        const produtoId = parseInt(produtoSelecionadoId, 10);
+        if (!Number.isFinite(produtoId)) return;
+        const produto = produtos.find((p) => Number(p.id) === produtoId);
+        if (!produto) return;
+
+        const precoDefault = toNumber((produto as any).preco_venda);
+
+        setProdutosCarrinho((prev) => [
+            ...prev,
+            {
+                uid: `prod-${Date.now()}-${Math.random()}`,
+                produto_id: produtoId,
+                nome: produto.nome,
+                unidade_medida: (produto as any).unidade_medida ?? null,
+                quantidade: '1',
+                preco_aplicado: precoDefault ? String(precoDefault) : '0',
+                agente_id: ''
+            }
+        ]);
+        setProdutoSelecionadoId('');
+    };
+
+    // Estados para sistema de pontos
     const [clienteId, setClienteId] = useState<number | null>(null);
     const [pontosDisponiveis, setPontosDisponiveis] = useState<number>(0);
     const [pontosUsados, setPontosUsados] = useState<number>(0);
@@ -1049,6 +1100,44 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                             } else {
                                 setPaymentMethod('');
                             }
+
+                            // ✅ PDV (E2E): hidratar carrinho e split payment ao reabrir
+                            try {
+                                const produtosVendidos = Array.isArray((details as any).produtos_vendidos)
+                                    ? (details as any).produtos_vendidos
+                                    : [];
+                                if (produtosVendidos.length > 0) {
+                                    setProdutosCarrinho(
+                                        produtosVendidos.map((p: any) => ({
+                                            uid: `prod-hyd-${Date.now()}-${Math.random()}`,
+                                            produto_id: Number(p.produto_id),
+                                            nome: String(p.nome || p.produto_nome || ''),
+                                            quantidade: String(p.quantidade ?? '1'),
+                                            preco_aplicado: String(p.preco_aplicado ?? '0'),
+                                            agente_id: p.agente_id ? String(p.agente_id) : ''
+                                        }))
+                                    );
+                                } else {
+                                    setProdutosCarrinho([]);
+                                }
+
+                                const pagamentosRows = Array.isArray((details as any).pagamentos)
+                                    ? (details as any).pagamentos
+                                    : [];
+                                if (pagamentosRows.length > 0) {
+                                    setPagamentos(
+                                        pagamentosRows.map((pg: any) => ({
+                                            uid: `pay-hyd-${Date.now()}-${Math.random()}`,
+                                            metodo: String(pg.metodo || 'PIX'),
+                                            valor: String(pg.valor ?? '')
+                                        }))
+                                    );
+                                } else {
+                                    setPagamentos([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
+                                }
+                            } catch (e) {
+                                // não bloquear edição por falha de hidratação
+                            }
                         }
                     } catch (error) {
                         // ✅ NÃO BLOQUEAR: Mesmo sem serviços/extras, o usuário pode finalizar o agendamento
@@ -1161,13 +1250,74 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         // Calcular desconto de cupom
         const descontoCupom = cupomAplicado?.desconto_calculado || 0;
 
+        const totalProdutos = produtosCarrinho.reduce((sum, p) => {
+            const qty = parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0;
+            const unit = parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0;
+            return sum + qty * unit;
+        }, 0);
+
         // Desconto total (pontos + cupom)
         const descontoTotal = descontoPontos + descontoCupom;
-        const valorComDesconto = Math.max(0, totalPrice - descontoTotal);
+        const valorComDesconto = Math.max(0, (totalPrice + totalProdutos) - descontoTotal);
 
         setDescontoCalculado(descontoPontos); // Mantém apenas desconto de pontos neste estado
         setValorFinal(valorComDesconto);
-    }, [pontosUsados, totalPrice, pontosAtivo, reaisPorPontos, cupomAplicado]);
+    }, [pontosUsados, totalPrice, pontosAtivo, reaisPorPontos, cupomAplicado, produtosCarrinho]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadProdutos = async () => {
+            if (!isOpen || !isAuthenticated || !token) return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/produtos`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                const rows = Array.isArray(data?.data) ? data.data : [];
+                setProdutos(rows);
+            } catch {
+                if (!cancelled) setProdutos([]);
+            }
+        };
+
+        loadProdutos();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, isAuthenticated, token]);
+
+    const totalProdutosCarrinho = useMemo(() => {
+        return produtosCarrinho.reduce((sum, p) => {
+            const qty = parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0;
+            const unit = parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0;
+            return sum + qty * unit;
+        }, 0);
+    }, [produtosCarrinho]);
+
+    const totalPago = useMemo(() => {
+        return pagamentos.reduce((sum, p) => {
+            const v = parseFloat(String(p.valor || '0').replace(',', '.')) || 0;
+            return sum + v;
+        }, 0);
+    }, [pagamentos]);
+
+    const restantePagamento = useMemo(() => {
+        const total = valorFinal;
+        return Number((total - totalPago).toFixed(2));
+    }, [valorFinal, totalPago]);
+
+    const podeConcluirFinanceiro = useMemo(() => {
+        if (!isConcluido) return true;
+        return Math.abs((totalPago || 0) - (valorFinal || 0)) < 0.01;
+    }, [isConcluido, totalPago, valorFinal]);
 
     // ✅ NOVO: Função para validar cupom
     const handleValidarCupom = async () => {
@@ -1356,9 +1506,20 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             }
 
             // ✅ REGRA DE NEGÓCIO (FINANCEIRO): Concluído exige forma de pagamento
-            if (isEditing && isConcluido && !paymentMethod) {
-                toast.warning('Pagamento Obrigatório', 'Para finalizar como Concluído, selecione a forma de pagamento.');
-                return;
+            if (isEditing && isConcluido) {
+                const pagamentosValidos = pagamentos
+                    .map((p) => ({ metodo: String(p.metodo || '').trim(), valor: toNumber(p.valor) }))
+                    .filter((p) => p.metodo && Number.isFinite(p.valor) && p.valor > 0);
+
+                if (pagamentosValidos.length === 0) {
+                    toast.warning('Pagamento Obrigatório', 'Para finalizar como Concluído, adicione pelo menos 1 pagamento.');
+                    return;
+                }
+
+                if (!podeConcluirFinanceiro) {
+                    toast.warning('Pagamento incompleto', 'A soma dos pagamentos precisa ser igual ao total para concluir.');
+                    return;
+                }
             }
 
             const agendamentoData = {
@@ -1392,6 +1553,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
             if (isEditing && appointmentId) {
 
+                const formaPagamentoFinal = pagamentos.length > 1 ? 'Split' : (pagamentos?.[0]?.metodo || paymentMethod);
+
                 const updateData = {
                     agente_id: selectedAgentId,
                     servico_ids: selectedServices,
@@ -1400,7 +1563,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     hora_inicio: startTime,
                     hora_fim: endTime,
                     status: status,
-                    ...(isConcluido ? { forma_pagamento: paymentMethod } : {}),
+                    ...(isConcluido ? { forma_pagamento: formaPagamentoFinal } : {}),
+                    ...(isConcluido ? { pagamentos: pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) } : {}),
+                    ...(isConcluido ? { produtos_vendidos: produtosCarrinho.map(p => ({ produto_id: p.produto_id, quantidade: parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0, preco_aplicado: parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0, agente_id: p.agente_id ? parseInt(p.agente_id) : null })) } : {}),
                     observacoes: observacoes.trim() || '',
                     ...(usarCotaAssinatura && hasCoberturaDisponivel
                         ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
@@ -1794,7 +1959,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         >
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center font-bold text-gray-800 text-base">
-                                    <p>Preço Total</p>
+                                    <p>Total (Apenas Serviços)</p>
                                     <p>R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
                                 </div>
                             </div>
@@ -1811,14 +1976,119 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         <div className="flex justify-between"><span className="font-medium text-gray-500">Serviços:</span> <span className="text-right">{selectedServices.map(id => allServices.find(s => s.id === id)?.nome).filter(Boolean).join(', ')}</span></div>
                                         {selectedExtras.length > 0 && <div className="flex justify-between"><span className="font-medium text-gray-500">Extras:</span> <span>{selectedExtras.map(id => allExtras.find(e => e.id === id)?.nome).filter(Boolean).join(', ')}</span></div>}
                                     </div>
-
-                                    <div className="border-t border-gray-200 my-2"></div>
                                     
                                     <div className="flex justify-between items-center font-bold text-gray-800 text-lg">
-                                        <p>Valor Total:</p>
-                                        <p>R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
+                                        <p>Total a Pagar:</p>
+                                        <p>R$ {valorFinal.toFixed(2).replace('.', ',')}</p>
                                     </div>
-                                    
+
+                                    <div className="border-t border-gray-200 my-3"></div>
+
+                                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Produtos (PDV)</h4>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                                            <FormField label="Produto">
+                                                <Select value={produtoSelecionadoId} onChange={(e) => setProdutoSelecionadoId(e.target.value)}>
+                                                    <option value="">Selecione...</option>
+                                                    {produtos.map((p) => (
+                                                        <option key={p.id} value={String(p.id)}>
+                                                            {p.nome}
+                                                        </option>
+                                                    ))}
+                                                </Select>
+                                            </FormField>
+                                            <div className="md:col-span-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddProdutoToCarrinho}
+                                                    disabled={!produtoSelecionadoId}
+                                                    className="w-full h-[42px] bg-white border border-blue-600 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    Adicionar ao carrinho
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 space-y-3">
+                                            {produtosCarrinho.length === 0 ? (
+                                                <div className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+                                                    Nenhum produto adicionado.
+                                                </div>
+                                            ) : (
+                                                produtosCarrinho.map((item) => {
+                                                    const lineTotal = toNumber(item.quantidade) * toNumber(item.preco_aplicado);
+                                                    const quantidadeStep = String(item.unidade_medida || '').toUpperCase() === 'UN' ? '1' : '0.001';
+                                                    return (
+                                                        <div key={item.uid} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="font-semibold text-gray-800 truncate">{item.nome}</div>
+                                                                    <div className="text-xs text-gray-500">Total linha: R$ {lineTotal.toFixed(2).replace('.', ',')}</div>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setProdutosCarrinho((prev) => prev.filter((x) => x.uid !== item.uid))}
+                                                                    className="px-3 py-2 bg-white border border-gray-300 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-50"
+                                                                >
+                                                                    Remover
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                                                                <FormField label="Quantidade">
+                                                                    <Input
+                                                                        type="number"
+                                                                        step={quantidadeStep}
+                                                                        min="0"
+                                                                        value={item.quantidade}
+                                                                        onChange={(e) =>
+                                                                            setProdutosCarrinho((prev) =>
+                                                                                prev.map((x) => (x.uid === item.uid ? { ...x, quantidade: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </FormField>
+
+                                                                <FormField label="Preço Aplicado">
+                                                                    <Input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        min="0"
+                                                                        value={item.preco_aplicado}
+                                                                        onChange={(e) =>
+                                                                            setProdutosCarrinho((prev) =>
+                                                                                prev.map((x) => (x.uid === item.uid ? { ...x, preco_aplicado: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </FormField>
+
+                                                                <FormField label="Vendedor (opcional)">
+                                                                    <Select
+                                                                        value={item.agente_id}
+                                                                        onChange={(e) =>
+                                                                            setProdutosCarrinho((prev) =>
+                                                                                prev.map((x) => (x.uid === item.uid ? { ...x, agente_id: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <option value="">Recepção</option>
+                                                                        {allAgents.map((a) => (
+                                                                            <option key={a.id} value={String(a.id)}>
+                                                                                {a.nome}
+                                                                            </option>
+                                                                        ))}
+                                                                    </Select>
+                                                                </FormField>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                     
                                     {/* ✅ NOVO: Sistema de Pontos */}
                                     {isConcluido && pontosAtivo && clienteId && (
                                         <>
@@ -1987,15 +2257,99 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                 </>
                                             )}
 
-                                            <FormField label="Forma de Pagamento">
-                                                <Select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                                                    <option value="">Selecione...</option>
-                                                    <option value="Dinheiro">Dinheiro</option>
-                                                    <option value="Cartão Crédito">Cartão Crédito</option>
-                                                    <option value="Cartão Débito">Cartão Débito</option>
-                                                    <option value="PIX">PIX</option>
-                                                </Select>
-                                            </FormField>
+                                            <div className="border-t border-gray-200 my-3"></div>
+
+                                            <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="text-sm font-semibold text-gray-700">Pagamentos</h4>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setPagamentos((prev) => [
+                                                                ...prev,
+                                                                {
+                                                                    uid: `pay-${Date.now()}-${Math.random()}`,
+                                                                    metodo: 'PIX',
+                                                                    valor: restantePagamento > 0 ? String(restantePagamento) : ''
+                                                                }
+                                                            ])
+                                                        }
+                                                        className="text-sm font-semibold text-blue-600 hover:text-blue-800"
+                                                    >
+                                                        + Adicionar
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {pagamentos.map((p) => (
+                                                        <div key={p.uid} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                                                            <div className="sm:col-span-6">
+                                                                <FormField label="Método">
+                                                                    <Select
+                                                                        value={p.metodo}
+                                                                        onChange={(e) =>
+                                                                            setPagamentos((prev) =>
+                                                                                prev.map((x) => (x.uid === p.uid ? { ...x, metodo: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <option value="PIX">PIX</option>
+                                                                        <option value="Cartão Crédito">Cartão de Crédito</option>
+                                                                        <option value="Cartão Débito">Cartão de Débito</option>
+                                                                        <option value="Dinheiro">Dinheiro</option>
+                                                                    </Select>
+                                                                </FormField>
+                                                            </div>
+
+                                                            <div className="sm:col-span-4">
+                                                                <FormField label="Valor">
+                                                                    <Input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        min="0"
+                                                                        value={p.valor}
+                                                                        onChange={(e) =>
+                                                                            setPagamentos((prev) =>
+                                                                                prev.map((x) => (x.uid === p.uid ? { ...x, valor: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </FormField>
+                                                            </div>
+
+                                                            <div className="sm:col-span-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPagamentos((prev) => prev.filter((x) => x.uid !== p.uid))}
+                                                                    disabled={pagamentos.length === 1}
+                                                                    className="w-full h-[42px] bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                >
+                                                                    Remover
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                                        <div className="flex items-center justify-between sm:block">
+                                                            <div className="text-gray-600">Total</div>
+                                                            <div className="font-semibold text-gray-900">R$ {valorFinal.toFixed(2).replace('.', ',')}</div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between sm:block">
+                                                            <div className="text-gray-600">Pago</div>
+                                                            <div className="font-semibold text-gray-900">R$ {totalPago.toFixed(2).replace('.', ',')}</div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between sm:block">
+                                                            <div className="text-gray-600">Restante</div>
+                                                            <div className={`font-semibold ${restantePagamento === 0 ? 'text-green-700' : restantePagamento > 0 ? 'text-yellow-700' : 'text-red-700'}`}>
+                                                                R$ {restantePagamento.toFixed(2).replace('.', ',')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </>
                                     )}
                                     

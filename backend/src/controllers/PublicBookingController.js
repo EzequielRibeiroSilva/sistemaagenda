@@ -2039,7 +2039,8 @@ class PublicBookingController {
       const agendamentoServicos = servicos.map(servico => ({
         agendamento_id: agendamento.id,
         servico_id: servico.id,
-        preco_aplicado: servicosCobertos.has(parseInt(servico.id, 10)) ? 0 : servico.preco
+        preco_aplicado: servicosCobertos.has(parseInt(servico.id, 10)) ? 0 : servico.preco,
+        comissao_percentual_aplicada: servico.comissao_percentual
       }));
 
       await trx('agendamento_servicos').insert(agendamentoServicos);

@@ -26,6 +26,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         unitSchedules, // Horários de funcionamento por unidade
         clubStats,
         clubIntelligence,
+        kpis,
         isLoading,
         initialLoadComplete, // ✅ NOVO: Flag para controle de carregamento inicial
         error,
@@ -33,7 +34,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         fetchAgendamentosRaw, // Função que retorna dados sem sobrescrever estado
         fetchClubStats,
         fetchClubIntelligence,
-        calculateMetrics
+        fetchDashboardKpis
     } = useDashboardData();
 
     const isMultiPlan = useMemo(() => {
@@ -86,11 +87,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         refreshAgendamentosPeriodoAtual();
     };
 
-    const refreshAgendamentosPeriodoAtual = async () => {
+    const formatDateInSaoPaulo = (date: Date) => {
+        return date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    };
+
+    const refreshAgendamentosPeriodoAtual = async (signal?: AbortSignal) => {
         if (!dateRange.startDate || !dateRange.endDate) return;
 
-        const dataInicio = dateRange.startDate.toISOString().split('T')[0];
-        const dataFim = dateRange.endDate.toISOString().split('T')[0];
+        const dataInicio = formatDateInSaoPaulo(dateRange.startDate);
+        const dataFim = formatDateInSaoPaulo(dateRange.endDate);
 
         const filters: any = {
             data_inicio: dataInicio,
@@ -99,6 +104,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
 
         if (performanceLocation !== 'all') {
             filters.unidade_id = parseInt(performanceLocation);
+        } else {
+            return;
         }
 
         if (performanceAgent !== 'all') {
@@ -109,9 +116,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
             filters.servico_id = parseInt(performanceService);
         }
 
-        await fetchAgendamentos(filters);
-        await fetchClubStats({ data_inicio: dataInicio, data_fim: dataFim });
-        await fetchClubIntelligence({ data_inicio: dataInicio, data_fim: dataFim, ...(filters.unidade_id ? { unidade_id: filters.unidade_id } : {}) });
+        await fetchAgendamentos(filters, signal);
+        await fetchDashboardKpis(filters, signal);
+        await fetchClubStats({ data_inicio: dataInicio, data_fim: dataFim }, signal);
+        await fetchClubIntelligence({ data_inicio: dataInicio, data_fim: dataFim, ...(filters.unidade_id ? { unidade_id: filters.unidade_id } : {}) }, signal);
         
         // ✅ NOVO: Buscar agendamentos do período anterior para cálculo de variações
         const diffDays = Math.ceil((dateRange.endDate.getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -122,23 +130,37 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         
         const prevFilters = {
             ...filters,
-            data_inicio: prevStartDate.toISOString().split('T')[0],
-            data_fim: prevEndDate.toISOString().split('T')[0]
+            data_inicio: formatDateInSaoPaulo(prevStartDate),
+            data_fim: formatDateInSaoPaulo(prevEndDate)
         };
         
 
         
         // ✅ CORREÇÃO CRÍTICA: Usar fetchAgendamentosRaw para não sobrescrever agendamentos do período atual
-        fetchAgendamentosRaw(prevFilters).then((prevData) => {
+        fetchAgendamentosRaw(prevFilters, signal).then((prevData) => {
             setPreviousPeriodAgendamentos(prevData);
-        }).catch(err => {
+        }).catch(_ => {
             setPreviousPeriodAgendamentos([]);
         });
     };
 
     useEffect(() => {
+        if (performanceLocation !== 'all') return;
+        const firstActive = (backendUnidades || []).find((u) => u.status !== 'Excluido');
+        if (firstActive?.id) {
+            setPerformanceLocation(String(firstActive.id));
+        }
+    }, [backendUnidades, performanceLocation]);
+
+    useEffect(() => {
         if (!dateRange.startDate || !dateRange.endDate) return;
-        refreshAgendamentosPeriodoAtual();
+
+        const controller = new AbortController();
+        refreshAgendamentosPeriodoAtual(controller.signal);
+
+        return () => {
+            controller.abort();
+        };
     }, [
         dateRange.startDate,
         dateRange.endDate,
@@ -177,66 +199,110 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         ];
     }, [clubStats]);
 
-    // ✅ CALCULAR MÉTRICAS DE DESEMPENHO
+    // ✅ KPIs financeiros: única fonte de verdade = backend (/api/dashboard/kpis)
     const metrics = useMemo(() => {
-        if (agendamentos.length === 0) {
-            // Retornar métricas zeradas se não houver agendamentos
-            const emptyMetrics = [
-                { title: 'Reservas Totais', value: '0', isPositive: true, change: '+0%', subtitle: 'Nenhum agendamento no período' },
-                { title: 'Receita Bruta', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Total faturado (serviços concluídos)' },
-                { title: 'Receita do Proprietário', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Após pagar comissões dos agentes', adminOnly: true },
-                { title: 'Comissões de Agentes', value: 'R$ 0,00', isPositive: false, change: '+0%', subtitle: '0 agendamentos concluídos' },
-                { title: 'Ticket Médio', value: 'R$ 0,00', isPositive: true, change: '+0%', subtitle: 'Por agendamento concluído' },
-                { title: 'Novos Clientes', value: '0', isPositive: true, change: '+0%', subtitle: 'Clientes únicos no período' },
-                { title: 'Taxa de Cancelamento', value: '0%', isPositive: true, change: '+0%', subtitle: '0 de 0 cancelados' },
-                { title: 'Agendamentos Pendentes', value: '0', isPositive: true, change: '+0%', subtitle: 'Aguardando confirmação' }
-            ];
-            
-            // ✅ Filtrar cards baseado no role do usuário
-            return userRole === 'AGENTE' 
-                ? emptyMetrics.filter(metric => !metric.adminOnly)
+        const emptyMetrics = [
+            { title: 'Reservas Totais', value: '0', isPositive: true, change: '', subtitle: '0 no período' },
+            { title: 'Receita Bruta', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Serviços + Produtos' },
+            { title: 'Receita do Proprietário', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Após pagar comissões', adminOnly: true },
+            { title: 'Comissões de Agentes', value: 'R$ 0,00', isPositive: false, change: '', subtitle: 'Somente serviços com regra explícita' },
+            { title: 'Ticket Médio', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Por agendamento pago e concluído' },
+            { title: 'Clientes Únicos', value: '0', isPositive: true, change: '', subtitle: 'Clientes diferentes no período' },
+            { title: 'Taxa de Cancelamento', value: '0%', isPositive: true, change: '', subtitle: '0 de 0 cancelados' },
+            { title: 'Agendamentos Pendentes', value: '0', isPositive: true, change: '', subtitle: 'Aprovados com término já passado' },
+            { title: 'Alerta de Estoque', value: '0', isPositive: true, change: '', subtitle: 'Abaixo do mínimo' }
+        ];
+
+        if (!kpis) {
+            return userRole === 'AGENTE'
+                ? emptyMetrics.filter(metric => !(metric as any).adminOnly)
                 : emptyMetrics;
         }
 
-        // ✅ CORREÇÃO CRÍTICA: Passar período anterior para calculateMetrics
-        const allMetrics = calculateMetrics(agendamentos, previousPeriodAgendamentos);
-
-        // ✅ NOVO: Breakdown da Receita Bruta (Clube vs Avulso)
-        if (clubIntelligence) {
-            const receitaMetricIndex = allMetrics.findIndex(m => m.title === 'Receita Bruta');
-            if (receitaMetricIndex >= 0) {
-                const updated = { ...allMetrics[receitaMetricIndex] } as any;
-                updated.subtitle = 'Total faturado (serviços concluídos)';
-                updated.breakdown = [
+        const allMetrics: any[] = [
+            {
+                title: 'Reservas Totais',
+                value: String(kpis.reservas_totais ?? 0),
+                isPositive: true,
+                change: '',
+                subtitle: 'Não cancelados no período'
+            },
+            {
+                title: 'Receita Bruta',
+                value: `R$ ${(Number(kpis.receita_bruta) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: true,
+                change: '',
+                subtitle: 'Serviços + Produtos',
+                breakdown: [
                     {
-                        label: 'Clube',
-                        value: `R$ ${clubIntelligence.mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                        colorClassName: 'text-blue-700'
-                    },
-                    {
-                        label: 'Avulso',
-                        value: `R$ ${clubIntelligence.receita_avulsa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        label: 'Serviços',
+                        value: `R$ ${(Number(kpis.receita_servicos) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                         colorClassName: 'text-gray-700'
                     },
                     {
-                        label: '% Clube',
-                        value: `${clubIntelligence.percentual_clube.toFixed(1)}%`,
-                        colorClassName: 'text-emerald-700'
+                        label: 'Balcão',
+                        value: `R$ ${(Number(kpis.receita_balcao) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        colorClassName: 'text-gray-700'
                     }
-                ];
-                const next = [...allMetrics];
-                next[receitaMetricIndex] = updated;
-                return userRole === 'AGENTE'
-                  ? next.filter(metric => !metric.adminOnly)
-                  : next;
+                ]
+            },
+            {
+                title: 'Alerta de Estoque',
+                value: String(kpis.alerta_estoque ?? 0),
+                isPositive: (Number(kpis.alerta_estoque) || 0) === 0,
+                change: '',
+                subtitle: 'Abaixo do mínimo',
+                icon: '⚠️'
+            },
+            {
+                title: 'Receita do Proprietário',
+                value: `R$ ${(Number(kpis.receita_proprietario) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: true,
+                change: '',
+                subtitle: 'Após pagar comissões dos agentes',
+                adminOnly: true
+            },
+            {
+                title: 'Comissões de Agentes',
+                value: `R$ ${(Number(kpis.comissoes_agentes) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: false,
+                change: '',
+                subtitle: 'Somente serviços com regra explícita'
+            },
+            {
+                title: 'Ticket Médio',
+                value: `R$ ${(Number(kpis.ticket_medio) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: true,
+                change: '',
+                subtitle: 'Por agendamento pago e concluído'
+            },
+            {
+                title: 'Clientes Únicos',
+                value: String(kpis.clientes_unicos ?? 0),
+                isPositive: true,
+                change: '',
+                subtitle: 'Clientes diferentes no período'
+            },
+            {
+                title: 'Taxa de Cancelamento',
+                value: `${(Number(kpis.taxa_cancelamento_pct) || 0).toFixed(1)}%`,
+                isPositive: (Number(kpis.taxa_cancelamento_pct) || 0) < 10,
+                change: '',
+                subtitle: 'Cancelados no período'
+            },
+            {
+                title: 'Agendamentos Pendentes',
+                value: String(kpis.agendamentos_pendentes ?? 0),
+                isPositive: (Number(kpis.agendamentos_pendentes) || 0) < 5,
+                change: '',
+                subtitle: 'Aprovados com término já passado'
             }
-        }
-        
-        // ✅ Filtrar cards baseado no role do usuário
-        return userRole === 'AGENTE' 
+        ];
+
+        return userRole === 'AGENTE'
             ? allMetrics.filter(metric => !metric.adminOnly)
             : allMetrics;
-    }, [agendamentos, previousPeriodAgendamentos, calculateMetrics, userRole, clubIntelligence]);
+    }, [kpis, userRole]);
 
     const clubMetrics = useMemo(() => {
         return [...clubStatsMetrics];

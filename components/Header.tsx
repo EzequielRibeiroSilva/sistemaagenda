@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Plus, MessageSquare, Inbox, FaUser, WhatsApp } from './Icons';
+import { Search, Plus, MessageSquare, Inbox, FaUser, WhatsApp, ShoppingCart } from './Icons';
 import NewAppointmentModal from './NewAppointmentModal';
+import VendaRapidaModal from './VendaRapidaModal';
 import SearchResults from './SearchResults';
 import MobileSearchOverlay from './MobileSearchOverlay';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +22,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, onEditService, onEditClient, onNavigateToCalendar, userRole, onToggleMobileSidebar, loggedInAgentId }) => {
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isVendaRapidaOpen, setVendaRapidaOpen] = useState(false);
   const { user, isLoading } = useAuth();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -135,6 +137,13 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 </div>
               )}
               <button
+                onClick={() => setVendaRapidaOpen(true)}
+                className="flex items-center bg-white border border-blue-600 text-blue-600 font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <ShoppingCart className="h-5 w-5 mr-2" />
+                Nova Venda
+              </button>
+              <button
                 onClick={() => setModalOpen(true)}
                 className="flex items-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors "
               >
@@ -169,6 +178,13 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
                 aria-label="Pesquisar"
               >
                 <Search className="h-6 w-6" />
+              </button>
+              <button
+                onClick={() => setVendaRapidaOpen(true)}
+                className="p-2 text-blue-600 rounded-md"
+                aria-label="Nova venda"
+              >
+                <ShoppingCart className="h-6 w-6" />
               </button>
               <button
                 onClick={() => setModalOpen(true)}
@@ -260,6 +276,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
       </header>
       {/* ✅ REATIVADO: Modal de Novo Agendamento */}
       <NewAppointmentModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
+      <VendaRapidaModal isOpen={isVendaRapidaOpen} onClose={() => setVendaRapidaOpen(false)} />
       {isMobileSearchOpen && (
         <MobileSearchOverlay
           onClose={() => setIsMobileSearchOpen(false)}

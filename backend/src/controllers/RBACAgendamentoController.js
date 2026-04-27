@@ -274,12 +274,26 @@ class RBACAgendamentoController extends BaseController {
       // ✅ CRÍTICO: Usar createWithLock para gerar numero_agendamento e evitar race condition
       const agendamento = await this.model.createWithLock(agendamentoData);
 
+      const servicoIds = servicos
+        .map((s) => Number(s?.servico_id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+
+      const servicosRows = servicoIds.length > 0
+        ? await this.model.db('servicos').whereIn('id', servicoIds).select('id', 'comissao_percentual')
+        : [];
+
+      const percentByServicoId = (servicosRows || []).reduce((acc, row) => {
+        acc[String(row.id)] = row.comissao_percentual;
+        return acc;
+      }, {});
+
       // Associar serviços ao agendamento
       for (const servico of servicos) {
         await this.model.db('agendamento_servicos').insert({
           agendamento_id: agendamento.id,
           servico_id: parseInt(servico.servico_id),
-          preco_aplicado: parseFloat(servico.preco_aplicado)
+          preco_aplicado: parseFloat(servico.preco_aplicado),
+          comissao_percentual_aplicada: percentByServicoId[String(servico.servico_id)]
         });
       }
 
