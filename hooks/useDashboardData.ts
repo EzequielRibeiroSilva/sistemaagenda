@@ -100,6 +100,8 @@ interface DashboardKpis {
   receita_balcao: number;
   receita_proprietario: number;
   comissoes_agentes: number;
+  despesas_pagas_totais: number;
+  lucro_liquido: number;
   ticket_medio: number;
   clientes_unicos: number;
   taxa_cancelamento_pct: number;
@@ -216,6 +218,8 @@ export const useDashboardData = () => {
         receita_balcao: Number(payload.receita_balcao) || 0,
         receita_proprietario: Number(payload.receita_proprietario) || 0,
         comissoes_agentes: Number(payload.comissoes_agentes) || 0,
+        despesas_pagas_totais: Number(payload.despesas_pagas_totais) || 0,
+        lucro_liquido: Number(payload.lucro_liquido) || 0,
         ticket_medio: Number(payload.ticket_medio) || 0,
         clientes_unicos: Number(payload.clientes_unicos) || 0,
         taxa_cancelamento_pct: Number(payload.taxa_cancelamento_pct) || 0,

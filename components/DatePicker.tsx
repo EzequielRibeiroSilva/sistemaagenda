@@ -333,7 +333,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ mode = 'range', selectedDate, s
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 min-w-[160px] justify-between"
             >
-                <span>{formatDisplay()}</span>
+                <span className="whitespace-nowrap overflow-hidden text-ellipsis">{formatDisplay()}</span>
                 <ChevronDown className="h-4 w-4 ml-2 text-gray-500 flex-shrink-0" />
             </button>
             {portalRoot && createPortal(calendarDropdown, portalRoot)}

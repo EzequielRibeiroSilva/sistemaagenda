@@ -148,7 +148,7 @@ class DashboardKpiController {
       const totalPendentes = parseInt(pendentesRaw?.count, 10) || 0;
 
       // ✅ Comissão blindada: somente serviços com regra explícita, em agendamentos pagos e concluídos
-      const comissoesRow = await db('agendamento_servicos as asv')
+      const baseComissoes = db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
@@ -159,7 +159,11 @@ class DashboardKpiController {
         .modify((qb) => {
           if (Number.isFinite(agenteId)) qb.andWhere('a.agente_id', agenteId);
           if (Number.isFinite(servicoId)) qb.andWhere('asv.servico_id', servicoId);
-        })
+        });
+
+      // Provisão total do período (independe de ter sido paga)
+      const comissoesTotalRow = await baseComissoes
+        .clone()
         .sum({
           total: db.raw(
             'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)'
@@ -167,7 +171,36 @@ class DashboardKpiController {
         })
         .first();
 
-      const comissoesAgentes = Number(comissoesRow?.total) || 0;
+      const comissoesAgentes = Number(comissoesTotalRow?.total) || 0;
+
+      // Comissão já baixada (paga) no período selecionado
+      const comissoesPagasRow = await baseComissoes
+        .clone()
+        .where('asv.comissao_paga', true)
+        .sum({
+          total: db.raw(
+            'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)'
+          )
+        })
+        .first();
+
+      const comissoesPagas = Number(comissoesPagasRow?.total) || 0;
+
+      // Comissão pendente (a pagar)
+      const comissoesAPagar = Number((comissoesAgentes - comissoesPagas).toFixed(2));
+
+      // ✅ Despesas Pagas no período (padrão contábil: data_pagamento)
+      const despesasPagasRow = await db('despesas')
+        .where('usuario_id', usuarioId)
+        .where('unidade_id', unidadeId)
+        .where('status', 'PAID')
+        .whereNotNull('data_pagamento')
+        .where('data_pagamento', '>=', data_inicio)
+        .where('data_pagamento', '<=', data_fim)
+        .sum('valor as total')
+        .first();
+
+      const despesasPagasTotais = Number(despesasPagasRow?.total) || 0;
 
       // ✅ Receita Bruta real: serviços pagos + PDV balcão pago (vendas avulsas)
       const vendasAvulsasRow = await db('vendas')
@@ -183,6 +216,8 @@ class DashboardKpiController {
       const receitaBalcao = Number(vendasAvulsasRow?.total) || 0;
       const receitaBruta = Number((receitaServicos + receitaBalcao).toFixed(2));
       const receitaDoProprietario = Number((receitaBruta - comissoesAgentes).toFixed(2));
+      // Lucro líquido (fluxo de caixa): só subtrai comissões já pagas
+      const lucroLiquido = Number((receitaBruta - comissoesPagas - despesasPagasTotais).toFixed(2));
       const ticketMedio = concluidosPagos > 0 ? receitaServicos / concluidosPagos : 0;
 
       const alertRows = await db('estoque_unidades as eu')
@@ -204,6 +239,10 @@ class DashboardKpiController {
           receita_balcao: Number(receitaBalcao.toFixed(2)),
           receita_proprietario: receitaDoProprietario,
           comissoes_agentes: Number(comissoesAgentes.toFixed(2)),
+          comissoes_pagas: Number(comissoesPagas.toFixed(2)),
+          comissoes_a_pagar: Number(comissoesAPagar.toFixed(2)),
+          despesas_pagas_totais: Number(despesasPagasTotais.toFixed(2)),
+          lucro_liquido: lucroLiquido,
           ticket_medio: Number(ticketMedio.toFixed(2)),
           clientes_unicos: clientesUnicos,
           taxa_cancelamento_pct: Number(taxaCancelamento.toFixed(2)),

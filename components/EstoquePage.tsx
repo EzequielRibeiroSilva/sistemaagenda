@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 import { useCalendarData } from '../hooks/useCalendarData';
-import { Plus, X, ChevronDown, Pencil, Trash } from './Icons';
+import { Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash } from './Icons';
 
 type EstoqueTab = 'Produtos' | 'Inventário' | 'Movimentações' | 'Vendas';
 
@@ -119,6 +119,9 @@ const EstoquePage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<EstoqueTab>('Produtos');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
   const locations = useMemo(() => {
     return backendLocations.map((l) => ({ id: String(l.id), name: l.name }));
   }, [backendLocations]);
@@ -132,6 +135,10 @@ const EstoquePage: React.FC = () => {
       setSelectedLocationId(locations[0].id);
     }
   }, [locations, selectedLocationId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, selectedLocationId]);
 
   const makeAuthenticatedRequest = async (url: string, options?: { method?: string; body?: any }) => {
     if (!isAuthenticated || !token) {
@@ -200,6 +207,69 @@ const EstoquePage: React.FC = () => {
   const snapshotByProdutoId = useMemo(() => {
     return new Map<number, SnapshotRow>(snapshot.map((r) => [Number(r.produto_id), r]));
   }, [snapshot]);
+
+  const pagedProdutos = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return produtos.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, itemsPerPage, produtos]);
+
+  const pagedSnapshot = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return snapshot.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, itemsPerPage, snapshot]);
+
+  const pagedMovs = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return movs.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, itemsPerPage, movs]);
+
+  const pagedVendas = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return vendas.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, itemsPerPage, vendas]);
+
+  const renderPaginationFooter = (totalItems: number) => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+    const start = totalItems === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1;
+    const end = totalItems === 0 ? 0 : Math.min(currentPage * itemsPerPage, totalItems);
+
+    return (
+      <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+        <div className="text-sm text-gray-700">
+          Mostrando{' '}
+          <span className="font-medium">{start}</span>{' '}
+          a{' '}
+          <span className="font-medium">{end}</span>{' '}
+          de <span className="font-medium">{totalItems}</span> registros
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            type="button"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <span className="text-sm text-gray-700">
+            Página <span className="font-medium">{currentPage}</span> de{' '}
+            <span className="font-medium">{totalPages}</span>
+          </span>
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            type="button"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const toggleVendaExpanded = (vendaId: number) => {
     setExpandedVendaIds((prev) => {
@@ -548,21 +618,36 @@ const EstoquePage: React.FC = () => {
 
         return createPortal(
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 z-50 bg-black/60 flex justify-end"
+            onClick={handleClose}
             aria-modal="true"
             role="dialog"
           >
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-800">Lançar Entrada</h2>
-                  <button type="button" onClick={handleClose} className="p-1 rounded-full hover:bg-gray-200">
-                    <X className="w-5 h-5 text-gray-600" />
-                  </button>
-                </div>
+            <div
+              className="relative flex w-full max-w-2xl flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
+              onClick={(e) => e.stopPropagation()}
+              style={{ animation: 'slideInFromRight 0.3s forwards' }}
+            >
+              <style>{`
+                @keyframes slideInFromRight {
+                  from { transform: translateX(100%); }
+                  to { transform: translateX(0); }
+                }
+              `}</style>
+
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white flex-shrink-0">
+                <h2 className="text-xl font-bold text-gray-800">Lançar Entrada</h2>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  disabled={entradaSaving}
+                >
+                  <X className="h-6 w-6" />
+                </button>
               </div>
 
-              <div className="p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {entradaError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <p className="text-red-600 text-sm">{entradaError}</p>
@@ -615,7 +700,7 @@ const EstoquePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+              <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={handleClose}
@@ -705,7 +790,7 @@ const EstoquePage: React.FC = () => {
                 <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50" disabled={deleteProdutoSaving}>
                   Cancelar
                 </button>
-                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50" disabled={deleteProdutoSaving}>
+                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50" disabled={deleteProdutoSaving}>
                   {deleteProdutoSaving ? 'Excluindo...' : 'Excluir'}
                 </button>
               </div>
@@ -853,25 +938,36 @@ const EstoquePage: React.FC = () => {
 
         return createPortal(
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 z-50 bg-black/60 flex justify-end"
+            onClick={handleClose}
             aria-modal="true"
             role="dialog"
           >
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-800">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h2>
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="p-1 rounded-full hover:bg-gray-200"
-                  >
-                    <X className="w-5 h-5 text-gray-600" />
-                  </button>
-                </div>
+            <div
+              className="relative flex w-full max-w-2xl flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
+              onClick={(e) => e.stopPropagation()}
+              style={{ animation: 'slideInFromRight 0.3s forwards' }}
+            >
+              <style>{`
+                @keyframes slideInFromRight {
+                  from { transform: translateX(100%); }
+                  to { transform: translateX(0); }
+                }
+              `}</style>
+
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white flex-shrink-0">
+                <h2 className="text-xl font-bold text-gray-800">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h2>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  disabled={novoProdutoSaving}
+                >
+                  <X className="h-6 w-6" />
+                </button>
               </div>
 
-              <div className="p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {novoProdutoError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <p className="text-red-600 text-sm">{novoProdutoError}</p>
@@ -985,7 +1081,7 @@ const EstoquePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+              <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={handleClose}
@@ -1063,7 +1159,7 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  produtos.map((p) => {
+                  pagedProdutos.map((p) => {
                     const custo = toNumber(p.preco_custo_medio);
                     const venda = toNumber((p as any).preco_venda);
                     const minimoProduto = toNumber((p as any).estoque_minimo);
@@ -1106,7 +1202,7 @@ const EstoquePage: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-700"
                               title="Editar"
                               onClick={() => {
                                 setNovoProdutoError(null);
@@ -1132,12 +1228,12 @@ const EstoquePage: React.FC = () => {
                                 setNovoProdutoOpen(true);
                               }}
                             >
-                              <Pencil className="w-4 h-4 text-gray-700" />
+                              <Pencil className="w-4 h-4" />
                             </button>
 
                             <button
                               type="button"
-                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                              className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-700"
                               title="Excluir"
                               onClick={() => {
                                 setDeleteProdutoError(null);
@@ -1145,7 +1241,7 @@ const EstoquePage: React.FC = () => {
                                 setDeleteProdutoOpen(true);
                               }}
                             >
-                              <Trash className="w-4 h-4 text-red-600" />
+                              <Trash className="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -1156,6 +1252,8 @@ const EstoquePage: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationFooter(produtos.length)}
         </div>
       )}
 
@@ -1199,7 +1297,7 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  snapshot.map((row) => {
+                  pagedSnapshot.map((row) => {
                     const saldo = toNumber(row.saldo_atual) ?? 0;
                     const min = toNumber(row.estoque_minimo);
                     const max = toNumber(row.estoque_maximo);
@@ -1232,6 +1330,8 @@ const EstoquePage: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationFooter(snapshot.length)}
         </div>
       )}
 
@@ -1276,7 +1376,7 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  movs.map((m) => {
+                  pagedMovs.map((m) => {
                     const qtd = toNumber(m.quantidade) ?? 0;
                     const date = new Date(m.created_at);
                     const dateStr = Number.isNaN(date.getTime())
@@ -1313,6 +1413,8 @@ const EstoquePage: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationFooter(movs.length)}
         </div>
       )}
 
@@ -1357,7 +1459,7 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  vendas.map((v) => {
+                  pagedVendas.map((v) => {
                     const date = new Date(v.created_at);
                     const dateStr = Number.isNaN(date.getTime())
                       ? v.created_at
@@ -1462,6 +1564,8 @@ const EstoquePage: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationFooter(vendas.length)}
         </div>
       )}
 

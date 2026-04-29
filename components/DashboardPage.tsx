@@ -204,8 +204,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
         const emptyMetrics = [
             { title: 'Reservas Totais', value: '0', isPositive: true, change: '', subtitle: '0 no período' },
             { title: 'Receita Bruta', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Serviços + Produtos' },
-            { title: 'Receita do Proprietário', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Após pagar comissões', adminOnly: true },
+            { title: 'Despesas Pagas', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Saídas confirmadas no período' },
             { title: 'Comissões de Agentes', value: 'R$ 0,00', isPositive: false, change: '', subtitle: 'Somente serviços com regra explícita' },
+            { title: 'Lucro Líquido', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Receita bruta - comissões - despesas pagas' },
             { title: 'Ticket Médio', value: 'R$ 0,00', isPositive: true, change: '', subtitle: 'Por agendamento pago e concluído' },
             { title: 'Clientes Únicos', value: '0', isPositive: true, change: '', subtitle: 'Clientes diferentes no período' },
             { title: 'Taxa de Cancelamento', value: '0%', isPositive: true, change: '', subtitle: '0 de 0 cancelados' },
@@ -247,6 +248,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 ]
             },
             {
+                title: 'Despesas Pagas',
+                value: `R$ ${(Number(kpis.despesas_pagas_totais) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: (Number(kpis.despesas_pagas_totais) || 0) === 0,
+                change: '',
+                subtitle: 'Saídas confirmadas no período'
+            },
+            {
                 title: 'Alerta de Estoque',
                 value: String(kpis.alerta_estoque ?? 0),
                 isPositive: (Number(kpis.alerta_estoque) || 0) === 0,
@@ -255,19 +263,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 icon: '⚠️'
             },
             {
-                title: 'Receita do Proprietário',
-                value: `R$ ${(Number(kpis.receita_proprietario) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                isPositive: true,
-                change: '',
-                subtitle: 'Após pagar comissões dos agentes',
-                adminOnly: true
-            },
-            {
                 title: 'Comissões de Agentes',
                 value: `R$ ${(Number(kpis.comissoes_agentes) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                 isPositive: false,
                 change: '',
                 subtitle: 'Somente serviços com regra explícita'
+            },
+            {
+                title: 'Lucro Líquido',
+                value: `R$ ${(Number(kpis.lucro_liquido) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                isPositive: (Number(kpis.lucro_liquido) || 0) > 0,
+                change: '',
+                subtitle: 'Receita bruta - comissões - despesas pagas'
             },
             {
                 title: 'Ticket Médio',

@@ -27,6 +27,7 @@ import CuponsPage from './components/CuponsPage';
 import CreateCupomPage from './components/CreateCupomPage';
 import EditCupomPage from './components/EditCupomPage';
 import EstoquePage from './components/EstoquePage';
+import DespesasPage from './components/DespesasPage';
 import NotificationsPage from './components/NotificationsPage';
 import SettingsPage from './components/SettingsPage';
 import LoginPage from './components/LoginPage';
@@ -447,6 +448,7 @@ const App: React.FC = () => {
       case 'locations-create': return <CreateLocationPage setActiveView={setActiveView} />;
       case 'locations-edit': return <EditLocationPage setActiveView={setActiveView} locationId={editingLocationId} />;
       case 'estoque': return <EstoquePage />;
+      case 'despesas': return <DespesasPage />;
       case 'cupons-list': return <CuponsPage setActiveView={setActiveView} onEditCupom={handleEditCupom} />;
       case 'cupons-create': return <CreateCupomPage setActiveView={setActiveView} />;
       case 'cupons-edit': return <EditCupomPage setActiveView={setActiveView} cupomId={editingCupomId} />;

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { PerformanceMetric, Agent, Service, Location } from '../types';
-import { ChevronDown, Info, Check, MoreHorizontal } from './Icons';
+import { ChevronDown, Info, Check, MoreHorizontal, Ticket, LineChart, AlertTriangle } from './Icons';
 import DatePicker from './DatePicker';
 
 interface PerformanceCardProps {
@@ -13,9 +13,34 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) =>
   const stockAlertValue = isStockAlert ? Number(String(metric.value).replace(/[^0-9.-]/g, '')) : 0;
   const isStockUrgent = isStockAlert && Number.isFinite(stockAlertValue) && stockAlertValue > 0;
 
-  const borderClass = isStockUrgent ? 'border-orange-300 hover:border-orange-500' : 'border-gray-200 hover:border-[#2663EB]';
-  const topBarClass = isStockUrgent ? 'bg-orange-500' : 'bg-[#2663EB]';
-  const valueClass = isStockUrgent ? 'text-orange-700' : 'text-gray-900';
+  const isNetProfit = metric.title === 'Lucro Líquido';
+  const isPaidExpenses = metric.title === 'Despesas Pagas';
+
+  const borderClass = isNetProfit
+    ? metric.isPositive
+      ? 'border-green-200 hover:border-green-500'
+      : 'border-red-200 hover:border-red-500'
+    : isPaidExpenses
+      ? 'border-red-200 hover:border-red-400'
+      : 'border-gray-200 hover:border-[#2663EB]';
+
+  const topBarClass = isNetProfit
+    ? metric.isPositive
+      ? 'bg-green-600'
+      : 'bg-red-600'
+    : isPaidExpenses
+      ? 'bg-red-500'
+      : 'bg-[#2663EB]';
+
+  const valueClass = isNetProfit
+    ? metric.isPositive
+      ? 'text-green-700'
+      : 'text-red-700'
+    : isPaidExpenses
+      ? 'text-red-700'
+      : 'text-gray-900';
+
+  const iconNode = isStockAlert ? <AlertTriangle className="w-4 h-4 text-gray-400" /> : metric.icon;
 
   return (
     <div
@@ -44,10 +69,10 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({ metric, onClick }) =>
         )}
       </div>
 
-      {metric.icon && (
+      {iconNode && (
         <div className="flex-shrink-0">
           <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm font-semibold">
-            {metric.icon}
+            {iconNode}
           </div>
         </div>
       )}
@@ -234,7 +259,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         value: formatMoney(clubIntelligence.mrr),
         isPositive: clubIntelligence.mrr >= 0,
         change: '',
-        icon: '💰',
+        icon: <Ticket className="w-4 h-4 text-gray-400" />,
         subtitle: 'Receita recorrente no período'
       },
       {
@@ -242,7 +267,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         value: `${formatMoney(clubIntelligence.ticket_medio_assinante)} vs ${formatMoney(clubIntelligence.ticket_medio_comum)}`,
         isPositive: clubIntelligence.ticket_medio_assinante >= clubIntelligence.ticket_medio_comum,
         change: '',
-        icon: '🎟️',
+        icon: <Ticket className="w-4 h-4 text-gray-400" />,
         subtitle: 'Caixa médio por membro vs cliente comum'
       },
       {
@@ -250,7 +275,7 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
         value: `${clubIntelligence.churn_pct.toFixed(1)}%`,
         isPositive: clubIntelligence.churn_pct < 10,
         change: '',
-        icon: '📉',
+        icon: <LineChart className="w-4 h-4 text-gray-400" />,
         subtitle: `${clubIntelligence.canceladas_periodo} canceladas | ${clubIntelligence.ativas_atuais} ativas`
       }
     ];
@@ -277,9 +302,9 @@ const PerformanceSection: React.FC<PerformanceSectionProps> = ({
     if (activeTab === 'Financeiro') {
       return [
         byTitle('Receita Bruta'),
+        byTitle('Despesas Pagas'),
         byTitle('Comissões de Agentes'),
-        byTitle('Receita do Proprietário'),
-        byTitle('Ticket Médio')
+        byTitle('Lucro Líquido')
       ].filter(Boolean) as PerformanceMetric[];
     }
 
