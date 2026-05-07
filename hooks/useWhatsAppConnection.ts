@@ -15,6 +15,10 @@ export interface UseWhatsAppConnectionOptions {
   pollIntervalMs?: number;
 }
 
+type FetchStatusOptions = {
+  silent?: boolean;
+};
+
 type StopReason = 'none' | 'auth_critical';
 
 const normalizeStatus = (value: any): WhatsAppConnectionState => {
@@ -61,8 +65,12 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
     return Math.round(capped * jitterFactor);
   }, []);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (opts: FetchStatusOptions = {}) => {
     if (!isAuthenticated || !token) return;
+
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return;
+    }
 
     if (inflightRef.current) return;
     inflightRef.current = true;
@@ -71,7 +79,7 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
     const ac = new AbortController();
     abortRef.current = ac;
 
-    setStatusLoading(true);
+    if (!opts.silent) setStatusLoading(true);
     try {
       setLastStatusFetchAt(Date.now());
 
@@ -132,7 +140,7 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
       setError(msgFriendly);
     } finally {
       inflightRef.current = false;
-      setStatusLoading(false);
+      if (!opts.silent) setStatusLoading(false);
     }
   }, [isAuthenticated, token]);
 
@@ -266,6 +274,11 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
       return;
     }
 
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      stopPolling();
+      return;
+    }
+
     if (pollTimerRef.current) {
       window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -276,7 +289,7 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
     const delay = opts?.immediate ? 0 : computeDelayMs(attemptRef.current);
 
     const id = window.setTimeout(async () => {
-      await fetchStatus();
+      await fetchStatus({ silent: true });
 
       if (stopReasonRef.current === 'auth_critical') {
         stopPolling();
@@ -308,6 +321,23 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
     setError(null);
     scheduleNext({ immediate: true });
   }, [scheduleNext]);
+
+  useEffect(() => {
+    if (!autoPoll) return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        stopPolling();
+        return;
+      }
+      scheduleNext({ immediate: true });
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [autoPoll, scheduleNext, stopPolling]);
 
   useEffect(() => {
     if (!autoPoll || !isAuthenticated || !token) {

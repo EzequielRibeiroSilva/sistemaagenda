@@ -92,7 +92,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     , resetAndRunNow
     } = useWhatsAppConnection({
         autoPoll: canManageWhatsApp,
-        pollIntervalMs: isWhatsAppDrawerOpen ? 2000 : 30000
+        pollIntervalMs: isWhatsAppDrawerOpen ? 5000 : 60000
     });
 
     useEffect(() => {
