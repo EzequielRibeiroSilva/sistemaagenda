@@ -1006,7 +1006,7 @@ const PreviewSection: React.FC<PreviewSectionProps> = ({
                       <div className="flex items-center gap-1.5">
                         <p className={`text-xs ${hasSpecialStatus ? 'opacity-80' : ''}`}>{card.startTime} - {card.endTime}</p>
                         <div className="inline-flex bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
-                          #{card.numeroAgendamento || card.id}
+                          #{String(card.numeroAgendamento || card.id).padStart(2, '0')}
                         </div>
                         {isRecurring && isLastOfSeries && (
                           <div className="inline-flex bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200 shadow-sm">

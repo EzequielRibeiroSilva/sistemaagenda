@@ -15,6 +15,8 @@ export interface UseWhatsAppConnectionOptions {
   pollIntervalMs?: number;
 }
 
+type StopReason = 'none' | 'auth_critical';
+
 const normalizeStatus = (value: any): WhatsAppConnectionState => {
   if (value === 'open' || value === 'close' || value === 'connecting') return value;
   return 'unknown';
@@ -40,34 +42,96 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
 
   const pollTimerRef = useRef<number | null>(null);
   const pollIntervalRef = useRef<number>(pollIntervalMs);
+  const abortRef = useRef<AbortController | null>(null);
+  const inflightRef = useRef(false);
+
+  const attemptRef = useRef(0);
+  const authFailStreakRef = useRef(0);
+  const stopReasonRef = useRef<StopReason>('none');
+  const lastErrorRef = useRef<string | null>(null);
+
+  const AUTH_FAIL_THRESHOLD = 5;
+  const BACKOFF_BASE_MS = 2000;
+  const BACKOFF_MAX_MS = 30000;
+
+  const computeDelayMs = useCallback((attempt: number) => {
+    const exp = BACKOFF_BASE_MS * Math.pow(2, attempt);
+    const capped = Math.min(exp, BACKOFF_MAX_MS);
+    const jitterFactor = 0.7 + Math.random() * 0.6;
+    return Math.round(capped * jitterFactor);
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     if (!isAuthenticated || !token) return;
 
+    if (inflightRef.current) return;
+    inflightRef.current = true;
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setStatusLoading(true);
-    setError(null);
     try {
       setLastStatusFetchAt(Date.now());
+
       const resp = await fetch(`${API_BASE_URL}/whatsapp/status`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        signal: ac.signal
       });
 
       const json = await resp.json().catch(() => null);
       setLastStatusRaw(json);
+
       if (!resp.ok || !json?.success) {
-        setError(json?.message || 'Erro ao buscar status do WhatsApp');
+        const httpStatus = resp?.status;
+        const code = json?.error || json?.code;
+        const message = json?.message || 'Erro ao buscar status do WhatsApp';
+
+        const isAuthError = httpStatus === 401 || httpStatus === 403 || code === 'AUTH_FAILED';
+
+        if (isAuthError) {
+          authFailStreakRef.current += 1;
+          const msgFriendly = 'Falha na conexão com o serviço de WhatsApp. Clique em "Gerar novo QR" para tentar novamente ou entre em contato com o suporte.';
+          lastErrorRef.current = msgFriendly;
+          setError(msgFriendly);
+
+          if (authFailStreakRef.current >= AUTH_FAIL_THRESHOLD) {
+            stopReasonRef.current = 'auth_critical';
+            return;
+          }
+        } else {
+          authFailStreakRef.current = 0;
+          lastErrorRef.current = message;
+          setError(message);
+        }
+
         return;
       }
+
+      // sucesso: resetar backoff e streak
+      attemptRef.current = 0;
+      authFailStreakRef.current = 0;
+      stopReasonRef.current = 'none';
+      lastErrorRef.current = null;
+      setError(null);
 
       setStatus({
         whatsapp_instance_name: json?.data?.whatsapp_instance_name ?? null,
         whatsapp_status: normalizeStatus(json?.data?.whatsapp_status),
         whatsapp_number: json?.data?.whatsapp_number ?? null
       });
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+      authFailStreakRef.current = 0;
+      const msgFriendly = 'Falha de rede ao comunicar com o servidor';
+      lastErrorRef.current = msgFriendly;
+      setError(msgFriendly);
     } finally {
+      inflightRef.current = false;
       setStatusLoading(false);
     }
   }, [isAuthenticated, token]);
@@ -114,6 +178,12 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
       return null;
     }
 
+    // reset manual
+    attemptRef.current = 0;
+    authFailStreakRef.current = 0;
+    stopReasonRef.current = 'none';
+    lastErrorRef.current = null;
+
     setConnectLoading(true);
     setError(null);
     try {
@@ -128,47 +198,116 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
 
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json?.success) {
-        setError(json?.message || 'Erro ao conectar WhatsApp');
+        const httpStatus = resp?.status;
+        const code = json?.error || json?.code;
+        const isAuthError = httpStatus === 401 || httpStatus === 403 || code === 'AUTH_FAILED';
+
+        if (isAuthError) {
+          authFailStreakRef.current += 1;
+          const msgFriendly = 'Falha na conexão com o serviço de WhatsApp. Clique em "Gerar novo QR" para tentar novamente ou entre em contato com o suporte.';
+          lastErrorRef.current = msgFriendly;
+          setError(msgFriendly);
+          if (authFailStreakRef.current >= AUTH_FAIL_THRESHOLD) {
+            stopReasonRef.current = 'auth_critical';
+          }
+        } else {
+          lastErrorRef.current = json?.message || 'Erro ao conectar WhatsApp';
+          setError(json?.message || 'Erro ao conectar WhatsApp');
+        }
         return null;
       }
 
       const qr = json?.data?.qrcodeBase64 || null;
       setQrcodeBase64(qr);
+      lastErrorRef.current = null;
+      setError(null);
 
       setStatus(prev => ({
         ...prev,
         whatsapp_instance_name: json?.data?.instanceName ?? prev.whatsapp_instance_name
       }));
 
+      // comando humano: tentar status imediatamente (reset manual já foi aplicado no início)
+      // Observação: se cair no circuit breaker, o scheduleNext irá interromper o polling.
+      setTimeout(() => {
+        try {
+          fetchStatus();
+        } catch {}
+      }, 0);
+
       return qr;
     } finally {
       setConnectLoading(false);
     }
-  }, [isAuthenticated, token]);
-
-  const startPolling = useCallback(() => {
-    const intervalChanged = pollIntervalRef.current !== pollIntervalMs;
-
-    if (pollTimerRef.current && intervalChanged) {
-      window.clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-
-    if (pollTimerRef.current) return;
-
-    pollIntervalRef.current = pollIntervalMs;
-    const id = window.setInterval(() => {
-      fetchStatus();
-    }, pollIntervalMs);
-    pollTimerRef.current = id;
-  }, [fetchStatus, pollIntervalMs]);
+  }, [fetchStatus, isAuthenticated, token]);
 
   const stopPolling = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     if (pollTimerRef.current) {
-      window.clearInterval(pollTimerRef.current);
+      window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, []);
+
+  const scheduleNext = useCallback((opts?: { immediate?: boolean }) => {
+    const intervalChanged = pollIntervalRef.current !== pollIntervalMs;
+    if (intervalChanged) {
+      stopPolling();
+    }
+
+    if (!autoPoll || !isAuthenticated || !token) {
+      stopPolling();
+      return;
+    }
+
+    if (stopReasonRef.current === 'auth_critical') {
+      stopPolling();
+      return;
+    }
+
+    if (pollTimerRef.current) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
+    pollIntervalRef.current = pollIntervalMs;
+
+    const delay = opts?.immediate ? 0 : computeDelayMs(attemptRef.current);
+
+    const id = window.setTimeout(async () => {
+      await fetchStatus();
+
+      if (stopReasonRef.current === 'auth_critical') {
+        stopPolling();
+        return;
+      }
+
+      // Se houve erro e não é auth critical => backoff progressivo
+      if (lastErrorRef.current) {
+        attemptRef.current = Math.min(attemptRef.current + 1, 10);
+      } else {
+        attemptRef.current = 0;
+      }
+
+      scheduleNext();
+    }, delay);
+
+    pollTimerRef.current = id;
+  }, [autoPoll, computeDelayMs, fetchStatus, isAuthenticated, pollIntervalMs, stopPolling, token]);
+
+  const startPolling = useCallback(() => {
+    scheduleNext({ immediate: true });
+  }, [scheduleNext]);
+
+  const resetAndRunNow = useCallback(() => {
+    attemptRef.current = 0;
+    authFailStreakRef.current = 0;
+    stopReasonRef.current = 'none';
+    lastErrorRef.current = null;
+    setError(null);
+    scheduleNext({ immediate: true });
+  }, [scheduleNext]);
 
   useEffect(() => {
     if (!autoPoll || !isAuthenticated || !token) {
@@ -176,7 +315,6 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
       return;
     }
 
-    fetchStatus();
     startPolling();
 
     return () => {
@@ -209,6 +347,7 @@ export const useWhatsAppConnection = (options: UseWhatsAppConnectionOptions = {}
     disconnect,
     isConnected,
     startPolling,
-    stopPolling
+    stopPolling,
+    resetAndRunNow
   };
 };

@@ -10,8 +10,6 @@ interface WhatsAppConnectModalProps {
   connectedNumber?: string | null;
   loading?: boolean;
   onRetry?: () => void;
-  debugLastFetchAt?: number | null;
-  debugLastRaw?: any;
 }
 
 const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
@@ -21,9 +19,7 @@ const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
   statusText,
   connectedNumber,
   loading,
-  onRetry,
-  debugLastFetchAt,
-  debugLastRaw
+  onRetry
 }) => {
   const portalRoot = document.getElementById('portal-root');
   const qrContainerRef = useRef<HTMLDivElement>(null);
@@ -89,13 +85,6 @@ const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
             </div>
           )}
 
-          {process.env.NODE_ENV === 'development' && (debugLastFetchAt || debugLastRaw) && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
-              <div className="font-semibold mb-1">Debug</div>
-              <div>Último poll: {debugLastFetchAt ? new Date(debugLastFetchAt).toLocaleTimeString('pt-BR') : '-'}</div>
-              <pre className="mt-2 whitespace-pre-wrap break-words max-h-40 overflow-auto">{debugLastRaw ? JSON.stringify(debugLastRaw, null, 2) : ''}</pre>
-            </div>
-          )}
         </div>
       </div>
     </div>,

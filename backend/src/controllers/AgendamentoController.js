@@ -9,6 +9,7 @@ const BookingAvailabilityService = require('../services/BookingAvailabilityServi
 const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
 const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
 const AgendamentoConclusaoService = require('../services/AgendamentoConclusaoService');
+const InventoryService = require('../services/InventoryService');
 
 class AgendamentoController extends BaseController {
   constructor() {
@@ -449,10 +450,18 @@ class AgendamentoController extends BaseController {
   async show(req, res) {
     try {
       const { id } = req.params;
+      const agendamentoIdNum = parseInt(id, 10);
       let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
 
+
+      if (!Number.isFinite(agendamentoIdNum)) {
+        return res.status(400).json({
+          error: 'ID inválido',
+          message: 'O id do agendamento deve ser um número válido.'
+        });
+      }
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -471,7 +480,7 @@ class AgendamentoController extends BaseController {
         }
       }
 
-      const data = await this.model.findWithServicos(id);
+      const data = await this.model.findWithServicos(agendamentoIdNum);
 
       if (!data) {
         return res.status(404).json({
@@ -500,7 +509,7 @@ class AgendamentoController extends BaseController {
         // Para ADMIN/MASTER: verificar se o agendamento pertence ao usuário (através da unidade)
         const agendamento = await this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .where('agendamentos.id', id)
+          .where('agendamentos.id', agendamentoIdNum)
           .where('unidades.usuario_id', usuarioId)
           .first();
 
@@ -510,7 +519,7 @@ class AgendamentoController extends BaseController {
           // DEBUG: Buscar informações adicionais para debug
           const debugInfo = await this.model.db(this.model.tableName)
             .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-            .where('agendamentos.id', id)
+            .where('agendamentos.id', agendamentoIdNum)
             .select('agendamentos.id', 'agendamentos.unidade_id', 'unidades.usuario_id', 'unidades.nome as unidade_nome')
             .first();
 
@@ -524,8 +533,6 @@ class AgendamentoController extends BaseController {
 
       // ✅ PDV (E2E): anexar produtos vendidos e pagamentos (para reabrir agendamento concluído)
       try {
-        const agendamentoIdNum = parseInt(id, 10);
-
         let produtosVendidos = [];
         try {
           produtosVendidos = await this.model.db('agendamento_produtos as ap')
@@ -1290,6 +1297,18 @@ class AgendamentoController extends BaseController {
 
       return;
     } catch (error) {
+      if (error && error.code === 'SALDO_INSUFICIENTE') {
+        return res.status(409).json({
+          success: false,
+          code: 'SALDO_INSUFICIENTE',
+          error: 'Saldo insuficiente',
+          message: error.message,
+          produto_id: error.produto_id || null,
+          unidade_id: error.unidade_id || null,
+          quantidade: error.quantidade || null
+        });
+      }
+
       if (error && error.httpStatus) {
         return res.status(error.httpStatus).json({
           success: false,
@@ -1539,6 +1558,7 @@ class AgendamentoController extends BaseController {
       const db = this.model.db;
 
       await db.transaction(async (trx) => {
+        const inventoryService = new InventoryService(db);
         const produtosRows = Array.isArray(produtos_vendidos) ? produtos_vendidos : [];
         const produtosValidos = produtosRows
           .map((p) => ({
@@ -1567,6 +1587,87 @@ class AgendamentoController extends BaseController {
             ...dadosParaAtualizar,
             updated_at: new Date()
           });
+
+        // ✅ ESTORNO AUTOMÁTICO (PDV): se sair de Concluído, devolver produtos vendidos ao estoque.
+        const statusMudou = (status !== undefined && status !== statusAnterior);
+        const deveEstornarVenda = statusMudou && statusAnterior === 'Concluído' && statusFinal !== 'Concluído';
+
+        if (deveEstornarVenda) {
+          let vendaId = agendamento.venda_id ? Number(agendamento.venda_id) : null;
+          if (!vendaId) {
+            const vendaRow = await trx('vendas')
+              .where('agendamento_id', parseInt(id, 10))
+              .select('id')
+              .first();
+            vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+          }
+
+          if (vendaId) {
+            const venda = await trx('vendas')
+              .where({ id: vendaId })
+              .forUpdate()
+              .first();
+
+            const statusVenda = String(venda?.status || '').toUpperCase();
+            if (venda && statusVenda === 'PAID') {
+              const itens = await trx('venda_itens')
+                .where('venda_id', vendaId)
+                .select('item_type', 'reference_id', 'quantidade');
+
+              const origemId = `ESTORNO:VENDA:${vendaId}`;
+
+              for (const it of itens || []) {
+                if (String(it.item_type) !== 'PRODUTO') continue;
+                const produtoId = Number(it.reference_id);
+                const quantidade = Number(it.quantidade);
+                if (!Number.isFinite(produtoId) || !Number.isFinite(quantidade) || quantidade <= 0) continue;
+
+                const movJaExiste = await trx('estoque_movimentacoes')
+                  .where({
+                    usuario_id: venda.usuario_id,
+                    unidade_id: Number(venda.unidade_id),
+                    produto_id: produtoId,
+                    tipo: 'ESTORNO',
+                    origem_id: origemId
+                  })
+                  .select('id')
+                  .first();
+
+                if (movJaExiste?.id) {
+                  continue;
+                }
+
+                await inventoryService.movimentarEstoque({
+                  usuario_id: venda.usuario_id,
+                  unidade_id: Number(venda.unidade_id),
+                  produto_id: produtoId,
+                  tipo: 'ESTORNO',
+                  quantidade,
+                  motivo: `ESTORNO AUTOMÁTICO - Venda ${vendaId} (Agendamento ${id})`,
+                  origem_id: origemId,
+                  created_by: req.user?.id || null,
+                  trx
+                });
+              }
+
+              await trx('venda_pagamentos')
+                .where('venda_id', vendaId)
+                .update({ status: 'REFUNDED' });
+
+              await trx('vendas')
+                .where('id', vendaId)
+                .update({
+                  status: 'REFUNDED',
+                  updated_at: trx.fn.now()
+                });
+            }
+          }
+
+          // Permitir reconclusão futura criando uma nova venda.
+          await trx('agendamentos')
+            .where('id', parseInt(id, 10))
+            .update({ venda_id: null });
+        }
 
         // Motor de Estados (Clube): gerenciar assinatura_usos de forma atômica com o status
         // - Cancelado (Painel/Admin): estorno total (DELETE)
@@ -1649,15 +1750,13 @@ class AgendamentoController extends BaseController {
                 quantidade: Number(Number(p.quantidade).toFixed(3)),
                 preco_aplicado: Number((Number.isFinite(p.preco_aplicado) ? p.preco_aplicado : 0).toFixed(2)),
                 agente_id: Number.isFinite(p.agente_id) ? p.agente_id : null,
-                created_at: trx.fn.now(),
-                updated_at: trx.fn.now()
+                created_at: trx.fn.now()
               }))
             );
           }
         }
 
         // ✅ PATCH ESTOQUE (Sprint 3+): Reconciliação atômica e síncrona quando envolver Concluído ou troca de serviços
-        const statusMudou = (status !== undefined && status !== statusAnterior);
         const envolveConcluido = (
           (statusMudou && (statusAnterior === 'Concluído' || status === 'Concluído')) ||
           ((shouldUpdateServicos || shouldUpdateExtras) && statusFinal === 'Concluído')
@@ -1725,6 +1824,18 @@ class AgendamentoController extends BaseController {
         message: 'Agendamento atualizado com sucesso' 
       });
     } catch (error) {
+      if (error && error.code === 'SALDO_INSUFICIENTE') {
+        return res.status(409).json({
+          success: false,
+          code: 'SALDO_INSUFICIENTE',
+          error: 'Saldo insuficiente',
+          message: error.message,
+          produto_id: error.produto_id || null,
+          unidade_id: error.unidade_id || null,
+          quantidade: error.quantidade || null
+        });
+      }
+
       if (error && error.httpStatus) {
         return res.status(error.httpStatus).json({
           success: false,
@@ -1842,72 +1953,6 @@ class AgendamentoController extends BaseController {
 
     } catch (error) {
       logger.error(' [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: error.message
-      });
-    }
-  }
-
-  // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
-  async finalize(req, res) {
-    try {
-      const { id } = req.params;
-      const { paymentMethod } = req.body;
-      let usuarioId = req.user?.id;
-      const userRole = req.user?.role;
-      const userAgenteId = req.user?.agente_id;
-
-      if (!usuarioId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Usuário não autenticado'
-        });
-      }
-
-      // Buscar agendamento com filtro de escopo
-      let agendamentoQuery = this.model.db(this.model.tableName)
-        .where('agendamentos.id', id);
-
-      if (userRole === 'AGENTE' && userAgenteId) {
-        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
-      } else {
-        agendamentoQuery = agendamentoQuery
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .where('unidades.usuario_id', usuarioId);
-      }
-
-      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
-
-      if (!agendamento) {
-        return res.status(404).json({
-          success: false,
-          error: 'Agendamento não encontrado'
-        });
-      }
-
-      // Atualizar agendamento com status Concluído e método de pagamento
-      await this.model.db(this.model.tableName)
-        .where('id', id)
-        .update({
-          status: 'Concluído',
-          metodo_pagamento: paymentMethod,
-          status_pagamento: 'Pago',
-          updated_at: new Date()
-        });
-
-      return res.json({
-        success: true,
-        message: 'Agendamento finalizado com sucesso',
-        data: {
-          id: parseInt(id),
-          status: 'Concluído'
-        }
-      });
-
-    } catch (error) {
-      logger.error(' [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -2106,6 +2151,7 @@ class AgendamentoController extends BaseController {
         
         // Dados do agendamento
         agendamento_id: agendamento.id,
+        numero_agendamento: agendamento.numero_agendamento || null,
         data_agendamento: agendamento.data_agendamento,
         hora_inicio: agendamento.hora_inicio,
         hora_fim: agendamento.hora_fim,
@@ -2127,106 +2173,6 @@ class AgendamentoController extends BaseController {
     } catch (error) {
       logger.error('❌ [AgendamentoController.buscarDadosCompletos] Erro ao buscar dados completos:', error);
       return null;
-    }
-  }
-
-  // PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
-  async finalize(req, res) {
-    try {
-      const { id } = req.params;
-      const { paymentMethod } = req.body;
-      let usuarioId = req.user?.id;
-      const userRole = req.user?.role;
-      const userAgenteId = req.user?.agente_id;
-
-      if (!usuarioId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Usuário não autenticado'
-        });
-      }
-
-      // ✅ REMOÇÃO DA LÓGICA DE SOBRESCRITA DE usuarioId
-
-      // Buscar agendamento com filtro de escopo
-      let agendamentoQuery = this.model.db(this.model.tableName)
-        .where('agendamentos.id', id);
-
-      if (userRole === 'AGENTE' && userAgenteId) {
-        // AGENTE: Filtro estrito pelo seu próprio ID de agente
-        agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
-      } else {
-        // ADMIN/MASTER: Filtro pela unidade
-        agendamentoQuery = agendamentoQuery
-          .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
-          .where('unidades.usuario_id', usuarioId);
-      }
-
-      const agendamento = await agendamentoQuery.select('agendamentos.*').first();
-
-      if (!agendamento) {
-        return res.status(404).json({
-          success: false,
-          error: 'Agendamento não encontrado'
-        });
-      }
-
-      // ✅ RBAC: A permissão de AGENTE já está garantida pela query.
-
-      // Verificar se já está finalizado
-      if (agendamento.status === 'Concluído') {
-        return res.status(400).json({
-          success: false,
-          error: 'Agendamento já está finalizado'
-        });
-      }
-
-      // Atualizar status para Concluído
-      const updateData = {
-        status: 'Concluído',
-        updated_at: new Date()
-      };
-
-      if (paymentMethod) {
-        updateData.metodo_pagamento = paymentMethod; // ✅ CORREÇÃO: Usar metodo_pagamento
-      }
-
-      await this.model.db(this.model.tableName)
-        .where('id', id)
-        .update(updateData);
-
-      await this.agendamentoConclusaoService.reconcileEstoque({
-        agendamentoId: parseInt(id, 10),
-        triggeredByUserId: req.user?.id
-      });
-
-      setImmediate(async () => {
-        try {
-          await this.agendamentoConclusaoService.scheduleConviteRetorno({
-            agendamentoId: parseInt(id, 10)
-          });
-        } catch (error) {
-          logger.error(`❌ [AgendamentoController.finalize] Erro no hook de conclusão em background:`, error);
-        }
-      });
-
-      return res.json({
-        success: true,
-        message: 'Agendamento finalizado com sucesso',
-        data: {
-          id: parseInt(id),
-          status: 'Concluído',
-          metodo_pagamento: updateData.metodo_pagamento || null // ✅ CORREÇÃO: Retornar o nome correto
-        }
-      });
-
-    } catch (error) {
-      logger.error('❌ [AgendamentoController.finalize] Erro ao finalizar agendamento:', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: error.message
-      });
     }
   }
 

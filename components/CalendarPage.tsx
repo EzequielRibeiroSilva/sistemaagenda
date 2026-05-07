@@ -1523,7 +1523,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                                     </div>
                                                 )}
                                                 <div className="bg-white px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-700 border border-gray-300 shadow-sm">
-                                                    #{app.numeroAgendamento || app.id}
+                                                    #{String(app.numeroAgendamento || app.id).padStart(2, '0')}
                                                 </div>
                                                 {isRecurring && isLastOfSeries && (
                                                     <div className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200 shadow-sm">

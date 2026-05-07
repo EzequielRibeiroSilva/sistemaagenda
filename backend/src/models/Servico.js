@@ -10,6 +10,7 @@ class Servico extends BaseModel {
     return await this.db(this.tableName)
       .leftJoin('categorias_servicos', 'servicos.categoria_id', 'categorias_servicos.id')
       .where('servicos.usuario_id', usuarioId)
+      .whereNull('servicos.deleted_at')
       .select(
         'servicos.*',
         'categorias_servicos.nome as categoria_nome'
@@ -21,6 +22,7 @@ class Servico extends BaseModel {
     const servicos = await this.db(this.tableName)
       .leftJoin('categorias_servicos', 'servicos.categoria_id', 'categorias_servicos.id')
       .where('servicos.usuario_id', usuarioId)
+      .whereNull('servicos.deleted_at')
       .select(
         'servicos.*',
         'categorias_servicos.nome as categoria_nome'
@@ -64,6 +66,7 @@ class Servico extends BaseModel {
     return await this.db(this.tableName)
       .leftJoin('categorias_servicos', 'servicos.categoria_id', 'categorias_servicos.id')
       .where('servicos.usuario_id', usuarioId)
+      .whereNull('servicos.deleted_at')
       .where('servicos.status', 'Ativo')
       .select(
         'servicos.*',
@@ -76,6 +79,7 @@ class Servico extends BaseModel {
     return await this.db(this.tableName)
       .where('categoria_id', categoriaId)
       .where('usuario_id', usuarioId)
+      .whereNull('deleted_at')
       .select('*');
   }
 
@@ -84,6 +88,7 @@ class Servico extends BaseModel {
     let query = this.db(this.tableName)
       .join('agente_servicos', 'servicos.id', 'agente_servicos.servico_id')
       .where('agente_servicos.agente_id', agenteId)
+      .whereNull('servicos.deleted_at')
       .where('servicos.status', 'Ativo');
 
     // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o serviço pertence à empresa
@@ -100,6 +105,7 @@ class Servico extends BaseModel {
       .leftJoin('agendamento_servicos', 'servicos.id', 'agendamento_servicos.servico_id')
       .leftJoin('categorias_servicos', 'servicos.categoria_id', 'categorias_servicos.id')
       .where('servicos.usuario_id', usuarioId)
+      .whereNull('servicos.deleted_at')
       .select(
         'servicos.*',
         'categorias_servicos.nome as categoria_nome'
@@ -161,6 +167,7 @@ class Servico extends BaseModel {
   async findByIdComplete(servicoId) {
     const servico = await this.db(this.tableName)
       .where('id', servicoId)
+      .whereNull('deleted_at')
       .first();
 
     if (!servico) return null;

@@ -1,5 +1,31 @@
 const { db } = require('../config/knex');
 
+const toCents = (value) => {
+  if (value == null) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const normalized = raw.replace(',', '.');
+  const negative = normalized.startsWith('-');
+  const unsigned = negative ? normalized.slice(1) : normalized;
+  const parts = unsigned.split('.');
+  const intPart = (parts[0] || '0').replace(/\D/g, '') || '0';
+  const fracRaw = (parts[1] || '').replace(/\D/g, '');
+  const fracPadded = fracRaw.padEnd(3, '0');
+  const frac2 = fracPadded.slice(0, 2);
+  const frac3 = fracPadded.slice(2, 3);
+  let cents = (parseInt(intPart, 10) * 100) + parseInt(frac2 || '0', 10);
+  if (parseInt(frac3 || '0', 10) >= 5) {
+    cents += 1;
+  }
+  return negative ? -cents : cents;
+};
+
+const centsToDecimal = (cents) => {
+  const n = Number(cents);
+  if (!Number.isFinite(n)) return 0;
+  return n / 100;
+};
+
 class ComissaoController {
   // GET /api/comissoes/resumo?unidade_id=123&data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD
   async resumo(req, res) {
@@ -36,7 +62,7 @@ class ComissaoController {
         return res.status(404).json({ success: false, error: 'Unidade não encontrada ou acesso negado' });
       }
 
-      const rows = await db('agendamento_servicos as asv')
+      const servicoRows = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .join('agentes as ag', 'ag.id', 'a.agente_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
@@ -63,8 +89,75 @@ class ComissaoController {
               ELSE 0 END
             ), 0) as total_pago
           `)
-        )
-        .orderBy('total_pendente', 'desc');
+        );
+
+      const produtoRows = await db('agendamento_produtos as ap')
+        .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
+        .join('agentes as ag', 'ag.id', 'ap.agente_id')
+        .join('produtos as p', 'p.id', 'ap.produto_id')
+        .where('a.unidade_id', unidadeId)
+        .where('a.data_agendamento', '>=', data_inicio)
+        .where('a.data_agendamento', '<=', data_fim)
+        .where('a.status', 'Concluído')
+        .where('a.status_pagamento', 'Pago')
+        .whereNotNull('ap.agente_id')
+        .where('p.comissao_percentual', '>', 0)
+        .groupBy('ap.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
+        .select(
+          'ap.agente_id',
+          db.raw("COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) as agente_nome"),
+          db.raw(`
+            COALESCE(SUM(
+              CASE WHEN COALESCE(ap.comissao_paga, false) = false THEN
+                (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)
+              ELSE 0 END
+            ), 0) as total_pendente
+          `),
+          db.raw(`
+            COALESCE(SUM(
+              CASE WHEN COALESCE(ap.comissao_paga, false) = true THEN
+                (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)
+              ELSE 0 END
+            ), 0) as total_pago
+          `)
+        );
+
+      const mergedByAgenteId = new Map();
+      for (const r of servicoRows || []) {
+        const agenteId = Number(r.agente_id);
+        mergedByAgenteId.set(agenteId, {
+          agente_id: agenteId,
+          agente_nome: r.agente_nome,
+          total_pendente_cents: toCents(r.total_pendente),
+          total_pago_cents: toCents(r.total_pago)
+        });
+      }
+      for (const r of produtoRows || []) {
+        const agenteId = Number(r.agente_id);
+        const existing = mergedByAgenteId.get(agenteId);
+        const pendenteCents = toCents(r.total_pendente);
+        const pagoCents = toCents(r.total_pago);
+        if (existing) {
+          existing.total_pendente_cents = Number(existing.total_pendente_cents || 0) + pendenteCents;
+          existing.total_pago_cents = Number(existing.total_pago_cents || 0) + pagoCents;
+        } else {
+          mergedByAgenteId.set(agenteId, {
+            agente_id: agenteId,
+            agente_nome: r.agente_nome,
+            total_pendente_cents: pendenteCents,
+            total_pago_cents: pagoCents
+          });
+        }
+      }
+
+      const rows = Array.from(mergedByAgenteId.values())
+        .map((r) => ({
+          agente_id: r.agente_id,
+          agente_nome: r.agente_nome,
+          total_pendente: centsToDecimal(r.total_pendente_cents || 0),
+          total_pago: centsToDecimal(r.total_pago_cents || 0)
+        }))
+        .sort((a, b) => (b.total_pendente || 0) - (a.total_pendente || 0));
 
       return res.json({
         success: true,
@@ -72,12 +165,7 @@ class ComissaoController {
           unidade_id: unidadeId,
           data_inicio,
           data_fim,
-          ranking: (rows || []).map((r) => ({
-            agente_id: Number(r.agente_id),
-            agente_nome: r.agente_nome,
-            total_pendente: Number(Number(r.total_pendente || 0).toFixed(2)),
-            total_pago: Number(Number(r.total_pago || 0).toFixed(2))
-          }))
+          ranking: rows
         }
       });
     } catch (error) {
@@ -138,8 +226,8 @@ class ComissaoController {
         return res.status(404).json({ success: false, error: 'Unidade não encontrada ou acesso negado' });
       }
 
-      // ✅ Extrato pendente: serviços em agendamentos concluídos e pagos, com comissão ainda não paga
-      const rows = await db('agendamento_servicos as asv')
+      // ✅ Extrato: serviços em agendamentos concluídos e pagos
+      const servicoRows = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .leftJoin('clientes as c', 'c.id', 'a.cliente_id')
@@ -174,7 +262,55 @@ class ComissaoController {
         )
         .orderBy('a.hora_inicio', 'asc');
 
-      const totalRow = await db('agendamento_servicos as asv')
+      // ✅ Extrato: produtos com comissão > 0 (ignorar comissão 0)
+      const produtoRows = await db('agendamento_produtos as ap')
+        .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
+        .join('produtos as p', 'p.id', 'ap.produto_id')
+        .leftJoin('clientes as c', 'c.id', 'a.cliente_id')
+        .where('a.unidade_id', unidadeId)
+        .where('ap.agente_id', agenteId)
+        .where('a.data_agendamento', '>=', data_inicio)
+        .where('a.data_agendamento', '<=', data_fim)
+        .where('a.status', 'Concluído')
+        .where('a.status_pagamento', 'Pago')
+        .where('p.comissao_percentual', '>', 0)
+        .where('ap.comissao_paga', statusComissao === 'pago')
+        .select(
+          'ap.id as agendamento_servico_id',
+          'ap.agendamento_id',
+          'a.data_agendamento',
+          'a.hora_inicio',
+          'a.hora_fim',
+          'a.cliente_id',
+          db.raw("TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) as cliente_nome"),
+          db.raw('NULL::integer as servico_id'),
+          db.raw("('Produto: ' || COALESCE(p.nome, '') || ' - R$ ' || REPLACE(TO_CHAR(COALESCE(ap.preco_aplicado, 0), 'FM999999990D00'), '.', ',') || ' (' || REPLACE(TO_CHAR(COALESCE(p.comissao_percentual, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
+          db.raw('COALESCE(ap.preco_aplicado, 0) as preco_aplicado'),
+          db.raw('COALESCE(p.comissao_percentual, 0) as comissao_percentual'),
+          db.raw(
+            '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0) as comissao_valor'
+          ),
+          'ap.data_pagamento_comissao',
+          'ap.observacao_pagamento'
+        )
+        .orderBy(
+          statusComissao === 'pago' ? 'ap.data_pagamento_comissao' : 'a.data_agendamento',
+          statusComissao === 'pago' ? 'desc' : 'asc'
+        )
+        .orderBy('a.hora_inicio', 'asc');
+
+      const rows = [...(servicoRows || []), ...(produtoRows || [])].sort((a, b) => {
+        const da = String(a.data_agendamento || '');
+        const dbb = String(b.data_agendamento || '');
+        if (da !== dbb) {
+          return statusComissao === 'pago' ? (dbb > da ? 1 : -1) : (da > dbb ? 1 : -1);
+        }
+        const ha = String(a.hora_inicio || '');
+        const hb = String(b.hora_inicio || '');
+        return ha > hb ? 1 : ha < hb ? -1 : 0;
+      });
+
+      const totalServicoRow = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
@@ -191,7 +327,25 @@ class ComissaoController {
         })
         .first();
 
-      const totalPendente = Number(totalRow?.total) || 0;
+      const totalProdutoRow = await db('agendamento_produtos as ap')
+        .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
+        .join('produtos as p', 'p.id', 'ap.produto_id')
+        .where('a.unidade_id', unidadeId)
+        .where('ap.agente_id', agenteId)
+        .where('a.data_agendamento', '>=', data_inicio)
+        .where('a.data_agendamento', '<=', data_fim)
+        .where('a.status', 'Concluído')
+        .where('a.status_pagamento', 'Pago')
+        .where('p.comissao_percentual', '>', 0)
+        .where('ap.comissao_paga', statusComissao === 'pago')
+        .sum({
+          total: db.raw(
+            '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)'
+          )
+        })
+        .first();
+
+      const totalPendenteCents = toCents(totalServicoRow?.total) + toCents(totalProdutoRow?.total);
 
       return res.json({
         success: true,
@@ -201,7 +355,7 @@ class ComissaoController {
           data_inicio,
           data_fim,
           status_comissao: statusComissao,
-          total_pendente: Number(totalPendente.toFixed(2)),
+          total_pendente: centsToDecimal(totalPendenteCents),
           itens: rows.map((r) => ({
             agendamento_servico_id: r.agendamento_servico_id,
             agendamento_id: r.agendamento_id,
@@ -212,9 +366,9 @@ class ComissaoController {
             cliente_nome: r.cliente_nome,
             servico_id: r.servico_id,
             servico_nome: r.servico_nome,
-            preco_aplicado: Number(r.preco_aplicado) || 0,
-            comissao_percentual: Number(r.comissao_percentual) || 0,
-            comissao_valor: Number(r.comissao_valor) || 0,
+            preco_aplicado: centsToDecimal(toCents(r.preco_aplicado)),
+            comissao_percentual: Number(String(r.comissao_percentual || 0).replace(',', '.')) || 0,
+            comissao_valor: centsToDecimal(toCents(r.comissao_valor)),
             data_pagamento_comissao: r.data_pagamento_comissao,
             observacao_pagamento: r.observacao_pagamento
           }))
@@ -293,6 +447,16 @@ class ComissaoController {
           .where('a.status_pagamento', 'Pago')
           .where('asv.comissao_paga', false);
 
+        let targetProdutosByPeriodo = trx('agendamento_produtos as ap')
+          .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
+          .join('produtos as p', 'p.id', 'ap.produto_id')
+          .where('a.unidade_id', unidadeId)
+          .where('ap.agente_id', agenteId)
+          .where('a.status', 'Concluído')
+          .where('a.status_pagamento', 'Pago')
+          .where('p.comissao_percentual', '>', 0)
+          .where('ap.comissao_paga', false);
+
         if (hasIds) {
           const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
           if (idsParsed.length === 0) {
@@ -303,10 +467,14 @@ class ComissaoController {
           targetQuery = targetQuery
             .where('a.data_agendamento', '>=', data_inicio)
             .where('a.data_agendamento', '<=', data_fim);
+
+          targetProdutosByPeriodo = targetProdutosByPeriodo
+            .where('a.data_agendamento', '>=', data_inicio)
+            .where('a.data_agendamento', '<=', data_fim);
         }
 
         // Total a pagar (antes de marcar pago)
-        const totalRow = await targetQuery
+        const totalServicoRow = await targetQuery
           .clone()
           .leftJoin('servicos as s', 's.id', 'asv.servico_id')
           .sum({
@@ -316,7 +484,18 @@ class ComissaoController {
           })
           .first();
 
-        const totalPago = Number(totalRow?.total) || 0;
+        const totalProdutoRow = hasPeriodo
+          ? await targetProdutosByPeriodo
+            .clone()
+            .sum({
+              total: trx.raw(
+                '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)'
+              )
+            })
+            .first()
+          : { total: 0 };
+
+        const totalPago = (Number(totalServicoRow?.total) || 0) + (Number(totalProdutoRow?.total) || 0);
 
         // Update idempotente: só atualiza o que ainda está pendente
         let updatedCount = 0;
@@ -332,6 +511,27 @@ class ComissaoController {
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
                 .andWhere('asv.comissao_paga', false)
+                .andWhere('a.data_agendamento', '>=', data_inicio)
+                .andWhere('a.data_agendamento', '<=', data_fim);
+            })
+            .update({
+              comissao_paga: true,
+              data_pagamento_comissao: paidAt,
+              observacao_pagamento: observacaoPagamento
+            });
+
+          await trx('agendamento_produtos')
+            .whereIn('id', function() {
+              this.select('ap.id')
+                .from('agendamento_produtos as ap')
+                .innerJoin('agendamentos as a', 'a.id', 'ap.agendamento_id')
+                .innerJoin('produtos as p', 'p.id', 'ap.produto_id')
+                .where('a.unidade_id', unidadeId)
+                .andWhere('ap.agente_id', agenteId)
+                .andWhere('a.status', 'Concluído')
+                .andWhere('a.status_pagamento', 'Pago')
+                .andWhere('p.comissao_percentual', '>', 0)
+                .andWhere('ap.comissao_paga', false)
                 .andWhere('a.data_agendamento', '>=', data_inicio)
                 .andWhere('a.data_agendamento', '<=', data_fim);
             })

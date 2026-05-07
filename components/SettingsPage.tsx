@@ -1,11 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, MessageSquare, Upload } from './Icons';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
 import { getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
-import WhatsAppConnectModal from './WhatsAppConnectModal';
 import { useWhatsAppConnection } from '../hooks/useWhatsAppConnection';
 import ToggleSwitch from './common/ToggleSwitch';
 
@@ -74,7 +73,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     // WhatsApp
     const canManageWhatsApp = user?.role === 'ADMIN' || user?.role === 'MASTER';
     const [showWhatsAppConnect, setShowWhatsAppConnect] = useState(false);
-    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [isWhatsAppDrawerOpen, setIsWhatsAppDrawerOpen] = useState(false);
     const {
         status: whatsappStatus,
         statusLabel: whatsappStatusLabel,
@@ -90,12 +89,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         disconnect: disconnectWhatsApp,
         fetchStatus: fetchWhatsAppStatus,
         isConnected: isWhatsAppConnected
+    , resetAndRunNow
     } = useWhatsAppConnection({
         autoPoll: canManageWhatsApp,
-        pollIntervalMs: isWhatsAppModalOpen ? 2000 : 30000
+        pollIntervalMs: isWhatsAppDrawerOpen ? 2000 : 30000
     });
-
-    const [confirmingWhatsAppDisconnect, setConfirmingWhatsAppDisconnect] = useState(false);
 
     useEffect(() => {
         if (!canManageWhatsApp) return;
@@ -117,18 +115,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         loadSettings();
     }, [loadSettings]);
 
+    const lastWhatsAppToastRef = useRef<{ message: string | null; ts: number }>({ message: null, ts: 0 });
+
     useEffect(() => {
-        if (whatsappError) {
-            toast.error('WhatsApp', whatsappError);
-        }
+        if (!whatsappError) return;
+
+        const now = Date.now();
+        const last = lastWhatsAppToastRef.current;
+        const cooldownMs = 60000;
+        const shouldToast = last.message !== whatsappError || (now - last.ts) > cooldownMs;
+
+        if (!shouldToast) return;
+
+        lastWhatsAppToastRef.current = { message: whatsappError, ts: now };
+        toast.error('WhatsApp', whatsappError);
     }, [toast, whatsappError]);
 
     useEffect(() => {
-        if (isWhatsAppModalOpen && isWhatsAppConnected) {
-            setIsWhatsAppModalOpen(false);
+        if (isWhatsAppDrawerOpen && isWhatsAppConnected) {
+            setIsWhatsAppDrawerOpen(false);
             toast.success('WhatsApp', 'Conectado com sucesso.');
         }
-    }, [isWhatsAppConnected, isWhatsAppModalOpen, toast]);
+    }, [isWhatsAppConnected, isWhatsAppDrawerOpen, toast]);
 
     // Sincronizar estados locais com configurações carregadas
     useEffect(() => {
@@ -418,8 +426,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                     <button
                       type="button"
                       onClick={async () => {
-                        setIsWhatsAppModalOpen(true);
+                        setIsWhatsAppDrawerOpen(true);
                         setQrcodeBase64(null);
+                        resetAndRunNow();
                         await connectWhatsApp();
                         await fetchWhatsAppStatus();
                       }}
@@ -448,15 +457,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!confirmingWhatsAppDisconnect) {
-                            setConfirmingWhatsAppDisconnect(true);
-                            setTimeout(() => setConfirmingWhatsAppDisconnect(false), 5000);
-                            toast.error('Desconectar WhatsApp', 'Clique novamente em 5s para confirmar a desconexão.');
-                            return;
-                          }
+                          const confirmed = window.confirm('Tem certeza que deseja desconectar o WhatsApp?');
+                          if (!confirmed) return;
 
                           const ok = await disconnectWhatsApp();
-                          setConfirmingWhatsAppDisconnect(false);
                           if (ok) {
                             await fetchWhatsAppStatus();
                             toast.success('WhatsApp', 'Desconectado. Você já pode conectar outro número.');
@@ -464,12 +468,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                         }}
                         disabled={whatsappDisconnectLoading}
                         className={`px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
-                          confirmingWhatsAppDisconnect
-                            ? 'bg-gray-700 text-white hover:bg-gray-800'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                          'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                         } ${whatsappDisconnectLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
                       >
-                        {whatsappDisconnectLoading ? 'Desconectando...' : (confirmingWhatsAppDisconnect ? 'Confirmar' : 'Desconectar')}
+                        {whatsappDisconnectLoading ? 'Desconectando...' : 'Desconectar'}
                       </button>
                     )}
                   </div>
@@ -500,20 +502,82 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
             )}
           </Card>
 
-          <WhatsAppConnectModal
-            isOpen={isWhatsAppModalOpen}
-            onClose={() => setIsWhatsAppModalOpen(false)}
-            qrcodeBase64={qrcodeBase64}
-            statusText={whatsappStatusLabel}
-            connectedNumber={whatsappStatus.whatsapp_number}
-            loading={whatsappConnectLoading}
-            debugLastFetchAt={whatsappLastStatusFetchAt}
-            debugLastRaw={whatsappLastStatusRaw}
-            onRetry={async () => {
-              setQrcodeBase64(null);
-              await connectWhatsApp();
-            }}
-          />
+          {isWhatsAppDrawerOpen && (
+            <div className="fixed inset-0 z-50">
+              <div className="fixed inset-0 bg-black/60" onClick={() => setIsWhatsAppDrawerOpen(false)} />
+
+              <div
+                className="fixed inset-y-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out"
+                onClick={(e) => e.stopPropagation()}
+                style={{ animation: 'slideInFromRight 0.3s forwards' }}
+              >
+                <style>{`
+                  @keyframes slideInFromRight {
+                    from { transform: translateX(100%); }
+                    to { transform: translateX(0); }
+                  }
+                `}</style>
+                <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="text-sm text-gray-500">WhatsApp</div>
+                    <div className="text-lg font-semibold text-gray-800 truncate">Conectar WhatsApp</div>
+                    <div className="text-sm text-gray-600 mt-1">Status: {whatsappStatusLabel}{whatsappStatus.whatsapp_number ? ` • ${whatsappStatus.whatsapp_number}` : ''}</div>
+                  </div>
+                  <button
+                    onClick={() => setIsWhatsAppDrawerOpen(false)}
+                    className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-md"
+                    type="button"
+                  >
+                    Fechar
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+                  <div className="text-sm text-gray-700">
+                    Abra o WhatsApp no celular, vá em <strong>Dispositivos Conectados</strong> e escaneie o QR Code.
+                  </div>
+
+                  {whatsappConnectLoading && (
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      Gerando QR Code...
+                    </div>
+                  )}
+
+                  {qrcodeBase64 ? (
+                    <div className="flex items-center justify-center">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <img
+                          src={qrcodeBase64}
+                          alt="QR Code WhatsApp"
+                          className="w-64 h-64 object-contain"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-900">
+                      Nenhum QR Code disponível no momento.
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-200 px-5 py-4 bg-white flex items-center justify-end">
+                  <button
+                    onClick={async () => {
+                      setQrcodeBase64(null);
+                      resetAndRunNow();
+                      await connectWhatsApp();
+                    }}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                    disabled={whatsappConnectLoading}
+                    type="button"
+                  >
+                    Gerar novo QR
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 

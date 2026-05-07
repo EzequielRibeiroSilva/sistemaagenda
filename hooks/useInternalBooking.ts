@@ -96,6 +96,20 @@ export const useInternalBooking = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  class ApiError extends Error {
+    status: number;
+    code?: string;
+    data?: any;
+
+    constructor(message: string, opts: { status: number; code?: string; data?: any }) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = opts.status;
+      this.code = opts.code;
+      this.data = opts.data;
+    }
+  }
+
   // Função auxiliar para fazer requisições autenticadas
   const makeAuthenticatedRequest = useCallback(async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('authToken');
@@ -136,7 +150,11 @@ export const useInternalBooking = () => {
         }
 
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
+        throw new ApiError(errorMessage, {
+          status: response.status,
+          code: errorData?.code,
+          data: errorData
+        });
       }
 
       const jsonData = await response.json();

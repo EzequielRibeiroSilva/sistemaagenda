@@ -6,9 +6,8 @@ const logger = require('../utils/logger');
 
 class WhatsAppController {
   constructor() {
-    const baseURL = config?.evolutionApi?.baseUrl || process.env.EVO_API_BASE_URL;
-    const managementApiKey = process.env.AUTHENTICATION_API_KEY;
-    const apiKey = managementApiKey || config?.evolutionApi?.apiKey || process.env.EVO_API_KEY || process.env.EVOLUTION_API_KEY;
+    const baseURL = config?.evolutionApi?.baseUrl || process.env.EVOLUTION_API_URL;
+    const apiKey = config?.evolutionApi?.apiKey || process.env.EVOLUTION_API_KEY;
 
     this.integration = process.env.EVO_API_INTEGRATION || 'WHATSAPP-BAILEYS';
 
@@ -174,9 +173,10 @@ class WhatsAppController {
   async connect(req, res) {
     try {
       if (!this.baseURL || !this.apiKey) {
-        return res.status(500).json({
+        return res.status(503).json({
           success: false,
-          message: 'Evolution API não configurada'
+          error: 'WHATSAPP_NOT_CONFIGURED',
+          message: 'Serviço de WhatsApp indisponível no momento'
         });
       }
 
@@ -218,9 +218,10 @@ class WhatsAppController {
         // Se API key está errada/ausente, não adianta seguir
         if (status === 401 || (status === 403 && !isInstanceAlreadyExists)) {
           logger.error(`❌ [WhatsAppController] Evolution API não autorizada ao criar instância: status=${status} data=${msg}`);
-          return res.status(500).json({
+          return res.status(status).json({
             success: false,
-            message: 'Falha ao autenticar na Evolution API (apikey inválida ou não configurada)',
+            error: 'AUTH_FAILED',
+            message: 'Falha na conexão com o serviço de WhatsApp. Clique em "Gerar novo QR" para tentar novamente ou entre em contato com o suporte.',
             ...(process.env.NODE_ENV === 'development'
               ? { debug: { status, response: data || null } }
               : {})
@@ -268,11 +269,53 @@ class WhatsAppController {
         message: qrBase64 ? 'QR Code gerado com sucesso' : 'Resposta recebida, mas QR Code não identificado'
       });
     } catch (error) {
-      logger.error('❌ [WhatsAppController] Erro ao conectar WhatsApp:', error?.response?.data || error);
+      const upstreamStatus = error?.response?.status;
+      const upstreamData = error?.response?.data;
+      const upstreamMsg = JSON.stringify(upstreamData || {});
+
+      // Erros semânticos do upstream
+      if (upstreamStatus === 401 || upstreamStatus === 403) {
+        logger.error(`❌ [WhatsAppController] Evolution auth failed: status=${upstreamStatus} data=${upstreamMsg}`);
+        return res.status(upstreamStatus).json({
+          success: false,
+          error: 'AUTH_FAILED',
+          message: 'Falha na conexão com o serviço de WhatsApp. Clique em "Gerar novo QR" para tentar novamente ou entre em contato com o suporte.',
+          ...(process.env.NODE_ENV === 'development'
+            ? { debug: { status: upstreamStatus, response: upstreamData || null } }
+            : {})
+        });
+      }
+
+      // Timeout / indisponibilidade do upstream
+      const code = String(error?.code || '').toUpperCase();
+      const isTimeout = code === 'ECONNABORTED' || code === 'ETIMEDOUT';
+      const isConnRefused = code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN';
+
+      if (isTimeout) {
+        logger.warn(`⚠️ [WhatsAppController] Evolution timeout: code=${code} status=${upstreamStatus || '-'} data=${upstreamMsg}`);
+        return res.status(504).json({
+          success: false,
+          error: 'UPSTREAM_TIMEOUT',
+          message: 'Serviço de WhatsApp indisponível no momento'
+        });
+      }
+
+      if (isConnRefused) {
+        logger.warn(`⚠️ [WhatsAppController] Evolution unavailable: code=${code} status=${upstreamStatus || '-'} data=${upstreamMsg}`);
+        return res.status(503).json({
+          success: false,
+          error: 'UPSTREAM_UNAVAILABLE',
+          message: 'Serviço de WhatsApp indisponível no momento'
+        });
+      }
+
+      // Fallback: erro inesperado
+      logger.error('❌ [WhatsAppController] Erro inesperado ao conectar WhatsApp:', upstreamData || error);
       return res.status(500).json({
         success: false,
+        error: 'INTERNAL_ERROR',
         message: 'Erro ao conectar WhatsApp',
-        error: process.env.NODE_ENV === 'development' ? (error?.response?.data || error?.message) : undefined
+        errorDetails: process.env.NODE_ENV === 'development' ? (upstreamData || error?.message) : undefined
       });
     }
   }

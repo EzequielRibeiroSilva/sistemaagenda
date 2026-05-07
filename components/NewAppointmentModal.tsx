@@ -18,6 +18,11 @@ import { API_BASE_URL } from '../utils/api';
 
 type ProdutoRow = { id: number; nome: string; preco_custo_medio?: number | string | null; preco_venda?: number | string | null; unidade_medida?: string | null };
 
+type EstoqueSnapshotRow = {
+    produto_id: number;
+    saldo_atual: number;
+};
+
 type ProdutoCartItem = {
     uid: string;
     produto_id: number;
@@ -32,6 +37,14 @@ type PaymentLine = {
     uid: string;
     metodo: string;
     valor: string;
+};
+
+const toMoneyFixedString = (value: unknown) => {
+    const normalized = String(value ?? '').trim().replace(',', '.');
+    if (!normalized) return '';
+    const n = Number(normalized);
+    if (!Number.isFinite(n)) return '';
+    return n.toFixed(2);
 };
 
 const toNumber = (value: unknown) => {
@@ -306,6 +319,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const toast = useToast();
     const { units, fetchUnits } = useUnitManagement();
 
+    const isAdminFinanceRole = user?.role === 'ADMIN' || user?.role === 'MASTER';
+    const isAgentRole = user?.role === 'AGENTE';
+
     // ✅ NOVO: Estado para seleção manual de local (quando modal aberto sem contexto)
     const [manualSelectedLocationId, setManualSelectedLocationId] = useState<string | null>(null);
     
@@ -360,11 +376,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [produtosCarrinho, setProdutosCarrinho] = useState<ProdutoCartItem[]>([]);
     const [pagamentos, setPagamentos] = useState<PaymentLine[]>([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
 
+    const [estoqueByProdutoId, setEstoqueByProdutoId] = useState<Map<number, number>>(new Map());
+
     const handleAddProdutoToCarrinho = () => {
         const produtoId = parseInt(produtoSelecionadoId, 10);
         if (!Number.isFinite(produtoId)) return;
         const produto = produtos.find((p) => Number(p.id) === produtoId);
         if (!produto) return;
+
+        const saldoAtual = estoqueByProdutoId.get(produtoId);
+        if (saldoAtual !== undefined && Number(saldoAtual) <= 0) {
+            toast.error('Saldo insuficiente no estoque', `Erro: A ${produto.nome} não possui saldo suficiente no estoque.`);
+            return;
+        }
 
         const precoDefault = toNumber((produto as any).preco_venda);
 
@@ -376,8 +400,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 nome: produto.nome,
                 unidade_medida: (produto as any).unidade_medida ?? null,
                 quantidade: '1',
-                preco_aplicado: precoDefault ? String(precoDefault) : '0',
-                agente_id: ''
+                preco_aplicado: precoDefault ? Number(precoDefault).toFixed(2) : '0.00',
+                agente_id: selectedAgentId ? String(selectedAgentId) : ''
             }
         ]);
         setProdutoSelecionadoId('');
@@ -1103,17 +1127,18 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
                             // ✅ PDV (E2E): hidratar carrinho e split payment ao reabrir
                             try {
-                                const produtosVendidos = Array.isArray((details as any).produtos_vendidos)
+                                const produtosVendidosRows = Array.isArray((details as any).produtos_vendidos)
                                     ? (details as any).produtos_vendidos
                                     : [];
-                                if (produtosVendidos.length > 0) {
+
+                                if (produtosVendidosRows.length > 0) {
                                     setProdutosCarrinho(
-                                        produtosVendidos.map((p: any) => ({
+                                        produtosVendidosRows.map((p: any) => ({
                                             uid: `prod-hyd-${Date.now()}-${Math.random()}`,
                                             produto_id: Number(p.produto_id),
                                             nome: String(p.nome || p.produto_nome || ''),
                                             quantidade: String(p.quantidade ?? '1'),
-                                            preco_aplicado: String(p.preco_aplicado ?? '0'),
+                                            preco_aplicado: toMoneyFixedString(p.preco_aplicado) || '0.00',
                                             agente_id: p.agente_id ? String(p.agente_id) : ''
                                         }))
                                     );
@@ -1124,16 +1149,23 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                 const pagamentosRows = Array.isArray((details as any).pagamentos)
                                     ? (details as any).pagamentos
                                     : [];
+
                                 if (pagamentosRows.length > 0) {
                                     setPagamentos(
                                         pagamentosRows.map((pg: any) => ({
                                             uid: `pay-hyd-${Date.now()}-${Math.random()}`,
                                             metodo: String(pg.metodo || 'PIX'),
-                                            valor: String(pg.valor ?? '')
+                                            valor: toMoneyFixedString(pg.valor)
                                         }))
                                     );
                                 } else {
-                                    setPagamentos([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
+                                    setPagamentos([
+                                        {
+                                            uid: `pay-${Date.now()}-${Math.random()}`,
+                                            metodo: 'PIX',
+                                            valor: valorFinal > 0 ? Number(valorFinal).toFixed(2) : ''
+                                        }
+                                    ]);
                                 }
                             } catch (e) {
                                 // não bloquear edição por falha de hidratação
@@ -1239,31 +1271,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         buscarPontosDoCliente();
     }, [isOpen, clienteId, settings, pontosAtivo, appointmentData?.locationId, selectedLocationId]);
 
-    // ✅ ATUALIZADO: Calcular desconto e valor final (pontos + cupom)
-    useEffect(() => {
-        // Calcular desconto de pontos
-        let descontoPontos = 0;
-        if (pontosAtivo && pontosUsados > 0) {
-            descontoPontos = (pontosUsados / reaisPorPontos) * 1;
-        }
-
-        // Calcular desconto de cupom
-        const descontoCupom = cupomAplicado?.desconto_calculado || 0;
-
-        const totalProdutos = produtosCarrinho.reduce((sum, p) => {
-            const qty = parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0;
-            const unit = parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0;
-            return sum + qty * unit;
-        }, 0);
-
-        // Desconto total (pontos + cupom)
-        const descontoTotal = descontoPontos + descontoCupom;
-        const valorComDesconto = Math.max(0, (totalPrice + totalProdutos) - descontoTotal);
-
-        setDescontoCalculado(descontoPontos); // Mantém apenas desconto de pontos neste estado
-        setValorFinal(valorComDesconto);
-    }, [pontosUsados, totalPrice, pontosAtivo, reaisPorPontos, cupomAplicado, produtosCarrinho]);
-
     useEffect(() => {
         let cancelled = false;
 
@@ -1294,6 +1301,51 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         };
     }, [isOpen, isAuthenticated, token]);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadSnapshot = async () => {
+            if (!isOpen || !isAuthenticated || !token) return;
+
+            const unidadeIdNum = effectiveLocationId ? Number(effectiveLocationId) : null;
+            if (!unidadeIdNum || !Number.isFinite(unidadeIdNum)) {
+                setEstoqueByProdutoId(new Map());
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/estoque/snapshot?unidade_id=${unidadeIdNum}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+
+                const rows = Array.isArray(data?.data) ? data.data : [];
+                const map = new Map<number, number>();
+                for (const r of rows as EstoqueSnapshotRow[]) {
+                    const pid = Number((r as any)?.produto_id);
+                    const saldo = Number((r as any)?.saldo_atual);
+                    if (Number.isFinite(pid)) {
+                        map.set(pid, Number.isFinite(saldo) ? saldo : 0);
+                    }
+                }
+                setEstoqueByProdutoId(map);
+            } catch {
+                if (!cancelled) setEstoqueByProdutoId(new Map());
+            }
+        };
+
+        loadSnapshot();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, isAuthenticated, token, effectiveLocationId]);
+
     const totalProdutosCarrinho = useMemo(() => {
         return produtosCarrinho.reduce((sum, p) => {
             const qty = parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0;
@@ -1301,6 +1353,28 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             return sum + qty * unit;
         }, 0);
     }, [produtosCarrinho]);
+
+    // Total bruto (antes de pontos/cupom): Serviços + Extras + Produtos do carrinho
+    const totalBruto = useMemo(() => {
+        return (Number(totalPrice) || 0) + (Number(totalProdutosCarrinho) || 0);
+    }, [totalPrice, totalProdutosCarrinho]);
+
+    useEffect(() => {
+        // Total a pagar deve sempre refletir Serviços + Extras + Produtos em tempo real.
+        // Descontos (pontos/cupom) só se aplicam quando ADMIN/MASTER estiver concluindo.
+        if (!(isAdminFinanceRole && isConcluido)) {
+            setDescontoCalculado(0);
+            setValorFinal(Number((totalBruto || 0).toFixed(2)));
+            return;
+        }
+
+        const descontoPontos = pontosAtivo ? (pontosUsados * reaisPorPontos) : 0;
+        const descontoCupom = cupomAplicado?.desconto_calculado || 0;
+        const valorComDesconto = Math.max(0, totalBruto - descontoPontos - descontoCupom);
+
+        setDescontoCalculado(descontoPontos);
+        setValorFinal(Number(valorComDesconto.toFixed(2)));
+    }, [totalBruto, isAdminFinanceRole, isConcluido, pontosAtivo, pontosUsados, reaisPorPontos, cupomAplicado]);
 
     const totalPago = useMemo(() => {
         return pagamentos.reduce((sum, p) => {
@@ -1314,6 +1388,26 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         return Number((total - totalPago).toFixed(2));
     }, [valorFinal, totalPago]);
 
+    useEffect(() => {
+        if (!isConcluido) return;
+        if (!pagamentos || pagamentos.length !== 1) return;
+        if (!Number.isFinite(valorFinal) || valorFinal < 0) return;
+
+        const first = pagamentos[0];
+        if (!first) return;
+
+        const currentValue = parseFloat(String(first.valor || '0').replace(',', '.')) || 0;
+        const desiredValue = Number((valorFinal || 0).toFixed(2));
+
+        if (Math.abs(currentValue - desiredValue) < 0.005) return;
+
+        setPagamentos((prev) =>
+            prev.length === 1
+                ? [{ ...prev[0], valor: desiredValue.toFixed(2) }]
+                : prev
+        );
+    }, [isConcluido, pagamentos, valorFinal]);
+
     const podeConcluirFinanceiro = useMemo(() => {
         if (!isConcluido) return true;
         return Math.abs((totalPago || 0) - (valorFinal || 0)) < 0.01;
@@ -1321,17 +1415,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     // ✅ NOVO: Função para validar cupom
     const handleValidarCupom = async () => {
-        if (!cupomCodigo.trim()) {
-            setCupomErro('Digite um código de cupom');
-            return;
-        }
-
-        const effectiveLocationId = selectedLocationId || appointmentData?.locationId;
-        if (!effectiveLocationId) {
-            setCupomErro('Erro: Unidade não identificada');
-            return;
-        }
-
+        if (!cupomCodigo.trim() || !effectiveLocationId) return;
         setIsValidatingCupom(true);
         setCupomErro(null);
 
@@ -1344,7 +1428,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 body: JSON.stringify({
                     codigo: cupomCodigo.trim().toUpperCase(),
                     cliente_id: clienteId || selectedClient?.id || null,
-                    valor_pedido: totalPrice,
+                    valor_pedido: totalBruto,
                     unidade_id: parseInt(effectiveLocationId),
                     servico_ids: selectedServices
                 })
@@ -1381,8 +1465,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         setCupomErro(null);
     };
 
-    if (!isOpen || !portalRoot) return null;
-
     const handleDateTimeSelect = (selectedDateTime: { date: Date, time: string }) => {
 
         if (!selectedDateTime) {
@@ -1406,9 +1488,31 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const handleModalContentClick = (e: React.MouseEvent) => {
         e.stopPropagation();
     };
-    
-    const modalTitle = isEditing ? 'Editar Agendamento' : 'Criar Agendamento';
-    const submitButtonText = isEditing ? 'Salvar Alterações' : 'Criar Agendamento';
+
+    const selectedDateISO = useMemo(() => {
+        if (!date) return null;
+        const parts = date.split('/');
+        if (parts.length !== 3) return null;
+        const [dia, mes, ano] = parts;
+        if (!dia || !mes || !ano) return null;
+        return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+    }, [date]);
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isHoje = Boolean(selectedDateISO && selectedDateISO === todayStr);
+
+    const modalTitle = (() => {
+        if (!isEditing) return 'Novo Agendamento';
+        if (appointmentId && isHoje) return `Comanda #${appointmentId}`;
+        return 'Editar Agendamento';
+    })();
+
+    const submitButtonText = (() => {
+        if (!isEditing) return 'Criar Agendamento';
+        if (isAgentRole) return 'Salvar Comanda';
+        if (status === 'Concluído') return 'Cobrar e Fechar Comanda';
+        return 'Salvar Alterações';
+    })();
 
     const handleSelectClient = async (client: InternalCliente) => {
         setSelectedClient(client);
@@ -1490,8 +1594,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             }
 
             // Converter data do formato DD/MM/AAAA para AAAA-MM-DD
-            const [dia, mes, ano] = date.split('/');
-            const dataFormatada = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+            const derivedSelectedDateISO = selectedDateISO;
 
             // ✅ CORREÇÃO CRÍTICA: Usar effectiveLocationId (selectedLocationId OU manualSelectedLocationId)
             if (!effectiveLocationId) {
@@ -1505,8 +1608,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 return;
             }
 
-            // ✅ REGRA DE NEGÓCIO (FINANCEIRO): Concluído exige forma de pagamento
-            if (isEditing && isConcluido) {
+            // ✅ REGRA DE NEGÓCIO (FINANCEIRO): somente ADMIN/MASTER conclui e lança pagamento via Drawer
+            if (isEditing && isConcluido && isAdminFinanceRole) {
                 const pagamentosValidos = pagamentos
                     .map((p) => ({ metodo: String(p.metodo || '').trim(), valor: toNumber(p.valor) }))
                     .filter((p) => p.metodo && Number.isFinite(p.valor) && p.valor > 0);
@@ -1526,7 +1629,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 agente_id: selectedAgentId,
                 servico_ids: selectedServices,
                 servico_extra_ids: selectedExtras,
-                data_agendamento: dataFormatada,
+                data_agendamento: derivedSelectedDateISO,
                 hora_inicio: startTime,
                 hora_fim: endTime,
                 unidade_id: parseInt(effectiveLocationId),
@@ -1559,21 +1662,22 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     agente_id: selectedAgentId,
                     servico_ids: selectedServices,
                     servico_extra_ids: selectedExtras,
-                    data_agendamento: dataFormatada,
+                    data_agendamento: derivedSelectedDateISO,
                     hora_inicio: startTime,
                     hora_fim: endTime,
-                    status: status,
-                    ...(isConcluido ? { forma_pagamento: formaPagamentoFinal } : {}),
-                    ...(isConcluido ? { pagamentos: pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) } : {}),
-                    ...(isConcluido ? { produtos_vendidos: produtosCarrinho.map(p => ({ produto_id: p.produto_id, quantidade: parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0, preco_aplicado: parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0, agente_id: p.agente_id ? parseInt(p.agente_id) : null })) } : {}),
+                    // Segurança de UI: AGENTE não conclui nem lança pagamento via Drawer
+                    status: isAgentRole ? 'Aprovado' : status,
+                    ...(isAdminFinanceRole && isConcluido ? { forma_pagamento: formaPagamentoFinal } : {}),
+                    ...(isAdminFinanceRole && isConcluido ? { pagamentos: pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) } : {}),
+                    produtos_vendidos: produtosCarrinho.map(p => ({ produto_id: p.produto_id, quantidade: parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0, preco_aplicado: parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0, agente_id: p.agente_id ? parseInt(p.agente_id) : null })),
                     observacoes: observacoes.trim() || '',
                     ...(usarCotaAssinatura && hasCoberturaDisponivel
                         ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
                         : {}),
                     // ✅ NOVO: Incluir pontos usados se houver
-                    ...(isConcluido && pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
+                    ...(isAdminFinanceRole && isConcluido && pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
                     // ✅ NOVO: Incluir cupom_id se houver cupom aplicado
-                    ...(isConcluido && cupomAplicado ? { cupom_id: cupomAplicado.cupom_id, desconto_cupom: cupomAplicado.desconto_calculado } : {}),
+                    ...(isAdminFinanceRole && isConcluido && cupomAplicado ? { cupom_id: cupomAplicado.cupom_id, desconto_cupom: cupomAplicado.desconto_calculado } : {}),
                     ...(selectedClient
                         ? { cliente_id: selectedClient.id }
                         : {
@@ -1615,6 +1719,18 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 }
             }
         } catch (error) {
+            const anyErr = error as any;
+
+            if (anyErr && (anyErr.code === 'SALDO_INSUFICIENTE' || anyErr?.data?.code === 'SALDO_INSUFICIENTE')) {
+                const produtoId = Number(anyErr?.produto_id ?? anyErr?.data?.produto_id);
+                const produtoNome = Number.isFinite(produtoId)
+                    ? (produtosCarrinho.find((p) => Number(p.produto_id) === produtoId)?.nome || `Produto ${produtoId}`)
+                    : 'Produto';
+
+                toast.error('Saldo insuficiente no estoque', `Erro: ${produtoNome} não possui saldo suficiente no estoque para realizar esta venda.`);
+                return;
+            }
+
             const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
             toast.error('Erro ao Salvar', `Não foi possível salvar o agendamento: ${errorMessage}`);
         } finally {
@@ -1708,6 +1824,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         );
     };
 
+    if (!isOpen || !portalRoot) return null;
+
     return createPortal(
         <>
             <div className="fixed inset-0 z-50 bg-black/60 flex justify-end" onClick={onClose} aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -1793,7 +1911,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         <p className="text-xs text-gray-500 mt-1">Você só pode criar agendamentos para si mesmo</p>
                                     )}
                                 </FormField>
-                                {isEditing && (
+                                {isEditing && !isAgentRole && (
                                     <FormField label="Estado">
                                         <Select value={status} onChange={e => setStatus(e.target.value as AppointmentStatus)}>
                                             <option value="Aprovado">Aprovado</option>
@@ -1942,31 +2060,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                         </FormSection>
                         )}
 
-                        {/* Price Section */}
-                        {!isLoadingAppointment && !isLoadingFromProp && (
-                        <FormSection
-                            title="Total do Serviço"
-                            actions={
-                                <button
-                                    type="button"
-                                    onClick={handleRecalculate}
-                                    className="flex items-center text-sm font-semibold text-gray-600 hover:text-gray-800"
-                                >
-                                    <RotateCw className="h-4 w-4 mr-1.5" />
-                                    Recalcular
-                                </button>
-                            }
-                        >
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center font-bold text-gray-800 text-base">
-                                    <p>Total (Apenas Serviços)</p>
-                                    <p>R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
-                                </div>
-                            </div>
-                        </FormSection>
-                        )}
-                        
-                        {/* Payment Section - Only shows on edit */}
+                        {/* Payment/Checkout Section - Only shows on edit */}
                         {!isLoadingAppointment && !isLoadingFromProp && isEditing && (
                             <FormSection title="Finalizar Agendamento">
                                 <div className="space-y-4">
@@ -1977,9 +2071,19 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         {selectedExtras.length > 0 && <div className="flex justify-between"><span className="font-medium text-gray-500">Extras:</span> <span>{selectedExtras.map(id => allExtras.find(e => e.id === id)?.nome).filter(Boolean).join(', ')}</span></div>}
                                     </div>
                                     
-                                    <div className="flex justify-between items-center font-bold text-gray-800 text-lg">
-                                        <p>Total a Pagar:</p>
-                                        <p>R$ {valorFinal.toFixed(2).replace('.', ',')}</p>
+                                    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                                        <div className="flex justify-between items-center text-sm text-gray-700">
+                                            <p className="font-semibold">Subtotal Serviços</p>
+                                            <p>R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm text-gray-700">
+                                            <p className="font-semibold">Subtotal Produtos</p>
+                                            <p>R$ {totalProdutosCarrinho.toFixed(2).replace('.', ',')}</p>
+                                        </div>
+                                        <div className="pt-2 border-t border-gray-200 flex justify-between items-center font-bold text-gray-900 text-lg">
+                                            <p>Total</p>
+                                            <p>R$ {valorFinal.toFixed(2).replace('.', ',')}</p>
+                                        </div>
                                     </div>
 
                                     <div className="border-t border-gray-200 my-3"></div>
@@ -2061,6 +2165,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                                                 prev.map((x) => (x.uid === item.uid ? { ...x, preco_aplicado: e.target.value } : x))
                                                                             )
                                                                         }
+                                                                        onBlur={() =>
+                                                                            setProdutosCarrinho((prev) =>
+                                                                                prev.map((x) =>
+                                                                                    x.uid === item.uid
+                                                                                        ? { ...x, preco_aplicado: toMoneyFixedString(x.preco_aplicado) || '0.00' }
+                                                                                        : x
+                                                                                )
+                                                                            )
+                                                                        }
                                                                     />
                                                                 </FormField>
 
@@ -2090,7 +2203,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                     </div>
                                      
                                     {/* ✅ NOVO: Sistema de Pontos */}
-                                    {isConcluido && pontosAtivo && clienteId && (
+                                    {isAdminFinanceRole && isConcluido && pontosAtivo && clienteId && (
                                         <>
                                             <div className="border-t border-gray-200 my-3"></div>
                                             
@@ -2155,7 +2268,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         </>
                                     )}
 
-                                    {isConcluido && (
+                                    {isAdminFinanceRole && isConcluido && (
                                         <>
                                             {/* ✅ NOVO: Cupom de Desconto */}
                                             <div className="border-t border-gray-200 my-3"></div>
@@ -2270,7 +2383,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                                 {
                                                                     uid: `pay-${Date.now()}-${Math.random()}`,
                                                                     metodo: 'PIX',
-                                                                    valor: restantePagamento > 0 ? String(restantePagamento) : ''
+                                                                    valor: restantePagamento > 0 ? restantePagamento.toFixed(2) : ''
                                                                 }
                                                             ])
                                                         }
@@ -2311,6 +2424,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                                         onChange={(e) =>
                                                                             setPagamentos((prev) =>
                                                                                 prev.map((x) => (x.uid === p.uid ? { ...x, valor: e.target.value } : x))
+                                                                            )
+                                                                        }
+                                                                        onBlur={() =>
+                                                                            setPagamentos((prev) =>
+                                                                                prev.map((x) =>
+                                                                                    x.uid === p.uid
+                                                                                        ? { ...x, valor: toMoneyFixedString(x.valor) }
+                                                                                        : x
+                                                                                )
                                                                             )
                                                                         }
                                                                     />

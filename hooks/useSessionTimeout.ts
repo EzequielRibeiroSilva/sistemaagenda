@@ -43,7 +43,7 @@ const DEFAULT_CONFIG: Required<SessionTimeoutConfig> = {
 
 export const useSessionTimeout = (config: SessionTimeoutConfig = {}) => {
   const { isAuthenticated, token, logout, updateToken } = useAuth();
-  const { addToast } = useToast();
+  const toast = useToast();
   
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   
@@ -128,14 +128,10 @@ export const useSessionTimeout = (config: SessionTimeoutConfig = {}) => {
   const handleLogout = useCallback((reason: string) => {
     debugLog(`Fazendo logout: ${reason}`);
     
-    addToast({
-      type: 'warning',
-      message: `Sessão encerrada: ${reason}`,
-      duration: 5000
-    });
+    toast.warning('Sessão encerrada', `Sessão encerrada: ${reason}`);
     
     logout();
-  }, [logout, addToast, debugLog]);
+  }, [logout, toast, debugLog]);
 
   /**
    * Mostrar aviso de inatividade
@@ -149,12 +145,11 @@ export const useSessionTimeout = (config: SessionTimeoutConfig = {}) => {
     
     debugLog(`Mostrando aviso de inatividade (${remainingMinutes} minutos restantes)`);
     
-    addToast({
-      type: 'warning',
-      message: `⚠️ Você está inativo há ${finalConfig.warningTime} minutos. Sua sessão expirará em ${remainingMinutes} minutos.`,
-      duration: 10000
-    });
-  }, [finalConfig.warningTime, finalConfig.logoutTime, addToast, debugLog]);
+    toast.warning(
+      'Inatividade detectada',
+      `Você está inativo há ${finalConfig.warningTime} minutos. Sua sessão expirará em ${remainingMinutes} minutos.`
+    );
+  }, [finalConfig.warningTime, finalConfig.logoutTime, toast, debugLog]);
 
   /**
    * Resetar timers de inatividade

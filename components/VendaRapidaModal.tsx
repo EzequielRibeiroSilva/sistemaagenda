@@ -19,6 +19,11 @@ type ProdutoRow = {
   unidade_medida?: string | null;
 };
 
+type EstoqueSnapshotRow = {
+  produto_id: number;
+  saldo_atual: number;
+};
+
 type UnidadeOption = {
   id: string;
   nome: string;
@@ -119,6 +124,8 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
   const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState<string>('');
 
+  const [estoqueByProdutoId, setEstoqueByProdutoId] = useState<Map<number, number>>(new Map());
+
   const [agentes, setAgentes] = useState<InternalAgente[]>([]);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -203,6 +210,36 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
       }
 
       try {
+        const unidadeIdNum = unidadeId ? Number(unidadeId) : null;
+        if (!unidadeIdNum || !Number.isFinite(unidadeIdNum)) {
+          if (!cancelled) setEstoqueByProdutoId(new Map());
+        } else {
+          const res = await fetch(`${API_BASE_URL}/estoque/snapshot?unidade_id=${unidadeIdNum}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (cancelled) return;
+          const rows = Array.isArray(data?.data) ? data.data : [];
+          const map = new Map<number, number>();
+          for (const r of rows as any[]) {
+            const pid = Number((r as any)?.produto_id);
+            const saldo = Number((r as any)?.saldo_atual);
+            if (Number.isFinite(pid)) {
+              map.set(pid, Number.isFinite(saldo) ? saldo : 0);
+            }
+          }
+          setEstoqueByProdutoId(map);
+        }
+      } catch {
+        if (!cancelled) setEstoqueByProdutoId(new Map());
+      }
+
+      try {
         const rows = await fetchAgentes();
         if (!cancelled) setAgentes(Array.isArray(rows) ? rows : []);
       } catch {
@@ -216,6 +253,49 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
       cancelled = true;
     };
   }, [isOpen, isAuthenticated, token, fetchAgentes]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSnapshot = async () => {
+      if (!isOpen || !isAuthenticated || !token) return;
+      const unidadeIdNum = unidadeId ? Number(unidadeId) : null;
+      if (!unidadeIdNum || !Number.isFinite(unidadeIdNum)) {
+        setEstoqueByProdutoId(new Map());
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/estoque/snapshot?unidade_id=${unidadeIdNum}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        const map = new Map<number, number>();
+        for (const r of rows as EstoqueSnapshotRow[]) {
+          const pid = Number((r as any)?.produto_id);
+          const saldo = Number((r as any)?.saldo_atual);
+          if (Number.isFinite(pid)) {
+            map.set(pid, Number.isFinite(saldo) ? saldo : 0);
+          }
+        }
+        setEstoqueByProdutoId(map);
+      } catch {
+        if (!cancelled) setEstoqueByProdutoId(new Map());
+      }
+    };
+
+    loadSnapshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isAuthenticated, token, unidadeId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +331,12 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
     const produto = produtos.find((p) => p.id === produtoId);
     if (!produto) return;
 
+    const saldoAtual = Number(estoqueByProdutoId.get(produtoId) ?? 0);
+    if (!Number.isFinite(saldoAtual) || saldoAtual <= 0) {
+      toast.error('Saldo insuficiente no estoque', `Erro: A ${produto.nome} não possui saldo suficiente no estoque.`);
+      return;
+    }
+
     const precoDefault = toNumber((produto as any).preco_venda);
 
     setCartItems((prev) => [
@@ -280,6 +366,16 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
         .toFixed(2)
     );
   }, [cartItems]);
+
+  useEffect(() => {
+    if (pagamentos.length !== 1) return;
+    const valorAtual = toNumber(pagamentos[0]?.valor);
+    if (Math.abs(valorAtual - total) < 0.01) return;
+    setPagamentos((prev) => {
+      if (prev.length !== 1) return prev;
+      return [{ ...prev[0], valor: total > 0 ? String(total) : '' }];
+    });
+  }, [total, pagamentos.length]);
 
   const totalPago = useMemo(() => {
     return Number(
@@ -358,6 +454,16 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
+        if (data?.code === 'SALDO_INSUFICIENTE') {
+          const produtoNome = String(data?.produto_nome || '').trim();
+          const produtoId = Number(data?.produto_id);
+          const fallbackNome = Number.isFinite(produtoId)
+            ? (cartItems.find((i) => i.produto_id === produtoId)?.nome || `Produto ${produtoId}`)
+            : 'Produto';
+          toast.error('Saldo insuficiente no estoque', `Erro: A ${produtoNome || fallbackNome} não possui saldo suficiente no estoque.`);
+          return;
+        }
+
         const msg = data?.error || data?.message || 'Erro ao concluir venda';
         toast.error('Falha ao concluir venda', msg);
         return;
@@ -638,17 +744,21 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
 
                           <div className="sm:col-span-4">
                             <FormField label="Valor">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={p.valor}
-                                onChange={(e) =>
-                                  setPagamentos((prev) =>
-                                    prev.map((x) => (x.uid === p.uid ? { ...x, valor: e.target.value } : x))
-                                  )
-                                }
-                              />
+                              <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-600">R$</div>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={p.valor}
+                                  onChange={(e) =>
+                                    setPagamentos((prev) =>
+                                      prev.map((x) => (x.uid === p.uid ? { ...x, valor: e.target.value } : x))
+                                    )
+                                  }
+                                  className="pl-10"
+                                />
+                              </div>
                             </FormField>
                           </div>
 

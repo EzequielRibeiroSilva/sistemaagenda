@@ -17,6 +17,9 @@ type ProdutoRow = {
   preco_venda?: number | string | null;
   estoque_minimo?: number | string | null;
   unidade_medida?: 'UN' | 'ML' | 'G' | string | null;
+  tipo_item?: 'VENDA' | 'CONSUMO' | 'AMBOS' | string | null;
+  uom_consumo?: 'UN' | 'ML' | 'G' | string | null;
+  fator_conversao?: number | string | null;
 };
 
 type VendaAvulsaRow = {
@@ -46,8 +49,13 @@ type SnapshotRow = {
   produto_marca?: string | null;
   produto_categoria?: string | null;
   produto_unidade_medida?: string | null;
+  produto_tipo_item?: string | null;
+  produto_uom_consumo?: string | null;
+  produto_fator_conversao?: number | string | null;
   unidade_id: number;
   saldo_atual: number | string;
+  saldo_venda?: number | string;
+  saldo_consumo?: number | string;
   estoque_minimo: number | string | null;
   estoque_maximo: number | string | null;
 };
@@ -61,6 +69,9 @@ type MovRow = {
   produto_id: number;
   produto_nome: string;
   produto_marca?: string | null;
+  produto_unidade_medida?: string | null;
+  produto_uom_consumo?: string | null;
+  produto_tipo_item?: string | null;
   unidade_id: number;
   created_by?: number | null;
   created_at: string;
@@ -97,9 +108,15 @@ function toNumber(value: number | string | null | undefined) {
   return Number.isFinite(n) ? n : null;
 }
 
+function formatTrimmed3(value: number) {
+  const fixed = value.toFixed(3);
+  return fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
 function movementDotColor(tipo: MovRow['tipo']) {
   if (tipo === 'ENTRADA' || tipo === 'ESTORNO') return 'bg-green-500';
   if (tipo === 'SAIDA' || tipo === 'CONSUMO') return 'bg-red-500';
+  if (String(tipo || '').toUpperCase() === 'CONVERSAO_INTERNA') return 'bg-indigo-500';
   return 'bg-gray-400';
 }
 
@@ -110,7 +127,39 @@ function formatMovementType(tipo: MovRow['tipo']) {
   if (normalized === 'CONSUMO') return 'Consumo';
   if (normalized === 'AJUSTE') return 'Ajuste';
   if (normalized === 'ESTORNO') return 'Estorno';
+  if (normalized === 'CONVERSAO_INTERNA') return 'Abertura de Pote (Conversão)';
   return normalized ? normalized.charAt(0) + normalized.slice(1).toLowerCase() : '—';
+}
+
+function inferMovementUnit(m: MovRow) {
+  const tipo = String(m.tipo || '').toUpperCase();
+  if (tipo === 'CONSUMO') {
+    return m.produto_uom_consumo || m.produto_unidade_medida || '';
+  }
+  return m.produto_unidade_medida || '';
+}
+
+function formatMovementQty(m: MovRow) {
+  const tipo = String(m.tipo || '').toUpperCase();
+  const qty = toNumber(m.quantidade) ?? 0;
+  const unit = inferMovementUnit(m);
+
+  const isDebit = tipo === 'SAIDA' || tipo === 'CONSUMO' || tipo === 'AJUSTE';
+  const isCredit = tipo === 'ENTRADA' || tipo === 'ESTORNO';
+  const isConv = tipo === 'CONVERSAO_INTERNA';
+
+  if (isConv) {
+    const abs = Math.abs(qty);
+    return `${formatTrimmed3(abs)} ${String(unit || '').toLowerCase()}`.trim();
+  }
+
+  const signedQty = isCredit ? Math.abs(qty) : (isDebit ? -Math.abs(qty) : qty);
+  const formatted = tipo === 'SAIDA'
+    ? String(Math.trunc(Math.abs(signedQty)))
+    : formatTrimmed3(Math.abs(signedQty));
+
+  const prefix = signedQty < 0 ? '-' : '+';
+  return `${prefix}${formatted} ${String(unit || '').toLowerCase()}`.trim();
 }
 
 const EstoquePage: React.FC = () => {
@@ -173,9 +222,12 @@ const EstoquePage: React.FC = () => {
   const [novoProdutoNome, setNovoProdutoNome] = useState('');
   const [novoProdutoMarca, setNovoProdutoMarca] = useState('');
   const [novoProdutoUnidadeMedida, setNovoProdutoUnidadeMedida] = useState<'UN' | 'ML' | 'G'>('UN');
+  const [novoProdutoTipoItem, setNovoProdutoTipoItem] = useState<'VENDA' | 'CONSUMO' | 'AMBOS'>('VENDA');
+  const [novoProdutoFatorConversao, setNovoProdutoFatorConversao] = useState('');
   const [novoProdutoPrecoCusto, setNovoProdutoPrecoCusto] = useState('');
   const [novoProdutoPrecoVenda, setNovoProdutoPrecoVenda] = useState('');
   const [novoProdutoEstoqueMinimo, setNovoProdutoEstoqueMinimo] = useState('');
+  const [novoProdutoComissaoPercentual, setNovoProdutoComissaoPercentual] = useState('0');
   const [novoProdutoCategoriaId, setNovoProdutoCategoriaId] = useState<number | null>(null);
   const [novoProdutoCategoriaNome, setNovoProdutoCategoriaNome] = useState('');
   const [novoProdutoSaving, setNovoProdutoSaving] = useState(false);
@@ -196,6 +248,7 @@ const EstoquePage: React.FC = () => {
   const [movs, setMovs] = useState<MovRow[]>([]);
   const [movsLoading, setMovsLoading] = useState(false);
   const [movsError, setMovsError] = useState<string | null>(null);
+  const [movsTipoFilter, setMovsTipoFilter] = useState<string>('');
 
   const [vendas, setVendas] = useState<VendaAvulsaRow[]>([]);
   const [vendasLoading, setVendasLoading] = useState(false);
@@ -220,8 +273,12 @@ const EstoquePage: React.FC = () => {
 
   const pagedMovs = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return movs.slice(startIndex, startIndex + itemsPerPage);
-  }, [currentPage, itemsPerPage, movs]);
+    const tipoNormalized = String(movsTipoFilter || '').toUpperCase();
+    const filtered = tipoNormalized
+      ? movs.filter((m) => String(m.tipo || '').toUpperCase() === tipoNormalized)
+      : movs;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, itemsPerPage, movs, movsTipoFilter]);
 
   const pagedVendas = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -284,8 +341,48 @@ const EstoquePage: React.FC = () => {
   const [entradaProdutoId, setEntradaProdutoId] = useState<string>('');
   const [entradaQuantidade, setEntradaQuantidade] = useState('');
   const [entradaMotivo, setEntradaMotivo] = useState('');
+  const [entradaDestino, setEntradaDestino] = useState<'VENDA' | 'CONSUMO'>('VENDA');
+  const [entradaQuantidadeWarning, setEntradaQuantidadeWarning] = useState<string | null>(null);
   const [entradaSaving, setEntradaSaving] = useState(false);
   const [entradaError, setEntradaError] = useState<string | null>(null);
+
+  const selectedEntradaProduto = useMemo(() => {
+    const pid = Number(entradaProdutoId);
+    if (!Number.isFinite(pid) || pid <= 0) return null;
+    return produtos.find((p) => Number(p.id) === pid) || null;
+  }, [entradaProdutoId, produtos]);
+
+  useEffect(() => {
+    if (!entradaOpen) return;
+    const tipoItem = String(selectedEntradaProduto?.tipo_item || '').toUpperCase();
+    if (tipoItem === 'CONSUMO') {
+      setEntradaDestino('CONSUMO');
+      return;
+    }
+    // VENDA ou AMBOS (default): prateleira
+    setEntradaDestino('VENDA');
+  }, [entradaOpen, selectedEntradaProduto?.tipo_item]);
+
+  useEffect(() => {
+    if (entradaDestino !== 'VENDA') {
+      setEntradaQuantidadeWarning(null);
+      return;
+    }
+    const qty = Number(entradaQuantidade);
+    if (entradaQuantidade.trim() === '') {
+      setEntradaQuantidadeWarning(null);
+      return;
+    }
+    if (!Number.isFinite(qty)) {
+      setEntradaQuantidadeWarning(null);
+      return;
+    }
+    if (!Number.isInteger(qty)) {
+      setEntradaQuantidadeWarning('Entradas para prateleira devem ser em unidades inteiras');
+    } else {
+      setEntradaQuantidadeWarning(null);
+    }
+  }, [entradaDestino, entradaQuantidade]);
 
   const fetchProdutos = async (opts?: { signal?: AbortSignal }) => {
     setProdutosLoading(true);
@@ -529,6 +626,8 @@ const EstoquePage: React.FC = () => {
                 setEntradaProdutoId('');
                 setEntradaQuantidade('');
                 setEntradaMotivo('');
+                setEntradaDestino('VENDA');
+                setEntradaQuantidadeWarning(null);
                 setEntradaOpen(true);
               }}
               disabled={!selectedLocationId}
@@ -548,9 +647,12 @@ const EstoquePage: React.FC = () => {
                 setNovoProdutoNome('');
                 setNovoProdutoMarca('');
                 setNovoProdutoUnidadeMedida('UN');
+                setNovoProdutoTipoItem('VENDA');
+                setNovoProdutoFatorConversao('');
                 setNovoProdutoPrecoCusto('');
                 setNovoProdutoPrecoVenda('');
                 setNovoProdutoEstoqueMinimo('');
+                setNovoProdutoComissaoPercentual('0');
                 setNovoProdutoCategoriaId(null);
                 setNovoProdutoCategoriaNome('');
                 setNovoProdutoOpen(true);
@@ -594,6 +696,11 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
+          if (entradaDestino === 'VENDA' && !Number.isInteger(qty)) {
+            setEntradaError('Entradas para prateleira devem ser em unidades inteiras');
+            return;
+          }
+
           setEntradaSaving(true);
           try {
             await makeAuthenticatedRequest(`${API_BASE_URL}/estoque/movimentacoes`, {
@@ -602,6 +709,7 @@ const EstoquePage: React.FC = () => {
                 unidade_id: Number(selectedLocationId),
                 produto_id: produtoId,
                 quantidade: qty,
+                destino: entradaDestino,
                 motivo: entradaMotivo.trim() ? entradaMotivo.trim() : null
               }
             });
@@ -675,16 +783,70 @@ const EstoquePage: React.FC = () => {
                 </div>
 
                 <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Destino da Mercadoria</label>
+
+                  {(() => {
+                    const tipoItem = String(selectedEntradaProduto?.tipo_item || 'VENDA').toUpperCase();
+                    const allowVenda = tipoItem !== 'CONSUMO';
+                    const allowConsumo = tipoItem !== 'VENDA';
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'VENDA' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowVenda ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input
+                            type="radio"
+                            name="destino"
+                            value="VENDA"
+                            checked={entradaDestino === 'VENDA'}
+                            onChange={() => setEntradaDestino('VENDA')}
+                            disabled={!allowVenda || entradaSaving}
+                          />
+                          <div>
+                            <div className="text-sm font-semibold text-gray-800">Prateleira (Venda)</div>
+                            <div className="text-xs text-gray-500">Abastece unidades inteiras</div>
+                          </div>
+                        </label>
+
+                        <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'CONSUMO' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowConsumo ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input
+                            type="radio"
+                            name="destino"
+                            value="CONSUMO"
+                            checked={entradaDestino === 'CONSUMO'}
+                            onChange={() => setEntradaDestino('CONSUMO')}
+                            disabled={!allowConsumo || entradaSaving}
+                          />
+                          <div>
+                            <div className="text-sm font-semibold text-gray-800">Bancada (Uso)</div>
+                            <div className="text-xs text-gray-500">Abastece volume técnico</div>
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Quantidade</label>
-                  <input
-                    type="number"
-                    value={entradaQuantidade}
-                    onChange={(e) => setEntradaQuantidade(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    step="0.001"
-                    min="0"
-                    disabled={entradaSaving}
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={entradaQuantidade}
+                      onChange={(e) => setEntradaQuantidade(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      step={entradaDestino === 'VENDA' ? '1' : '0.001'}
+                      min="0"
+                      disabled={entradaSaving}
+                    />
+                    {entradaDestino === 'CONSUMO' && (
+                      <span className="text-sm text-gray-500 whitespace-nowrap">
+                        {String(selectedEntradaProduto?.uom_consumo || selectedEntradaProduto?.unidade_medida || '').toLowerCase()}
+                      </span>
+                    )}
+                  </div>
+                  {entradaQuantidadeWarning && (
+                    <p className="text-xs text-amber-600 mt-1">{entradaQuantidadeWarning}</p>
+                  )}
                 </div>
 
                 <div>
@@ -862,9 +1024,30 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
+          const tipoItemFinal = (novoProdutoTipoItem || 'VENDA') as 'VENDA' | 'CONSUMO' | 'AMBOS';
+          const shouldHaveRendimento = tipoItemFinal === 'CONSUMO' || tipoItemFinal === 'AMBOS';
+          const fatorConversaoFinal = !shouldHaveRendimento
+            ? null
+            : (novoProdutoFatorConversao.trim() === '' ? NaN : Number(novoProdutoFatorConversao));
+
+          if (shouldHaveRendimento) {
+            if (!Number.isFinite(fatorConversaoFinal as number) || (fatorConversaoFinal as number) <= 0) {
+              setNovoProdutoError('Rendimento por unidade inválido');
+              return;
+            }
+          }
+
+          const uomConsumoFinal = shouldHaveRendimento ? novoProdutoUnidadeMedida : null;
+
           const estoqueMinimo = novoProdutoEstoqueMinimo.trim() === '' ? 0 : Number(novoProdutoEstoqueMinimo);
           if (!Number.isFinite(estoqueMinimo) || estoqueMinimo < 0) {
             setNovoProdutoError('Estoque mínimo inválido');
+            return;
+          }
+
+          const comissao = novoProdutoComissaoPercentual.trim() === '' ? 0 : Number(novoProdutoComissaoPercentual);
+          if (!Number.isFinite(comissao) || comissao < 0) {
+            setNovoProdutoError('Comissão inválida');
             return;
           }
 
@@ -905,9 +1088,13 @@ const EstoquePage: React.FC = () => {
                   nome: nomeFinal,
                   marca: novoProdutoMarca.trim() ? novoProdutoMarca.trim() : null,
                   unidade_medida: novoProdutoUnidadeMedida,
+                  tipo_item: tipoItemFinal,
+                  fator_conversao: shouldHaveRendimento ? fatorConversaoFinal : null,
+                  uom_consumo: uomConsumoFinal,
                   preco_custo_medio: preco,
                   preco_venda: precoVenda,
                   estoque_minimo: estoqueMinimo,
+                  comissao_percentual: comissao,
                   categoria_id: categoriaId
                 }
               });
@@ -918,9 +1105,13 @@ const EstoquePage: React.FC = () => {
                   nome: nomeFinal,
                   marca: novoProdutoMarca.trim() ? novoProdutoMarca.trim() : null,
                   unidade_medida: novoProdutoUnidadeMedida,
+                  tipo_item: tipoItemFinal,
+                  fator_conversao: shouldHaveRendimento ? fatorConversaoFinal : null,
+                  uom_consumo: uomConsumoFinal,
                   preco_custo_medio: preco,
                   preco_venda: precoVenda,
                   estoque_minimo: estoqueMinimo,
+                  comissao_percentual: comissao,
                   categoria_id: categoriaId
                 }
               });
@@ -962,39 +1153,59 @@ const EstoquePage: React.FC = () => {
                   onClick={handleClose}
                   className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                   disabled={novoProdutoSaving}
+
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {novoProdutoError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <p className="text-red-600 text-sm">{novoProdutoError}</p>
                   </div>
                 )}
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Nome</label>
-                  <input
-                    type="text"
-                    value={novoProdutoNome}
-                    onChange={(e) => setNovoProdutoNome(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    required
-                    disabled={novoProdutoSaving}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Nome</label>
+                    <input
+                      type="text"
+                      value={novoProdutoNome}
+                      onChange={(e) => setNovoProdutoNome(e.target.value)}
+                      placeholder="Nome do produto"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      disabled={novoProdutoSaving}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Marca</label>
+                    <input
+                      type="text"
+                      value={novoProdutoMarca}
+                      onChange={(e) => setNovoProdutoMarca(e.target.value)}
+                      placeholder="Marca (opcional)"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      disabled={novoProdutoSaving}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Marca</label>
-                  <input
-                    type="text"
-                    value={novoProdutoMarca}
-                    onChange={(e) => setNovoProdutoMarca(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    disabled={novoProdutoSaving}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Comissão do Vendedor (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={novoProdutoComissaoPercentual}
+                      onChange={(e) => setNovoProdutoComissaoPercentual(e.target.value)}
+                      placeholder="Ex: 10"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                      disabled={novoProdutoSaving}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -1020,90 +1231,132 @@ const EstoquePage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Unidade de Medida</label>
-                    <div className="relative">
-                      <select
-                        value={novoProdutoUnidadeMedida}
-                        onChange={(e) => setNovoProdutoUnidadeMedida(e.target.value as 'UN' | 'ML' | 'G')}
-                        className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
-                        disabled={novoProdutoSaving}
-                      >
-                        <option value="UN">UN</option>
-                        <option value="ML">ML</option>
-                        <option value="G">G</option>
-                      </select>
-                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Custo Médio</label>
-                    <input
-                      type="number"
-                      value={novoProdutoPrecoCusto}
-                      onChange={(e) => setNovoProdutoPrecoCusto(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      step="0.01"
-                      min="0"
-                      disabled={novoProdutoSaving}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Venda</label>
-                    <input
-                      type="number"
-                      value={novoProdutoPrecoVenda}
-                      onChange={(e) => setNovoProdutoPrecoVenda(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      step="0.01"
-                      min="0"
-                      disabled={novoProdutoSaving}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Estoque Mínimo</label>
-                    <input
-                      type="number"
-                      value={novoProdutoEstoqueMinimo}
-                      onChange={(e) => setNovoProdutoEstoqueMinimo(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      step="0.01"
-                      min="0"
-                      disabled={novoProdutoSaving}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  disabled={novoProdutoSaving}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  disabled={novoProdutoSaving}
-                >
-                  Salvar
-                </button>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Finalidade</label>
+            <div className="relative">
+              <select
+                value={novoProdutoTipoItem}
+                onChange={(e) => {
+                  const next = (e.target.value as any) as 'VENDA' | 'CONSUMO' | 'AMBOS';
+                  setNovoProdutoTipoItem(next);
+                  if (next === 'VENDA') {
+                    setNovoProdutoFatorConversao('');
+                  }
+                }}
+                className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                disabled={novoProdutoSaving}
+              >
+                <option value="VENDA">Venda</option>
+                <option value="CONSUMO">Consumo</option>
+                <option value="AMBOS">Ambos</option>
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
             </div>
-          </div>,
-          portalRoot
-        );
-      })()}
+          </div>
+
+          {(novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS') && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">
+                Rendimento por Unidade (ex: 150{novoProdutoUnidadeMedida === 'UN' ? '' : novoProdutoUnidadeMedida.toLowerCase()})
+              </label>
+              <input
+                type="number"
+                value={novoProdutoFatorConversao}
+                onChange={(e) => setNovoProdutoFatorConversao(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                step="0.001"
+                min="0"
+                disabled={novoProdutoSaving}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Unidade de Medida</label>
+            <div className="relative">
+              <select
+                value={novoProdutoUnidadeMedida}
+                onChange={(e) => setNovoProdutoUnidadeMedida(e.target.value as 'UN' | 'ML' | 'G')}
+                className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                disabled={novoProdutoSaving}
+              >
+                <option value="UN">UN</option>
+                <option value="ML">ML</option>
+                <option value="G">G</option>
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Custo Médio</label>
+            <input
+              type="number"
+              value={novoProdutoPrecoCusto}
+              onChange={(e) => setNovoProdutoPrecoCusto(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+              step="0.01"
+              min="0"
+              disabled={novoProdutoSaving}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Venda</label>
+            <input
+              type="number"
+              value={novoProdutoPrecoVenda}
+              onChange={(e) => setNovoProdutoPrecoVenda(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+              step="0.01"
+              min="0"
+              disabled={novoProdutoSaving}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Estoque Mínimo</label>
+            <input
+              type="number"
+              value={novoProdutoEstoqueMinimo}
+              onChange={(e) => setNovoProdutoEstoqueMinimo(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+              step="0.01"
+              min="0"
+              disabled={novoProdutoSaving}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          disabled={novoProdutoSaving}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          disabled={novoProdutoSaving}
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>,
+  portalRoot
+);
+})()}
 
       <div className="flex items-center border-b border-gray-200 mb-4">
         {(['Produtos', 'Inventário', 'Movimentações', 'Vendas'] as EstoqueTab[]).map((tab) => (
@@ -1134,6 +1387,7 @@ const EstoquePage: React.FC = () => {
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">CUSTO MÉDIO</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">PREÇO DE VENDA</th>
+                  <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">COMISSÃO</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">ESTOQUE ATUAL</th>
                   <th className="p-3 w-64 text-left font-semibold text-gray-600 whitespace-nowrap">MÍNIMO</th>
                   <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
@@ -1142,19 +1396,19 @@ const EstoquePage: React.FC = () => {
               <tbody>
                 {produtosLoading ? (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-500">
+                    <td colSpan={10} className="p-8 text-center text-gray-500">
                       Carregando produtos...
                     </td>
                   </tr>
                 ) : produtosError ? (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-red-600">
+                    <td colSpan={10} className="p-8 text-center text-red-600">
                       Erro: {produtosError}
                     </td>
                   </tr>
                 ) : produtos.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-500">
+                    <td colSpan={10} className="p-8 text-center text-gray-500">
                       Nenhum produto encontrado
                     </td>
                   </tr>
@@ -1162,6 +1416,7 @@ const EstoquePage: React.FC = () => {
                   pagedProdutos.map((p) => {
                     const custo = toNumber(p.preco_custo_medio);
                     const venda = toNumber((p as any).preco_venda);
+                    const comPerc = toNumber((p as any).comissao_percentual);
                     const minimoProduto = toNumber((p as any).estoque_minimo);
                     const snapshotRow = selectedLocationId ? snapshotByProdutoId.get(Number(p.id)) : undefined;
                     const saldoAtual = snapshotRow ? (toNumber(snapshotRow.saldo_atual) ?? 0) : null;
@@ -1184,6 +1439,15 @@ const EstoquePage: React.FC = () => {
                         </td>
                         <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
                           {venda === null ? '—' : formatMoneyBR(venda)}
+                        </td>
+                        <td className="p-3 w-40 text-gray-600 whitespace-nowrap">
+                          {comPerc === null || comPerc <= 0
+                            ? '—'
+                            : `${String(
+                                Number.isInteger(comPerc)
+                                  ? comPerc
+                                  : Number(comPerc.toFixed(2))
+                              ).replace('.', ',')}%`}
                         </td>
                         <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
                           {saldoAtual === null ? (
@@ -1211,10 +1475,16 @@ const EstoquePage: React.FC = () => {
                                 setNovoProdutoMarca(String(p.marca || ''));
                                 const um = (p.unidade_medida as any) || 'UN';
                                 setNovoProdutoUnidadeMedida(['UN', 'ML', 'G'].includes(um) ? um : 'UN');
+                                const tipoItem = String(p.tipo_item || 'VENDA').toUpperCase();
+                                setNovoProdutoTipoItem(['VENDA', 'CONSUMO', 'AMBOS'].includes(tipoItem) ? (tipoItem as any) : 'VENDA');
+                                const fc = p.fator_conversao;
+                                setNovoProdutoFatorConversao(fc === null || fc === undefined ? '' : String(fc));
                                 setNovoProdutoPrecoCusto(custo === null ? '' : String(custo));
                                 setNovoProdutoPrecoVenda(venda === null ? '' : String(venda));
                                 const estMin = toNumber((p as any).estoque_minimo);
                                 setNovoProdutoEstoqueMinimo(estMin === null ? '' : String(estMin));
+                                const comPerc = toNumber((p as any).comissao_percentual);
+                                setNovoProdutoComissaoPercentual(comPerc === null ? '0' : String(comPerc));
                                 setNovoProdutoCategoriaNome(String(p.categoria || ''));
                                 if (p.categoria_id !== undefined && p.categoria_id !== null) {
                                   setNovoProdutoCategoriaId(Number(p.categoria_id));
@@ -1266,7 +1536,8 @@ const EstoquePage: React.FC = () => {
                   <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">ID</th>
                   <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">PRODUTO</th>
                   <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">MARCA</th>
-                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">SALDO</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">PRATELEIRA (VENDA)</th>
+                  <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">BANCADA (CONSUMO)</th>
                   <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">MÍNIMO</th>
                   <th className="p-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">MÁXIMO</th>
                 </tr>
@@ -1274,34 +1545,50 @@ const EstoquePage: React.FC = () => {
               <tbody>
                 {!selectedLocationId ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
                       Selecione uma unidade
                     </td>
                   </tr>
                 ) : snapshotLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
                       Carregando inventário...
                     </td>
                   </tr>
                 ) : snapshotError ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-red-600">
+                    <td colSpan={7} className="p-8 text-center text-red-600">
                       Erro: {snapshotError}
                     </td>
                   </tr>
                 ) : snapshot.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
                       Nenhum saldo encontrado
                     </td>
                   </tr>
                 ) : (
                   pagedSnapshot.map((row) => {
-                    const saldo = toNumber(row.saldo_atual) ?? 0;
+                    const saldoVendaNum = toNumber(row.saldo_venda) ?? 0;
+                    const saldoConsumoNum = toNumber(row.saldo_consumo) ?? 0;
                     const min = toNumber(row.estoque_minimo);
                     const max = toNumber(row.estoque_maximo);
-                    const belowMin = min !== null && saldo < min;
+                    const belowMin = min !== null && (toNumber(row.saldo_atual) ?? 0) < min;
+
+                    const tipoItem = String(row.produto_tipo_item || '').toUpperCase();
+                    const isConsumoOnly = tipoItem === 'CONSUMO';
+                    const isVendaOnly = tipoItem === 'VENDA';
+
+                    const uomVenda = row.produto_unidade_medida || '';
+                    const uomConsumo = row.produto_uom_consumo || row.produto_unidade_medida || '';
+
+                    const vendaDisplay = isConsumoOnly
+                      ? '—'
+                      : `${String(Math.trunc(saldoVendaNum))} ${uomVenda}`;
+
+                    const consumoDisplay = isVendaOnly && saldoConsumoNum <= 0
+                      ? '—'
+                      : `${formatTrimmed3(saldoConsumoNum)} ${String(uomConsumo || '').toLowerCase()}`;
 
                     return (
                       <tr
@@ -1316,10 +1603,14 @@ const EstoquePage: React.FC = () => {
                           <span className="truncate block">{row.produto_marca || '—'}</span>
                         </td>
                         <td className="p-4 whitespace-nowrap">
-                          <span className={belowMin ? 'text-red-600 font-semibold' : 'text-gray-700'}>
-                            {saldo.toFixed(3)}
+                          <span className={belowMin ? 'text-red-600 font-semibold' : 'text-gray-800'}>
+                            {vendaDisplay}
                           </span>
-                          <span className="text-gray-400 ml-2">{row.produto_unidade_medida || ''}</span>
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <span className="text-slate-600">
+                            {consumoDisplay}
+                          </span>
                         </td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{min === null ? '—' : min.toFixed(3)}</td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{max === null ? '—' : max.toFixed(3)}</td>
@@ -1337,6 +1628,27 @@ const EstoquePage: React.FC = () => {
 
       {activeTab === 'Movimentações' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-end">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-600">Tipo</label>
+              <select
+                value={movsTipoFilter}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setMovsTipoFilter(e.target.value);
+                }}
+                className="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg px-3 py-2"
+              >
+                <option value="">Todos</option>
+                <option value="ENTRADA">Entrada</option>
+                <option value="SAIDA">Saída</option>
+                <option value="CONSUMO">Consumo</option>
+                <option value="ESTORNO">Estorno</option>
+                <option value="AJUSTE">Ajuste</option>
+                <option value="CONVERSAO_INTERNA">Conversões</option>
+              </select>
+            </div>
+          </div>
           <div className="overflow-x-auto max-w-full">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
@@ -1377,7 +1689,7 @@ const EstoquePage: React.FC = () => {
                   </tr>
                 ) : (
                   pagedMovs.map((m) => {
-                    const qtd = toNumber(m.quantidade) ?? 0;
+                    const tipoNorm = String(m.tipo || '').toUpperCase();
                     const date = new Date(m.created_at);
                     const dateStr = Number.isNaN(date.getTime())
                       ? m.created_at
@@ -1400,9 +1712,11 @@ const EstoquePage: React.FC = () => {
                         <td className="p-4 text-gray-600 whitespace-nowrap">
                           <span className="truncate block">{m.produto_nome}</span>
                         </td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap">{qtd.toFixed(3)}</td>
+                        <td className="p-4 text-gray-700 whitespace-nowrap">{formatMovementQty(m)}</td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">
-                          <span className="truncate block">{m.motivo || '—'}</span>
+                          <span className={tipoNorm === 'CONVERSAO_INTERNA' ? 'truncate block text-xs italic text-indigo-700' : 'truncate block'}>
+                            {m.motivo || '—'}
+                          </span>
                         </td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{m.origem_id || '—'}</td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{dateStr}</td>

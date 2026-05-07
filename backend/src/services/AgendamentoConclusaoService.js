@@ -7,6 +7,20 @@ class AgendamentoConclusaoService {
     this.inventoryService = new InventoryService(db);
   }
 
+  toCents(value) {
+    if (value == null) return 0;
+    const normalized = typeof value === 'string' ? value.replace(',', '.').trim() : value;
+    const n = Number(normalized);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100);
+  }
+
+  centsToDecimal(cents) {
+    const n = Number(cents);
+    if (!Number.isFinite(n)) return 0;
+    return n / 100;
+  }
+
   async reconcileEstoque({ agendamentoId, triggeredByUserId, pagamentos, trx: trxExternal }) {
     const agendamentoIdNum = parseInt(agendamentoId, 10);
     if (!Number.isFinite(agendamentoIdNum)) {
@@ -51,6 +65,7 @@ class AgendamentoConclusaoService {
           if (!vendaId) {
             const vendaExistente = await trx('vendas')
               .where('agendamento_id', agendamentoIdNum)
+              .where('status', 'PAID')
               .select('id')
               .first();
 
@@ -105,20 +120,25 @@ class AgendamentoConclusaoService {
               const qty = Number(p.quantidade) || 0;
               const unit = Number(p.preco_aplicado) || 0;
               if (!Number.isFinite(qty) || qty <= 0) continue;
+              const qtyThousand = Math.round(qty * 1000);
+              const unitCents = this.toCents(unit);
+              const totalCents = Math.round((qtyThousand * unitCents) / 1000);
               itens.push({
                 item_type: 'PRODUTO',
                 reference_id: Number(p.produto_id),
                 descricao_snapshot: String(p.produto_nome || 'Produto'),
                 quantidade: qty,
                 preco_unitario_snapshot: unit,
-                total_snapshot: Number((qty * unit).toFixed(2)),
+                total_snapshot: this.centsToDecimal(totalCents),
                 agente_id: p.agente_id ? Number(p.agente_id) : null
               });
             }
 
-            const subtotal = Number((itens.reduce((sum, i) => sum + (Number(i.total_snapshot) || 0), 0)).toFixed(2));
-            const totalFromAgendamento = Number(agendamento.valor_total);
-            const total = Number((Number.isFinite(totalFromAgendamento) && totalFromAgendamento > 0 ? totalFromAgendamento : subtotal).toFixed(2));
+            const subtotalCents = itens.reduce((sum, i) => sum + this.toCents(i.total_snapshot), 0);
+            const totalCents = subtotalCents;
+
+            const subtotal = this.centsToDecimal(subtotalCents);
+            const total = this.centsToDecimal(totalCents);
 
             const [vendaRow] = await trx('vendas')
               .insert({
@@ -165,19 +185,19 @@ class AgendamentoConclusaoService {
             const pagamentosValidos = pagamentosRows
               .map((p) => ({
                 metodo: String(p?.metodo || '').trim(),
-                valor: Number(p?.valor)
+                valorCents: this.toCents(p?.valor)
               }))
-              .filter((p) => p.metodo && Number.isFinite(p.valor) && p.valor > 0);
+              .filter((p) => p.metodo && Number.isFinite(p.valorCents) && p.valorCents > 0);
 
-            const totalPago = Number((pagamentosValidos.reduce((sum, p) => sum + p.valor, 0)).toFixed(2));
-            const podeSplit = pagamentosValidos.length > 0 && Math.abs(totalPago - total) < 0.01;
+            const totalPagoCents = pagamentosValidos.reduce((sum, p) => sum + p.valorCents, 0);
+            const podeSplit = pagamentosValidos.length > 0 && Math.abs(totalPagoCents - totalCents) <= 1;
 
             if (podeSplit) {
               await trx('venda_pagamentos').insert(
                 pagamentosValidos.map((p) => ({
                   venda_id: vendaId,
                   metodo: p.metodo,
-                  valor: Number(p.valor.toFixed(2)),
+                  valor: this.centsToDecimal(p.valorCents),
                   status: 'CAPTURED',
                   paid_at: trx.fn.now(),
                   created_at: trx.fn.now()
@@ -187,7 +207,7 @@ class AgendamentoConclusaoService {
               await trx('venda_pagamentos').insert({
                 venda_id: vendaId,
                 metodo: agendamento.metodo_pagamento || 'Não definido',
-                valor: total,
+                valor: this.centsToDecimal(totalCents),
                 status: 'CAPTURED',
                 paid_at: trx.fn.now(),
                 created_at: trx.fn.now()

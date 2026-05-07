@@ -299,7 +299,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
 
             <NavItem
               icon={<LineChart className="h-5 w-5" />}
-              label="DESPESAS"
+              label="FINANCEIRO"
               isCollapsed={isCollapsed}
               isActive={activeView === 'despesas'}
               onClick={() => handleNavItemClick('despesas')}

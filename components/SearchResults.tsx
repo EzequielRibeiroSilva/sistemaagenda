@@ -166,7 +166,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ query, onAddNewAppointmen
                     >
                         <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-semibold text-gray-800">Agendamento #{foundAppointment.numeroAgendamento || foundAppointment.id}</span>
+                                <span className="text-sm font-semibold text-gray-800">Agendamento #{String(foundAppointment.numeroAgendamento || foundAppointment.id).padStart(2, '0')}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                                     foundAppointment.status === 'Confirmado' ? 'bg-green-100 text-green-700' :
                                     foundAppointment.status === 'Pendente' ? 'bg-yellow-100 text-yellow-700' :

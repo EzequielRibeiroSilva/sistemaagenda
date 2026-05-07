@@ -199,9 +199,13 @@ class ProdutoController extends BaseController {
         marca,
         categoria_id,
         unidade_medida,
+        tipo_item,
+        uom_consumo,
+        fator_conversao,
         preco_custo_medio,
         preco_venda,
-        estoque_minimo
+        estoque_minimo,
+        comissao_percentual
       } = req.body;
 
       if (!nome || !String(nome).trim()) {
@@ -220,6 +224,45 @@ class ProdutoController extends BaseController {
         });
       }
 
+      const tipoItemFinal = tipo_item ? String(tipo_item).toUpperCase() : 'VENDA';
+      if (!['VENDA', 'CONSUMO', 'AMBOS'].includes(tipoItemFinal)) {
+        return res.status(400).json({
+          success: false,
+          error: 'tipo_item inválido',
+          message: "tipo_item deve ser 'VENDA', 'CONSUMO' ou 'AMBOS'"
+        });
+      }
+
+      const shouldHaveRendimento = tipoItemFinal === 'CONSUMO' || tipoItemFinal === 'AMBOS';
+
+      const fatorConversaoFinal = !shouldHaveRendimento
+        ? null
+        : (fator_conversao !== undefined && fator_conversao !== null && String(fator_conversao).trim() !== ''
+          ? Number(fator_conversao)
+          : NaN);
+
+      if (shouldHaveRendimento) {
+        if (!Number.isFinite(fatorConversaoFinal) || fatorConversaoFinal <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'fator_conversao inválido',
+            message: 'fator_conversao deve ser um número > 0 para itens de consumo'
+          });
+        }
+      }
+
+      // Observação: uom_consumo no banco é NOT NULL (migration). Mesmo para VENDA,
+      // persistimos um valor válido (default = unidade_medida) e tratamos como "campo inerte".
+      const uomConsumoFinal = uom_consumo ? String(uom_consumo).toUpperCase() : unidadeMedidaFinal;
+
+      if (!['UN', 'ML', 'G'].includes(uomConsumoFinal)) {
+        return res.status(400).json({
+          success: false,
+          error: 'uom_consumo inválido',
+          message: 'uom_consumo deve ser UN, ML ou G'
+        });
+      }
+
       const precoCustoMedioFinal = preco_custo_medio !== undefined && preco_custo_medio !== null
         ? Number(preco_custo_medio)
         : 0;
@@ -230,6 +273,10 @@ class ProdutoController extends BaseController {
 
       const estoqueMinimoFinal = estoque_minimo !== undefined && estoque_minimo !== null
         ? Number(estoque_minimo)
+        : 0;
+
+      const comissaoPercentualFinal = comissao_percentual !== undefined && comissao_percentual !== null
+        ? Number(comissao_percentual)
         : 0;
 
       if (Number.isNaN(precoCustoMedioFinal) || precoCustoMedioFinal < 0) {
@@ -253,6 +300,14 @@ class ProdutoController extends BaseController {
           success: false,
           error: 'Estoque mínimo inválido',
           message: 'estoque_minimo deve ser um número >= 0'
+        });
+      }
+
+      if (Number.isNaN(comissaoPercentualFinal) || comissaoPercentualFinal < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Comissão inválida',
+          message: 'comissao_percentual deve ser um número >= 0'
         });
       }
 
@@ -293,9 +348,13 @@ class ProdutoController extends BaseController {
           marca: marca !== undefined && marca !== null && String(marca).trim() !== '' ? String(marca).trim() : null,
           categoria_id: categoriaIdFinal,
           unidade_medida: unidadeMedidaFinal,
+          tipo_item: tipoItemFinal,
+          uom_consumo: uomConsumoFinal,
+          fator_conversao: fatorConversaoFinal,
           preco_custo_medio: precoCustoMedioFinal,
           preco_venda: precoVendaFinal,
           estoque_minimo: estoqueMinimoFinal,
+          comissao_percentual: comissaoPercentualFinal,
           created_at: new Date(),
           updated_at: new Date()
         };
@@ -389,9 +448,13 @@ class ProdutoController extends BaseController {
         marca,
         categoria_id,
         unidade_medida,
+        tipo_item,
+        uom_consumo,
+        fator_conversao,
         preco_custo_medio,
         preco_venda,
-        estoque_minimo
+        estoque_minimo,
+        comissao_percentual
       } = req.body;
 
       if (process.env.NODE_ENV !== 'production') {
@@ -466,6 +529,65 @@ class ProdutoController extends BaseController {
         patch.unidade_medida = unidadeMedidaFinal;
       }
 
+      if (tipo_item !== undefined) {
+        const tipoItemFinal = tipo_item ? String(tipo_item).toUpperCase() : 'VENDA';
+        if (!['VENDA', 'CONSUMO', 'AMBOS'].includes(tipoItemFinal)) {
+          return res.status(400).json({
+            success: false,
+            error: 'tipo_item inválido',
+            message: "tipo_item deve ser 'VENDA', 'CONSUMO' ou 'AMBOS'"
+          });
+        }
+        patch.tipo_item = tipoItemFinal;
+
+        const shouldHaveRendimento = tipoItemFinal === 'CONSUMO' || tipoItemFinal === 'AMBOS';
+        if (!shouldHaveRendimento) {
+          patch.fator_conversao = null;
+          // uom_consumo é NOT NULL: manter default coerente com unidade_medida
+          patch.uom_consumo = patch.unidade_medida || produto.unidade_medida || 'UN';
+        }
+      }
+
+      if (fator_conversao !== undefined) {
+        const tipoItemNow = String(patch.tipo_item || produto.tipo_item || 'VENDA').toUpperCase();
+        const shouldHaveRendimento = tipoItemNow === 'CONSUMO' || tipoItemNow === 'AMBOS';
+
+        if (!shouldHaveRendimento) {
+          patch.fator_conversao = null;
+        } else {
+          const fator = fator_conversao !== null && String(fator_conversao).trim() !== '' ? Number(fator_conversao) : NaN;
+          if (!Number.isFinite(fator) || fator <= 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'fator_conversao inválido',
+              message: 'fator_conversao deve ser um número > 0 para itens de consumo'
+            });
+          }
+          patch.fator_conversao = fator;
+        }
+      }
+
+      if (uom_consumo !== undefined) {
+        const tipoItemNow = String(patch.tipo_item || produto.tipo_item || 'VENDA').toUpperCase();
+        const shouldHaveRendimento = tipoItemNow === 'CONSUMO' || tipoItemNow === 'AMBOS';
+
+        if (!shouldHaveRendimento) {
+          patch.uom_consumo = patch.unidade_medida || produto.unidade_medida || 'UN';
+        } else {
+          const uom = uom_consumo ? String(uom_consumo).toUpperCase() : null;
+          const uomFinal = uom || patch.unidade_medida || produto.unidade_medida || 'UN';
+
+          if (!['UN', 'ML', 'G'].includes(uomFinal)) {
+            return res.status(400).json({
+              success: false,
+              error: 'uom_consumo inválido',
+              message: 'uom_consumo deve ser UN, ML ou G'
+            });
+          }
+          patch.uom_consumo = uomFinal;
+        }
+      }
+
       if (preco_custo_medio !== undefined) {
         const preco = Number(preco_custo_medio);
         if (Number.isNaN(preco) || preco < 0) {
@@ -500,6 +622,18 @@ class ProdutoController extends BaseController {
           });
         }
         patch.estoque_minimo = minimo;
+      }
+
+      if (comissao_percentual !== undefined) {
+        const comissao = Number(comissao_percentual);
+        if (Number.isNaN(comissao) || comissao < 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Comissão inválida',
+            message: 'comissao_percentual deve ser um número >= 0'
+          });
+        }
+        patch.comissao_percentual = comissao;
       }
 
       await this.model.db('produtos')

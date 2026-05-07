@@ -278,6 +278,34 @@ class VendaController {
       });
     } catch (error) {
       const code = error?.code;
+
+      if (code === 'SALDO_INSUFICIENTE') {
+        let produtoNome = null;
+        try {
+          const produtoId = error?.produto_id ? Number(error.produto_id) : null;
+          if (produtoId) {
+            const produto = await db('produtos')
+              .where({ id: produtoId, usuario_id: req.user?.id })
+              .select('nome')
+              .first();
+            produtoNome = produto?.nome ? String(produto.nome) : null;
+          }
+        } catch {
+          produtoNome = null;
+        }
+
+        return res.status(409).json({
+          success: false,
+          code: 'SALDO_INSUFICIENTE',
+          error: 'Saldo insuficiente',
+          message: error.message,
+          produto_id: error?.produto_id || null,
+          produto_nome: produtoNome,
+          unidade_id: error?.unidade_id || null,
+          quantidade: error?.quantidade || null
+        });
+      }
+
       const status = code === 'INVALID_PRODUTO_ID' || code === 'INVALID_QUANTIDADE' || code === 'INVALID_PRECO' || code === 'PAGAMENTOS_INVALID' || code === 'INVALID_UN_FRACTION'
         ? 400
         : code === 'PRODUTO_NOT_FOUND'

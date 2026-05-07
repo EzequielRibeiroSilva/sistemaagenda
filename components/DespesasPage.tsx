@@ -4,8 +4,12 @@ import { ChevronDown, ChevronLeft, ChevronRight, Plus, Trash, X } from './Icons'
 import { useCalendarData } from '../hooks/useCalendarData';
 import { useToast } from '../contexts/ToastContext';
 import { useDespesas, type DespesaRow, type DespesaStatus } from '../hooks/useDespesas';
+import { useFluxoCaixa } from '../hooks/useFluxoCaixa';
+import { formatMoneyBR, toMoneyFixedString } from '../utils/money';
 
 type DespesasTab = 'A Pagar' | 'Vencidas' | 'Pagas';
+
+type FinanceiroTab = 'Fluxo de Caixa' | 'Despesas';
 
 type CreateDespesaForm = {
   descricao: string;
@@ -43,6 +47,8 @@ const DespesasPage: React.FC = () => {
   const { locations: backendLocations } = useCalendarData();
   const toast = useToast();
 
+  const [financeiroTab, setFinanceiroTab] = useState<FinanceiroTab>('Fluxo de Caixa');
+
   const [activeTab, setActiveTab] = useState<DespesasTab>('A Pagar');
 
   const locations = useMemo(() => {
@@ -51,6 +57,23 @@ const DespesasPage: React.FC = () => {
 
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
   const shouldShowUnitSelector = locations.length > 1;
+
+  const toInputDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const currentMonthRange = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: toInputDate(start), end: toInputDate(end) };
+  }, []);
+
+  const [fluxoInicio, setFluxoInicio] = useState<string>(currentMonthRange.start);
+  const [fluxoFim, setFluxoFim] = useState<string>(currentMonthRange.end);
 
   useEffect(() => {
     if (!selectedLocationId && locations.length > 0) {
@@ -74,6 +97,47 @@ const DespesasPage: React.FC = () => {
     deleteDespesa
   } = useDespesas({ unidadeId: selectedLocationId, status: statusFilter });
 
+  const {
+    transacoes,
+    resumo,
+    loading: fluxoLoading,
+    error: fluxoError
+  } = useFluxoCaixa({
+    unidadeId: selectedLocationId,
+    dataInicio: fluxoInicio,
+    dataFim: fluxoFim
+  });
+
+  const [fluxoOrigem, setFluxoOrigem] = useState<'ALL' | 'COMANDAS' | 'BALCAO'>('ALL');
+
+  const [fluxoCurrentPage, setFluxoCurrentPage] = useState(1);
+  const fluxoItemsPerPage = 12;
+
+  useEffect(() => {
+    setFluxoCurrentPage(1);
+  }, [selectedLocationId, fluxoInicio, fluxoFim, fluxoOrigem]);
+
+  const filteredTransacoes = useMemo(() => {
+    const origem = String(fluxoOrigem || 'ALL').toUpperCase();
+    if (origem === 'COMANDAS') {
+      return transacoes.filter((t) => String(t.descricao || '').includes('Comanda'));
+    }
+    if (origem === 'BALCAO') {
+      return transacoes.filter((t) => String(t.descricao || '').includes('Venda Balcão'));
+    }
+    return transacoes;
+  }, [fluxoOrigem, transacoes]);
+
+  const fluxoTotalItems = filteredTransacoes.length;
+  const fluxoTotalPages = Math.max(1, Math.ceil(fluxoTotalItems / fluxoItemsPerPage));
+  const fluxoStart = fluxoTotalItems === 0 ? 0 : ((fluxoCurrentPage - 1) * fluxoItemsPerPage) + 1;
+  const fluxoEnd = fluxoTotalItems === 0 ? 0 : Math.min(fluxoCurrentPage * fluxoItemsPerPage, fluxoTotalItems);
+
+  const pagedTransacoes = useMemo(() => {
+    const startIndex = (fluxoCurrentPage - 1) * fluxoItemsPerPage;
+    return filteredTransacoes.slice(startIndex, startIndex + fluxoItemsPerPage);
+  }, [filteredTransacoes, fluxoCurrentPage]);
+
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
@@ -90,10 +154,6 @@ const DespesasPage: React.FC = () => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return despesas.slice(startIndex, startIndex + itemsPerPage);
   }, [currentPage, despesas]);
-
-  const formatMoneyBR = (value: number) => {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
 
   const StatusBadge: React.FC<{ status: DespesaRow['status'] }> = ({ status }) => {
     const normalized = String(status || '').toUpperCase();
@@ -113,13 +173,6 @@ const DespesasPage: React.FC = () => {
     );
   };
 
-  const toInputDate = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
   const formatDateBR = (isoOrDate: string | null | undefined) => {
     if (!isoOrDate) return '—';
     const raw = String(isoOrDate);
@@ -127,6 +180,13 @@ const DespesasPage: React.FC = () => {
     const [y, m, d] = datePart.split('-');
     if (!y || !m || !d) return raw;
     return `${d}/${m}/${y}`;
+  };
+
+  const formatExtratoValue = (valor: unknown) => {
+    const fixed = toMoneyFixedString(valor);
+    const n = Number(fixed);
+    if (!Number.isFinite(n)) return formatMoneyBR(0);
+    return formatMoneyBR(n);
   };
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -160,7 +220,7 @@ const DespesasPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-3xl font-bold text-gray-800">Despesas</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Financeiro</h1>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
           {shouldShowUnitSelector && (
@@ -173,166 +233,328 @@ const DespesasPage: React.FC = () => {
             </div>
           )}
 
-          <button
-            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
-            type="button"
-            disabled={(!selectedLocationId && shouldShowUnitSelector) || createSaving}
-            onClick={() => {
-              setCreateError(null);
-              setCreateForm({
-                descricao: '',
-                categoria: 'Operacional',
-                valor: '',
-                data_vencimento: ''
-              });
-              setIsCreateOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            Nova Despesa
-          </button>
+          {financeiroTab === 'Despesas' && (
+            <button
+              className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
+              type="button"
+              disabled={(!selectedLocationId && shouldShowUnitSelector) || createSaving}
+              onClick={() => {
+                setCreateError(null);
+                setCreateForm({
+                  descricao: '',
+                  categoria: 'Operacional',
+                  valor: '',
+                  data_vencimento: ''
+                });
+                setIsCreateOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              Nova Despesa
+            </button>
+          )}
         </div>
       </div>
 
       <div className="flex items-center border-b border-gray-200">
-        {(['A Pagar', 'Vencidas', 'Pagas'] as DespesasTab[]).map((tab) => (
+        {(['Fluxo de Caixa', 'Despesas'] as FinanceiroTab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => setFinanceiroTab(tab)}
             className={`px-1 py-4 text-lg font-semibold mr-8 transition-colors duration-200 relative focus:outline-none ${
-              activeTab === tab ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
+              financeiroTab === tab ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
             }`}
             type="button"
           >
             {tab}
-            {activeTab === tab && (
+            {financeiroTab === tab && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"></div>
             )}
           </button>
         ))}
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
-        <div className="overflow-x-auto max-w-full">
-          <table className="w-full min-w-[1200px] text-sm table-fixed">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">VENCIMENTO</th>
-                <th className="p-3 w-[520px] text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
-                <th className="p-3 w-56 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
-                <th className="p-3 w-48 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
-                <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS</th>
-                <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
-                      Carregando...
-                    </div>
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
-                    {error}
-                  </td>
-                </tr>
-              ) : pagedDespesas.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
-                    Nenhuma despesa encontrada
-                  </td>
-                </tr>
-              ) : (
-                pagedDespesas.map((d) => (
-                  <tr key={d.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
-                    <td className="p-4 w-40 text-gray-600 whitespace-nowrap">{formatDateBR(d.data_vencimento)}</td>
-                    <td className="p-4 w-[520px]">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium text-gray-800 truncate">{d.descricao}</span>
-                        <span className="text-xs text-gray-400 flex-shrink-0">#{d.id}</span>
-                      </div>
-                    </td>
-                    <td className="p-4 w-56 text-gray-600 whitespace-nowrap">{d.categoria}</td>
-                    <td className="p-4 w-48 text-right font-medium text-gray-800 whitespace-nowrap">
-                      {formatMoneyBR(Number(d.valor))}
-                    </td>
-                    <td className="p-3 w-40">
-                      <StatusBadge status={d.status} />
-                    </td>
-                    <td className="p-3 w-32">
-                      <div className="flex items-center gap-1">
-                        {(activeTab === 'A Pagar' || activeTab === 'Vencidas') && (
-                          <button
-                            className="px-2 py-1 text-xs font-semibold text-white bg-green-600 border border-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
-                            type="button"
-                            onClick={() => setPayDespesa(d)}
-                            disabled={paySaving || deleteSaving || createSaving}
-                          >
-                            Pagar
-                          </button>
-                        )}
+      {financeiroTab === 'Fluxo de Caixa' && (
+        <div className="space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-600 mb-1">Início</label>
+                <input
+                  type="date"
+                  value={fluxoInicio}
+                  onChange={(e) => setFluxoInicio(e.target.value)}
+                  className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-600 mb-1">Fim</label>
+                <input
+                  type="date"
+                  value={fluxoFim}
+                  onChange={(e) => setFluxoFim(e.target.value)}
+                  className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50"
+                />
+              </div>
+            </div>
 
-                        <button
-                          className="text-gray-400 hover:text-gray-700 p-1"
-                          type="button"
-                          title="Excluir"
-                          onClick={() => {
-                            setDeleteError(null);
-                            setConfirmDeleteId(Number(d.id));
-                          }}
-                          disabled={deleteSaving || paySaving || createSaving}
-                        >
-                          <Trash className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+            <div className="flex justify-end">
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-600 mb-1">Origem</label>
+                <HeaderDropdown
+                  options={[
+                    { value: 'ALL', label: 'Todas as movimentações' },
+                    { value: 'COMANDAS', label: 'Comandas' },
+                    { value: 'BALCAO', label: 'Vendas Balcão' }
+                  ]}
+                  selectedValue={fluxoOrigem}
+                  onSelect={(value) => setFluxoOrigem(value as 'ALL' | 'COMANDAS' | 'BALCAO')}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="text-sm font-semibold text-gray-600">Entradas</div>
+              <div className="text-2xl font-bold text-green-700 mt-2">{formatMoneyBR(resumo.total_entradas)}</div>
+              <div className="text-xs text-gray-500 mt-1">No período</div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="text-sm font-semibold text-gray-600">Saídas</div>
+              <div className="text-2xl font-bold text-red-700 mt-2">{formatMoneyBR(resumo.total_saidas)}</div>
+              <div className="text-xs text-gray-500 mt-1">Pagas no período</div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="text-sm font-semibold text-gray-600">Saldo do Período</div>
+              <div className={`text-2xl font-bold mt-2 ${resumo.saldo_periodo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {formatMoneyBR(resumo.saldo_periodo)}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">Entradas - Saídas</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
+            <div className="overflow-x-auto max-w-full">
+              <table className="w-full min-w-[1100px] text-sm table-fixed">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">DATA</th>
+                    <th className="p-3 w-[520px] text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
+                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO</th>
+                    <th className="p-3 w-48 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {fluxoLoading ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-gray-500">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
+                          Carregando...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : fluxoError ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-gray-500">{fluxoError}</td>
+                    </tr>
+                  ) : filteredTransacoes.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-gray-500">Nenhuma transação encontrada</td>
+                    </tr>
+                  ) : (
+                    pagedTransacoes.map((t, idx) => {
+                      const valorNum = Number(toMoneyFixedString(t.valor));
+                      const isEntrada = String(t.tipo).toUpperCase() === 'ENTRADA';
+                      const valueClass = isEntrada ? 'text-green-700' : 'text-red-700';
 
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            Mostrando{' '}
-            <span className="font-medium">{start}</span>{' '}
-            a{' '}
-            <span className="font-medium">{end}</span>{' '}
-            de <span className="font-medium">{totalItems}</span> registros
+                      const displayValue =
+                        Number.isFinite(valorNum)
+                          ? `${isEntrada ? '+' : '-'} ${formatMoneyBR(Math.abs(valorNum))}`
+                          : formatExtratoValue(t.valor);
+
+                      return (
+                        <tr key={`${t.data}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                          <td className="p-3 text-gray-600 whitespace-nowrap">{formatDateBR(t.data)}</td>
+                          <td className="p-3 text-gray-700 truncate" title={t.descricao}>
+                            {t.descricao || '—'}
+                          </td>
+                          <td className="p-3 text-gray-600 whitespace-nowrap">{t.metodo || '—'}</td>
+                          <td className={`p-3 text-right font-semibold whitespace-nowrap ${valueClass}`}>{displayValue}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t border-gray-200">
+              <div className="text-sm text-gray-600">
+                Mostrando <span className="font-medium">{fluxoStart}</span> a <span className="font-medium">{fluxoEnd}</span> de{' '}
+                <span className="font-medium">{fluxoTotalItems}</span> registros
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setFluxoCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={fluxoCurrentPage === 1}
+                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  type="button"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+
+                <span className="text-sm text-gray-700">
+                  Página <span className="font-medium">{fluxoCurrentPage}</span> de{' '}
+                  <span className="font-medium">{fluxoTotalPages}</span>
+                </span>
+
+                <button
+                  onClick={() => setFluxoCurrentPage((p) => Math.min(fluxoTotalPages, p + 1))}
+                  disabled={fluxoCurrentPage === fluxoTotalPages}
+                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  type="button"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {financeiroTab === 'Despesas' && (
+        <div className="space-y-4">
+          <div className="flex items-center border-b border-gray-200">
+            {(['A Pagar', 'Vencidas', 'Pagas'] as DespesasTab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-1 py-4 text-lg font-semibold mr-8 transition-colors duration-200 relative focus:outline-none ${
+                  activeTab === tab ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
+                }`}
+                type="button"
+              >
+                {tab}
+                {activeTab === tab && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"></div>
+                )}
+              </button>
+            ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              type="button"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
+            <div className="overflow-x-auto max-w-full">
+              <table className="w-full min-w-[1200px] text-sm table-fixed">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">VENCIMENTO</th>
+                    <th className="p-3 w-[520px] text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
+                    <th className="p-3 w-56 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
+                    <th className="p-3 w-48 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
+                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS</th>
+                    <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
+                          Carregando...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">{error}</td>
+                    </tr>
+                  ) : pagedDespesas.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">Nenhuma despesa encontrada</td>
+                    </tr>
+                  ) : (
+                    pagedDespesas.map((d) => {
+                      const normalizedStatus = String(d.status || '').toUpperCase();
+                      const isPaid = normalizedStatus === 'PAID';
+                      return (
+                        <tr key={d.id}>
+                          <td className="p-3 text-gray-600 whitespace-nowrap">{formatDateBR(d.data_vencimento)}</td>
+                          <td className="p-3 text-gray-700 truncate" title={d.descricao}>{d.descricao}</td>
+                          <td className="p-3 text-gray-600 whitespace-nowrap">{d.categoria}</td>
+                          <td className="p-3 text-right font-semibold text-gray-900 whitespace-nowrap">
+                            {formatMoneyBR(Number(d.valor) || 0)}
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            <StatusBadge status={d.status} />
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {!isPaid && (
+                                <button
+                                  type="button"
+                                  className="px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100"
+                                  onClick={() => setPayDespesa(d)}
+                                >
+                                  Pagar
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="p-2 rounded-lg border border-gray-200 hover:bg-red-50 hover:border-red-200"
+                                onClick={() => setConfirmDeleteId(d.id)}
+                              >
+                                <Trash className="w-4 h-4 text-red-600" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-            <span className="text-sm text-gray-700">
-              Página <span className="font-medium">{currentPage}</span> de{' '}
-              <span className="font-medium">{totalPages}</span>
-            </span>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t border-gray-200">
+              <div className="text-sm text-gray-600">
+                Mostrando <span className="font-medium">{start}</span> a <span className="font-medium">{end}</span> de{' '}
+                <span className="font-medium">{totalItems}</span> registros
+              </div>
 
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              type="button"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  type="button"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+
+                <span className="text-sm text-gray-700">
+                  Página <span className="font-medium">{currentPage}</span> de{' '}
+                  <span className="font-medium">{totalPages}</span>
+                </span>
+
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  type="button"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {(() => {
         if (!isCreateOpen) return null;

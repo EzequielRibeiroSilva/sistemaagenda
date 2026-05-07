@@ -11,10 +11,11 @@ const logger = require('./../utils/logger');
 
 class WhatsAppService {
   constructor() {
-    this.evolutionApiUrl = process.env.EVO_API_BASE_URL || process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-    this.evolutionApiKey = process.env.EVO_API_KEY || process.env.EVOLUTION_API_KEY || '';
+    const rawUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    this.evolutionApiUrl = String(rawUrl).replace(/\/+$/g, '');
+    this.evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
     this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'PAINEL-DE-AGENDAMENTOS';
-    this.instanceId = process.env.EVO_API_INSTANCE_ID || '';
+    this.instanceId = process.env.EVOLUTION_INSTANCE_ID || '';
     this.enabled = process.env.WHATSAPP_ENABLED === 'true' || process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
     this.notificacaoModel = new NotificacaoModel();
@@ -63,7 +64,7 @@ class WhatsAppService {
       linkPreview: false
     };
 
-    const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceName}`, {
+    const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -319,7 +320,7 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
           linkPreview: false
         };
 
-        const response = await fetch(`${this.evolutionApiUrl}message/sendText/${instanceIdentifier}`, {
+        const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceIdentifier)}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -848,7 +849,8 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
     const pontosMensagem = this.formatPontosMessage(pontos);
     const assinaturaMensagem = this.formatAssinaturaSaldoMessage(assinatura_saldo);
-    const idExibicao = numero_agendamento || agendamento_id;
+    const idRaw = numero_agendamento || agendamento_id;
+    const idExibicao = idRaw != null ? String(idRaw).padStart(2, '0') : '';
 
     return `👋 Olá, *${cliente.nome}*! Ficamos muito felizes com seu agendamento na *${unidade.nome}*.
 
@@ -879,7 +881,8 @@ _Mensagem automática do Tally_`;
     const servicoTexto = this.formatServicos(servicos);
     const wppCliente = this.generateWhatsAppLink(cliente_telefone);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
-    const idExibicao = numero_agendamento || agendamento_id;
+    const idRaw = numero_agendamento || agendamento_id;
+    const idExibicao = idRaw != null ? String(idRaw).padStart(2, '0') : '';
 
     return `🆕 *Novo Agendamento:* ${cliente.nome} agendou ${servicoTexto}.
 

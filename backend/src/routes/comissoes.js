@@ -11,6 +11,14 @@ router.use(authenticate());
 
 router.get('/resumo', (req, res) => controller.resumo(req, res));
 router.get('/pendentes', (req, res) => controller.pendentes(req, res));
+router.get('/extrato/pendente', (req, res) => {
+  req.query.status_comissao = 'pendente';
+  return controller.pendentes(req, res);
+});
+router.get('/extrato/historico', (req, res) => {
+  req.query.status_comissao = 'pago';
+  return controller.pendentes(req, res);
+});
 router.post('/pagar', (req, res) => controller.pagar(req, res));
 
 module.exports = router;

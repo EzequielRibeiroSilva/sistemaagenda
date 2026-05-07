@@ -41,6 +41,7 @@ class ServicoController extends BaseController {
 
       const servico = await this.model.db('servicos')
         .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .whereNull('deleted_at')
         .select('id')
         .first();
 
@@ -104,6 +105,7 @@ class ServicoController extends BaseController {
 
       const servico = await this.model.db('servicos')
         .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .whereNull('deleted_at')
         .select('id')
         .first();
 
@@ -146,13 +148,22 @@ class ServicoController extends BaseController {
         const produtosValidos = await this.model.db('produtos')
           .whereIn('id', produtoIds)
           .where('usuario_id', usuarioId)
-          .select('id');
+          .select('id', 'tipo_item');
 
         if (produtosValidos.length !== produtoIds.length) {
           return res.status(400).json({
             success: false,
             error: 'Produtos inválidos',
             message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+          });
+        }
+
+        const produtoVenda = produtosValidos.find((p) => String(p.tipo_item || '').toUpperCase() === 'VENDA');
+        if (produtoVenda) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'Não é permitido adicionar como insumo um produto do tipo VENDA. Altere o produto para CONSUMO ou AMBOS.'
           });
         }
       }
@@ -573,13 +584,22 @@ class ServicoController extends BaseController {
           .whereIn('id', produtoIds)
           .where('usuario_id', usuarioId)
           .whereNull('deleted_at')
-          .select('id');
+          .select('id', 'tipo_item');
 
         if (produtosValidos.length !== produtoIds.length) {
           return res.status(400).json({
             success: false,
             error: 'Produtos inválidos',
             message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+          });
+        }
+
+        const produtoVenda = produtosValidos.find((p) => String(p.tipo_item || '').toUpperCase() === 'VENDA');
+        if (produtoVenda) {
+          return res.status(400).json({
+            success: false,
+            error: 'Insumo inválido',
+            message: 'Não é permitido adicionar como insumo um produto do tipo VENDA. Altere o produto para CONSUMO ou AMBOS.'
           });
         }
       }
@@ -789,13 +809,22 @@ class ServicoController extends BaseController {
             .whereIn('id', produtoIds)
             .where('usuario_id', usuarioId)
             .whereNull('deleted_at')
-            .select('id');
+            .select('id', 'tipo_item');
 
           if (produtosValidos.length !== produtoIds.length) {
             return res.status(400).json({
               success: false,
               error: 'Produtos inválidos',
               message: 'Um ou mais produtos não existem ou não pertencem ao usuário'
+            });
+          }
+
+          const produtoVenda = produtosValidos.find((p) => String(p.tipo_item || '').toUpperCase() === 'VENDA');
+          if (produtoVenda) {
+            return res.status(400).json({
+              success: false,
+              error: 'Insumo inválido',
+              message: 'Não é permitido adicionar como insumo um produto do tipo VENDA. Altere o produto para CONSUMO ou AMBOS.'
             });
           }
         }
@@ -842,31 +871,23 @@ class ServicoController extends BaseController {
       }
 
       // Verificar se o serviço pertence ao usuário
-      const servico = await this.model.findById(id);
+      const servico = await this.model.db('servicos')
+        .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .whereNull('deleted_at')
+        .first();
       if (!servico) {
         return res.status(404).json({ 
           error: 'Serviço não encontrado' 
         });
       }
 
-      if (servico.usuario_id !== usuarioId) {
-        return res.status(403).json({ 
-          error: 'Acesso negado',
-          message: 'Você não tem permissão para deletar este serviço' 
-        });
-      }
+      await this.model.db('servicos')
+        .where({ id: parseInt(id, 10), usuario_id: usuarioId })
+        .update({ deleted_at: new Date() });
 
-      const deleted = await this.model.delete(id);
-      
-      if (deleted) {
-        return res.json({ 
-          message: 'Serviço deletado com sucesso' 
-        });
-      } else {
-        return res.status(500).json({ 
-          error: 'Erro ao deletar serviço' 
-        });
-      }
+      return res.json({
+        message: 'Serviço deletado com sucesso'
+      });
     } catch (error) {
       logger.error('Erro ao deletar serviço:', error);
       

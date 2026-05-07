@@ -43,8 +43,13 @@ class EstoqueController {
           'p.marca as produto_marca',
           'c.nome as produto_categoria',
           'p.unidade_medida as produto_unidade_medida',
+          'p.tipo_item as produto_tipo_item',
+          'p.uom_consumo as produto_uom_consumo',
+          'p.fator_conversao as produto_fator_conversao',
           db.raw('? as unidade_id', [unidadeId]),
           db.raw('COALESCE(eu.saldo_atual, 0) as saldo_atual'),
+          db.raw('COALESCE(eu.saldo_venda, 0) as saldo_venda'),
+          db.raw('COALESCE(eu.saldo_consumo, 0) as saldo_consumo'),
           'eu.estoque_minimo',
           'eu.estoque_maximo'
         )
@@ -71,6 +76,7 @@ class EstoqueController {
       const produtoId = req.body?.produto_id ? Number(req.body.produto_id) : null;
       const quantidade = req.body?.quantidade;
       const motivo = req.body?.motivo;
+      const destinoRaw = req.body?.destino;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -93,6 +99,15 @@ class EstoqueController {
         });
       }
 
+      const destinoFinal = destinoRaw ? String(destinoRaw).toUpperCase() : 'VENDA';
+      if (!['VENDA', 'CONSUMO'].includes(destinoFinal)) {
+        return res.status(400).json({
+          success: false,
+          error: 'destino inválido',
+          message: "destino deve ser 'VENDA' ou 'CONSUMO'"
+        });
+      }
+
       const inventoryService = new InventoryService(db);
       const result = await inventoryService.movimentarEstoque({
         usuario_id: usuarioId,
@@ -100,6 +115,7 @@ class EstoqueController {
         produto_id: produtoId,
         tipo: 'ENTRADA',
         quantidade,
+        destino: destinoFinal,
         motivo,
         created_by: usuarioId
       });
@@ -167,6 +183,9 @@ class EstoqueController {
           'em.produto_id',
           'p.nome as produto_nome',
           'p.marca as produto_marca',
+          'p.unidade_medida as produto_unidade_medida',
+          'p.uom_consumo as produto_uom_consumo',
+          'p.tipo_item as produto_tipo_item',
           'em.unidade_id',
           'em.created_by',
           'em.created_at'

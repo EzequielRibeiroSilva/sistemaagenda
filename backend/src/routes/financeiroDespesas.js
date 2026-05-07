@@ -1,12 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const DespesaController = require('../controllers/DespesaController');
+const FluxoCaixaController = require('../controllers/FluxoCaixaController');
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
 
 const controller = new DespesaController();
+const fluxoCaixaController = new FluxoCaixaController();
 
 router.use(authenticate());
+
+router.get('/extrato',
+  rbacMiddleware.requireRole('ADMIN', 'MASTER'),
+  rbacMiddleware.auditLog('GERAR_EXTRATO_FLUXO_CAIXA'),
+  (req, res) => fluxoCaixaController.extrato(req, res)
+);
 
 // CRUD básico
 router.get('/despesas',

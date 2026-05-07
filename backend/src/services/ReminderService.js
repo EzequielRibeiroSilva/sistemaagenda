@@ -388,6 +388,7 @@ class ReminderService {
         .whereNull('le.id') // Ainda não enviou lembrete de 24h
         .select(
           'a.id as agendamento_id',
+          'a.numero_agendamento',
           'a.data_agendamento',
           'a.hora_inicio',
           'a.hora_fim',
@@ -476,6 +477,7 @@ class ReminderService {
         .whereNull('le.id') // Ainda não enviou lembrete de 2h
         .select(
           'a.id as agendamento_id',
+          'a.numero_agendamento',
           'a.data_agendamento',
           'a.hora_inicio',
           'a.hora_fim',
@@ -711,7 +713,7 @@ class ReminderService {
    * Enviar lembrete individual com retry
    */
   async sendReminder(appointment, tipoLembrete) {
-    const { agendamento_id, unidade_id, cliente_telefone } = appointment;
+    const { agendamento_id, unidade_id, cliente_telefone, numero_agendamento } = appointment;
 
     try {
       logger.log(`📤 [ReminderService] Enviando lembrete ${tipoLembrete} para agendamento ${agendamento_id}...`);
@@ -782,6 +784,7 @@ class ReminderService {
         hora_fim: appointment.hora_fim,
         servicos: appointment.servicos || [],
         agendamento_id: appointment.agendamento_id,
+        numero_agendamento: numero_agendamento || appointment.numero_agendamento || null,
         cliente_telefone: appointment.cliente_telefone,
         agente_telefone: appointment.agente_telefone,
         unidade_telefone: appointment.unidade_telefone,

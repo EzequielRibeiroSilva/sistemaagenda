@@ -803,7 +803,7 @@ return (
                                                     className="text-blue-600 hover:text-blue-800 font-semibold hover:underline cursor-pointer"
                                                     type="button"
                                                 >
-                                                    #{app.numeroAgendamento || app.id}
+                                                    #{String(app.numeroAgendamento || app.id).padStart(2, '0')}
                                                 </button>
                                             </td>
                                         )}

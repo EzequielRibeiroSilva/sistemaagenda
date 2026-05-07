@@ -71,14 +71,4 @@ router.patch('/:id/cancel',
   (req, res) => agendamentoController.cancel(req, res)
 );
 
-// PATCH /api/agendamentos/:id/finalize - Finalizar agendamento
-// ✅ CORREÇÃO 1.3: ADMIN e AGENTE podem finalizar
-// AGENTE: apenas seus próprios agendamentos
-// ADMIN: qualquer agendamento da sua unidade
-router.patch('/:id/finalize', 
-  rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
-  rbacMiddleware.auditLog('FINALIZAR_AGENDAMENTO'),
-  (req, res) => agendamentoController.finalize(req, res)
-);
-
 module.exports = router;
