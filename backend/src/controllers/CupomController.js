@@ -459,6 +459,32 @@ class CupomController {
     try {
       const { codigo, cliente_id, valor_pedido, unidade_id, servico_ids, data_agendamento } = req.body;
 
+      logger.log('🔍 [CupomController.validar] Payload recebido (public):', {
+        codigo,
+        cliente_id,
+        valor_pedido,
+        unidade_id,
+        servico_ids,
+        data_agendamento,
+        tipos: {
+          codigo: typeof codigo,
+          cliente_id: typeof cliente_id,
+          valor_pedido: typeof valor_pedido,
+          unidade_id: typeof unidade_id,
+          servico_ids: Array.isArray(servico_ids) ? 'array' : typeof servico_ids,
+          data_agendamento: typeof data_agendamento
+        }
+      });
+
+      const unidadeIdNum = parseInt(unidade_id, 10);
+      const clienteIdNum = cliente_id ? parseInt(cliente_id, 10) : null;
+      const valorPedidoNum = typeof valor_pedido === 'number'
+        ? valor_pedido
+        : parseFloat(String(valor_pedido).replace(',', '.'));
+      const servicoIdsNum = Array.isArray(servico_ids)
+        ? servico_ids.map(s => parseInt(s, 10)).filter(n => Number.isFinite(n))
+        : [];
+
       // Validar parâmetros obrigatórios
       if (!codigo || valor_pedido === undefined || !unidade_id) {
         return res.status(400).json({
@@ -468,7 +494,15 @@ class CupomController {
         });
       }
 
-      if (valor_pedido <= 0) {
+      if (!Number.isFinite(unidadeIdNum) || unidadeIdNum <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetros inválidos',
+          message: 'ID da unidade inválido'
+        });
+      }
+
+      if (!Number.isFinite(valorPedidoNum) || valorPedidoNum <= 0) {
         return res.status(400).json({
           success: false,
           error: 'Valor inválido',
@@ -479,10 +513,10 @@ class CupomController {
       // ✅ NOVO: Validar uso do cupom com contexto completo incluindo data do agendamento
       const validacao = await this.cupomService.validarUsoCupom(
         codigo,
-        cliente_id ? parseInt(cliente_id) : null,
-        parseFloat(valor_pedido),
-        parseInt(unidade_id),
-        servico_ids || [],
+        clienteIdNum,
+        valorPedidoNum,
+        unidadeIdNum,
+        servicoIdsNum,
         data_agendamento || null // ✅ Passar data do agendamento para validar dia da semana
       );
 

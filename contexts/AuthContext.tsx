@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 interface User {
   role: 'MASTER' | 'ADMIN' | 'AGENTE' | 'salon' | 'agent' | 'none';
@@ -64,7 +65,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           // Validar token fazendo uma requisição de teste
           try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/validate`, {
+            const response = await fetch(`${API_BASE_URL}/auth/validate`, {
               method: 'GET',
               cache: 'no-store',
               headers: {
@@ -76,7 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (response.ok) {
               const validationData = await response.json();
 
-              const meResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
+              const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
                 method: 'GET',
                 cache: 'no-store',
                 headers: {

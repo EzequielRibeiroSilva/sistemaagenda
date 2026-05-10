@@ -12,6 +12,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { API_BASE_URL } from '../utils/api';
 
 interface SessionTimeoutConfig {
   // Tempo de inatividade antes de avisar (em minutos)
@@ -71,8 +72,7 @@ export const useSessionTimeout = (config: SessionTimeoutConfig = {}) => {
     try {
       debugLog('Renovando token...');
       
-      // @ts-ignore - Vite env typing
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/refresh`, {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

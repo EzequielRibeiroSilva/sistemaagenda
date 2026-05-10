@@ -184,6 +184,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
             // Se tiver apenas 1 unidade ativa, selecionar automaticamente
             if (unidades.length === 1) {
+              setAlternativeLocations(unidades);
               setUnidadeId(unidades[0].id);
               setSelectedLocationId(unidades[0].id);
               await loadSalonData(unidades[0].id);
@@ -235,6 +236,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             setBusinessConfig({ logo_url, nome_negocio });
 
             if (unidades.length === 1) {
+              setAlternativeLocations(unidades);
               setUnidadeId(unidades[0].id);
               setSelectedLocationId(unidades[0].id);
               await loadSalonData(unidades[0].id);
@@ -1745,12 +1747,17 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   // Função para validar cupom
   const handleValidarCupom = async () => {
     if (!cupomCodigo.trim()) {
-      setCupomErro('Digite um código de cupom');
+      setCupomErro('Por favor, insira um código de cupom');
       return;
     }
 
     if (!unidadeId) {
       setCupomErro('Erro: Unidade não identificada');
+      return;
+    }
+
+    if (!selectedDate) {
+      setCupomErro('Erro: Data não selecionada');
       return;
     }
 
@@ -1772,9 +1779,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         body: JSON.stringify({
           codigo: cupomCodigo.trim().toUpperCase(),
           cliente_id: clienteId || null, // ✅ Enviar null se não tiver cliente_id
-          valor_pedido: valorTotal,
-          unidade_id: unidadeId, // ✅ CRÍTICO: Enviar unidade_id para validação de propriedade
-          servico_ids: selectedServiceIds // ✅ Enviar serviços para validação de restrições
+          valor_pedido: Number(valorTotal) || 0,
+          unidade_id: Number(unidadeId), // ✅ CRÍTICO: Enviar unidade_id para validação de propriedade
+          servico_ids: (selectedServiceIds || []).map(id => Number(id)).filter(n => Number.isFinite(n)), // ✅ Enviar serviços para validação de restrições
+          data_agendamento: formatDateToYYYYMMDD(selectedDate) // ✅ NOVO: necessário para janela e dia da semana
         })
       });
 

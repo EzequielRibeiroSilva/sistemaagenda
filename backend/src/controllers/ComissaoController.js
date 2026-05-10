@@ -73,7 +73,7 @@ class ComissaoController {
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
-        .groupBy('a.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
+        .groupBy('a.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao', 'ag.deleted_at')
         .select(
           'a.agente_id',
           db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
@@ -104,7 +104,7 @@ class ComissaoController {
         .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
         .whereNotNull('vi.agente_id')
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
-        .groupBy('vi.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
+        .groupBy('vi.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao', 'ag.deleted_at')
         .select(
           'vi.agente_id',
           db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
@@ -128,7 +128,7 @@ class ComissaoController {
         .where('a.status_pagamento', 'Pago')
         .whereNotNull('ap.agente_id')
         .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
-        .groupBy('ap.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
+        .groupBy('ap.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao', 'ag.deleted_at')
         .select(
           'ap.agente_id',
           db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
@@ -531,6 +531,22 @@ class ComissaoController {
       }
 
       const result = await db.transaction(async (trx) => {
+        const paidAtYmd = (() => {
+          const y = paidAt.getFullYear();
+          const m = String(paidAt.getMonth() + 1).padStart(2, '0');
+          const d = String(paidAt.getDate()).padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        })();
+
+        const agenteRow = await trx('agentes')
+          .where('id', agenteId)
+          .select('nome', 'sobrenome')
+          .first();
+
+        const agenteNome = agenteRow
+          ? String(`${agenteRow.nome || ''} ${agenteRow.sobrenome || ''}`).trim()
+          : '';
+
         if (hasIds) {
           // Quando a seleção é por IDs, checar a data mínima dos itens-alvo.
           const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
@@ -625,7 +641,7 @@ class ComissaoController {
                 .from('agendamento_servicos as asv')
                 .innerJoin('agendamentos as a', 'a.id', 'asv.agendamento_id')
                 .where('a.unidade_id', unidadeId)
-                .andWhereNull('a.deleted_at')
+                .whereNull('a.deleted_at')
                 .andWhere('a.agente_id', agenteId)
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
@@ -646,7 +662,7 @@ class ComissaoController {
                 .innerJoin('agendamentos as a', 'a.id', 'ap.agendamento_id')
                 .innerJoin('produtos as p', 'p.id', 'ap.produto_id')
                 .where('a.unidade_id', unidadeId)
-                .andWhereNull('a.deleted_at')
+                .whereNull('a.deleted_at')
                 .andWhere('ap.agente_id', agenteId)
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
@@ -670,7 +686,72 @@ class ComissaoController {
             });
         }
 
-        return { updated: updatedCount, total_pago: Number(totalPago.toFixed(2)) };
+        let despesaId = null;
+        const totalPagoRounded = Number(Number(totalPago || 0).toFixed(2));
+        if (updatedCount > 0 && totalPagoRounded > 0) {
+          const ymdToDdMm = (ymd) => {
+            if (!ymd || typeof ymd !== 'string') return null;
+            const parts = ymd.split('-');
+            if (parts.length !== 3) return null;
+            const mm = String(parts[1] || '').padStart(2, '0');
+            const dd = String(parts[2] || '').padStart(2, '0');
+            if (!mm || !dd) return null;
+            return `${dd}/${mm}`;
+          };
+
+          let periodoInicioYmd = hasPeriodo ? String(data_inicio) : null;
+          let periodoFimYmd = hasPeriodo ? String(data_fim) : null;
+
+          if (!hasPeriodo) {
+            const rangeRow = await targetQuery
+              .clone()
+              .min({ min_data: 'a.data_agendamento' })
+              .max({ max_data: 'a.data_agendamento' })
+              .first();
+
+            periodoInicioYmd = rangeRow?.min_data ? String(rangeRow.min_data) : paidAtYmd;
+            periodoFimYmd = rangeRow?.max_data ? String(rangeRow.max_data) : paidAtYmd;
+          }
+
+          const ddMmInicio = ymdToDdMm(periodoInicioYmd) || ymdToDdMm(paidAtYmd) || '';
+          const ddMmFim = ymdToDdMm(periodoFimYmd) || ymdToDdMm(paidAtYmd) || '';
+
+          const descricaoDespesa = `Comissão${agenteNome ? ` ${agenteNome}` : ''} (${ddMmInicio} a ${ddMmFim})`;
+
+          const existingDespesa = await trx('despesas')
+            .where('usuario_id', usuarioId)
+            .where('unidade_id', unidadeId)
+            .where('status', 'PAID')
+            .where('categoria', 'COMISSAO')
+            .where('descricao', descricaoDespesa)
+            .where('valor', totalPagoRounded)
+            .where('data_pagamento', paidAtYmd)
+            .first();
+
+          if (!existingDespesa) {
+            const [row] = await trx('despesas')
+              .insert({
+                unidade_id: unidadeId,
+                usuario_id: usuarioId,
+                descricao: descricaoDespesa,
+                categoria: 'COMISSAO',
+                valor: totalPagoRounded,
+                data_vencimento: paidAtYmd,
+                data_pagamento: paidAtYmd,
+                status: 'PAID',
+                forma_pagamento: null,
+                created_at: trx.fn.now(),
+                updated_at: trx.fn.now()
+              })
+              .returning('*');
+
+            despesaId = row?.id || null;
+          } else {
+            despesaId = existingDespesa?.id || null;
+          }
+        }
+
+        return { updated: updatedCount, total_pago: Number(totalPago.toFixed(2)), despesa_id: despesaId };
       });
 
       return res.json({
@@ -680,7 +761,8 @@ class ComissaoController {
           agente_id: agenteId,
           updated: result.updated,
           total_pago: result.total_pago,
-          data_pagamento_comissao: paidAt.toISOString()
+          data_pagamento_comissao: paidAt.toISOString(),
+          despesa_id: result.despesa_id || null
         }
       });
     } catch (error) {

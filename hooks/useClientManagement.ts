@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../utils/api';
 
 // Tipos para o módulo de clientes
 export interface Client {
@@ -140,7 +141,7 @@ export const useClientManagement = () => {
       throw new Error('Token de autenticação não encontrado');
     }
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${url}`, {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',

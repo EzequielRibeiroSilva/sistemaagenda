@@ -1,5 +1,6 @@
 const AuthService = require('../services/AuthService');
 const Usuario = require('../models/Usuario');
+const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 
 class AuthMiddleware {
@@ -55,7 +56,29 @@ class AuthMiddleware {
         }
 
         // Unidade efetiva: prioriza banco, mas usa fallback do token para evitar perda de contexto no reload
-        const effectiveUnidadeId = usuario.unidade_id || decoded.unidade_id;
+        let effectiveUnidadeId = usuario.unidade_id || decoded.unidade_id;
+
+        // ✅ CORREÇÃO: Se ADMIN/MASTER não tiver unidade_id (caso comum após criar a primeira unidade),
+        // buscar automaticamente a primeira unidade ativa vinculada ao usuário.
+        if (!effectiveUnidadeId && (usuario.role === 'ADMIN' || usuario.role === 'MASTER')) {
+          const unidade = await db('unidades')
+            .where('usuario_id', usuario.id)
+            .where('status', 'Ativo')
+            .orderBy('id', 'asc')
+            .select('id')
+            .first();
+
+          if (unidade?.id) {
+            effectiveUnidadeId = unidade.id;
+
+            // Persistir para evitar que o usuário fique sem unidade em futuras requisições.
+            if (!usuario.unidade_id) {
+              await db('usuarios')
+                .where('id', usuario.id)
+                .update({ unidade_id: unidade.id, updated_at: new Date() });
+            }
+          }
+        }
 
         // Buscar avatar_url baseado no role do usuário
         let avatarUrl = null;
@@ -74,7 +97,6 @@ class AuthMiddleware {
         } else if ((usuario.role === 'ADMIN' || usuario.role === 'MASTER') && effectiveUnidadeId) {
           // Para admins e masters: buscar logo_url das configurações da unidade
           const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
-          const { db } = require('../config/knex');
           const configuracaoModel = new ConfiguracaoSistema(db);
           const configuracao = await configuracaoModel.findByUnidade(effectiveUnidadeId);
 

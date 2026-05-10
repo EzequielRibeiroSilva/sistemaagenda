@@ -241,21 +241,48 @@ class Cupom extends BaseModel {
    * Buscar cupons ativos e válidos para uso público
    * @param {string} codigo - Código do cupom
    * @param {number|null} usuarioIdEsperado - ID do usuário esperado (dono da unidade onde o cupom será usado)
+   * @param {string|null} referenceDateStr - Data de referência (YYYY-MM-DD) para validar janela do cupom
    * @returns {Promise<Object|null>} Cupom válido ou null
    */
-  async buscarCupomValidoParaUso(codigo, usuarioIdEsperado = null) {
-    const now = new Date();
+  async buscarCupomValidoParaUso(codigo, usuarioIdEsperado = null, referenceDateStr = null) {
+    // Importante: data_inicio/data_fim são tratadas como janelas por DIA (não por timestamp)
+    // para evitar bugs de timezone e garantir que a data_fim seja inclusiva no dia inteiro.
+    const tz = 'America/Sao_Paulo';
+
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+
+    let dateRefStr = null;
+    if (referenceDateStr && typeof referenceDateStr === 'string') {
+      const s = referenceDateStr.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        dateRefStr = s;
+      } else {
+        const dt = new Date(s);
+        if (!Number.isNaN(dt.getTime())) {
+          dateRefStr = fmt.format(dt);
+        }
+      }
+    }
+
+    const todayStr = dateRefStr || fmt.format(new Date());
 
     let query = this.db(this.tableName)
       .where('codigo', codigo.toUpperCase())
       .where('status', 'Ativo')
       .where(function() {
+        // data_inicio <= hoje (em America/Sao_Paulo)
         this.whereNull('data_inicio')
-            .orWhere('data_inicio', '<=', now);
+          .orWhereRaw("to_char(data_inicio AT TIME ZONE ?, 'YYYY-MM-DD') <= ?", [tz, todayStr]);
       })
       .where(function() {
+        // data_fim >= hoje (em America/Sao_Paulo) => inclusivo (vale o dia inteiro)
         this.whereNull('data_fim')
-            .orWhere('data_fim', '>=', now);
+          .orWhereRaw("to_char(data_fim AT TIME ZONE ?, 'YYYY-MM-DD') >= ?", [tz, todayStr]);
       });
 
     // ✅ CORREÇÃO CRÍTICA: Se temos o usuario_id esperado, filtrar pelo usuário correto

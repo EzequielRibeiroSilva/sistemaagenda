@@ -1676,7 +1676,6 @@ class PublicBookingController {
         .where('data_agendamento', data_agendamento)
         .whereIn('status', ['Aprovado', 'Confirmado'])
         .whereNull('deleted_at')
-        .whereNot('id', agendamentoId)
         .where(function() {
           this.where(function() {
             this.where('hora_inicio', '<=', hora_inicio)
@@ -2385,6 +2384,10 @@ class PublicBookingController {
     } catch (error) {
       await trx.rollback();
       logger.error('[PublicBooking] Erro ao criar agendamento:', error);
+      if (process.env.NODE_ENV === 'development') {
+        logger.error('[PublicBooking] Error message:', error?.message);
+        logger.error('[PublicBooking] Stack trace:', error?.stack);
+      }
 
       if (error && (error.code === '23P01' || error.constraint === 'agendamentos_no_overlap')) {
         return res.status(409).json({

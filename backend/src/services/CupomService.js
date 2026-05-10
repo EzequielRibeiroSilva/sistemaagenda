@@ -179,7 +179,11 @@ class CupomService {
 
     // 2. ✅ CORREÇÃO: Buscar cupom ativo e válido FILTRANDO pelo usuario_id da unidade
     // Isso garante que pegamos o cupom correto quando existem cupons com mesmo código
-    const cupom = await this.cupomModel.buscarCupomValidoParaUso(codigo, unidade.usuario_id);
+    const cupom = await this.cupomModel.buscarCupomValidoParaUso(
+      codigo,
+      unidade.usuario_id,
+      dataAgendamento || null
+    );
 
     if (!cupom) {
       return {

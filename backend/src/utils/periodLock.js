@@ -7,7 +7,17 @@ function startOfCurrentMonthLocal() {
 
 function parseYmdToLocalDate(ymd) {
   if (!ymd) return null;
-  const s = String(ymd).trim();
+
+  if (ymd instanceof Date && !Number.isNaN(ymd.getTime())) {
+    return new Date(ymd.getFullYear(), ymd.getMonth(), ymd.getDate(), 0, 0, 0, 0);
+  }
+
+  let s = String(ymd).trim();
+  // Aceitar formato ISO vindo do Postgres/Knex, ex: 2026-05-09T03:00:00.000Z
+  if (s.includes('T')) {
+    s = s.split('T')[0];
+  }
+
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const [y, m, d] = s.split('-').map((n) => parseInt(n, 10));
   if (!y || !m || !d) return null;
@@ -43,6 +53,14 @@ async function assertPeriodoAberto({
 
   const dt = recordDate instanceof Date ? recordDate : new Date(recordDate);
   if (!(dt instanceof Date) || Number.isNaN(dt.getTime())) return;
+
+  // Padrão ELITE: mês corrente permanece aberto para ajustes operacionais.
+  // Se o registro for do mês atual (local), não aplicar trava.
+  const monthStart = startOfCurrentMonthLocal();
+  const dtMonthStart = new Date(dt.getFullYear(), dt.getMonth(), 1, 0, 0, 0, 0);
+  if (dtMonthStart.getTime() === monthStart.getTime()) {
+    return;
+  }
 
   const lockStart = await getPeriodoLockStartDate(unidadeId);
 

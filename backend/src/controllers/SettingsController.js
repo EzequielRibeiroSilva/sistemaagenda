@@ -17,6 +17,23 @@ class SettingsController {
     this.setupMulter();
   }
 
+  async resolveUnidadeId(req) {
+    const unidadeIdFromToken = req.user?.unidade_id;
+    if (unidadeIdFromToken) return unidadeIdFromToken;
+
+    const userId = req.user?.id;
+    if (!userId) return null;
+
+    const unidade = await this.db('unidades')
+      .where('usuario_id', userId)
+      .where('status', 'Ativo')
+      .orderBy('id', 'asc')
+      .select('id')
+      .first();
+
+    return unidade?.id || null;
+  }
+
   /**
    * Configuração do multer para upload de logo
    */
@@ -63,7 +80,15 @@ class SettingsController {
    */
   async getSettings(req, res) {
     try {
-      const { unidade_id } = req.user;
+      const unidade_id = await this.resolveUnidadeId(req);
+
+      if (!unidade_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Unidade não definida',
+          message: 'Usuário não possui unidade ativa vinculada. Crie/ative uma unidade para acessar as configurações.'
+        });
+      }
       
       const configuracoes = await this.settingsService.getConfiguracoes(unidade_id);
       
@@ -88,7 +113,16 @@ class SettingsController {
    */
   async updateSettings(req, res) {
     try {
-      const { unidade_id, id: userId } = req.user;
+      const { id: userId } = req.user;
+      const unidade_id = await this.resolveUnidadeId(req);
+
+      if (!unidade_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Unidade não definida',
+          message: 'Usuário não possui unidade ativa vinculada. Crie/ative uma unidade antes de atualizar as configurações.'
+        });
+      }
       let dadosConfiguracao = { ...req.body };
 
       // Converter tipos de string para os tipos corretos (FormData envia tudo como string)
@@ -186,7 +220,15 @@ class SettingsController {
    */
   async uploadLogo(req, res) {
     try {
-      const { unidade_id } = req.user;
+      const unidade_id = await this.resolveUnidadeId(req);
+
+      if (!unidade_id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Unidade não definida',
+          message: 'Usuário não possui unidade ativa vinculada. Crie/ative uma unidade antes de atualizar o logo.'
+        });
+      }
       
       if (!req.file) {
         return res.status(400).json({

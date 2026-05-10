@@ -256,9 +256,13 @@ export const useAgentManagement = (): UseAgentManagementReturn => {
 
       const response = await authenticatedFetch('/unidades');
 
-      if (response.success !== false && response.data) {
+      const rawUnits = Array.isArray(response)
+        ? response
+        : (Array.isArray(response?.data) ? response.data : null);
+
+      if (response.success !== false && rawUnits) {
         // Mapear unidades para o formato esperado
-        const unitsData: UnitData[] = response.data.map((unit: any) => ({
+        const unitsData: UnitData[] = rawUnits.map((unit: any) => ({
           id: unit.id,
           nome: unit.nome,
           horarios_funcionamento: unit.horarios_funcionamento || []
