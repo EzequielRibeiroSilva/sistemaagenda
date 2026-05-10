@@ -69,7 +69,10 @@ describe('⏰ Testes do Sistema de Lembretes (Cron Jobs)', () => {
       expect(found).toBeFalsy(); // NÃO deve encontrar
       
       // Cleanup
-      await db('agendamentos').where('id', agendamentoCancelado.id).del();
+      await db('agendamentos')
+        .where('id', agendamentoCancelado.id)
+        .whereNull('deleted_at')
+        .update({ deleted_at: db.fn.now(), updated_at: db.fn.now() });
     });
     
     test('Não deve incluir agendamentos que já receberam lembrete 24h', async () => {
@@ -129,7 +132,11 @@ describe('⏰ Testes do Sistema de Lembretes (Cron Jobs)', () => {
 async function cleanupReminderTestData() {
   await db('lembretes_enviados').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%REMINDER_TEST%')`).del().catch(() => {});
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%REMINDER_TEST%')`).del().catch(() => {});
-  await db('agendamentos').where('observacoes', 'like', '%REMINDER_TEST%').del().catch(() => {});
+  await db('agendamentos')
+    .where('observacoes', 'like', '%REMINDER_TEST%')
+    .whereNull('deleted_at')
+    .update({ deleted_at: db.fn.now(), updated_at: db.fn.now() })
+    .catch(() => {});
   await db('agente_unidades').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%reminder_test%')`).del().catch(() => {});
   await db('agentes').where('email', 'like', '%reminder_test%').del().catch(() => {});
   await db('clientes').where('primeiro_nome', 'like', '%REMINDER_TEST%').del().catch(() => {});

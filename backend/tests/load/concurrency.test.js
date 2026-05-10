@@ -178,7 +178,11 @@ describe('🏎️ Testes de Concorrência', () => {
 async function cleanupConcurrencyTestData() {
   await db('lembretes_enviados').whereRaw("1=1").del().catch(() => {});
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%CONCURRENCY_TEST%')`).del().catch(() => {});
-  await db('agendamentos').where('observacoes', 'like', '%CONCURRENCY_TEST%').del().catch(() => {});
+  await db('agendamentos')
+    .where('observacoes', 'like', '%CONCURRENCY_TEST%')
+    .whereNull('deleted_at')
+    .update({ deleted_at: db.fn.now(), updated_at: db.fn.now() })
+    .catch(() => {});
   await db('agente_servicos').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%concurrency_test%')`).del().catch(() => {});
   await db('agente_unidades').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%concurrency_test%')`).del().catch(() => {});
   await db('agentes').where('email', 'like', '%concurrency_test%').del().catch(() => {});

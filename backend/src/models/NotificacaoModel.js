@@ -31,7 +31,8 @@ class NotificacaoModel {
         .leftJoin('agendamentos as a', `${this.tableName}.agendamento_id`, 'a.id')
         .leftJoin('clientes as c', 'a.cliente_id', 'c.id')
         .leftJoin('agentes as ag', 'a.agente_id', 'ag.id')
-        .leftJoin('unidades as u', `${this.tableName}.unidade_id`, 'u.id');
+        .leftJoin('unidades as u', `${this.tableName}.unidade_id`, 'u.id')
+        .whereNull('a.deleted_at');
 
       let queryAniversarios = db('aniversarios_enviados as ae')
         .leftJoin('clientes as c2', 'ae.cliente_id', 'c2.id')
@@ -204,6 +205,7 @@ class NotificacaoModel {
         .leftJoin('agentes as ag', 'a.agente_id', 'ag.id')
         .leftJoin('unidades as u', `${this.tableName}.unidade_id`, 'u.id')
         .where(`${this.tableName}.id`, id)
+        .whereNull('a.deleted_at')
         .select(
           `${this.tableName}.*`,
           db.raw(`COALESCE(${this.tableName}.tipo_notificacao, ${this.tableName}.tipo_lembrete) as tipo_notificacao`),

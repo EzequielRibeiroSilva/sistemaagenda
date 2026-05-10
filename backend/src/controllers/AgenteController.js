@@ -1114,36 +1114,25 @@ class AgenteController {
         });
       }
 
-      // Iniciar transação para exclusão completa
-      await this.agenteModel.db.transaction(async (trx) => {
-        // 1. Excluir registros relacionados ao agente
-        await trx('agendamentos').where('agente_id', agenteId).del();
-        await trx('agente_servicos').where('agente_id', agenteId).del();
-        await trx('agente_unidades').where('agente_id', agenteId).del();
-        await trx('horarios_funcionamento').where('agente_id', agenteId).del();
+      // Soft delete (ELITE): manter histórico e impedir cascades perigosos
+      const updated = await this.agenteModel.db('agentes')
+        .where('id', agenteId)
+        .whereNull('deleted_at')
+        .update({
+          deleted_at: new Date(),
+          updated_at: new Date()
+        });
 
-        // 2. Excluir o agente
-        await trx('agentes').where('id', agenteId).del();
-
-        // 3. Excluir o usuário associado ao agente (se existir e for do tipo AGENTE)
-        if (agente.usuario_id) {
-          const usuarioAgente = await trx('usuarios')
-            .where('id', agente.usuario_id)
-            .first();
-
-          // Só excluir se for usuário do tipo AGENTE (não ADMIN ou MASTER)
-          if (usuarioAgente && usuarioAgente.role === 'AGENTE') {
-            await trx('usuarios').where('id', agente.usuario_id).del();
-
-          } else if (usuarioAgente) {
-
-          }
-        }
-      });
+      if (!updated) {
+        return res.status(200).json({
+          success: true,
+          message: 'Agente já estava excluído'
+        });
+      }
 
       res.status(200).json({
         success: true,
-        message: 'Agente e usuário excluídos com sucesso'
+        message: 'Agente excluído com sucesso'
       });
     } catch (error) {
       logger.error('[AgenteController] Erro ao excluir agente:', error);

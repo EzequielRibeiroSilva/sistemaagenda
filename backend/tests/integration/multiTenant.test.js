@@ -174,7 +174,11 @@ describe('🔒 Testes de Isolamento Multi-Tenant', () => {
 async function cleanupTestData() {
   await db('lembretes_enviados').whereRaw("1=1").del().catch(() => {});
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%MT_TEST%')`).del().catch(() => {});
-  await db('agendamentos').where('observacoes', 'like', '%MT_TEST%').del().catch(() => {});
+  await db('agendamentos')
+    .where('observacoes', 'like', '%MT_TEST%')
+    .whereNull('deleted_at')
+    .update({ deleted_at: db.fn.now(), updated_at: db.fn.now() })
+    .catch(() => {});
   await db('agente_servicos').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%mt_test%')`).del().catch(() => {});
   await db('agente_unidades').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%mt_test%')`).del().catch(() => {});
   await db('agentes').where('email', 'like', '%mt_test%').del().catch(() => {});

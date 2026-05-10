@@ -47,6 +47,7 @@ async function gerarPontosRetroativos(unidadeId = null) {
               .andOn('ph.tipo', '=', db.raw('?', ['CREDITO']));
         })
         .where('a.unidade_id', config.unidade_id)
+        .whereNull('a.deleted_at')
         .where('a.status', 'Aprovado')
         .where('a.valor_total', '>', 0)
         .whereNull('ph.id') // Não tem pontos gerados

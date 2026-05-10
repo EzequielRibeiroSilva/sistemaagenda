@@ -79,6 +79,7 @@ class DashboardKpiController {
       // KPIs baseados em agendamentos (sempre escopado por unidade)
       const baseAg = db('agendamentos')
         .where('unidade_id', unidadeId)
+        .whereNull('deleted_at')
         .where('data_agendamento', '>=', data_inicio)
         .where('data_agendamento', '<=', data_fim);
 
@@ -152,6 +153,7 @@ class DashboardKpiController {
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')

@@ -13,8 +13,8 @@ class MasterMetricsController {
       const start = data_inicio ? `${data_inicio}T00:00:00.000Z` : null;
       const end = data_fim ? `${data_fim}T23:59:59.999Z` : null;
 
-      const baseCreated = db('agendamentos');
-      const baseCanceled = db('agendamentos').where('status', 'Cancelado');
+      const baseCreated = db('agendamentos').whereNull('deleted_at');
+      const baseCanceled = db('agendamentos').whereNull('deleted_at').where('status', 'Cancelado');
 
       if (start && end) {
         baseCreated.whereBetween('created_at', [start, end]);

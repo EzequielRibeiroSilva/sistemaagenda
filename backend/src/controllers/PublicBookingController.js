@@ -894,7 +894,8 @@ class PublicBookingController {
     let queryAgendamentos = db('agendamentos')
       .where('agente_id', agenteId)
       .where('data_agendamento', data)
-      .whereIn('status', ['Aprovado', 'Confirmado']);
+      .whereIn('status', ['Aprovado', 'Confirmado'])
+      .whereNull('deleted_at');
 
       // Se exclude_agendamento_id foi fornecido, excluir da verificação
     if (exclude_agendamento_id) {
@@ -1674,16 +1675,18 @@ class PublicBookingController {
         .where('agente_id', agente_id)
         .where('data_agendamento', data_agendamento)
         .whereIn('status', ['Aprovado', 'Confirmado'])
+        .whereNull('deleted_at')
+        .whereNot('id', agendamentoId)
         .where(function() {
           this.where(function() {
             this.where('hora_inicio', '<=', hora_inicio)
-                .where('hora_fim', '>', hora_inicio);
+              .where('hora_fim', '>', hora_inicio);
           }).orWhere(function() {
             this.where('hora_inicio', '<', hora_fim)
                 .where('hora_fim', '>=', hora_fim);
           }).orWhere(function() {
             this.where('hora_inicio', '>=', hora_inicio)
-                .where('hora_fim', '<=', hora_fim);
+              .where('hora_fim', '<=', hora_fim);
           });
         })
         .first();
@@ -1692,6 +1695,7 @@ class PublicBookingController {
       const todosAgendamentos = await trx('agendamentos')
         .where('agente_id', agente_id)
         .where('data_agendamento', data_agendamento)
+        .whereNull('deleted_at')
         .select('id', 'status', 'hora_inicio', 'hora_fim');
 
       logger.log(`📋 [PublicBooking] Agendamentos existentes para agente ${agente_id} em ${data_agendamento}:`, todosAgendamentos);
@@ -2412,6 +2416,7 @@ class PublicBookingController {
       // Buscar apenas unidade_id do agendamento
       const agendamento = await this.agendamentoModel.db('agendamentos')
         .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at')
         .select('agendamentos.unidade_id')
         .first();
 
@@ -2462,6 +2467,7 @@ class PublicBookingController {
       // Buscar agendamento com todos os dados relacionados
       const agendamento = await this.agendamentoModel.db('agendamentos')
         .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at')
         .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
         .join('agentes', 'agendamentos.agente_id', 'agentes.id')
         .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
@@ -2618,6 +2624,7 @@ class PublicBookingController {
       // Buscar agendamento
       const agendamento = await this.agendamentoModel.db('agendamentos')
         .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at')
         .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
         .select('agendamentos.*', 'clientes.telefone as cliente_telefone')
         .first();
@@ -2845,6 +2852,7 @@ class PublicBookingController {
       // Buscar agendamento
       const agendamento = await this.agendamentoModel.db('agendamentos')
         .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at')
         .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
         .select('agendamentos.*', 'clientes.telefone as cliente_telefone')
         .first();
@@ -3085,6 +3093,7 @@ class PublicBookingController {
       // Buscar dados do agendamento
       const agendamento = await this.agendamentoModel.db('agendamentos')
         .where('id', agendamentoId)
+        .whereNull('deleted_at')
         .first();
 
       if (!agendamento) {

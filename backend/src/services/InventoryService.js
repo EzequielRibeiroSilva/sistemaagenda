@@ -5,6 +5,12 @@ class InventoryService {
     this.db = db;
   }
 
+  round3(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 1000) / 1000;
+  }
+
   isIntegerQuantity(qty) {
     return Number.isFinite(qty) && Number.isInteger(qty);
   }
@@ -97,6 +103,7 @@ class InventoryService {
       // 1) Segurança multi-tenant: produto precisa pertencer ao usuario_id
       const produto = await trx('produtos')
         .where({ id: produto_id, usuario_id })
+        .whereNull('deleted_at')
         .select('id', 'tipo_item', 'uom_consumo', 'fator_conversao')
         .first();
 
@@ -177,11 +184,11 @@ class InventoryService {
         if (bucket === 'VENDA') {
           saldoVendaDepois = saldoVendaAntes + (isDebit ? -Math.abs(signedQty) : Math.abs(signedQty));
         } else {
-          saldoConsumoDepois = Number((saldoConsumoAntes + signedQty).toFixed(3));
+          saldoConsumoDepois = this.round3(saldoConsumoAntes + signedQty);
         }
       }
 
-      saldoDepoisLegacy = Number((saldoVendaDepois + saldoConsumoDepois).toFixed(3));
+      saldoDepoisLegacy = this.round3(saldoVendaDepois + saldoConsumoDepois);
 
       // Gatilho de conversão (abertura do pote) - apenas no fluxo CONSUMO
       if (tipo === 'CONSUMO') {
@@ -238,8 +245,8 @@ class InventoryService {
             // Aplicar conversão no snapshot (atômico dentro desta trx):
             // -1 pote (saldo_venda) e +fator em saldo_consumo
             const saldoVendaNovo = saldoVendaTemp - 1;
-            const saldoConsumoNovo = Number((saldoConsumoTemp + fator).toFixed(3));
-            const saldoLegacyNovo = Number((saldoVendaNovo + saldoConsumoNovo).toFixed(3));
+            const saldoConsumoNovo = this.round3(saldoConsumoTemp + fator);
+            const saldoLegacyNovo = this.round3(saldoVendaNovo + saldoConsumoNovo);
 
             const updatedConv = await trx('estoque_unidades')
               .where({ produto_id, unidade_id })
@@ -290,8 +297,8 @@ class InventoryService {
 
           // Recalcular saldos finais do consumo
           saldoVendaDepois = vendaNow;
-          saldoConsumoDepois = Number((consumoNow - consumoNecessario).toFixed(3));
-          saldoDepoisLegacy = Number((saldoVendaDepois + saldoConsumoDepois).toFixed(3));
+          saldoConsumoDepois = this.round3(consumoNow - consumoNecessario);
+          saldoDepoisLegacy = this.round3(saldoVendaDepois + saldoConsumoDepois);
         }
       }
 

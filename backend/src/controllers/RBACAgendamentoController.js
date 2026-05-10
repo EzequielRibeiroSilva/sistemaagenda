@@ -34,6 +34,7 @@ class RBACAgendamentoController extends BaseController {
           if (data_agendamento) {
             data = await this.model.db(this.model.tableName)
               .where('data_agendamento', data_agendamento)
+              .whereNull('deleted_at')
               .select('*');
           } else if (agente_id) {
             data = await this.model.findByAgente(parseInt(agente_id));
@@ -45,6 +46,7 @@ class RBACAgendamentoController extends BaseController {
               .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
               .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+              .whereNull('agendamentos.deleted_at')
               .modify(function(queryBuilder) {
                 if (status) queryBuilder.where('agendamentos.status', status);
               })
@@ -73,15 +75,18 @@ class RBACAgendamentoController extends BaseController {
           if (data_agendamento) {
             data = await this.model.db(this.model.tableName)
               .where('unidade_id', req.user.unidade_id)
-              .where('data_agendamento', data_agendamento);
+              .where('data_agendamento', data_agendamento)
+              .whereNull('deleted_at');
           } else if (agente_id) {
             data = await this.model.db(this.model.tableName)
               .where('unidade_id', req.user.unidade_id)
-              .where('agente_id', parseInt(agente_id));
+              .where('agente_id', parseInt(agente_id))
+              .whereNull('deleted_at');
           } else if (cliente_id) {
             data = await this.model.db(this.model.tableName)
               .where('unidade_id', req.user.unidade_id)
-              .where('cliente_id', parseInt(cliente_id));
+              .where('cliente_id', parseInt(cliente_id))
+              .whereNull('deleted_at');
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
             data = await this.model.db(this.model.tableName)
@@ -89,6 +94,7 @@ class RBACAgendamentoController extends BaseController {
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
               .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
               .where('agendamentos.unidade_id', req.user.unidade_id)
+              .whereNull('agendamentos.deleted_at')
               .modify(function(queryBuilder) {
                 if (status) queryBuilder.where('agendamentos.status', status);
               })
@@ -104,7 +110,8 @@ class RBACAgendamentoController extends BaseController {
               .offset(offset);
           } else {
             data = await this.model.db(this.model.tableName)
-              .where('unidade_id', req.user.unidade_id);
+              .where('unidade_id', req.user.unidade_id)
+              .whereNull('deleted_at');
           }
           break;
 
@@ -113,11 +120,13 @@ class RBACAgendamentoController extends BaseController {
           if (data_agendamento) {
             data = await this.model.db(this.model.tableName)
               .where('agente_id', userAgenteId)
-              .where('data_agendamento', data_agendamento);
+              .where('data_agendamento', data_agendamento)
+              .whereNull('deleted_at');
           } else if (cliente_id) {
             data = await this.model.db(this.model.tableName)
               .where('agente_id', userAgenteId)
-              .where('cliente_id', parseInt(cliente_id));
+              .where('cliente_id', parseInt(cliente_id))
+              .whereNull('deleted_at');
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
             data = await this.model.db(this.model.tableName)
@@ -125,6 +134,7 @@ class RBACAgendamentoController extends BaseController {
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
               .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
               .where('agendamentos.agente_id', userAgenteId)
+              .whereNull('agendamentos.deleted_at')
               .modify(function(queryBuilder) {
                 if (status) queryBuilder.where('agendamentos.status', status);
               })
@@ -344,6 +354,7 @@ class RBACAgendamentoController extends BaseController {
         .join('agentes', 'agendamentos.agente_id', 'agentes.id')
         .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
         .where('agendamentos.id', agendamentoId)
+        .whereNull('agendamentos.deleted_at')
         .select([
           'agendamentos.*',
           'clientes.nome as cliente_nome',

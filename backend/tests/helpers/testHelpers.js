@@ -168,7 +168,10 @@ function authRequest(token) {
 async function cleanupTestData(prefix = 'test') {
   // Ordem importante: respeitar foreign keys
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%${prefix}%')`).del();
-  await db('agendamentos').where('observacoes', 'like', `%${prefix}%`).del();
+  await db('agendamentos')
+    .where('observacoes', 'like', `%${prefix}%`)
+    .whereNull('deleted_at')
+    .update({ deleted_at: db.fn.now(), updated_at: db.fn.now() });
   await db('agente_unidades').whereRaw(`agente_id IN (SELECT id FROM agentes WHERE email LIKE '%${prefix}%')`).del();
   await db('agentes').where('email', 'like', `%${prefix}%`).del();
   await db('clientes').where('primeiro_nome', 'like', `%${prefix}%`).del();

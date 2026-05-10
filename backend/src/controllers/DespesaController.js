@@ -1,5 +1,6 @@
 const { db } = require('../config/knex');
 const logger = require('../utils/logger');
+const { assertPeriodoAberto, parseYmdToLocalDate } = require('../utils/periodLock');
 
 function parseMoneyToNumber(value) {
   if (value === null || value === undefined) return NaN;
@@ -216,6 +217,7 @@ class DespesaController {
   async update(req, res) {
     try {
       const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
       const despesaId = req.params?.id ? Number(req.params.id) : null;
       const unidadeId = req.body?.unidade_id ? Number(req.body.unidade_id) : null;
 
@@ -258,6 +260,13 @@ class DespesaController {
           error: 'Despesa não encontrada'
         });
       }
+
+      await assertPeriodoAberto({
+        unidadeId: Number(unidadeId),
+        recordDate: parseYmdToLocalDate(exists.data_vencimento) || exists.created_at,
+        userRole,
+        errorMessage: 'Período fechado: não é permitido alterar despesas de meses anteriores.'
+      });
 
       const patch = {};
 
@@ -308,6 +317,14 @@ class DespesaController {
         data: row
       });
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       logger.error('[DespesaController.update] Erro ao atualizar despesa:', {
         message: error?.message,
         stack: error?.stack,
@@ -327,6 +344,7 @@ class DespesaController {
   async destroy(req, res) {
     try {
       const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
       const despesaId = req.params?.id ? Number(req.params.id) : null;
       const unidadeId = req.query?.unidade_id ? Number(req.query.unidade_id) : null;
 
@@ -361,7 +379,7 @@ class DespesaController {
 
       const exists = await db('despesas')
         .where({ id: despesaId, usuario_id: usuarioId, unidade_id: unidadeId })
-        .select('id')
+        .select('id', 'data_vencimento', 'created_at')
         .first();
 
       if (!exists) {
@@ -370,6 +388,13 @@ class DespesaController {
           error: 'Despesa não encontrada'
         });
       }
+
+      await assertPeriodoAberto({
+        unidadeId: Number(unidadeId),
+        recordDate: parseYmdToLocalDate(exists.data_vencimento) || exists.created_at,
+        userRole,
+        errorMessage: 'Período fechado: não é permitido excluir despesas de meses anteriores.'
+      });
 
       await db('despesas')
         .where({ id: despesaId, usuario_id: usuarioId, unidade_id: unidadeId })
@@ -380,6 +405,14 @@ class DespesaController {
         message: 'Despesa deletada com sucesso'
       });
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       logger.error('[DespesaController.destroy] Erro ao deletar despesa:', {
         message: error?.message,
         stack: error?.stack,

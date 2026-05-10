@@ -1,4 +1,5 @@
 const { db } = require('../config/knex');
+const { assertPeriodoAberto, parseYmdToLocalDate } = require('../utils/periodLock');
 
 const toCents = (value) => {
   if (value == null) return 0;
@@ -67,6 +68,7 @@ class ComissaoController {
         .join('agentes as ag', 'ag.id', 'a.agente_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
@@ -74,7 +76,7 @@ class ComissaoController {
         .groupBy('a.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
         .select(
           'a.agente_id',
-          db.raw("COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) as agente_nome"),
+          db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
           db.raw(`
             COALESCE(SUM(
               CASE WHEN asv.comissao_paga = false THEN
@@ -91,32 +93,64 @@ class ComissaoController {
           `)
         );
 
+      const vendaProdutoRows = await db('venda_itens as vi')
+        .join('vendas as v', 'v.id', 'vi.venda_id')
+        .join('agentes as ag', 'ag.id', 'vi.agente_id')
+        .where('v.usuario_id', usuarioId)
+        .where('v.unidade_id', unidadeId)
+        .where('v.status', 'PAID')
+        .where('vi.item_type', 'PRODUTO')
+        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
+        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .whereNotNull('vi.agente_id')
+        .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
+        .groupBy('vi.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
+        .select(
+          'vi.agente_id',
+          db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
+          db.raw(`
+            COALESCE(SUM(
+              COALESCE(vi.comissao_valor_snapshot, 0)
+            ), 0) as total_pendente
+          `),
+          db.raw('0 as total_pago')
+        );
+
       const produtoRows = await db('agendamento_produtos as ap')
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
         .join('agentes as ag', 'ag.id', 'ap.agente_id')
         .join('produtos as p', 'p.id', 'ap.produto_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
         .whereNotNull('ap.agente_id')
-        .where('p.comissao_percentual', '>', 0)
+        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
         .groupBy('ap.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao')
         .select(
           'ap.agente_id',
-          db.raw("COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) as agente_nome"),
+          db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
           db.raw(`
             COALESCE(SUM(
               CASE WHEN COALESCE(ap.comissao_paga, false) = false THEN
-                (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)
+                COALESCE(
+                  ap.comissao_valor_snapshot,
+                  (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
+                  0
+                )
               ELSE 0 END
             ), 0) as total_pendente
           `),
           db.raw(`
             COALESCE(SUM(
               CASE WHEN COALESCE(ap.comissao_paga, false) = true THEN
-                (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)
+                COALESCE(
+                  ap.comissao_valor_snapshot,
+                  (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
+                  0
+                )
               ELSE 0 END
             ), 0) as total_pago
           `)
@@ -232,6 +266,7 @@ class ComissaoController {
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .leftJoin('clientes as c', 'c.id', 'a.cliente_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('a.agente_id', agenteId)
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
@@ -245,7 +280,7 @@ class ComissaoController {
           'a.hora_inicio',
           'a.hora_fim',
           'a.cliente_id',
-          db.raw("TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) as cliente_nome"),
+          db.raw("(TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as cliente_nome"),
           'asv.servico_id',
           db.raw("COALESCE(s.nome, '') as servico_nome"),
           'asv.preco_aplicado',
@@ -262,18 +297,47 @@ class ComissaoController {
         )
         .orderBy('a.hora_inicio', 'asc');
 
+      const vendaProdutoRows = await db('venda_itens as vi')
+        .join('vendas as v', 'v.id', 'vi.venda_id')
+        .where('v.usuario_id', usuarioId)
+        .where('v.unidade_id', unidadeId)
+        .where('v.status', 'PAID')
+        .where('vi.item_type', 'PRODUTO')
+        .where('vi.agente_id', agenteId)
+        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
+        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
+        .select(
+          'vi.id as agendamento_servico_id',
+          db.raw('NULL::integer as agendamento_id'),
+          db.raw('NULL::date as data_agendamento'),
+          db.raw('NULL::text as hora_inicio'),
+          db.raw('NULL::text as hora_fim'),
+          db.raw('NULL::integer as cliente_id'),
+          db.raw("'' as cliente_nome"),
+          db.raw('NULL::integer as servico_id'),
+          db.raw("('Venda Balcão #' || COALESCE(v.id::text, '') || ' - ' || COALESCE(vi.descricao_snapshot, 'Produto') || ' (' || REPLACE(TO_CHAR(COALESCE(vi.comissao_percentual_snapshot, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
+          db.raw('COALESCE(vi.total_snapshot, 0) as preco_aplicado'),
+          db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) as comissao_percentual'),
+          db.raw('COALESCE(vi.comissao_valor_snapshot, 0) as comissao_valor'),
+          db.raw('NULL::timestamp as data_pagamento_comissao'),
+          db.raw('NULL::text as observacao_pagamento')
+        )
+        .orderBy('v.created_at', statusComissao === 'pago' ? 'desc' : 'asc');
+
       // ✅ Extrato: produtos com comissão > 0 (ignorar comissão 0)
       const produtoRows = await db('agendamento_produtos as ap')
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
         .join('produtos as p', 'p.id', 'ap.produto_id')
         .leftJoin('clientes as c', 'c.id', 'a.cliente_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('ap.agente_id', agenteId)
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
-        .where('p.comissao_percentual', '>', 0)
+        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
         .where('ap.comissao_paga', statusComissao === 'pago')
         .select(
           'ap.id as agendamento_servico_id',
@@ -282,13 +346,17 @@ class ComissaoController {
           'a.hora_inicio',
           'a.hora_fim',
           'a.cliente_id',
-          db.raw("TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) as cliente_nome"),
+          db.raw("(TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as cliente_nome"),
           db.raw('NULL::integer as servico_id'),
-          db.raw("('Produto: ' || COALESCE(p.nome, '') || ' - R$ ' || REPLACE(TO_CHAR(COALESCE(ap.preco_aplicado, 0), 'FM999999990D00'), '.', ',') || ' (' || REPLACE(TO_CHAR(COALESCE(p.comissao_percentual, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
+          db.raw("('Produto: ' || (COALESCE(p.nome, '') || CASE WHEN p.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) || ' - R$ ' || REPLACE(TO_CHAR(COALESCE(ap.preco_aplicado, 0), 'FM999999990D00'), '.', ',') || ' (' || REPLACE(TO_CHAR(COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
           db.raw('COALESCE(ap.preco_aplicado, 0) as preco_aplicado'),
-          db.raw('COALESCE(p.comissao_percentual, 0) as comissao_percentual'),
+          db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) as comissao_percentual'),
           db.raw(
-            '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0) as comissao_valor'
+            `COALESCE(
+              ap.comissao_valor_snapshot,
+              (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
+              0
+            ) as comissao_valor`
           ),
           'ap.data_pagamento_comissao',
           'ap.observacao_pagamento'
@@ -299,7 +367,7 @@ class ComissaoController {
         )
         .orderBy('a.hora_inicio', 'asc');
 
-      const rows = [...(servicoRows || []), ...(produtoRows || [])].sort((a, b) => {
+      const rows = [...(servicoRows || []), ...(produtoRows || []), ...(vendaProdutoRows || [])].sort((a, b) => {
         const da = String(a.data_agendamento || '');
         const dbb = String(b.data_agendamento || '');
         if (da !== dbb) {
@@ -314,6 +382,7 @@ class ComissaoController {
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('a.agente_id', agenteId)
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
@@ -331,16 +400,21 @@ class ComissaoController {
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
         .join('produtos as p', 'p.id', 'ap.produto_id')
         .where('a.unidade_id', unidadeId)
+        .whereNull('a.deleted_at')
         .where('ap.agente_id', agenteId)
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
-        .where('p.comissao_percentual', '>', 0)
+        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
         .where('ap.comissao_paga', statusComissao === 'pago')
         .sum({
           total: db.raw(
-            '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)'
+            `COALESCE(
+              ap.comissao_valor_snapshot,
+              (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
+              0
+            )`
           )
         })
         .first();
@@ -438,10 +512,53 @@ class ComissaoController {
       const paidAt = data_pagamento_comissao ? new Date(data_pagamento_comissao) : new Date();
       const observacaoPagamento = typeof observacao === 'string' && observacao.trim() ? observacao.trim() : null;
 
+      // Period Lock: bloquear pagamento de comissão em período fechado.
+      // Regra base: nada contábil do passado deve ser mutável.
+      await assertPeriodoAberto({
+        unidadeId,
+        recordDate: paidAt,
+        userRole,
+        errorMessage: 'Período fechado: não é permitido pagar comissões de meses anteriores.'
+      });
+
+      if (hasPeriodo) {
+        await assertPeriodoAberto({
+          unidadeId,
+          recordDate: parseYmdToLocalDate(data_inicio),
+          userRole,
+          errorMessage: 'Período fechado: não é permitido pagar comissões de meses anteriores.'
+        });
+      }
+
       const result = await db.transaction(async (trx) => {
+        if (hasIds) {
+          // Quando a seleção é por IDs, checar a data mínima dos itens-alvo.
+          const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
+
+          const minServicoRow = await trx('agendamento_servicos as asv')
+            .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
+            .where('a.unidade_id', unidadeId)
+            .whereNull('a.deleted_at')
+            .where('a.agente_id', agenteId)
+            .whereIn('asv.id', idsParsed)
+            .min({ min_data: 'a.data_agendamento' })
+            .first();
+
+          const minData = minServicoRow?.min_data;
+          if (minData) {
+            await assertPeriodoAberto({
+              unidadeId,
+              recordDate: parseYmdToLocalDate(minData),
+              userRole,
+              errorMessage: 'Período fechado: não é permitido pagar comissões de meses anteriores.'
+            });
+          }
+        }
+
         let targetQuery = trx('agendamento_servicos as asv')
           .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
           .where('a.unidade_id', unidadeId)
+          .whereNull('a.deleted_at')
           .where('a.agente_id', agenteId)
           .where('a.status', 'Concluído')
           .where('a.status_pagamento', 'Pago')
@@ -451,6 +568,7 @@ class ComissaoController {
           .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
           .join('produtos as p', 'p.id', 'ap.produto_id')
           .where('a.unidade_id', unidadeId)
+          .whereNull('a.deleted_at')
           .where('ap.agente_id', agenteId)
           .where('a.status', 'Concluído')
           .where('a.status_pagamento', 'Pago')
@@ -507,6 +625,7 @@ class ComissaoController {
                 .from('agendamento_servicos as asv')
                 .innerJoin('agendamentos as a', 'a.id', 'asv.agendamento_id')
                 .where('a.unidade_id', unidadeId)
+                .andWhereNull('a.deleted_at')
                 .andWhere('a.agente_id', agenteId)
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
@@ -527,6 +646,7 @@ class ComissaoController {
                 .innerJoin('agendamentos as a', 'a.id', 'ap.agendamento_id')
                 .innerJoin('produtos as p', 'p.id', 'ap.produto_id')
                 .where('a.unidade_id', unidadeId)
+                .andWhereNull('a.deleted_at')
                 .andWhere('ap.agente_id', agenteId)
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
@@ -564,6 +684,14 @@ class ComissaoController {
         }
       });
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       return res.status(500).json({
         success: false,
         error: 'Erro ao pagar comissões',

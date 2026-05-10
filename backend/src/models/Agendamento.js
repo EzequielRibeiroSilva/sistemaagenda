@@ -5,6 +5,40 @@ class Agendamento extends BaseModel {
     super('agendamentos');
   }
 
+  // Soft delete: por padrão, não retornar registros deletados
+  async findAll(filters = {}) {
+    let query = this.db(this.tableName).whereNull('deleted_at');
+
+    Object.keys(filters).forEach((key) => {
+      if (filters[key] !== undefined && filters[key] !== null) {
+        query = query.where(key, filters[key]);
+      }
+    });
+
+    return await query.select('*');
+  }
+
+  // Soft delete: por padrão, não retornar registros deletados
+  async findById(id) {
+    const result = await this.db(this.tableName)
+      .where('id', id)
+      .whereNull('deleted_at')
+      .first();
+    return result;
+  }
+
+  // Soft delete (append-only)
+  async delete(id) {
+    const updated = await this.db(this.tableName)
+      .where('id', id)
+      .whereNull('deleted_at')
+      .update({
+        deleted_at: this.db.fn.now(),
+        updated_at: new Date()
+      });
+    return updated > 0;
+  }
+
   async attachAssinaturaCobertura(agendamentos) {
     if (!Array.isArray(agendamentos) || agendamentos.length === 0) {
       return agendamentos;
@@ -118,6 +152,7 @@ class Agendamento extends BaseModel {
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+      .whereNull('agendamentos.deleted_at')
       .where('unidades.usuario_id', usuarioId)
       .select(
         'agendamentos.*',
@@ -138,6 +173,7 @@ class Agendamento extends BaseModel {
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+      .whereNull('agendamentos.deleted_at')
       .where('unidades.usuario_id', usuarioId)
       .where('agendamentos.data_agendamento', data)
       .select(
@@ -158,6 +194,7 @@ class Agendamento extends BaseModel {
     let query = this.db(this.tableName)
       .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+      .whereNull('agendamentos.deleted_at')
       .where('agendamentos.agente_id', agenteId);
 
     // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o agendamento pertence à empresa
@@ -182,6 +219,7 @@ class Agendamento extends BaseModel {
     let query = this.db(this.tableName)
       .join('agentes', 'agendamentos.agente_id', 'agentes.id')
       .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+      .whereNull('agendamentos.deleted_at')
       .where('agendamentos.cliente_id', clienteId);
 
     // ✅ Multi-tenant safety: se usuarioId fornecido, garantir que o agendamento pertence à empresa
@@ -275,6 +313,7 @@ class Agendamento extends BaseModel {
       .where('agente_id', agenteId)
       .where('data_agendamento', data)
       .where('status', '!=', 'Cancelado')
+      .whereNull('deleted_at')
       .where(function() {
         this.where(function() {
           this.where('hora_inicio', '<=', horaInicio)
@@ -346,6 +385,7 @@ class Agendamento extends BaseModel {
       .where('agente_id', agente_id)
       .where('data_agendamento', data_agendamento)
       .where('status', '!=', 'Cancelado')
+      .whereNull('deleted_at')
       .where(function() {
         this.where(function() {
           this.where('hora_inicio', '<=', hora_inicio)

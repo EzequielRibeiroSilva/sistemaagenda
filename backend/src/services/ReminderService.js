@@ -384,6 +384,7 @@ class ReminderService {
         .join('agentes as ag', 'a.agente_id', 'ag.id')
         .join('unidades as u', 'a.unidade_id', 'u.id')
         .where('a.data_agendamento', tomorrowStr)
+        .whereNull('a.deleted_at')
         .where('a.status', 'Aprovado') // ✅ CORREÇÃO: Status correto é 'Aprovado', não 'Confirmado'
         .whereNull('le.id') // Ainda não enviou lembrete de 24h
         .select(
@@ -472,6 +473,7 @@ class ReminderService {
         .join('agentes as ag', 'a.agente_id', 'ag.id')
         .join('unidades as u', 'a.unidade_id', 'u.id')
         .where('a.data_agendamento', todayStr)
+        .whereNull('a.deleted_at')
         .where('a.status', 'Aprovado') // ✅ CORREÇÃO: Status correto é 'Aprovado', não 'Confirmado'
         .whereBetween('a.hora_inicio', [startTime, endTime])
         .whereNull('le.id') // Ainda não enviou lembrete de 2h
@@ -538,6 +540,7 @@ class ReminderService {
         .join('unidades as u', 'le.unidade_id', 'u.id')
         .where('le.status', 'programado')
         .where('le.enviar_em', '<=', now)
+        .whereNull('a.deleted_at')
         .where(function() {
           this.where(function() {
             this.whereIn('le.tipo_notificacao', ['lembrete_24h', 'lembrete_1h'])
@@ -1016,6 +1019,7 @@ class ReminderService {
             const hasFutureAppointment = await db('agendamentos')
               .where('cliente_id', reminder.cliente_id)
               .where('unidade_id', reminder.unidade_id)
+              .whereNull('deleted_at')
               .whereIn('status', ['Aprovado'])
               .where('data_agendamento', '>=', todayStr)
               .first();

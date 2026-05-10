@@ -10,6 +10,13 @@ const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
 const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
 const AgendamentoConclusaoService = require('../services/AgendamentoConclusaoService');
 const InventoryService = require('../services/InventoryService');
+const { assertPeriodoAberto, parseYmdToLocalDate } = require('../utils/periodLock');
+
+const toCents = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round(num * 100);
+};
 
 class AgendamentoController extends BaseController {
   constructor() {
@@ -219,7 +226,10 @@ class AgendamentoController extends BaseController {
         let baseQuery = this.model.db(this.model.tableName)
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+          .whereNull('agendamentos.deleted_at')
+          .whereNull('clientes.deleted_at')
+          .whereNull('agentes.deleted_at');
 
         // RBAC: Aplicar filtros baseados no role do usuário
         let agenteIdFinal = null;
@@ -368,7 +378,8 @@ class AgendamentoController extends BaseController {
         let baseQuery = this.model.db('agendamentos')
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
-          .join('agentes', 'agendamentos.agente_id', 'agentes.id');
+          .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+          .whereNull('agendamentos.deleted_at');
 
         // Aplicar RBAC
         if (userRole === 'AGENTE') {
@@ -511,6 +522,7 @@ class AgendamentoController extends BaseController {
           .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
           .where('agendamentos.id', agendamentoIdNum)
           .where('unidades.usuario_id', usuarioId)
+          .whereNull('agendamentos.deleted_at')
           .first();
 
 
@@ -1355,7 +1367,8 @@ class AgendamentoController extends BaseController {
       
       // 1. Iniciar busca
       let agendamentoQuery = this.model.db(this.model.tableName)
-        .where('agendamentos.id', id);
+        .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at');
 
       // 2. Aplicar filtro de escopo para encontrar o agendamento
       if (userRole === 'AGENTE' && userAgenteId) {
@@ -1382,6 +1395,13 @@ class AgendamentoController extends BaseController {
           error: 'Agendamento não encontrado ou acesso negado' 
         });
       }
+
+      await assertPeriodoAberto({
+        unidadeId: Number(agendamento.unidade_id),
+        recordDate: parseYmdToLocalDate(agendamento.data_agendamento),
+        userRole,
+        errorMessage: 'Período fechado: não é permitido alterar/cancelar agendamentos de meses anteriores.'
+      });
       
       // A verificação de RBAC (userAgenteId && agendamento.agente_id !== userAgenteId) não é mais
       // estritamente necessária aqui, pois o filtro na query já garante o escopo,
@@ -1743,19 +1763,75 @@ class AgendamentoController extends BaseController {
             .del();
 
           if (produtosValidos.length > 0) {
-            await trx('agendamento_produtos').insert(
-              produtosValidos.map((p) => ({
-                agendamento_id: parseInt(id, 10),
-                produto_id: p.produto_id,
-                quantidade: Number(Number(p.quantidade).toFixed(3)),
-                preco_aplicado: Number((Number.isFinite(p.preco_aplicado) ? p.preco_aplicado : 0).toFixed(2)),
-                agente_id: Number.isFinite(p.agente_id) ? p.agente_id : null,
-                created_at: trx.fn.now()
-              }))
+            const produtoIds = produtosValidos
+              .map((p) => Number(p?.produto_id))
+              .filter((n) => Number.isFinite(n));
+
+            const produtos = produtoIds.length > 0
+              ? await trx('produtos')
+                .where('usuario_id', usuarioId)
+                .whereIn('id', produtoIds)
+                .whereNull('deleted_at')
+                .select('id', 'comissao_percentual')
+              : [];
+
+            const produtoById = new Map((produtos || []).map((p) => [Number(p.id), p]));
+
+            const produtosInsert = produtosValidos.map((p) => {
+                const produtoId = Number(p.produto_id);
+                const quantidade = Number(Number(p.quantidade).toFixed(3));
+                const precoAplicado = Number((Number.isFinite(p.preco_aplicado) ? p.preco_aplicado : 0).toFixed(2));
+                const totalLinha = Number((quantidade * precoAplicado).toFixed(2));
+
+                const produto = produtoById.get(produtoId);
+                const comissaoPercentualSnapshot = Number(produto?.comissao_percentual) || 0;
+                const comissaoValorSnapshot = Number((totalLinha * (comissaoPercentualSnapshot / 100)).toFixed(2));
+
+                return {
+                  agendamento_id: parseInt(id, 10),
+                  produto_id: produtoId,
+                  quantidade,
+                  preco_aplicado: precoAplicado,
+                  comissao_percentual_snapshot: comissaoPercentualSnapshot,
+                  comissao_valor_snapshot: comissaoValorSnapshot,
+                  agente_id: Number.isFinite(p.agente_id) ? p.agente_id : null,
+                  created_at: trx.fn.now()
+                };
+              });
+
+            // Penny Accuracy: evitar que a soma de comissões de produtos (em centavos) passe do total base.
+            // O centavo de diferença deve ficar com a Casa (reduzindo o último item com comissão).
+            const totalBaseCents = toCents(
+              typeof dadosParaAtualizar?.valor_total === 'number'
+                ? dadosParaAtualizar.valor_total
+                : agendamento.valor_total
             );
+            if (totalBaseCents > 0) {
+              const commissionIdx = produtosInsert
+                .map((it, idx) => ({ it, idx }))
+                .filter(({ it }) => Number.isFinite(Number(it.agente_id)) && toCents(it.comissao_valor_snapshot) > 0)
+                .map(({ idx }) => idx);
+
+              if (commissionIdx.length > 0) {
+                const sumCommissionsCents = commissionIdx.reduce(
+                  (acc, idx) => acc + toCents(produtosInsert[idx].comissao_valor_snapshot),
+                  0
+                );
+                const diffCents = sumCommissionsCents - totalBaseCents;
+                if (diffCents > 0) {
+                  const lastIdx = commissionIdx[commissionIdx.length - 1];
+                  const current = toCents(produtosInsert[lastIdx].comissao_valor_snapshot);
+                  const next = Math.max(0, current - diffCents);
+                  produtosInsert[lastIdx].comissao_valor_snapshot = Number((next / 100).toFixed(2));
+                }
+              }
+            }
+
+            await trx('agendamento_produtos').insert(produtosInsert);
           }
         }
 
+// ...
         // ✅ PATCH ESTOQUE (Sprint 3+): Reconciliação atômica e síncrona quando envolver Concluído ou troca de serviços
         const envolveConcluido = (
           (statusMudou && (statusAnterior === 'Concluído' || status === 'Concluído')) ||
@@ -1836,6 +1912,14 @@ class AgendamentoController extends BaseController {
         });
       }
 
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       if (error && error.httpStatus) {
         return res.status(error.httpStatus).json({
           success: false,
@@ -1872,7 +1956,8 @@ class AgendamentoController extends BaseController {
 
       // Buscar agendamento com filtro de escopo
       let agendamentoQuery = this.model.db(this.model.tableName)
-        .where('agendamentos.id', id);
+        .where('agendamentos.id', id)
+        .whereNull('agendamentos.deleted_at');
 
       if (userRole === 'AGENTE' && userAgenteId) {
         agendamentoQuery = agendamentoQuery.where('agendamentos.agente_id', userAgenteId);
@@ -1891,6 +1976,13 @@ class AgendamentoController extends BaseController {
         });
       }
 
+      await assertPeriodoAberto({
+        unidadeId: Number(agendamento.unidade_id),
+        recordDate: parseYmdToLocalDate(agendamento.data_agendamento),
+        userRole,
+        errorMessage: 'Período fechado: não é permitido cancelar agendamentos de meses anteriores.'
+      });
+
       if (agendamento.status === 'Cancelado') {
         return res.status(400).json({
           success: false,
@@ -1899,6 +1991,85 @@ class AgendamentoController extends BaseController {
       }
 
       const trxResult = await this.model.db.transaction(async (trx) => {
+        const inventoryService = new InventoryService(trx);
+
+        const agendamentoRow = await trx('agendamentos')
+          .where('id', parseInt(id, 10))
+          .forUpdate()
+          .select('id', 'venda_id', 'unidade_id')
+          .first();
+
+        let vendaId = agendamentoRow?.venda_id ? Number(agendamentoRow.venda_id) : null;
+        if (!vendaId) {
+          const vendaRow = await trx('vendas')
+            .where('agendamento_id', parseInt(id, 10))
+            .select('id')
+            .first();
+          vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+        }
+
+        if (vendaId) {
+          const venda = await trx('vendas')
+            .where({ id: vendaId })
+            .forUpdate()
+            .first();
+
+          const statusVenda = String(venda?.status || '').toUpperCase();
+
+          if (venda && statusVenda === 'PAID') {
+            const itens = await trx('venda_itens')
+              .where('venda_id', vendaId)
+              .select('item_type', 'reference_id', 'quantidade');
+
+            const origemId = `ESTORNO:VENDA:${vendaId}`;
+
+            for (const it of itens || []) {
+              if (String(it.item_type) !== 'PRODUTO') continue;
+              const produtoId = Number(it.reference_id);
+              const quantidade = Number(it.quantidade);
+              if (!Number.isFinite(produtoId) || !Number.isFinite(quantidade) || quantidade <= 0) continue;
+
+              const movJaExiste = await trx('estoque_movimentacoes')
+                .where({
+                  usuario_id: venda.usuario_id,
+                  unidade_id: Number(venda.unidade_id),
+                  produto_id: produtoId,
+                  tipo: 'ESTORNO',
+                  origem_id: origemId
+                })
+                .select('id')
+                .first();
+
+              if (movJaExiste?.id) {
+                continue;
+              }
+
+              await inventoryService.movimentarEstoque({
+                usuario_id: venda.usuario_id,
+                unidade_id: Number(venda.unidade_id),
+                produto_id: produtoId,
+                tipo: 'ESTORNO',
+                quantidade,
+                motivo: `ESTORNO AUTOMÁTICO - Venda ${vendaId} (Agendamento ${id})`,
+                origem_id: origemId,
+                created_by: req.user?.id || null,
+                trx
+              });
+            }
+
+            await trx('venda_pagamentos')
+              .where('venda_id', vendaId)
+              .update({ status: 'REFUNDED' });
+
+            await trx('vendas')
+              .where('id', vendaId)
+              .update({
+                status: 'REFUNDED',
+                updated_at: trx.fn.now()
+              });
+          }
+        }
+
         await this.assinaturaEstornoService.aplicarEstornoOuRetencao({
           agendamentoId: parseInt(id, 10),
           deveEstornar: true,
@@ -1911,6 +2082,13 @@ class AgendamentoController extends BaseController {
             status: 'Cancelado',
             updated_at: new Date()
           });
+
+        await this.agendamentoConclusaoService.reconcileEstoque({
+          agendamentoId: parseInt(id, 10),
+          triggeredByUserId: req.user?.id,
+          pagamentos: [],
+          trx
+        });
 
         return { ok: true };
       });
@@ -1952,6 +2130,14 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       logger.error(' [AgendamentoController.cancel] Erro ao cancelar agendamento:', error);
       return res.status(500).json({
         success: false,
@@ -1968,6 +2154,7 @@ class AgendamentoController extends BaseController {
       // CORREÇÃO CRÍTICA: Buscar dados separadamente para evitar problemas de JOIN
       const agendamento = await this.model.db('agendamentos')
         .where('id', agendamentoId)
+        .whereNull('deleted_at')
         .first();
 
       if (!agendamento) {
@@ -2205,6 +2392,7 @@ class AgendamentoController extends BaseController {
         .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
         .where('agendamentos.id', id)
         .where('unidades.usuario_id', usuarioId)
+        .whereNull('agendamentos.deleted_at')
         .select('agendamentos.*')
         .first();
 
@@ -2215,10 +2403,50 @@ class AgendamentoController extends BaseController {
         });
       }
 
-      // Deletar agendamento (hard delete)
+      await assertPeriodoAberto({
+        unidadeId: Number(agendamento.unidade_id),
+        recordDate: parseYmdToLocalDate(agendamento.data_agendamento),
+        userRole,
+        errorMessage: 'Período fechado: não é permitido excluir agendamentos de meses anteriores.'
+      });
+
+      if (agendamento.deleted_at) {
+        return res.json({
+          success: true,
+          message: 'Agendamento deletado com sucesso',
+          data: {
+            id: parseInt(id)
+          }
+        });
+      }
+
+      try {
+        const venda = await this.model.db('vendas')
+          .where('agendamento_id', parseInt(id, 10))
+          .select('id', 'status')
+          .first();
+
+        const statusVenda = String(venda?.status || '').toUpperCase();
+        if (venda?.id && (statusVenda === 'PAID' || statusVenda === 'PARTIAL')) {
+          return res.status(400).json({
+            success: false,
+            error: 'Não é possível deletar um agendamento com venda paga/parcial',
+            message: `Agendamento vinculado à venda #${venda.id} (${statusVenda}). Estorne a venda antes de excluir a comanda.`
+          });
+        }
+      } catch (err) {
+        if (!(err && (err.code === '42P01' || String(err.message || '').includes('vendas')))) {
+          throw err;
+        }
+      }
+
+      // Soft delete (append-only): marcar deleted_at
       await this.model.db(this.model.tableName)
         .where('id', id)
-        .del();
+        .update({
+          deleted_at: this.model.db.fn.now(),
+          updated_at: new Date()
+        });
 
       return res.json({
         success: true,
@@ -2229,6 +2457,14 @@ class AgendamentoController extends BaseController {
       });
 
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       logger.error('❌ [AgendamentoController.destroy] Erro ao deletar agendamento:', error);
       return res.status(500).json({
         success: false,

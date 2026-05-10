@@ -10,6 +10,7 @@ class Agente extends BaseModel {
   async findByUnidade(unidadeId) {
     return await this.db(this.tableName)
       .where('unidade_id', unidadeId)
+      .whereNull('deleted_at')
       .select('*');
   }
 
@@ -21,6 +22,7 @@ class Agente extends BaseModel {
         this.where('agentes.usuario_id', usuarioId)  // Agentes diretos do usuário
             .orWhere('unidades.usuario_id', usuarioId);  // Agentes através de unidades
       })
+      .whereNull('agentes.deleted_at')
       .select(
         'agentes.*',
         'unidades.nome as unidade_nome'
@@ -37,6 +39,7 @@ class Agente extends BaseModel {
         this.where('agentes.usuario_id', usuarioId)  // Agentes diretos do usuário
             .orWhere('unidades.usuario_id', usuarioId);  // Agentes através de unidades
       })
+      .whereNull('agentes.deleted_at')
       // .where('agentes.status', 'Ativo')  // ❌ REMOVIDO: Agentes bloqueados também podem ser associados
       .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url', 'agentes.unidade_id')
       .orderBy('agentes.nome');
@@ -47,6 +50,7 @@ class Agente extends BaseModel {
     const agente = await this.db(this.tableName)
       .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
       .where('agentes.id', agenteId)
+      .whereNull('agentes.deleted_at')
       .select(
         'agentes.*',
         'unidades.nome as unidade_nome',
@@ -90,6 +94,7 @@ class Agente extends BaseModel {
             
             const agendamentosCount = await this.db('agendamentos')
               .where('agente_id', agente.id)
+              .whereNull('deleted_at')
               .where('status', 'Aprovado')
               .where('data_agendamento', dataHoje)
               .count('* as total')

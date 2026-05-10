@@ -59,10 +59,19 @@ async function archiveTable(config) {
       WHERE ${dateColumn} < ?
     `, [cutoffDate]);
     
-    // Deletar dados da tabela principal
-    await trx(table_name)
-      .where(dateColumn, '<', cutoffDate)
-      .delete();
+    // Append-only: nunca deletar fisicamente agendamentos.
+    // Para agendamentos, arquivar é equivalente a marcar como removido do operacional.
+    if (table_name === 'agendamentos') {
+      await trx(table_name)
+        .where(dateColumn, '<', cutoffDate)
+        .whereNull('deleted_at')
+        .update({ deleted_at: trx.fn.now(), updated_at: trx.fn.now() });
+    } else {
+      // Deletar dados da tabela principal
+      await trx(table_name)
+        .where(dateColumn, '<', cutoffDate)
+        .delete();
+    }
     
     // Atualizar configuração de retenção
     await trx('data_retention_config')

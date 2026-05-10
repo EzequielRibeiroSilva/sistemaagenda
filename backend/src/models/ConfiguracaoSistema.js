@@ -29,6 +29,7 @@ class ConfiguracaoSistema {
           'permitir_cancelamento',
           'tempo_limite_cancelar_horas',
           'periodo_futuro_dias',
+          'periodo_lock_inicio',
           // Campos de pontos
           'pontos_ativo',
           'pontos_por_real',
@@ -60,6 +61,7 @@ class ConfiguracaoSistema {
         permitir_cancelamento: true,
         tempo_limite_cancelar_horas: 4, // 4 horas antes
         periodo_futuro_dias: 365, // 1 ano
+        periodo_lock_inicio: null,
         // Configurações de pontos (padrão: desativado)
         pontos_ativo: false,
         pontos_por_real: 1.00, // 1 ponto por R$ 1,00

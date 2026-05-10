@@ -102,6 +102,7 @@ class Cliente extends BaseModel {
 
     let query = this.db(this.tableName)
       .where(`${this.tableName}.unidade_id`, unidadeId)
+      .whereNull(`${this.tableName}.deleted_at`)
       .select(columns)
       .orderBy(`${this.tableName}.primeiro_nome`, 'asc');
 
@@ -176,6 +177,7 @@ class Cliente extends BaseModel {
     return await this.db(this.tableName)
       .where(`${this.tableName}.id`, id)
       .where(`${this.tableName}.unidade_id`, unidadeId)
+      .whereNull(`${this.tableName}.deleted_at`)
       .select(columns)
       .first();
   }
@@ -212,6 +214,7 @@ class Cliente extends BaseModel {
     return await this.db(this.tableName)
       .where(`${this.tableName}.telefone_limpo`, telefoneLimpo)
       .where(`${this.tableName}.unidade_id`, unidadeId)
+      .whereNull(`${this.tableName}.deleted_at`)
       .select(columns)
       .first();
   }
@@ -373,7 +376,8 @@ class Cliente extends BaseModel {
     const resultado = await this.db(this.tableName)
       .where('id', id)
       .where('unidade_id', unidadeId)
-      .update({ status: 'Bloqueado', updated_at: new Date() });
+      .whereNull('deleted_at')
+      .update({ deleted_at: new Date(), updated_at: new Date() });
 
     return resultado > 0;
   }
@@ -387,7 +391,9 @@ class Cliente extends BaseModel {
   async countByUnidade(unidadeId, filtros = {}) {
     const tableName = this.tableName;
 
-    let query = this.db(this.tableName).where(`${this.tableName}.unidade_id`, unidadeId);
+    let query = this.db(this.tableName)
+      .where(`${this.tableName}.unidade_id`, unidadeId)
+      .whereNull(`${this.tableName}.deleted_at`);
 
     // Aplicar mesmos filtros da listagem
     if (filtros.nome) {
@@ -470,6 +476,7 @@ class Cliente extends BaseModel {
 
     return await this.db(this.tableName)
       .where('unidade_id', unidadeId)
+      .whereNull('deleted_at')
       .where('status', 'Ativo')
       .where(function() {
         this.whereRaw('LOWER(primeiro_nome) LIKE ?', [`%${query}%`])
@@ -546,6 +553,7 @@ class Cliente extends BaseModel {
       const count = await this.db('agendamentos')
         .where('cliente_id', clienteId)
         .where('unidade_id', unidadeId)
+        .whereNull('deleted_at')
         .count('id as total')
         .first();
 

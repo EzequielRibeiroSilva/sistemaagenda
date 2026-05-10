@@ -1,5 +1,6 @@
 const { db } = require('../config/knex');
 const InventoryService = require('../services/InventoryService');
+const { assertPeriodoAberto } = require('../utils/periodLock');
 
 class VendaController {
   // GET /api/vendas/avulsas?unidade_id=1&limit=200
@@ -121,6 +122,12 @@ class VendaController {
 
       const totalPago = pagamentos.reduce((sum, p) => sum + (Number(p?.valor) || 0), 0);
 
+      const toCents = (n) => {
+        const num = Number(n);
+        if (!Number.isFinite(num)) return 0;
+        return Math.round(num * 100);
+      };
+
       const result = await db.transaction(async (trx) => {
         if (idempotencyKey) {
           const existingVenda = await trx('vendas')
@@ -141,7 +148,7 @@ class VendaController {
           .where('usuario_id', usuarioId)
           .whereIn('id', produtoIds)
           .whereNull('deleted_at')
-          .select('id', 'nome', 'unidade_medida');
+          .select('id', 'nome', 'unidade_medida', 'comissao_percentual', 'preco_custo_medio');
 
         const produtoById = new Map(produtos.map((p) => [Number(p.id), p]));
 
@@ -188,6 +195,10 @@ class VendaController {
           const totalLinha = Number((quantidade * precoAplicado).toFixed(2));
           subtotal = Number((subtotal + totalLinha).toFixed(2));
 
+          const comissaoPercentualSnapshot = Number(produto?.comissao_percentual) || 0;
+          const comissaoValorSnapshot = Number((totalLinha * (comissaoPercentualSnapshot / 100)).toFixed(2));
+          const precoCustoMedioSnapshot = Number(produto?.preco_custo_medio) || 0;
+
           itensInsert.push({
             item_type: 'PRODUTO',
             reference_id: produtoId,
@@ -195,9 +206,34 @@ class VendaController {
             quantidade,
             preco_unitario_snapshot: precoAplicado,
             total_snapshot: totalLinha,
+            preco_custo_medio_snapshot: precoCustoMedioSnapshot,
+            comissao_percentual_snapshot: comissaoPercentualSnapshot,
+            comissao_valor_snapshot: comissaoValorSnapshot,
             agente_id: Number.isFinite(agenteId) ? agenteId : null,
             created_at: trx.fn.now()
           });
+        }
+
+        // Penny Accuracy: garantir que a soma das comissões (em centavos) nunca ultrapasse o total da venda.
+        // Qualquer diferença de arredondamento deve ficar com a Casa (house = total - comissoes_agentes).
+        const totalCents = toCents(subtotal);
+        const commissionIdx = itensInsert
+          .map((it, idx) => ({ idx, it }))
+          .filter(({ it }) => Number.isFinite(Number(it.agente_id)) && toCents(it.comissao_valor_snapshot) > 0)
+          .map(({ idx }) => idx);
+
+        if (commissionIdx.length > 0) {
+          const sumCommissionsCents = commissionIdx.reduce((acc, idx) => acc + toCents(itensInsert[idx].comissao_valor_snapshot), 0);
+          const diffCents = sumCommissionsCents - totalCents;
+
+          // Se por arredondamento a comissão total passou do total (normalmente 0 ou 1 centavo),
+          // tirar a diferença do último item com comissão. Assim, o centavo sobra para a Casa.
+          if (diffCents > 0) {
+            const lastIdx = commissionIdx[commissionIdx.length - 1];
+            const current = toCents(itensInsert[lastIdx].comissao_valor_snapshot);
+            const next = Math.max(0, current - diffCents);
+            itensInsert[lastIdx].comissao_valor_snapshot = Number((next / 100).toFixed(2));
+          }
         }
 
         const total = subtotal;
@@ -324,6 +360,7 @@ class VendaController {
   async estorno(req, res) {
     try {
       const usuarioId = req.user?.id;
+      const userRole = req.user?.role;
       const vendaId = req.params?.id ? Number(req.params.id) : null;
 
       if (!usuarioId) {
@@ -352,6 +389,13 @@ class VendaController {
           throw err;
         }
 
+        await assertPeriodoAberto({
+          unidadeId: Number(venda.unidade_id),
+          recordDate: venda.created_at,
+          userRole,
+          errorMessage: 'Período fechado: não é permitido estornar vendas de meses anteriores.'
+        });
+
         const statusVenda = String(venda.status || '').toUpperCase();
         if (statusVenda === 'REFUNDED') {
           return { venda_id: vendaId, status: 'REFUNDED' };
@@ -367,7 +411,7 @@ class VendaController {
           .where('venda_id', vendaId)
           .select('item_type', 'reference_id', 'quantidade');
 
-        const inventoryService = new InventoryService(db);
+        const inventoryService = new InventoryService(trx);
         const origemId = `ESTORNO:VENDA:${vendaId}`;
 
         for (const it of itens || []) {
@@ -427,6 +471,14 @@ class VendaController {
         message: 'Estorno realizado com sucesso'
       });
     } catch (error) {
+      if (error?.code === 'PERIODO_FECHADO') {
+        return res.status(409).json({
+          success: false,
+          code: 'PERIODO_FECHADO',
+          error: error.message
+        });
+      }
+
       const code = error?.code;
       const status = code === 'VENDA_NOT_FOUND' ? 404 : code === 'VENDA_NOT_PAID' ? 409 : 500;
       return res.status(status).json({

@@ -120,6 +120,7 @@ class BookingAvailabilityService {
       .where('agente_id', agente_id)
       .where('data_agendamento', data_agendamento)
       .whereIn('status', ['Aprovado', 'Confirmado'])
+      .whereNull('deleted_at')
       .where(function() {
         this.where(function() {
           this.where('hora_inicio', '<=', hora_inicio)

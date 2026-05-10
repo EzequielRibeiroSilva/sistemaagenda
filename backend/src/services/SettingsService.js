@@ -183,6 +183,7 @@ class SettingsService {
       permitir_cancelamento: configuracao.permitir_cancelamento,
       tempo_limite_cancelar_horas: configuracao.tempo_limite_cancelar_horas,
       periodo_futuro_dias: configuracao.periodo_futuro_dias,
+      periodo_lock_inicio: configuracao.periodo_lock_inicio || null,
       // Configurações de pontos
       pontos_ativo: configuracao.pontos_ativo || false,
       pontos_por_real: parseFloat(configuracao.pontos_por_real) || 1.00,

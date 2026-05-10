@@ -113,6 +113,7 @@ class DashboardController {
       const completedAppointmentsQuery = db('agendamentos as a')
         .join('clientes as c', 'a.cliente_id', 'c.id')
         .whereIn('a.unidade_id', unidadeIds)
+        .whereNull('a.deleted_at')
         .where('a.status', 'Concluído')
         .where('a.data_agendamento', '>=', data_inicio)
         .where('a.data_agendamento', '<=', data_fim);

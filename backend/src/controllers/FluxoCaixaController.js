@@ -72,6 +72,9 @@ class FluxoCaixaController {
         .where('v.usuario_id', usuarioId)
         .where('v.unidade_id', unidadeId)
         .where('v.status', 'PAID')
+        .where(function() {
+          this.whereNull('v.agendamento_id').orWhereNull('a.deleted_at');
+        })
         .where((qb) => {
           qb.whereBetween('vp.paid_at', [startTs, endTs]).orWhere((qb2) => {
             qb2.whereNull('vp.paid_at').whereBetween('vp.created_at', [startTs, endTs]);
@@ -85,7 +88,13 @@ class FluxoCaixaController {
           'vp.metodo',
           'vp.valor',
           db.raw('COALESCE(vp.paid_at, vp.created_at) as data'),
-          db.raw("TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) as cliente_nome")
+          db.raw(`
+            CASE WHEN c.id IS NULL THEN ''
+            ELSE (
+              TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')))
+              || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END
+            ) END as cliente_nome
+          `)
         );
 
       const entradas = (entradasRows || []).map((r) => {
@@ -100,6 +109,55 @@ class FluxoCaixaController {
         return {
           tipo: 'ENTRADA',
           valor: Number(r.valor) || 0,
+          data: r.data,
+          metodo: r.metodo ? String(r.metodo) : null,
+          descricao
+        };
+      });
+
+      const estornosRows = await db('venda_pagamentos as vp')
+        .join('vendas as v', 'v.id', 'vp.venda_id')
+        .leftJoin('agendamentos as a', 'a.id', 'v.agendamento_id')
+        .leftJoin('clientes as c', 'c.id', 'a.cliente_id')
+        .where('v.usuario_id', usuarioId)
+        .where('v.unidade_id', unidadeId)
+        .where('v.status', 'REFUNDED')
+        .where(function() {
+          this.whereNull('v.agendamento_id').orWhereNull('a.deleted_at');
+        })
+        .where((qb) => {
+          qb.whereBetween('v.updated_at', [startTs, endTs]);
+        })
+        .select(
+          'vp.id as pagamento_id',
+          'vp.venda_id',
+          'v.agendamento_id',
+          'v.id as venda_id',
+          'vp.metodo',
+          'vp.valor',
+          db.raw('v.updated_at as data'),
+          db.raw(`
+            CASE WHEN c.id IS NULL THEN ''
+            ELSE (
+              TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, '')))
+              || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END
+            ) END as cliente_nome
+          `)
+        );
+
+      const estornos = (estornosRows || []).map((r) => {
+        const agendamentoId = r.agendamento_id ? Number(r.agendamento_id) : null;
+        const vendaId = r.venda_id ? Number(r.venda_id) : null;
+        const clienteNome = r.cliente_nome ? String(r.cliente_nome).trim() : '';
+
+        const descricao = agendamentoId
+          ? `Estorno - Comanda #${agendamentoId}${clienteNome ? ` - ${clienteNome}` : ''}`
+          : `Estorno - Venda Balcão #${vendaId || ''}`.trim();
+
+        const v = Number(r.valor) || 0;
+        return {
+          tipo: 'SAIDA',
+          valor: Number((-1 * v).toFixed(2)),
           data: r.data,
           metodo: r.metodo ? String(r.metodo) : null,
           descricao
@@ -127,7 +185,7 @@ class FluxoCaixaController {
         };
       });
 
-      const transacoes = [...entradas, ...saidas]
+      const transacoes = [...entradas, ...estornos, ...saidas]
         .map((t) => ({
           ...t,
           _sortTs: new Date(String(t.data)).getTime()
@@ -136,7 +194,6 @@ class FluxoCaixaController {
           const aTs = Number.isFinite(a._sortTs) ? a._sortTs : 0;
           const bTs = Number.isFinite(b._sortTs) ? b._sortTs : 0;
           if (aTs !== bTs) return bTs - aTs;
-          // desempate: ENTRADA primeiro
           if (a.tipo !== b.tipo) return a.tipo === 'ENTRADA' ? -1 : 1;
           return 0;
         })
@@ -147,7 +204,7 @@ class FluxoCaixaController {
       );
 
       const totalSaidasAbs = Number(
-        Math.abs(saidas.reduce((acc, x) => acc + (Number(x.valor) || 0), 0)).toFixed(2)
+        Math.abs([...saidas, ...estornos].reduce((acc, x) => acc + (Number(x.valor) || 0), 0)).toFixed(2)
       );
 
       const saldoPeriodo = Number((totalEntradas - totalSaidasAbs).toFixed(2));

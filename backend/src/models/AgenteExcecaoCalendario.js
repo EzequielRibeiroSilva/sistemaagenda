@@ -331,6 +331,7 @@ class AgenteExcecaoCalendario extends BaseModel {
     try {
       const agendamentos = await query
         .where('agente_id', agenteId)
+        .whereNull('deleted_at')
         .whereIn('status', ['Aprovado', 'Confirmado'])
         .where('data_agendamento', '>=', dataInicio)
         .where('data_agendamento', '<=', dataFim)

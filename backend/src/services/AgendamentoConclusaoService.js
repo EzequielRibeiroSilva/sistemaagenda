@@ -38,6 +38,7 @@ class AgendamentoConclusaoService {
 
       const agendamento = await trx('agendamentos')
         .where('id', agendamentoIdNum)
+        .whereNull('deleted_at')
         .select('id', 'unidade_id', 'cliente_id', 'status', 'metodo_pagamento', 'valor_total', 'venda_id')
         .first();
 
@@ -91,6 +92,8 @@ class AgendamentoConclusaoService {
                 .select(
                   'p.id as produto_id',
                   'p.nome as produto_nome',
+                  'p.comissao_percentual as comissao_percentual',
+                  'p.preco_custo_medio as preco_custo_medio',
                   'ap.quantidade as quantidade',
                   'ap.preco_aplicado as preco_aplicado',
                   'ap.agente_id as agente_id'
@@ -123,13 +126,21 @@ class AgendamentoConclusaoService {
               const qtyThousand = Math.round(qty * 1000);
               const unitCents = this.toCents(unit);
               const totalCents = Math.round((qtyThousand * unitCents) / 1000);
+              const totalDecimal = this.centsToDecimal(totalCents);
+
+              const comissaoPercentualSnapshot = Number(p?.comissao_percentual) || 0;
+              const comissaoValorSnapshot = Number((totalDecimal * (comissaoPercentualSnapshot / 100)).toFixed(2));
+              const precoCustoMedioSnapshot = Number(p?.preco_custo_medio) || 0;
               itens.push({
                 item_type: 'PRODUTO',
                 reference_id: Number(p.produto_id),
                 descricao_snapshot: String(p.produto_nome || 'Produto'),
                 quantidade: qty,
                 preco_unitario_snapshot: unit,
-                total_snapshot: this.centsToDecimal(totalCents),
+                total_snapshot: totalDecimal,
+                preco_custo_medio_snapshot: precoCustoMedioSnapshot,
+                comissao_percentual_snapshot: comissaoPercentualSnapshot,
+                comissao_valor_snapshot: comissaoValorSnapshot,
                 agente_id: p.agente_id ? Number(p.agente_id) : null
               });
             }
@@ -175,6 +186,9 @@ class AgendamentoConclusaoService {
                   quantidade: i.quantidade,
                   preco_unitario_snapshot: i.preco_unitario_snapshot,
                   total_snapshot: i.total_snapshot,
+                  preco_custo_medio_snapshot: i.preco_custo_medio_snapshot ?? 0,
+                  comissao_percentual_snapshot: i.comissao_percentual_snapshot ?? null,
+                  comissao_valor_snapshot: i.comissao_valor_snapshot ?? null,
                   agente_id: i.agente_id || null,
                   created_at: trx.fn.now()
                 }))
@@ -345,6 +359,7 @@ class AgendamentoConclusaoService {
 
     const agendamento = await this.db('agendamentos')
       .where('id', agendamentoIdNum)
+      .whereNull('deleted_at')
       .select('id', 'unidade_id', 'cliente_id')
       .first();
 
