@@ -498,18 +498,20 @@ const DespesasPage: React.FC = () => {
                               {!isPaid && (
                                 <button
                                   type="button"
-                                  className="px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100"
-                                  onClick={() => setPayDespesa(d)}
+                                  className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                                  onClick={() => {
+                                    setPayDespesa(d);
+                                  }}
                                 >
                                   Pagar
                                 </button>
                               )}
                               <button
                                 type="button"
-                                className="p-2 rounded-lg border border-gray-200 hover:bg-red-50 hover:border-red-200"
+                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100"
                                 onClick={() => setConfirmDeleteId(d.id)}
                               >
-                                <Trash className="w-4 h-4 text-red-600" />
+                                <Trash className="w-4 h-4 text-gray-400" />
                               </button>
                             </div>
                           </td>
@@ -861,7 +863,7 @@ const DespesasPage: React.FC = () => {
             aria-labelledby="drawer-pay-title"
           >
             <div
-              className="relative flex w-full max-w-md flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
+              className="relative flex w-full max-w-2xl flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
               onClick={(e) => e.stopPropagation()}
               style={{ animation: 'slideInFromRight 0.3s forwards' }}
             >
@@ -896,36 +898,38 @@ const DespesasPage: React.FC = () => {
                   <div className="text-sm text-gray-600">Vencimento: {formatDateBR(payDespesa.data_vencimento)}</div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Data do pagamento</label>
-                  <input
-                    type="date"
-                    value={payForm.data_pagamento}
-                    onChange={(e) => setPayForm((p) => ({ ...p, data_pagamento: e.target.value }))}
-                    className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    disabled={paySaving}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Forma de pagamento</label>
-                  <div className="relative">
-                    <select
-                      value={payForm.forma_pagamento}
-                      onChange={(e) => setPayForm((p) => ({ ...p, forma_pagamento: e.target.value as PayForm['forma_pagamento'] }))}
-                      className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Data do pagamento</label>
+                    <input
+                      type="date"
+                      value={payForm.data_pagamento}
+                      onChange={(e) => setPayForm((p) => ({ ...p, data_pagamento: e.target.value }))}
+                      className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                       disabled={paySaving}
-                    >
-                      <option value="PIX">PIX</option>
-                      <option value="Dinheiro">Dinheiro</option>
-                      <option value="Boleto">Boleto</option>
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Forma de pagamento</label>
+                    <div className="relative">
+                      <select
+                        value={payForm.forma_pagamento}
+                        onChange={(e) => setPayForm((p) => ({ ...p, forma_pagamento: e.target.value as PayForm['forma_pagamento'] }))}
+                        className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                        disabled={paySaving}
+                      >
+                        <option value="PIX">PIX</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Boleto">Boleto</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-200 bg-white flex items-center justify-end gap-3 flex-shrink-0">
+              <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={handleClose}
@@ -937,7 +941,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-green-600 border border-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   disabled={paySaving}
                 >
                   {paySaving ? 'Salvando...' : 'Confirmar'}

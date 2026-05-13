@@ -86,11 +86,16 @@ class AssinaturaSaldoService {
     let cycleEndExclusiveTs = null;
 
     const hasRenovacoesTable = await conn.schema.hasTable('assinatura_renovacoes');
+    let bloqueioFinanceiro = false;
     if (hasRenovacoesTable) {
       const renovacao = await conn('assinatura_renovacoes')
         .where('cliente_id', cliente.id)
         .orderBy('data_renovacao', 'desc')
         .first();
+
+      if (!renovacao?.data_renovacao) {
+        bloqueioFinanceiro = true;
+      }
 
       if (renovacao?.data_renovacao) {
         const startTs = new Date(renovacao.data_renovacao);
@@ -108,6 +113,9 @@ class AssinaturaSaldoService {
     }
 
     if (!cycleStart || !cycleEndExclusive || !cycleEndInclusive) {
+      if (hasRenovacoesTable) {
+        bloqueioFinanceiro = true;
+      }
       const dataInicioAssinaturaStr = this.normalizeDateStr(cliente.data_inicio_assinatura);
       if (!dataInicioAssinaturaStr) {
         return respostaBase;
@@ -221,6 +229,10 @@ class AssinaturaSaldoService {
       };
     });
 
+    const saldosComBloqueio = bloqueioFinanceiro
+      ? saldos.map(s => ({ ...s, usados: 0, restantes: s.quantidade_por_ciclo === null ? null : 0 }))
+      : saldos;
+
     const coverageServicoIds = [];
     const coverageExtraIds = [];
     const motivosServico = [];
@@ -283,7 +295,7 @@ class AssinaturaSaldoService {
           assinatura_plano_id: cliente.assinatura_plano_id,
           unidade_id: unidadeId
         },
-        assinatura_ativa: true,
+        assinatura_ativa: !bloqueioFinanceiro,
         plano: {
           id: plano.id,
           nome: plano.nome,
@@ -297,7 +309,7 @@ class AssinaturaSaldoService {
           inicio_ts: cycleStartTs ? cycleStartTs.toISOString() : null,
           fim_exclusivo_ts: cycleEndExclusiveTs ? cycleEndExclusiveTs.toISOString() : null
         },
-        saldos,
+        saldos: saldosComBloqueio,
         ...(requestServicoIds.length > 0 || requestExtraIds.length > 0
           ? {
               cobertura_sugerida: {

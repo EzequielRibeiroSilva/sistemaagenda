@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, CheckCircle, X } from './Icons';
+import { Plus, CheckCircle, Lock, X } from './Icons';
 import { useClientManagement, type ClientFilters, type AssinaturaSaldoResponse } from '../hooks/useClientManagement';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { BaseTable, TableColumn } from './BaseTable';
@@ -43,8 +43,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         fetchClientAssinaturaSaldo,
         updateClient
     } = useClientManagement();
-
-    const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     const [assinaturaSaldoByClientId, setAssinaturaSaldoByClientId] = useState<Record<number, AssinaturaSaldoResponse | null>>({});
     const [assinaturaSaldoLoadingByClientId, setAssinaturaSaldoLoadingByClientId] = useState<Record<number, boolean>>({});
@@ -118,6 +116,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         if (!assinaturaModalClientId) return null;
         return assinaturaSaldoByClientId[assinaturaModalClientId] || null;
     }, [assinaturaModalClientId, assinaturaSaldoByClientId]);
+
+    const openAssinaturaModal = useCallback(async (clientId: number) => {
+        if (!Number.isFinite(clientId)) return;
+
+        setAssinaturaModalClientId(clientId);
+        setAssinaturaSaldoLoadingByClientId(prev => ({ ...prev, [clientId]: true }));
+        const saldo = await fetchClientAssinaturaSaldo(clientId);
+        setAssinaturaSaldoByClientId(prev => ({ ...prev, [clientId]: saldo }));
+        setAssinaturaSaldoLoadingByClientId(prev => ({ ...prev, [clientId]: false }));
+    }, [fetchClientAssinaturaSaldo]);
 
     const closeAssinaturaModal = useCallback(() => {
         setAssinaturaModalClientId(null);
@@ -419,39 +427,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
 
                 const clientId = Number(client.id);
                 const saldo = Number.isFinite(clientId) ? (assinaturaSaldoByClientId[clientId] || null) : null;
-                const isSaldoLoading = Number.isFinite(clientId) ? Boolean(assinaturaSaldoLoadingByClientId[clientId]) : false;
                 const assinaturaStatus = String(client.assinaturaStatus || '').trim();
                 const assinaturaAtiva = Boolean(saldo?.assinatura_ativa);
                 const podeExibirSaldo = assinaturaStatus === 'Ativo' && assinaturaAtiva;
                 const resumo = podeExibirSaldo ? buildAssinaturaResumo(saldo) : '';
-                const saldoLabel = assinaturaStatus === 'Pagamento Pendente'
-                    ? 'Sem Saldo (Pagamento Pendente)'
-                    : 'Sem Saldo';
 
                 return (
                     <button
                         type="button"
-                        className="flex flex-col items-center justify-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                        className="flex flex-row items-center justify-center gap-2 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
                         onClick={() => {
-                            if (Number.isFinite(clientId)) setAssinaturaModalClientId(clientId);
+                            if (Number.isFinite(clientId)) openAssinaturaModal(clientId);
                         }}
                         title={resumo || 'Ver detalhes da assinatura'}
                     >
-                        <div className="flex items-center justify-center gap-2 flex-wrap">
-                            <CheckCircle className="w-5 h-5" style={{ color: '#2663EB' }} />
-                            <span className="text-xs font-medium" style={{ color: '#2663EB' }}>
-                                Assinante
-                                {client.subscriptionStartDate && (
-                                    <span className="text-gray-500 ml-1">
-                                        desde {new Date(client.subscriptionStartDate).toLocaleDateString('pt-BR')}
-                                    </span>
-                                )}
-                            </span>
-                            {renderAssinaturaStatusBadge(client.assinaturaStatus)}
-                        </div>
-                        <span className="text-[11px] text-gray-600 text-center leading-tight">
-                            {isSaldoLoading ? 'Carregando...' : (podeExibirSaldo ? (resumo || '0/0') : saldoLabel)}
-                        </span>
+                        <CheckCircle className="w-5 h-5 flex-shrink-0" style={{ color: '#2663EB' }} />
+                        {renderAssinaturaStatusBadge(client.assinaturaStatus)}
                     </button>
                 );
             },
@@ -505,115 +496,157 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
                 enableRowHover={true}
             />
 
-            {assinaturaModalClientId && portalRoot && (
-                createPortal(
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
-                            <div className="p-6 border-b border-gray-200">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h2 className="text-lg font-bold text-gray-800">Detalhes da Assinatura</h2>
-                                        <div className="text-sm text-gray-500 space-y-0.5">
-                                            <div>
-                                                {selectedAssinaturaSaldo?.cliente?.nome || `Cliente #${assinaturaModalClientId}`}
-                                            </div>
-                                            <div>
-                                                Telefone: {selectedAssinaturaSaldo?.cliente?.telefone || '-'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="button" onClick={closeAssinaturaModal} className="p-1 rounded-full hover:bg-gray-200">
-                                        <X className="w-5 h-5 text-gray-600" />
-                                    </button>
-                                </div>
+            {(() => {
+                if (!assinaturaModalClientId) return null;
+                const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+                if (!portalRoot) return null;
+
+                return createPortal(
+                    <div
+                        className="fixed inset-0 z-50 bg-black/60 flex justify-end"
+                        onClick={closeAssinaturaModal}
+                        aria-modal="true"
+                        role="dialog"
+                    >
+                        <div
+                            className="relative flex w-full max-w-2xl flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ animation: 'slideInFromRight 0.3s forwards' }}
+                        >
+                            <style>{`
+                                @keyframes slideInFromRight {
+                                    from { transform: translateX(100%); }
+                                    to { transform: translateX(0); }
+                                }
+                            `}</style>
+
+                            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white flex-shrink-0">
+                                <h2 className="text-xl font-bold text-gray-800">Detalhes da Assinatura</h2>
+                                <button
+                                    type="button"
+                                    onClick={closeAssinaturaModal}
+                                    className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                >
+                                    <X className="h-6 w-6" />
+                                </button>
                             </div>
 
-                            <div className="p-6 space-y-4">
-                                {selectedAssinaturaSaldo && !selectedAssinaturaSaldo.assinatura_ativa && (
-                                    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3">
-                                        <div className="text-sm font-bold">ASSINATURA INATIVA: Pendência de pagamento detectada</div>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                    <div className="text-sm font-semibold text-gray-800 truncate">
+                                        {selectedAssinaturaSaldo?.cliente?.nome || 'Cliente'}
                                     </div>
-                                )}
-                                {selectedAssinaturaSaldo?.assinatura_ativa && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                            <div className="text-xs text-gray-500">Plano</div>
-                                            <div className="text-sm font-semibold text-gray-800">
-                                                {selectedAssinaturaSaldo?.plano?.nome || '-'}
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-1">
-                                                Validade do ciclo: {selectedAssinaturaSaldo?.plano?.validade_dias ? `${selectedAssinaturaSaldo.plano.validade_dias} dias` : '-'}
-                                            </div>
-                                        </div>
+                                    <div className="text-sm text-gray-500 truncate">Telefone: {selectedAssinaturaSaldo?.cliente?.telefone || '-'}</div>
+                                </div>
 
-                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                            <div className="text-xs text-gray-500">Ciclo atual</div>
-                                            <div className="text-sm font-semibold text-gray-800">
-                                                {selectedAssinaturaSaldo?.ciclo?.inicio && selectedAssinaturaSaldo?.ciclo?.fim
-                                                    ? `${new Date(`${selectedAssinaturaSaldo.ciclo.inicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${selectedAssinaturaSaldo.ciclo.fim}T12:00:00`).toLocaleDateString('pt-BR')}`
-                                                    : '-'
-                                                }
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-1">
-                                                Índice: {typeof selectedAssinaturaSaldo?.ciclo?.indice === 'number' ? selectedAssinaturaSaldo.ciclo.indice : '-'}
-                                            </div>
+                                {(() => {
+                                    const statusLabel = String(selectedAssinaturaSaldo?.cliente?.assinatura_status || '').trim();
+                                    const isBlocked = selectedAssinaturaSaldo?.assinatura_ativa === false || (statusLabel && statusLabel !== 'Ativo');
+                                    if (!selectedAssinaturaSaldo || !isBlocked) return null;
+
+                                    return (
+                                    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-4 flex items-start gap-3">
+                                        <Lock className="w-5 h-5 mt-0.5" />
+                                        <div>
+                                            <div className="text-sm font-bold">ASSINATURA INATIVA</div>
+                                            <div className="text-sm">Pendência de pagamento detectada. As cotas ficam bloqueadas até regularização.</div>
                                         </div>
                                     </div>
-                                )}
+                                    );
+                                })()}
 
-                                {selectedAssinaturaSaldo?.assinatura_ativa && (
-                                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                                            <div className="text-sm font-semibold text-gray-800">Itens do plano</div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                        <div className="text-xs text-gray-500">Plano</div>
+                                        <div className="text-sm font-semibold text-gray-800">
+                                            {selectedAssinaturaSaldo?.plano?.nome || '-'}
                                         </div>
-                                        <div className="divide-y divide-gray-200">
-                                            {(selectedAssinaturaSaldo?.saldos || []).map((item) => {
-                                                const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
-                                                const quotaLabel = item.quantidade_por_ciclo === null ? '∞' : String(item.quantidade_por_ciclo);
-                                                const usadosLabel = String(item.usados || 0);
-                                                const restantesLabel = item.restantes === null ? '∞' : String(item.restantes);
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Validade do ciclo: {selectedAssinaturaSaldo?.plano?.validade_dias ? `${selectedAssinaturaSaldo.plano.validade_dias} dias` : '-'}
+                                        </div>
+                                    </div>
 
-                                                return (
-                                                    <div key={item.plano_item_id} className="px-4 py-3 flex items-center justify-between gap-4">
-                                                        <div className="min-w-0">
-                                                            <div className="text-sm font-medium text-gray-800 truncate">{nome}</div>
-                                                            <div className="text-xs text-gray-500">{item.tipo === 'SERVICO' ? 'Serviço' : 'Extra'}</div>
+                                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                        <div className="text-xs text-gray-500">Ciclo atual</div>
+                                        <div className="text-sm font-semibold text-gray-800">
+                                            {selectedAssinaturaSaldo?.ciclo?.inicio && selectedAssinaturaSaldo?.ciclo?.fim
+                                                ? `${new Date(`${selectedAssinaturaSaldo.ciclo.inicio}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${selectedAssinaturaSaldo.ciclo.fim}T12:00:00`).toLocaleDateString('pt-BR')}`
+                                                : '-'
+                                            }
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Índice: {typeof selectedAssinaturaSaldo?.ciclo?.indice === 'number' ? selectedAssinaturaSaldo.ciclo.indice : '-'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                    <div className="bg-white px-4 py-3 border-b border-gray-200">
+                                        <div className="text-sm font-semibold text-gray-800">Itens do plano</div>
+                                    </div>
+                                    <div className="divide-y divide-gray-200">
+                                        {(selectedAssinaturaSaldo?.saldos || []).map((item) => {
+                                            const nome = item.nome || (item.tipo === 'SERVICO' ? 'Serviço' : 'Extra');
+                                            const quotaLabel = item.quantidade_por_ciclo === null ? '∞' : String(item.quantidade_por_ciclo);
+
+                                            const statusLabel = String(selectedAssinaturaSaldo?.cliente?.assinatura_status || '').trim();
+                                            const isBlocked = selectedAssinaturaSaldo?.assinatura_ativa === false || (statusLabel && statusLabel !== 'Ativo');
+
+                                            const usadosLabel = String(isBlocked ? 0 : (item.usados || 0));
+                                            const restantesValue = isBlocked ? 0 : item.restantes;
+                                            const restantesLabel = restantesValue === null ? '∞' : String(restantesValue);
+
+                                            return (
+                                                <div key={item.plano_item_id} className="px-4 py-3 flex items-center justify-between gap-4">
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-medium text-gray-800 truncate">{nome}</div>
+                                                        <div className="text-xs text-gray-500">{item.tipo === 'SERVICO' ? 'Serviço' : 'Extra'}</div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-6 flex-shrink-0">
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Usado</div>
+                                                            <div className="text-sm font-semibold text-gray-800">{usadosLabel}</div>
                                                         </div>
-                                                        <div className="flex items-center gap-6 flex-shrink-0">
-                                                            <div className="text-right">
-                                                                <div className="text-xs text-gray-500">Usado</div>
-                                                                <div className="text-sm font-semibold text-gray-800">{usadosLabel}</div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className="text-xs text-gray-500">Total</div>
-                                                                <div className="text-sm font-semibold text-gray-800">{quotaLabel}</div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className="text-xs text-gray-500">Restante</div>
-                                                                <div className="text-sm font-semibold" style={{ color: '#2663EB' }}>{restantesLabel}</div>
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Total</div>
+                                                            <div className="text-sm font-semibold text-gray-800">{quotaLabel}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-gray-500">Restante</div>
+                                                            <div className={`text-sm font-semibold flex items-center justify-end gap-2 ${isBlocked ? 'text-gray-500' : ''}`}>
+                                                                {isBlocked && <Lock className="w-4 h-4" />}
+                                                                <span style={isBlocked ? undefined : { color: '#2663EB' }}>{restantesLabel}</span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                );
-                                            })}
-                                            {(selectedAssinaturaSaldo?.saldos || []).length === 0 && (
-                                                <div className="px-4 py-6 text-sm text-gray-500 text-center">Nenhum item encontrado</div>
-                                            )}
-                                        </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {(selectedAssinaturaSaldo?.saldos || []).length === 0 && (
+                                            <div className="px-4 py-6 text-sm text-gray-500 text-center">
+                                                Nenhum item encontrado
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
                             </div>
 
-                            <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">
-                                <button type="button" onClick={closeAssinaturaModal} className="bg-white text-gray-700 border border-gray-300 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end">
+                                <button
+                                    type="button"
+                                    onClick={closeAssinaturaModal}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
                                     Fechar
                                 </button>
                             </div>
                         </div>
                     </div>,
                     portalRoot
-                )
-            )}
+                );
+            })()}
         </div>
     );
 };

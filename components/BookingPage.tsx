@@ -967,7 +967,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       });
     };
 
-    const shouldShowOptions = Boolean(assinaturaInfo?.assinatura_ativa);
+    const assinaturaStatusLabel = String((assinaturaInfo as any)?.cliente?.assinatura_status || '').trim();
+    const gateByStatus = !assinaturaStatusLabel || assinaturaStatusLabel === 'Ativo';
+    const shouldShowOptions = Boolean(assinaturaInfo?.assinatura_ativa) && gateByStatus;
     const hasAssinaturaError = Boolean(assinaturaInfo?.error_message);
 
     const eligibleServicoIds = selectedServices
@@ -986,6 +988,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     }
 
     const renderSaldoLabel = (saldo: any) => {
+      if (!shouldShowOptions) return 'Bloqueado';
       if (!saldo) return 'Não incluso no plano';
       if (saldo.quantidade_por_ciclo === null) return 'Ilimitado';
       const restantes = saldo.restantes ?? 0;
@@ -1065,9 +1068,9 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
             </div>
           )}
 
-          {!isLoadingAssinatura && assinaturaInfo && !shouldShowOptions && (
-            <div className="text-sm text-gray-600">
-              Nenhuma assinatura ativa encontrada para este telefone.
+          {!isLoadingAssinatura && assinaturaInfo && !shouldShowOptions && !hasAssinaturaError && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-sm">
+              Seu plano está temporariamente bloqueado por pendência de pagamento.
             </div>
           )}
         </div>
@@ -1091,6 +1094,20 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
               className="w-full bg-white text-gray-800 font-bold py-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               Não, continuar sem plano
+            </button>
+          </div>
+        )}
+
+        {!isLoadingAssinatura && assinaturaInfo && !shouldShowOptions && !hasAssinaturaError && (
+          <div className="p-4 mt-auto shrink-0 border-t border-gray-200 bg-white">
+            <button
+              onClick={() => {
+                setUsarAssinaturaItens(null);
+                setCurrentStep(nextStepAfterSubscription || 9);
+              }}
+              className="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Continuar
             </button>
           </div>
         )}

@@ -156,7 +156,7 @@ class MercadoPagoWebhookController {
 
   mapPaymentToTally(paymentStatus) {
     const s = (paymentStatus || '').toLowerCase();
-    if (s === 'approved') return 'Ativo';
+    if (s === 'approved' || s === 'authorized') return 'Ativo';
     return 'Pagamento Pendente';
   }
 
@@ -250,6 +250,15 @@ class MercadoPagoWebhookController {
       const payload = req.body || {};
       const { topic, action, resourceId } = this.extractEventMeta(payload);
 
+      logger.info('📩 [MercadoPagoWebhook] Evento recebido:', {
+        topic,
+        action,
+        resourceId,
+        hasDataId: Boolean(payload?.data?.id),
+        hasPaymentInline: Boolean(payload?.payment && typeof payload.payment === 'object'),
+        hasPreapprovalInline: Boolean(payload?.preapproval && typeof payload.preapproval === 'object')
+      });
+
       const xRequestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']) : null;
       const xSignature = req.headers['x-signature'] ? String(req.headers['x-signature']) : null;
 
@@ -318,7 +327,7 @@ class MercadoPagoWebhookController {
             preapproval = await this.fetchPreapproval(preapprovalId);
           }
         }
-      } else if (topicLower === 'preapproval') {
+      } else if (topicLower === 'preapproval' || topicLower === 'subscription') {
         if (!preapproval) {
           preapproval = await this.fetchPreapproval(resourceId);
         }
@@ -373,55 +382,57 @@ class MercadoPagoWebhookController {
         (payment?.status ? String(payment.status) : null) ||
         null;
 
-      const updateData = {
-        assinatura_status: finalStatus,
-        mp_status: mpStatus,
-        mp_last_event_at: new Date()
-      };
+      await db.transaction(async (trx) => {
+        const updateData = {
+          assinatura_status: finalStatus,
+          mp_status: mpStatus,
+          mp_last_event_at: new Date()
+        };
 
-      if (payment && String(payment.status || '').toLowerCase() === 'approved') {
-        const mpPaymentId = payment?.id ? String(payment.id) : null;
-        const planoId = resolveResult?.cliente?.assinatura_plano_id || null;
-
-        if (mpPaymentId && planoId) {
-          const plano = await db('planos_assinatura')
-            .where('id', planoId)
-            .select('id', 'validade_dias')
-            .first();
-
-          await this.assinaturaRenovacaoService.registrarPagamento({
-            clienteId: resolveResult.cliente.id,
-            planoId: planoId,
-            mpPaymentId: mpPaymentId,
-            mpPreapprovalId: preapprovalIdFinal,
-            dataRenovacao: payment?.date_approved || payment?.date_created || null,
-            valorPago: payment?.transaction_amount != null ? Number(payment.transaction_amount) : null,
-            validadeDias: plano?.validade_dias || 31,
-            dbConn: db
-          });
+        if (preapprovalIdFinal && !resolveResult.cliente.mp_preapproval_id) {
+          updateData.mp_preapproval_id = preapprovalIdFinal;
         }
-      }
 
-      if (preapprovalIdFinal && !resolveResult.cliente.mp_preapproval_id) {
-        updateData.mp_preapproval_id = preapprovalIdFinal;
-      }
+        if (payerEmail && !resolveResult.cliente.mp_customer_email) {
+          updateData.mp_customer_email = payerEmail;
+        }
 
-      if (payerEmail && !resolveResult.cliente.mp_customer_email) {
-        updateData.mp_customer_email = payerEmail;
-      }
+        if (preapproval?.preapproval_plan_id && !resolveResult.cliente.mp_plan_id) {
+          updateData.mp_plan_id = String(preapproval.preapproval_plan_id);
+        }
 
-      if (preapproval?.preapproval_plan_id && !resolveResult.cliente.mp_plan_id) {
-        updateData.mp_plan_id = String(preapproval.preapproval_plan_id);
-      }
+        const payerId = preapproval?.payer_id || payment?.payer?.id || null;
+        if (payerId && !resolveResult.cliente.mp_payer_id) {
+          updateData.mp_payer_id = String(payerId);
+        }
 
-      const payerId = preapproval?.payer_id || payment?.payer?.id || null;
-      if (payerId && !resolveResult.cliente.mp_payer_id) {
-        updateData.mp_payer_id = String(payerId);
-      }
+        await trx('clientes')
+          .where('id', resolveResult.cliente.id)
+          .update(updateData);
 
-      await db('clientes')
-        .where('id', resolveResult.cliente.id)
-        .update(updateData);
+        if (payment && String(payment.status || '').toLowerCase() === 'approved') {
+          const mpPaymentId = payment?.id ? String(payment.id) : null;
+          const planoId = resolveResult?.cliente?.assinatura_plano_id || null;
+
+          if (mpPaymentId && planoId) {
+            const plano = await trx('planos_assinatura')
+              .where('id', planoId)
+              .select('id', 'validade_dias')
+              .first();
+
+            await this.assinaturaRenovacaoService.registrarPagamento({
+              clienteId: resolveResult.cliente.id,
+              planoId: planoId,
+              mpPaymentId: mpPaymentId,
+              mpPreapprovalId: preapprovalIdFinal,
+              dataRenovacao: payment?.date_approved || payment?.date_created || null,
+              valorPago: payment?.transaction_amount != null ? Number(payment.transaction_amount) : null,
+              validadeDias: plano?.validade_dias || 31,
+              dbConn: trx
+            });
+          }
+        }
+      });
 
       // Notificações WhatsApp financeiras (idempotentes)
       try {

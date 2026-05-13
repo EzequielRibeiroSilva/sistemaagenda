@@ -6,6 +6,24 @@ import { useCalendarData } from '../hooks/useCalendarData';
 import { useServiceManagement } from '../hooks/useServiceManagement';
 import { useSubscriptionPlanManagement, PlanoAssinaturaDetalhe, PlanoAssinaturaItemInput } from '../hooks/useSubscriptionPlanManagement';
 
+ const formatCurrencyBRLInput = (value: number) => {
+   if (!Number.isFinite(value)) return '0,00';
+   return new Intl.NumberFormat('pt-BR', {
+     minimumFractionDigits: 2,
+     maximumFractionDigits: 2
+   }).format(value);
+ };
+
+ const parseCurrencyBRLInput = (value: string) => {
+   const normalized = String(value)
+     .trim()
+     .replace(/\s/g, '')
+     .replace(/\./g, '')
+     .replace(',', '.');
+   const num = parseFloat(normalized);
+   return Number.isFinite(num) ? num : NaN;
+ };
+
 const FormCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
     <h2 className="text-xl font-semibold text-gray-800 mb-6">{title}</h2>
@@ -55,23 +73,31 @@ const SelectInput: React.FC<{
   </div>
 );
 
-const ToggleRow: React.FC<{ label: string; description: string; checked: boolean; onToggle: () => void; }> = ({ label, description, checked, onToggle }) => (
-  <div className="flex items-center justify-between">
-    <div>
-      <p className="font-medium text-gray-800 text-sm">{label}</p>
-      <p className="text-sm text-gray-500">{description}</p>
-    </div>
-    <button
-      type="button"
-      onClick={onToggle}
-      role="switch"
-      aria-checked={checked}
-      className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-gray-200'}`}
-    >
-      <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
-    </button>
-  </div>
-);
+ const CurrencyInput: React.FC<{
+   label: string;
+   value: string;
+   onChange: (v: string) => void;
+ }> = ({ label, value, onChange }) => (
+   <div>
+     <label className="text-sm font-medium text-gray-600 mb-1 block">{label}</label>
+     <input
+       type="text"
+       inputMode="decimal"
+       placeholder="0,00"
+       value={value}
+       onChange={(e) => {
+         const raw = e.target.value;
+         const cleaned = raw.replace(/[^0-9.,]/g, '');
+         onChange(cleaned);
+       }}
+       onBlur={() => {
+         const num = parseCurrencyBRLInput(value);
+         onChange(formatCurrencyBRLInput(Number.isFinite(num) ? num : 0));
+       }}
+       className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
+     />
+   </div>
+ );
 
 interface EditSubscriptionPlanPageProps {
   setActiveView: (view: string) => void;
@@ -85,6 +111,8 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
   const { fetchServicesList, fetchExtraServices, extraServices } = useServiceManagement();
   const { fetchPlan, updatePlan, loading, error } = useSubscriptionPlanManagement();
 
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
   const locations = useMemo(() => backendLocations.map(l => ({ id: l.id, name: l.name })), [backendLocations]);
 
   const [servicesList, setServicesList] = useState<Array<{ id: number; nome: string }>>([]);
@@ -92,9 +120,8 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
   const [loaded, setLoaded] = useState<PlanoAssinaturaDetalhe | null>(null);
   const [nome, setNome] = useState('');
   const [validadeDias, setValidadeDias] = useState('31');
-  const [valor, setValor] = useState('0');
+  const [valor, setValor] = useState('0,00');
   const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
-  const [renovacaoAutomatica, setRenovacaoAutomatica] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [serviceSelected, setServiceSelected] = useState<Record<number, boolean>>({});
@@ -102,6 +129,15 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
 
   const [extraSelected, setExtraSelected] = useState<Record<number, boolean>>({});
   const [extraQuota, setExtraQuota] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (planoId) return;
+
+    // Blindagem UX: após refresh, o planoId pode não existir (estado em memória).
+    // Redirecionar imediatamente para a lista do Clube para evitar a tela "Plano não selecionado".
+    setIsRedirecting(true);
+    setActiveView('subscriptions-list');
+  }, [planoId, setActiveView]);
 
   useEffect(() => {
     const loadLists = async () => {
@@ -121,9 +157,8 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
       setLoaded(plan);
       setNome(plan.nome);
       setValidadeDias(String(plan.validade_dias ?? 31));
-      setValor(String(plan.valor ?? 0));
+      setValor(formatCurrencyBRLInput(Number(plan.valor ?? 0)));
       setStatus(plan.status);
-      setRenovacaoAutomatica(Boolean(plan.renovacao_automatica));
 
       const svcSelected: Record<number, boolean> = {};
       const svcQuota: Record<number, string> = {};
@@ -189,7 +224,7 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
       return;
     }
 
-    const valorNum = parseFloat(valor);
+    const valorNum = parseCurrencyBRLInput(valor);
     if (Number.isNaN(valorNum) || valorNum < 0) {
       toast.warning('Valor Inválido', 'Informe um valor válido (maior ou igual a zero).');
       return;
@@ -210,7 +245,7 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
         validade_dias: validadeNum,
         valor: valorNum,
         status,
-        renovacao_automatica: renovacaoAutomatica,
+        renovacao_automatica: true,
         itens
       });
 
@@ -257,13 +292,10 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
     </div>
   );
 
-  if (!planoId) {
+  if (!planoId || isRedirecting) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-gray-800">Editar Plano</h1>
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <p className="text-gray-600">Plano não selecionado.</p>
-        </div>
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -286,18 +318,18 @@ const EditSubscriptionPlanPage: React.FC<EditSubscriptionPlanPageProps> = ({ set
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <TextInput label="Nome do Plano" value={nome} onChange={setNome} placeholder="Nome do Plano" />
               <TextInput label="Validade (dias)" value={validadeDias} onChange={setValidadeDias} type="number" step="1" />
-              <TextInput label="Valor (R$)" value={valor} onChange={setValor} type="number" step="0.01" />
+              <CurrencyInput label="Valor (R$)" value={valor} onChange={setValor} />
               <SelectInput label="Status" value={status} onChange={(v) => setStatus(v as any)}>
                 <option value="Ativo">Ativo</option>
                 <option value="Bloqueado">Bloqueado</option>
               </SelectInput>
               <div className="md:col-span-2">
-                <ToggleRow
-                  label="Renovação automática"
-                  description="Marque se a renovação é feita por um sistema externo e aqui será apenas gerenciada."
-                  checked={renovacaoAutomatica}
-                  onToggle={() => setRenovacaoAutomatica(v => !v)}
-                />
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-blue-900">Vigência e renovação</p>
+                  <p className="text-sm text-blue-800 mt-1">
+                    A vigência é controlada automaticamente via integração de pagamento.
+                  </p>
+                </div>
               </div>
             </div>
           </FormCard>

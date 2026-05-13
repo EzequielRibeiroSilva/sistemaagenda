@@ -447,6 +447,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const assinaturaStatusSelecionado = (selectedClient as any)?.assinatura_status ?? null;
     const assinaturaBloqueada = Boolean((selectedClient as any)?.is_assinante) && assinaturaStatusSelecionado && assinaturaStatusSelecionado !== 'Ativo';
 
+    const assinaturaStatusLabel = String((assinaturaInfo as any)?.cliente?.assinatura_status ?? assinaturaStatusSelecionado ?? '').trim();
+    const isAssinaturaStatusAtivo = assinaturaStatusLabel === 'Ativo';
+    const isAssinaturaLiberada = Boolean((assinaturaInfo as any)?.assinatura_ativa) && isAssinaturaStatusAtivo;
+
     const durationMinutes = useMemo(() => {
         let total = 0;
         selectedServices.forEach(id => {
@@ -796,23 +800,33 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 const hasCobertura = (Array.isArray(cobertura?.servico_ids) && cobertura.servico_ids.length > 0)
                     || (Array.isArray(cobertura?.servico_extra_ids) && cobertura.servico_extra_ids.length > 0);
 
-                // Default inteligente: ON quando existe cobertura
-                setUsarCotaAssinatura(Boolean(hasCobertura));
+                const statusLabel = String(data?.cliente?.assinatura_status ?? assinaturaStatusSelecionado ?? '').trim();
+                const gateOpen = Boolean(data?.assinatura_ativa) && statusLabel === 'Ativo';
+
+                setUsarCotaAssinatura(Boolean(hasCobertura) && gateOpen);
             } catch (e) {
                 setAssinaturaInfo(null);
                 setUsarCotaAssinatura(false);
             } finally {
                 setIsLoadingAssinaturaSaldo(false);
             }
-        }, 300);
+        }, 350);
+    }, [
+        isOpen,
+        selectedClient?.id,
+        effectiveLocationId,
+        selectedServices,
+        selectedExtras,
+        assinaturaBloqueada,
+        assinaturaStatusSelecionado
+    ]);
 
-        return () => {
-            if (assinaturaSaldoDebounceRef.current) {
-                window.clearTimeout(assinaturaSaldoDebounceRef.current);
-                assinaturaSaldoDebounceRef.current = null;
-            }
-        };
-    }, [isOpen, selectedClient?.id, selectedServices, selectedExtras, effectiveLocationId, assinaturaBloqueada]);
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!isAssinaturaLiberada) {
+            setUsarCotaAssinatura(false);
+        }
+    }, [isOpen, isAssinaturaLiberada]);
 
     const calculateEndTime = (startTimeStr: string, serviceIds: number[], extraIds: number[]): string => {
         if (!startTimeStr) return '';
@@ -1634,7 +1648,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 hora_fim: endTime,
                 unidade_id: parseInt(effectiveLocationId),
                 observacoes: observacoes.trim() || '',
-                ...(usarCotaAssinatura && hasCoberturaDisponivel
+                ...(usarCotaAssinatura && hasCoberturaDisponivel && isAssinaturaLiberada
                     ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
                     : {}),
                 ...(repeatAppointment
@@ -1671,7 +1685,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     ...(isAdminFinanceRole && isConcluido ? { pagamentos: pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) } : {}),
                     produtos_vendidos: produtosCarrinho.map(p => ({ produto_id: p.produto_id, quantidade: parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0, preco_aplicado: parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0, agente_id: p.agente_id ? parseInt(p.agente_id) : null })),
                     observacoes: observacoes.trim() || '',
-                    ...(usarCotaAssinatura && hasCoberturaDisponivel
+                    ...(usarCotaAssinatura && hasCoberturaDisponivel && isAssinaturaLiberada
                         ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
                         : {}),
                     // ✅ NOVO: Incluir pontos usados se houver
@@ -2026,11 +2040,15 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                <div className="mt-4">
                                    {assinaturaBloqueada ? (
                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-                                           Clube: {assinaturaStatusSelecionado || 'Inativo'}
+                                           Plano bloqueado por pendência financeira
                                        </div>
                                    ) : isLoadingAssinaturaSaldo ? (
                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
                                            Verificando saldo do Clube...
+                                       </div>
+                                   ) : Boolean((selectedClient as any)?.is_assinante) && Boolean(assinaturaInfo) && !isAssinaturaLiberada ? (
+                                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                                           Plano bloqueado por pendência financeira
                                        </div>
                                    ) : hasCoberturaDisponivel ? (
                                        <div className="bg-[#F0F6FF] border border-blue-200 rounded-lg p-3">
