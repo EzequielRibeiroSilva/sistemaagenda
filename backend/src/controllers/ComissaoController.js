@@ -110,10 +110,14 @@ class ComissaoController {
           db.raw("(COALESCE(NULLIF(TRIM(ag.nome_exibicao), ''), TRIM(CONCAT(COALESCE(ag.nome, ''), ' ', COALESCE(ag.sobrenome, '')))) || CASE WHEN ag.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as agente_nome"),
           db.raw(`
             COALESCE(SUM(
-              COALESCE(vi.comissao_valor_snapshot, 0)
+              CASE WHEN vi.comissao_paga = false THEN COALESCE(vi.comissao_valor_snapshot, 0) ELSE 0 END
             ), 0) as total_pendente
           `),
-          db.raw('0 as total_pago')
+          db.raw(`
+            COALESCE(SUM(
+              CASE WHEN vi.comissao_paga = true THEN COALESCE(vi.comissao_valor_snapshot, 0) ELSE 0 END
+            ), 0) as total_pago
+          `)
         );
 
       const produtoRows = await db('agendamento_produtos as ap')
@@ -299,6 +303,7 @@ class ComissaoController {
 
       const vendaProdutoRows = await db('venda_itens as vi')
         .join('vendas as v', 'v.id', 'vi.venda_id')
+        .leftJoin('clientes as c', 'c.id', 'v.cliente_id')
         .where('v.usuario_id', usuarioId)
         .where('v.unidade_id', unidadeId)
         .where('v.status', 'PAID')
@@ -307,21 +312,22 @@ class ComissaoController {
         .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
         .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
+        .where('vi.comissao_paga', statusComissao === 'pago')
         .select(
           'vi.id as agendamento_servico_id',
           db.raw('NULL::integer as agendamento_id'),
-          db.raw('NULL::date as data_agendamento'),
-          db.raw('NULL::text as hora_inicio'),
-          db.raw('NULL::text as hora_fim'),
-          db.raw('NULL::integer as cliente_id'),
-          db.raw("'' as cliente_nome"),
+          db.raw("DATE(v.created_at AT TIME ZONE 'America/Sao_Paulo') as data_agendamento"),
+          db.raw("TO_CHAR(v.created_at AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') as hora_inicio"),
+          db.raw("'' as hora_fim"),
+          'v.cliente_id as cliente_id',
+          db.raw("(TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as cliente_nome"),
           db.raw('NULL::integer as servico_id'),
           db.raw("('Venda Balcão #' || COALESCE(v.id::text, '') || ' - ' || COALESCE(vi.descricao_snapshot, 'Produto') || ' (' || REPLACE(TO_CHAR(COALESCE(vi.comissao_percentual_snapshot, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
           db.raw('COALESCE(vi.total_snapshot, 0) as preco_aplicado'),
           db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) as comissao_percentual'),
           db.raw('COALESCE(vi.comissao_valor_snapshot, 0) as comissao_valor'),
-          db.raw('NULL::timestamp as data_pagamento_comissao'),
-          db.raw('NULL::text as observacao_pagamento')
+          'vi.data_pagamento_comissao',
+          'vi.observacao_pagamento'
         )
         .orderBy('v.created_at', statusComissao === 'pago' ? 'desc' : 'asc');
 
@@ -419,7 +425,23 @@ class ComissaoController {
         })
         .first();
 
-      const totalPendenteCents = toCents(totalServicoRow?.total) + toCents(totalProdutoRow?.total);
+      const totalVendaProdutoRow = await db('venda_itens as vi')
+        .join('vendas as v', 'v.id', 'vi.venda_id')
+        .where('v.usuario_id', usuarioId)
+        .where('v.unidade_id', unidadeId)
+        .where('v.status', 'PAID')
+        .where('vi.item_type', 'PRODUTO')
+        .where('vi.agente_id', agenteId)
+        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
+        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
+        .where('vi.comissao_paga', statusComissao === 'pago')
+        .sum({ total: db.raw('COALESCE(vi.comissao_valor_snapshot, 0)') })
+        .first();
+
+      const totalPendenteCents = toCents(totalServicoRow?.total)
+        + toCents(totalProdutoRow?.total)
+        + toCents(totalVendaProdutoRow?.total);
 
       return res.json({
         success: true,
@@ -631,8 +653,32 @@ class ComissaoController {
 
         const totalPago = (Number(totalServicoRow?.total) || 0) + (Number(totalProdutoRow?.total) || 0);
 
+      const totalVendaProdutoRow = await db('venda_itens as vi')
+        .join('vendas as v', 'v.id', 'vi.venda_id')
+        .where('v.usuario_id', usuarioId)
+        .where('v.unidade_id', unidadeId)
+        .where('v.status', 'PAID')
+        .where('vi.item_type', 'PRODUTO')
+        .where('vi.agente_id', agenteId)
+        .modify((qb) => {
+          if (hasIds) {
+            const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
+            qb.whereIn('vi.id', idsParsed);
+          } else {
+            qb.where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
+              .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`);
+          }
+        })
+        .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
+        .where('vi.comissao_paga', false)
+        .sum({ total: db.raw('COALESCE(vi.comissao_valor_snapshot, 0)') })
+        .first();
+
+      const totalPagoWithVenda = (Number(totalPago) || 0) + (Number(totalVendaProdutoRow?.total) || 0);
+
         // Update idempotente: só atualiza o que ainda está pendente
         let updatedCount = 0;
+        let vendaItensUpdatedCount = 0;
 
         if (hasPeriodo) {
           updatedCount = await trx('agendamento_servicos')
@@ -686,8 +732,52 @@ class ComissaoController {
             });
         }
 
+        if (hasPeriodo) {
+          vendaItensUpdatedCount = await trx('venda_itens')
+            .whereIn('id', function () {
+              this.select('vi.id')
+                .from('venda_itens as vi')
+                .innerJoin('vendas as v', 'v.id', 'vi.venda_id')
+                .where('v.usuario_id', usuarioId)
+                .andWhere('v.unidade_id', unidadeId)
+                .andWhere('v.status', 'PAID')
+                .andWhere('vi.item_type', 'PRODUTO')
+                .andWhere('vi.agente_id', agenteId)
+                .andWhere('vi.comissao_paga', false)
+                .andWhere('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
+                .andWhere('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+                .andWhere(trx.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'));
+            })
+            .update({
+              comissao_paga: true,
+              data_pagamento_comissao: paidAt,
+              observacao_pagamento: observacaoPagamento
+            });
+        }
+
+        if (hasIds) {
+          const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
+          if (idsParsed.length > 0) {
+            const updatedVendaByIds = await trx('venda_itens')
+              .whereIn('id', idsParsed)
+              .where('agente_id', agenteId)
+              .where('item_type', 'PRODUTO')
+              .where('comissao_paga', false)
+              .where(trx.raw('COALESCE(comissao_percentual_snapshot, 0) > 0'))
+              .update({
+                comissao_paga: true,
+                data_pagamento_comissao: paidAt,
+                observacao_pagamento: observacaoPagamento
+              });
+
+            vendaItensUpdatedCount = Number(vendaItensUpdatedCount || 0) + Number(updatedVendaByIds || 0);
+          }
+        }
+
+        updatedCount = Number(updatedCount || 0) + Number(vendaItensUpdatedCount || 0);
+
         let despesaId = null;
-        const totalPagoRounded = Number(Number(totalPago || 0).toFixed(2));
+        const totalPagoRounded = Number(Number(totalPagoWithVenda || 0).toFixed(2));
         if (updatedCount > 0 && totalPagoRounded > 0) {
           const ymdToDdMm = (ymd) => {
             if (!ymd || typeof ymd !== 'string') return null;
@@ -751,7 +841,7 @@ class ComissaoController {
           }
         }
 
-        return { updated: updatedCount, total_pago: Number(totalPago.toFixed(2)), despesa_id: despesaId };
+        return { updated: updatedCount, total_pago: Number(totalPagoRounded.toFixed(2)), despesa_id: despesaId };
       });
 
       return res.json({

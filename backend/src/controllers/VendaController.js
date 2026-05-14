@@ -209,6 +209,9 @@ class VendaController {
             preco_custo_medio_snapshot: precoCustoMedioSnapshot,
             comissao_percentual_snapshot: comissaoPercentualSnapshot,
             comissao_valor_snapshot: comissaoValorSnapshot,
+            comissao_paga: false,
+            data_pagamento_comissao: null,
+            observacao_pagamento: null,
             agente_id: Number.isFinite(agenteId) ? agenteId : null,
             created_at: trx.fn.now()
           });
