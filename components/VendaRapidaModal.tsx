@@ -89,6 +89,14 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const toMoneyFixedString = (value: unknown) => {
+  const normalized = String(value ?? '').trim().replace(',', '.');
+  if (!normalized) return '';
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return '';
+  return n.toFixed(2);
+};
+
 const formatCurrency = (value: number) => {
   return value.toFixed(2).replace('.', ',');
 };
@@ -347,7 +355,7 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
         nome: produto.nome,
         unidade_medida: (produto as any).unidade_medida ?? null,
         quantidade: '1',
-        preco_unitario: precoDefault ? String(precoDefault) : '0',
+        preco_unitario: precoDefault ? precoDefault.toFixed(2) : '0.00',
         agente_id: ''
       }
     ]);
@@ -373,7 +381,7 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
     if (Math.abs(valorAtual - total) < 0.01) return;
     setPagamentos((prev) => {
       if (prev.length !== 1) return prev;
-      return [{ ...prev[0], valor: total > 0 ? String(total) : '' }];
+      return [{ ...prev[0], valor: total > 0 ? total.toFixed(2) : '' }];
     });
   }, [total, pagamentos.length]);
 
@@ -470,6 +478,19 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
       }
 
       toast.success('Venda concluída', 'Venda registrada com sucesso.');
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent('tally:estoque_updated', {
+            detail: {
+              unidade_id: parseInt(unidadeId, 10)
+            }
+          })
+        );
+      } catch {
+        // ignore
+      }
+
       setClienteQuery('');
       setClienteSelecionado(null);
       setClienteResultados([]);
@@ -658,10 +679,19 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
                                     prev.map((x) => (x.uid === item.uid ? { ...x, preco_unitario: e.target.value } : x))
                                   )
                                 }
+                                onBlur={() =>
+                                  setCartItems((prev) =>
+                                    prev.map((x) =>
+                                      x.uid === item.uid
+                                        ? { ...x, preco_unitario: toMoneyFixedString(x.preco_unitario) || '0.00' }
+                                        : x
+                                    )
+                                  )
+                                }
                               />
                             </FormField>
 
-                            <FormField label="Vendedor (opcional)">
+                            <FormField label="Vendedor">
                               <Select
                                 value={item.agente_id}
                                 onChange={(e) =>
@@ -711,7 +741,7 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
                             {
                               uid: `pay-${Date.now()}-${Math.random()}`,
                               metodo: 'PIX',
-                              valor: restante > 0 ? String(restante) : ''
+                              valor: restante > 0 ? restante.toFixed(2) : ''
                             }
                           ])
                         }
@@ -754,6 +784,15 @@ const VendaRapidaModal: React.FC<VendaRapidaModalProps> = ({ isOpen, onClose }) 
                                   onChange={(e) =>
                                     setPagamentos((prev) =>
                                       prev.map((x) => (x.uid === p.uid ? { ...x, valor: e.target.value } : x))
+                                    )
+                                  }
+                                  onBlur={() =>
+                                    setPagamentos((prev) =>
+                                      prev.map((x) =>
+                                        x.uid === p.uid
+                                          ? { ...x, valor: toMoneyFixedString(x.valor) }
+                                          : x
+                                      )
                                     )
                                   }
                                   className="pl-10"

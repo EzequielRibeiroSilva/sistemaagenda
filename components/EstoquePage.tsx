@@ -601,6 +601,26 @@ const EstoquePage: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent;
+      const unidadeId = custom?.detail?.unidade_id;
+      if (!unidadeId || !selectedLocationId) return;
+      if (String(unidadeId) !== String(selectedLocationId)) return;
+
+      void refetchSnapshot();
+      void refetchMovs();
+      if (activeTab === 'Vendas') {
+        void refetchVendas();
+      }
+    };
+
+    window.addEventListener('tally:estoque_updated', handler as EventListener);
+    return () => {
+      window.removeEventListener('tally:estoque_updated', handler as EventListener);
+    };
+  }, [selectedLocationId, activeTab]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-6">
