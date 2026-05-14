@@ -30,7 +30,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, setActiveView, onEditAgent, o
   const { status, statusLabel } = useWhatsAppConnection({ autoPoll: userRole === 'ADMIN', pollIntervalMs: 15000 });
 
   const whatsappColorClass = useMemo(() => {
-    if (status.whatsapp_status === 'open') return 'text-green-600';
+    if (status.whatsapp_status === 'open') return 'text-blue-600';
     if (status.whatsapp_status === 'connecting') return 'text-yellow-600';
     if (status.whatsapp_status === 'close') return 'text-red-600';
     return 'text-gray-400';

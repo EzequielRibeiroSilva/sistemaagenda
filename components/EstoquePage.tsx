@@ -108,6 +108,12 @@ function toNumber(value: number | string | null | undefined) {
   return Number.isFinite(n) ? n : null;
 }
 
+function formatUnitInteger(value: number | string | null | undefined) {
+  const n = toNumber(value);
+  if (n === null) return '—';
+  return String(Math.trunc(Math.abs(n)));
+}
+
 function formatTrimmed3(value: number) {
   const fixed = value.toFixed(3);
   return fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
@@ -1474,13 +1480,19 @@ const EstoquePage: React.FC = () => {
                             '—'
                           ) : (
                             <span className={belowMin ? 'text-red-600 font-semibold' : 'text-gray-700'}>
-                              {saldoAtual.toFixed(3)}
+                              {formatUnitInteger(saldoAtual)}
                             </span>
                           )}
-                          <span className="text-gray-400 ml-2">{p.unidade_medida || ''}</span>
+                          {String(p.unidade_medida || '').toUpperCase() === 'UN' ? null : (
+                            <span className="text-gray-400 ml-2">{p.unidade_medida || ''}</span>
+                          )}
                         </td>
                         <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
-                          {minimo === null ? '—' : <span className={belowMin ? 'text-red-600 font-semibold' : ''}>{minimo.toFixed(3)}</span>}
+                          {minimo === null ? (
+                            '—'
+                          ) : (
+                            <span className={belowMin ? 'text-red-600 font-semibold' : ''}>{formatUnitInteger(minimo)}</span>
+                          )}
                         </td>
                         <td className="p-3 w-40 whitespace-nowrap">
                           <div className="flex items-center gap-2">
@@ -1604,7 +1616,9 @@ const EstoquePage: React.FC = () => {
 
                     const vendaDisplay = isConsumoOnly
                       ? '—'
-                      : `${String(Math.trunc(saldoVendaNum))} ${uomVenda}`;
+                      : (String(uomVenda || '').toUpperCase() === 'UN'
+                        ? String(Math.trunc(saldoVendaNum))
+                        : `${String(Math.trunc(saldoVendaNum))} ${uomVenda}`);
 
                     const consumoDisplay = isVendaOnly && saldoConsumoNum <= 0
                       ? '—'
@@ -1632,8 +1646,8 @@ const EstoquePage: React.FC = () => {
                             {consumoDisplay}
                           </span>
                         </td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap">{min === null ? '—' : min.toFixed(3)}</td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap">{max === null ? '—' : max.toFixed(3)}</td>
+                        <td className="p-4 text-gray-600 whitespace-nowrap">{min === null ? '—' : formatUnitInteger(min)}</td>
+                        <td className="p-4 text-gray-600 whitespace-nowrap">{max === null ? '—' : formatUnitInteger(max)}</td>
                       </tr>
                     );
                   })
@@ -1839,7 +1853,7 @@ const EstoquePage: React.FC = () => {
                           <td className="p-4 whitespace-nowrap">
                             <button
                               type="button"
-                              className="px-3 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed"
+                              className="px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
                               disabled={!canEstornar || estornoSavingId === v.id}
                               onClick={() => {
                                 if (estornoSavingId) return;
@@ -1963,7 +1977,7 @@ const EstoquePage: React.FC = () => {
                 <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" disabled={!!estornoSavingId}>
                   Cancelar
                 </button>
-                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 disabled:bg-red-300" disabled={!!estornoSavingId || !canEstornar}>
+                <button type="button" onClick={handleConfirm} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-300" disabled={!!estornoSavingId || !canEstornar}>
                   {estornoSavingId === venda.id ? 'Estornando...' : 'Confirmar estorno'}
                 </button>
               </div>
