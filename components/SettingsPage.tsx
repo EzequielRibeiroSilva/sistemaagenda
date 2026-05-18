@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, MessageSquare, Upload } from './Icons';
 import { useSettingsManagement } from '../hooks/useSettingsManagement';
 import { useAuth } from '../contexts/AuthContext';
-import { getAssetUrl } from '../utils/api';
+import { API_BASE_URL, getAssetUrl } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
 import { useWhatsAppConnection } from '../hooks/useWhatsAppConnection';
 import ToggleSwitch from './common/ToggleSwitch';
@@ -31,8 +31,10 @@ interface SettingsPageProps {
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
-    const { user, updateUser } = useAuth();
+    const { user, token, updateUser } = useAuth();
     const toast = useToast();
+    const [isMercadoPagoConnected, setIsMercadoPagoConnected] = useState(false);
+    const [mercadoPagoLoading, setMercadoPagoLoading] = useState(false);
     const {
         settings,
         loading,
@@ -114,6 +116,105 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
     useEffect(() => {
         loadSettings();
     }, [loadSettings]);
+
+    const fetchMercadoPagoStatus = async (unidadeId: number) => {
+        if (!token) return;
+
+        try {
+            const resp = await fetch(`${API_BASE_URL}/integracoes/mercadopago/status?unidade_id=${unidadeId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const json = await resp.json().catch(() => null);
+            if (!resp.ok || !json?.success) {
+                return;
+            }
+
+            setIsMercadoPagoConnected(Boolean(json?.data?.conectado));
+        } catch {
+        }
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const params = new URLSearchParams(window.location.search);
+        const connectStatus = params.get('mp_connect');
+
+        if (connectStatus === 'success') {
+            toast.success('Mercado Pago', 'Conectado com sucesso.');
+        } else if (connectStatus === 'error') {
+            toast.error('Mercado Pago', 'Não foi possível conectar. Tente novamente.');
+        }
+
+        if (connectStatus) {
+            params.delete('mp_connect');
+            params.delete('reason');
+            const newSearch = params.toString();
+            const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`;
+            window.history.replaceState({}, '', newUrl);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        const unidadeId = user?.unidade_id;
+        if (!unidadeId || !token) return;
+        fetchMercadoPagoStatus(unidadeId);
+    }, [user?.unidade_id, token]);
+
+    const handleConnectMercadoPago = async () => {
+        if (!user?.unidade_id) {
+            toast.error('Mercado Pago', 'Selecione uma unidade válida para conectar.');
+            return;
+        }
+
+        if (!token) {
+            toast.error('Mercado Pago', 'Você precisa estar autenticado para conectar.');
+            return;
+        }
+
+        setMercadoPagoLoading(true);
+        try {
+            const resp = await fetch(`${API_BASE_URL}/integracoes/mercadopago/url?unidade_id=${user.unidade_id}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const json = await resp.json().catch(() => null);
+            if (!resp.ok || !json?.success || !json?.data?.url) {
+                const msg = json?.message || 'Erro ao gerar URL do Mercado Pago';
+                toast.error('Mercado Pago', msg);
+                return;
+            }
+
+            window.open(json.data.url, '_blank', 'noopener,noreferrer');
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Erro ao conectar Mercado Pago';
+            toast.error('Mercado Pago', msg);
+        } finally {
+            setMercadoPagoLoading(false);
+        }
+    };
+
+    const handleDisconnectMercadoPago = async () => {
+        const confirmed = window.confirm('Tem certeza que deseja desconectar o Mercado Pago?');
+        if (!confirmed) return;
+
+        setIsMercadoPagoConnected(false);
+        toast.success('Mercado Pago', 'Desconectado.');
+
+        const unidadeId = user?.unidade_id;
+        if (unidadeId) {
+            await fetchMercadoPagoStatus(unidadeId);
+        }
+    };
 
     const lastWhatsAppToastRef = useRef<{ message: string | null; ts: number }>({ message: null, ts: 0 });
 
@@ -580,6 +681,50 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
           )}
         </>
       )}
+
+      <Card title="Conectar Mercado Pago">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Conecte sua conta do Mercado Pago para receber pagamentos de sinal e automatizar confirmações.
+          </p>
+
+          <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <span className={`text-sm font-semibold ${isMercadoPagoConnected ? 'text-green-600' : 'text-gray-600'}`}>
+                {isMercadoPagoConnected ? 'Conectado' : 'Não conectado'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {!isMercadoPagoConnected ? (
+                <button
+                  type="button"
+                  onClick={handleConnectMercadoPago}
+                  disabled={mercadoPagoLoading}
+                  className={`flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors ${
+                    'bg-blue-600 hover:bg-blue-700'
+                  } ${mercadoPagoLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {mercadoPagoLoading ? 'Conectando...' : 'Conectar com Mercado Pago'}
+                </button>
+              ) : (
+                <>
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-100 text-green-800">
+                    Conectado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDisconnectMercadoPago}
+                    className="px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                  >
+                    Desconectar
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Card title="Compromissos e Definições">
           <FormRow label="Duração do Serviço (Horas)">

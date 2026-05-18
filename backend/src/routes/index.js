@@ -29,13 +29,25 @@ const categoriasRoutes = require('./categorias');
 const vendasRoutes = require('./vendas');
 const financeiroDespesasRoutes = require('./financeiroDespesas');
 const comissoesRoutes = require('./comissoes');
+const MercadoPagoOAuthController = require('../controllers/MercadoPagoOAuthController');
 
 // Importar middleware de autenticação real
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
 
+const mercadoPagoOAuthController = new MercadoPagoOAuthController();
+
 // Rotas públicas (sem autenticação)
 router.use('/auth', authRoutes);
+
+// Integrações (autenticado)
+router.get('/integracoes/mercadopago/url', authenticate(), async (req, res) => {
+  await mercadoPagoOAuthController.getRedirectUrl(req, res);
+});
+
+router.get('/integracoes/mercadopago/status', authenticate(), async (req, res) => {
+  await mercadoPagoOAuthController.getStatus(req, res);
+});
 
 // Rotas RBAC (com controle de acesso baseado em roles)
 router.use('/rbac', rbacRoutes);

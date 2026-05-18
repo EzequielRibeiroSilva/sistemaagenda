@@ -283,7 +283,9 @@ class ServicoController extends BaseController {
         id: servico.id,
         nome: servico.nome,
         preco: servico.preco,
-        duracao_minutos: servico.duracao_minutos || 0
+        duracao_minutos: servico.duracao_minutos || 0,
+        exige_sinal: Boolean(servico.exige_sinal),
+        valor_sinal: servico.valor_sinal
       }));
 
       return res.status(200).json({
@@ -475,6 +477,8 @@ class ServicoController extends BaseController {
         descricao,
         duracao_minutos,
         preco,
+        exige_sinal,
+        valor_sinal,
         comissao_percentual,
         status,
         categoria_id,
@@ -498,6 +502,36 @@ class ServicoController extends BaseController {
           success: false,
           error: 'Preço deve ser maior ou igual a zero'
         });
+      }
+
+      const exigeSinalFinal = Boolean(exige_sinal);
+      const precoNumero = Number(preco);
+      const valorSinalNumero = valor_sinal !== undefined && valor_sinal !== null ? Number(valor_sinal) : null;
+
+      if (exigeSinalFinal) {
+        if (valorSinalNumero === null || Number.isNaN(valorSinalNumero)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Valor do sinal obrigatório',
+            message: 'Para serviços com exige_sinal=true, informe valor_sinal'
+          });
+        }
+
+        if (!Number.isFinite(valorSinalNumero) || valorSinalNumero <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Valor do sinal inválido',
+            message: 'valor_sinal deve ser maior que zero'
+          });
+        }
+
+        if (valorSinalNumero > precoNumero) {
+          return res.status(400).json({
+            success: false,
+            error: 'Valor do sinal inválido',
+            message: 'valor_sinal não pode ser maior do que o preço do serviço'
+          });
+        }
       }
 
       if (duracao_minutos === undefined || duracao_minutos === null || Number.isNaN(Number(duracao_minutos)) || Number(duracao_minutos) < 0) {
@@ -608,7 +642,9 @@ class ServicoController extends BaseController {
         nome: nome.trim(),
         descricao: descricao?.trim() || '',
         duracao_minutos: duracao_minutos,
-        preco: Number(preco),
+        preco: precoNumero,
+        exige_sinal: exigeSinalFinal,
+        valor_sinal: exigeSinalFinal ? valorSinalNumero : null,
         comissao_percentual: comissao_percentual ?? 0,
         status: status || 'Ativo',
         categoria_id: categoria_id || null,
@@ -679,6 +715,8 @@ class ServicoController extends BaseController {
         descricao,
         duracao_minutos,
         preco,
+        exige_sinal,
+        valor_sinal,
         comissao_percentual,
         status,
         categoria_id,
@@ -705,6 +743,56 @@ class ServicoController extends BaseController {
             error: 'Preço deve ser maior ou igual a zero'
           });
         }
+      }
+
+      const precoFinal = preco !== undefined ? Number(preco) : Number(servico.preco);
+      const exigeSinalProvided = exige_sinal !== undefined;
+      const exigeSinalFinal = exigeSinalProvided ? Boolean(exige_sinal) : Boolean(servico.exige_sinal);
+      const valorSinalProvided = valor_sinal !== undefined;
+      const valorSinalNumero = valorSinalProvided && valor_sinal !== null ? Number(valor_sinal) : null;
+
+      // Regra inegociável: se exige_sinal foi enviado como true, valor_sinal é obrigatório no payload.
+      if (exigeSinalProvided && Boolean(exige_sinal) === true && !valorSinalProvided) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valor do sinal obrigatório',
+          message: 'Para serviços com exige_sinal=true, informe valor_sinal'
+        });
+      }
+
+      // Regras de sinal:
+      // - Se exige_sinal for true (ou permanecer true) e valor_sinal foi enviado, validar.
+      // - Se exige_sinal for true (ou permanecer true) e valor_sinal NÃO foi enviado, manter o valor existente.
+      // - Se exige_sinal for false, forçar valor_sinal = null.
+      if (exigeSinalFinal) {
+        if (valorSinalProvided) {
+          if (valorSinalNumero === null || Number.isNaN(valorSinalNumero)) {
+            return res.status(400).json({
+              success: false,
+              error: 'Valor do sinal obrigatório',
+              message: 'Para serviços com exige_sinal=true, informe valor_sinal'
+            });
+          }
+
+          if (!Number.isFinite(valorSinalNumero) || valorSinalNumero <= 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'Valor do sinal inválido',
+              message: 'valor_sinal deve ser maior que zero'
+            });
+          }
+
+          if (valorSinalNumero > precoFinal) {
+            return res.status(400).json({
+              success: false,
+              error: 'Valor do sinal inválido',
+              message: 'valor_sinal não pode ser maior do que o preço do serviço'
+            });
+          }
+        }
+      } else {
+        // Se desligar exige_sinal, não aceitar manter valor_sinal
+        // (se valor_sinal foi enviado, ele será ignorado e salvo como null)
       }
 
       if (duracao_minutos !== undefined && (duracao_minutos === null || Number.isNaN(Number(duracao_minutos)) || Number(duracao_minutos) < 0)) {
@@ -756,6 +844,14 @@ class ServicoController extends BaseController {
         ...(descricao !== undefined && { descricao: descricao?.trim() || '' }),
         ...(duracao_minutos !== undefined && { duracao_minutos }),
         ...(preco !== undefined && { preco: Number(preco) }),
+        ...(exige_sinal !== undefined && { exige_sinal: Boolean(exige_sinal) }),
+        ...(
+          (exige_sinal !== undefined || valor_sinal !== undefined)
+            ? {
+              valor_sinal: (exigeSinalFinal ? (valorSinalProvided ? valorSinalNumero : servico.valor_sinal) : null)
+            }
+            : {}
+        ),
         ...(comissao_percentual !== undefined && { comissao_percentual }),
         ...(status !== undefined && { status }),
         ...(categoria_id !== undefined && { categoria_id }),

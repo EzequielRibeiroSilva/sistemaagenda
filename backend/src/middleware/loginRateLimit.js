@@ -15,14 +15,14 @@ const loginRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    logger.warn(`🚨 Rate limit atingido para login - IP: ${req.ip}, User-Agent: ${req.get('User-Agent')}`);
+    return res.status(options.statusCode).json(options.message);
+  },
   // Função personalizada para identificar tentativas falhadas
   skip: (req, res) => {
     // Se a resposta foi bem-sucedida (2xx), não contar para o rate limit
     return res.statusCode >= 200 && res.statusCode < 300;
-  },
-  // Headers personalizados
-  onLimitReached: (req, res) => {
-    logger.warn(`🚨 Rate limit atingido para login - IP: ${req.ip}, User-Agent: ${req.get('User-Agent')}`);
   }
 });
 

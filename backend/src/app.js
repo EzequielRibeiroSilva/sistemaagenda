@@ -1,3 +1,5 @@
+const config = require('./config/config');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -5,7 +7,6 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
-const config = require('./config/config');
 const { testConnection } = require('./config/database');
 const apiRoutes = require('./routes/index');
 const webhooksRoutes = require('./routes/webhooks');

@@ -224,6 +224,31 @@ function corsMiddleware(options = {}) {
   });
 
   return (req, res, next) => {
+    const isMercadoPagoIntegrationRoute = (() => {
+      const p = req.path;
+      if (!p) return false;
+      if (p === '/api/webhooks/mercadopago/callback') {
+        return req.method === 'GET' || req.method === 'OPTIONS';
+      }
+      if (p === '/api/webhooks/mercadopago') {
+        return req.method === 'POST' || req.method === 'OPTIONS';
+      }
+      return false;
+    })();
+
+    if (isMercadoPagoIntegrationRoute) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Signature');
+      res.setHeader('Access-Control-Max-Age', maxAge.toString());
+
+      if (req.method === 'OPTIONS') {
+        return res.status(optionsSuccessStatus).end();
+      }
+
+      return next();
+    }
+
     const origin = req.get('origin') || req.get('referer');
     const requestOrigin = origin ? new URL(origin).origin : null;
 

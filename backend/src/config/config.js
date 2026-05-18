@@ -1,4 +1,35 @@
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+const fs = require('fs');
+
+// Carregar .env da raiz do projeto (repo) primeiro.
+// Se o processo estiver rodando a partir de /backend, o dotenv padrão procuraria /backend/.env e falharia.
+const backendEnvPath = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: backendEnvPath, override: true });
+
+// Diagnóstico/garantia: se a criptografia é exigida no load-time, o .env precisa estar carregado aqui.
+// Se o arquivo existe mas a variável não está presente, falhar com mensagem clara.
+const backendEnvExists = fs.existsSync(backendEnvPath);
+const encryptionKey = process.env.INTEGRATIONS_ENCRYPTION_KEY;
+
+if (process.env.NODE_ENV === 'development') {
+  console.log(
+    'DEBUG ENV KEY:',
+    encryptionKey ? String(encryptionKey).substring(0, 4) : 'AUSENTE'
+  );
+}
+
+if (!encryptionKey) {
+  throw new Error(
+    [
+      'INTEGRATIONS_ENCRYPTION_KEY ausente após carregar dotenv.',
+      `Paths tentados:`,
+      `- ${backendEnvPath} (exists=${backendEnvExists})`,
+      'Obs: o backend está configurado para usar APENAS o .env dentro da pasta backend/.',
+      'Defina INTEGRATIONS_ENCRYPTION_KEY no .env (32 bytes: hex com 64 chars ou base64 que decode para 32 bytes).'
+    ].join('\n')
+  );
+}
 
 const config = {
   // Configurações da aplicação
