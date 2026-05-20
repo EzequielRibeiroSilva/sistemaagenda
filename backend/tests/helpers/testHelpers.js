@@ -146,7 +146,7 @@ async function loginAndGetToken(email, senha) {
     throw new Error(`Login falhou: ${JSON.stringify(response.body)}`);
   }
   
-  return response.body.token;
+  return response.body.data?.token;
 }
 
 /**

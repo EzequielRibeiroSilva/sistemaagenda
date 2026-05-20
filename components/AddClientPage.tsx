@@ -17,6 +17,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birthDateText, setBirthDateText] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
+  const [exigeSinalExcecao, setExigeSinalExcecao] = useState(false);
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
   const [subscriptionStartDateText, setSubscriptionStartDateText] = useState('');
   const [subscriptionPlanId, setSubscriptionPlanId] = useState<string>('');
@@ -126,6 +127,7 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
         mp_customer_email: mpCustomerEmail.trim() ? mpCustomerEmail.trim() : null,
         data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : undefined,
         is_assinante: isSubscriber,
+        exige_sinal_excecao: exigeSinalExcecao,
         data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
         assinatura_plano_id: isSubscriber ? parseInt(subscriptionPlanId) : null,
         status: 'Ativo' as const
@@ -294,6 +296,31 @@ const AddClientPage: React.FC<AddClientPageProps> = ({ setActiveView }) => {
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                           Assinantes têm acesso a recursos premium e notificações especiais.
+                      </p>
+                  </div>
+
+                  <div>
+                      <label className="text-sm font-medium text-gray-600 mb-2 block">Apenas agendamento mediante sinal</label>
+                      <div className="flex items-center space-x-4">
+                          <button
+                              type="button"
+                              className={`${exigeSinalExcecao ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed`}
+                              role="switch"
+                              aria-checked={exigeSinalExcecao}
+                              onClick={() => setExigeSinalExcecao(v => !v)}
+                              disabled={isSubmitting}
+                          >
+                              <span
+                                  aria-hidden="true"
+                                  className={`${exigeSinalExcecao ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                              />
+                          </button>
+                          <span className={`font-semibold ${exigeSinalExcecao ? 'text-green-700 bg-green-100 px-2.5 py-1 rounded-full text-xs' : 'text-gray-700 bg-gray-100 px-2.5 py-1 rounded-full text-xs'}`}>
+                              {exigeSinalExcecao ? 'Ativo' : 'Inativo'}
+                          </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                          Força a cobrança de sinal para este cliente em qualquer serviço online.
                       </p>
                   </div>
 

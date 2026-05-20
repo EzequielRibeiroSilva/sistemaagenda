@@ -47,6 +47,7 @@ class Cliente extends BaseModel {
       `${this.tableName}.telefone_limpo`,
       `${this.tableName}.data_nascimento`,
       `${this.tableName}.is_assinante`,
+      `${this.tableName}.exige_sinal_excecao`,
       ...(hasAssinaturaStatus
         ? [`${this.tableName}.assinatura_status`]
         : [this.db.raw('NULL as assinatura_status')]),
@@ -89,6 +90,7 @@ class Cliente extends BaseModel {
       `${this.tableName}.telefone_limpo`,
       `${this.tableName}.data_nascimento`,
       `${this.tableName}.is_assinante`,
+      `${this.tableName}.exige_sinal_excecao`,
       ...(hasAssinaturaStatus
         ? [`${this.tableName}.assinatura_status`]
         : [this.db.raw('NULL as assinatura_status')]),
@@ -163,6 +165,7 @@ class Cliente extends BaseModel {
       `${this.tableName}.mp_customer_email`,
       `${this.tableName}.data_nascimento`,
       `${this.tableName}.is_assinante`,
+      `${this.tableName}.exige_sinal_excecao`,
       ...(hasAssinaturaStatus
         ? [`${this.tableName}.assinatura_status`]
         : [this.db.raw('NULL as assinatura_status')]),
@@ -200,6 +203,7 @@ class Cliente extends BaseModel {
       `${this.tableName}.mp_customer_email`,
       `${this.tableName}.data_nascimento`,
       `${this.tableName}.is_assinante`,
+      `${this.tableName}.exige_sinal_excecao`,
       ...(hasAssinaturaStatus
         ? [`${this.tableName}.assinatura_status`]
         : [this.db.raw('NULL as assinatura_status')]),
@@ -268,6 +272,7 @@ class Cliente extends BaseModel {
       mp_customer_email: mpCustomerEmail,
       data_nascimento: dadosCliente.data_nascimento || null,
       is_assinante: dadosCliente.is_assinante || false,
+      exige_sinal_excecao: Boolean(dadosCliente.exige_sinal_excecao),
       ...(hasAssinaturaStatus ? { assinatura_status: dadosCliente.assinatura_status ?? null } : {}),
       data_inicio_assinatura: dadosCliente.data_inicio_assinatura || null,
       assinatura_plano_id: dadosCliente.is_assinante ? parseInt(dadosCliente.assinatura_plano_id) : null,

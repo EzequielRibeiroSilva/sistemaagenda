@@ -15,13 +15,15 @@ const bcrypt = require('bcryptjs');
 describe('⏰ Testes do Sistema de Lembretes (Cron Jobs)', () => {
   let reminderService;
   let unidade, cliente, agente, agendamentoAmanha, agendamentoHoje;
+  let runId;
   
   beforeAll(async () => {
     reminderService = new ReminderService();
+    runId = Date.now().toString();
     await cleanupReminderTestData();
     
     // Setup: criar dados de teste
-    const setup = await createReminderTestSetup();
+    const setup = await createReminderTestSetup(runId);
     unidade = setup.unidade;
     cliente = setup.cliente;
     agente = setup.agente;
@@ -48,8 +50,16 @@ describe('⏰ Testes do Sistema de Lembretes (Cron Jobs)', () => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
+      const lastRow = await db('agendamentos')
+        .where('usuario_id', unidade.usuario_id)
+        .max('numero_agendamento as max')
+        .first();
+      const nextNumeroAgendamento = (lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0) + 1;
       
       const [agendamentoCancelado] = await db('agendamentos').insert({
+        usuario_id: unidade.usuario_id,
+        numero_agendamento: nextNumeroAgendamento,
         cliente_id: cliente.id,
         agente_id: agente.id,
         unidade_id: unidade.id,
@@ -144,12 +154,12 @@ async function cleanupReminderTestData() {
   await db('usuarios').where('email', 'like', '%reminder_test%').del().catch(() => {});
 }
 
-async function createReminderTestSetup() {
+async function createReminderTestSetup(runId) {
   const senhaHash = await bcrypt.hash('Test@123', 10);
   
   // Admin
   const [admin] = await db('usuarios').insert({
-    email: 'admin_reminder_test@test.com', nome: 'Admin REMINDER_TEST',
+    email: `admin_reminder_test_${runId}@test.com`, nome: 'Admin REMINDER_TEST',
     senha_hash: senhaHash, role: 'ADMIN', tipo_usuario: 'admin',
     status: 'Ativo', plano: 'Multi', limite_unidades: 5,
     created_at: new Date(), updated_at: new Date()
@@ -164,7 +174,7 @@ async function createReminderTestSetup() {
 
   // Agente
   const [agenteUser] = await db('usuarios').insert({
-    email: 'agente_reminder_test@test.com', nome: 'Agente REMINDER_TEST',
+    email: `agente_reminder_test_${runId}@test.com`, nome: 'Agente REMINDER_TEST',
     senha_hash: senhaHash, role: 'AGENTE', tipo_usuario: 'agent',
     status: 'Ativo', unidade_id: unidade.id,
     created_at: new Date(), updated_at: new Date()
@@ -173,7 +183,7 @@ async function createReminderTestSetup() {
   const [agente] = await db('agentes').insert({
     nome: 'Agente', sobrenome: 'REMINDER_TEST',
     email: agenteUser.email, telefone: '11988888888',
-    usuario_id: agenteUser.id, unidade_id: unidade.id, status: 'Ativo',
+    usuario_id: admin.id, unidade_id: unidade.id, status: 'Ativo',
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
@@ -190,6 +200,7 @@ async function createReminderTestSetup() {
     primeiro_nome: 'Cliente', ultimo_nome: 'REMINDER_TEST',
     telefone: '11977777777', telefone_limpo: '11977777777',
     unidade_id: unidade.id, status: 'Ativo',
+    exige_sinal_excecao: false,
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
@@ -197,7 +208,15 @@ async function createReminderTestSetup() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  const lastRow = await db('agendamentos')
+    .where('usuario_id', admin.id)
+    .max('numero_agendamento as max')
+    .first();
+  const nextNumeroAgendamento = (lastRow && lastRow.max ? parseInt(lastRow.max, 10) : 0) + 1;
+
   const [agendamentoAmanha] = await db('agendamentos').insert({
+    usuario_id: admin.id,
+    numero_agendamento: nextNumeroAgendamento,
     cliente_id: cliente.id, agente_id: agente.id, unidade_id: unidade.id,
     data_agendamento: tomorrow.toISOString().split('T')[0],
     hora_inicio: '10:00', hora_fim: '10:30',
@@ -211,6 +230,8 @@ async function createReminderTestSetup() {
   const hoursLater = new Date(today.getTime() + 3 * 60 * 60 * 1000); // 3 horas depois
 
   const [agendamentoHoje] = await db('agendamentos').insert({
+    usuario_id: admin.id,
+    numero_agendamento: nextNumeroAgendamento + 1,
     cliente_id: cliente.id, agente_id: agente.id, unidade_id: unidade.id,
     data_agendamento: today.toISOString().split('T')[0],
     hora_inicio: hoursLater.toTimeString().slice(0, 5),

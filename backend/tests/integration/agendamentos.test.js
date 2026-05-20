@@ -17,15 +17,18 @@ let app;
 
 describe('📅 Testes do Sistema de Agendamentos', () => {
   let admin, unidade, agente, cliente, servico, token;
+  let runId;
   
   beforeAll(async () => {
     const appModule = require('../../src/app');
     app = appModule.app;
+
+    runId = Date.now().toString();
     
     await cleanupAgendamentoTestData();
     
     // Setup completo: admin > unidade > agente > cliente > serviço
-    const setup = await createCompleteSetup();
+    const setup = await createCompleteSetup(runId);
     admin = setup.admin;
     unidade = setup.unidade;
     agente = setup.agente;
@@ -605,12 +608,12 @@ async function cleanupAgendamentoTestData() {
   await db('usuarios').where('email', 'like', '%agend_test%').del().catch(() => {});
 }
 
-async function createCompleteSetup() {
+async function createCompleteSetup(runId) {
   const senhaHash = await bcrypt.hash('Test@123', 10);
 
   // Criar admin
   const [admin] = await db('usuarios').insert({
-    email: 'admin_agend_test@test.com', nome: 'Admin AGEND_TEST',
+    email: `admin_agend_test_${runId}@test.com`, nome: 'Admin AGEND_TEST',
     senha_hash: senhaHash, role: 'ADMIN', tipo_usuario: 'admin',
     status: 'Ativo', plano: 'Multi', limite_unidades: 5,
     created_at: new Date(), updated_at: new Date()
@@ -647,7 +650,7 @@ async function createCompleteSetup() {
 
   // Criar agente
   const [agenteUser] = await db('usuarios').insert({
-    email: 'agente_agend_test@test.com', nome: 'Agente AGEND_TEST',
+    email: `agente_agend_test_${runId}@test.com`, nome: 'Agente AGEND_TEST',
     senha_hash: senhaHash, role: 'AGENTE', tipo_usuario: 'agent',
     status: 'Ativo', unidade_id: unidade.id,
     created_at: new Date(), updated_at: new Date()
@@ -656,7 +659,7 @@ async function createCompleteSetup() {
   const [agente] = await db('agentes').insert({
     nome: 'Agente', sobrenome: 'AGEND_TEST',
     email: agenteUser.email, telefone: '11988888888',
-    usuario_id: agenteUser.id, unidade_id: unidade.id, status: 'Ativo',
+    usuario_id: admin.id, unidade_id: unidade.id, status: 'Ativo',
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
@@ -673,6 +676,7 @@ async function createCompleteSetup() {
     primeiro_nome: 'Cliente', ultimo_nome: 'AGEND_TEST',
     telefone: '11977777777', telefone_limpo: '11977777777',
     unidade_id: unidade.id, status: 'Ativo',
+    exige_sinal_excecao: false,
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
@@ -680,20 +684,19 @@ async function createCompleteSetup() {
   const [servico] = await db('servicos').insert({
     nome: 'Servico AGEND_TEST', descricao: 'Teste',
     preco: '50.00', duracao_minutos: 30,
-    usuario_id: admin.id, status: 'Ativo',
+    usuario_id: admin.id, status: 'Ativo', exige_sinal: false, valor_sinal: null,
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
-  // Associar serviço à unidade (tabela many-to-many)
-  await db('unidade_servicos').insert({
-    unidade_id: unidade.id,
-    servico_id: servico.id
-  });
+  await db('unidade_servicos')
+    .insert({ unidade_id: unidade.id, servico_id: servico.id })
+    .onConflict(['unidade_id', 'servico_id'])
+    .ignore();
 
   // Login e obter token
   const AuthService = require('../../src/services/AuthService');
   const authService = new AuthService();
-  const loginResult = await authService.login('admin_agend_test@test.com', 'Test@123');
+  const loginResult = await authService.login(admin.email, 'Test@123');
 
   return { admin, unidade, agente, cliente, servico, token: loginResult.token };
 }

@@ -162,6 +162,22 @@ const ToggleSwitch: React.FC<{ label: string; description: string; checked: bool
     );
 };
 
+const formatMoneyBR = (value: number | null | undefined) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0,00';
+    return n.toFixed(2).replace('.', ',');
+};
+
+const maskMoneyBRInput = (raw: string) => {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) {
+        return { display: '', value: 0 };
+    }
+    const cents = parseInt(digits, 10);
+    const value = cents / 100;
+    return { display: value.toFixed(2).replace('.', ','), value };
+};
+
 interface CreateServicePageProps {
   setActiveView?: (view: string) => void;
 }
@@ -218,6 +234,10 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
     const [descricao, setDescricao] = useState('');
     const [duracaoMinutos, setDuracaoMinutos] = useState(0);
     const [preco, setPreco] = useState(0);
+    const [precoText, setPrecoText] = useState(formatMoneyBR(0));
+    const [exigeSinal, setExigeSinal] = useState(false);
+    const [valorSinal, setValorSinal] = useState<number>(0);
+    const [valorSinalText, setValorSinalText] = useState(formatMoneyBR(0));
     const [comissaoPercentual, setComissaoPercentual] = useState(0);
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
     const [conviteRetornoAtivo, setConviteRetornoAtivo] = useState(false);
@@ -306,6 +326,18 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
             return;
         }
 
+        if (exigeSinal) {
+            const valor = Number(valorSinal);
+            if (!Number.isFinite(valor) || valor <= 0) {
+                toast.warning('Sinal inválido', 'O valor do sinal deve ser maior que zero.');
+                return;
+            }
+            if (valor > Number(preco)) {
+                toast.warning('Sinal inválido', 'O valor do sinal não pode ser maior do que o valor final do serviço.');
+                return;
+            }
+        }
+
         if (conviteRetornoAtivo && (!conviteRetornoDias || conviteRetornoDias < 1)) {
             toast.warning('Convite de retorno inválido', 'Informe um número de dias maior que zero.');
             return;
@@ -329,6 +361,8 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                 descricao: descricao.trim() || '',
                 duracao_minutos: duracaoMinutos,
                 preco: parseFloat(String(preco)),
+                exige_sinal: exigeSinal,
+                valor_sinal: exigeSinal ? parseFloat(String(valorSinal)) : 0,
                 comissao_percentual: comissaoPercentual,
                 status: status,
                 convite_retorno_ativo: conviteRetornoAtivo,
@@ -432,13 +466,12 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                             />
                             <TextInput
                               label="Valor Final (R$)"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={String(preco)}
+                              type="text"
+                              value={precoText}
                               onChange={(e) => {
-                                const next = Math.max(0, Number(e.target.value));
-                                setPreco(Number.isFinite(next) ? next : 0);
+                                const masked = maskMoneyBRInput(e.target.value);
+                                setPrecoText(masked.display);
+                                setPreco(masked.value);
                               }}
                             />
                             <TextInput
@@ -486,6 +519,47 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                         type="number"
                                         value={String(conviteRetornoDias)}
                                         onChange={(e) => setConviteRetornoDias(Number(e.target.value))}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </FormCard>
+
+                    <FormCard title="Agendamento com Sinal">
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Configure se o agendamento online exige pagamento de sinal.
+                            </p>
+
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium text-gray-800 text-sm">Requer sinal para agendamento online</p>
+                                    <p className="text-sm text-gray-500">Configure por serviço</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setExigeSinal(v => !v)}
+                                    role="switch"
+                                    aria-checked={exigeSinal}
+                                    className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${exigeSinal ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                >
+                                    <span
+                                        className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${exigeSinal ? 'translate-x-6' : 'translate-x-1'}`}
+                                    />
+                                </button>
+                            </div>
+
+                            {exigeSinal && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <TextInput
+                                        label="Valor do Sinal (R$)"
+                                        type="text"
+                                        value={valorSinalText}
+                                        onChange={(e) => {
+                                            const masked = maskMoneyBRInput(e.target.value);
+                                            setValorSinalText(masked.display);
+                                            setValorSinal(masked.value);
+                                        }}
                                     />
                                 </div>
                             )}
@@ -542,12 +616,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                          </div>
                          {extraServices.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-gray-500 text-sm">
-                                    ⭐ Nenhum serviço extra encontrado.
-                                </p>
-                                <p className="text-gray-400 text-xs mt-1">
-                                    Cadastre serviços extras primeiro para associá-los aos serviços principais.
-                                </p>
+                                <p className="text-gray-500 text-sm">Nenhum serviço extra encontrado</p>
                             </div>
                          ) : (
                              <div className="space-y-3">

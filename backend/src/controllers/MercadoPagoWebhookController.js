@@ -321,6 +321,75 @@ class MercadoPagoWebhookController {
         if (!payment) {
           payment = await this.fetchPayment(resourceId);
         }
+
+        // ✅ Sprint 4 (Passo 1): Gancho de aprovação do Pix do sinal
+        // Se o pagamento aprovado corresponder a um Pix PENDING em agendamento_pagamentos,
+        // atualiza atomicamente o status para APPROVED e libera a confirmação do agendamento.
+        const paymentStatusLower = payment?.status ? String(payment.status).toLowerCase() : null;
+        const mpPaymentId = payment?.id != null ? String(payment.id) : null;
+        if (paymentStatusLower === 'approved' && mpPaymentId) {
+          const pendingRow = await db('agendamento_pagamentos')
+            .where({ mp_payment_id: mpPaymentId, status: 'PENDING' })
+            .select('id', 'agendamento_id')
+            .first();
+
+          if (pendingRow?.id && pendingRow?.agendamento_id) {
+            await db.transaction(async (trx) => {
+              const updated = await trx('agendamento_pagamentos')
+                .where({ id: pendingRow.id, status: 'PENDING' })
+                .update({ status: 'APPROVED', updated_at: trx.fn.now() });
+
+              if (updated > 0) {
+                await trx('agendamentos')
+                  .where({ id: pendingRow.agendamento_id })
+                  .whereNull('deleted_at')
+                  .whereNot('status', 'Cancelado')
+                  .update({ status: 'Aprovado', updated_at: trx.fn.now() });
+              }
+            });
+
+            logger.info('✅ [MercadoPagoWebhook] Pix do sinal aprovado e persistido:', {
+              mp_payment_id: mpPaymentId,
+              agendamento_pagamento_id: pendingRow.id,
+              agendamento_id: pendingRow.agendamento_id
+            });
+
+            // Sprint 4 (Passo 2): Enviar confirmação WhatsApp apenas após o sinal ser aprovado
+            setImmediate(async () => {
+              try {
+                const AgendamentoController = require('./AgendamentoController');
+                const agendamentoController = new AgendamentoController();
+                const dadosCompletos = await agendamentoController.buscarDadosCompletos(pendingRow.agendamento_id);
+
+                if (!dadosCompletos) {
+                  logger.error('❌ [MercadoPagoWebhook] (bg) Dados completos não encontrados para agendamento #' + pendingRow.agendamento_id);
+                  return;
+                }
+
+                if (dadosCompletos?.cliente_telefone || dadosCompletos?.agente_telefone) {
+                  await this.whatsAppService.sendAppointmentConfirmation(dadosCompletos);
+                  logger.info('✅ [MercadoPagoWebhook] (bg) Confirmação WhatsApp enviada para agendamento #' + pendingRow.agendamento_id);
+                } else {
+                  logger.error('❌ [MercadoPagoWebhook] (bg) Nenhum telefone encontrado (cliente/agente) para agendamento #' + pendingRow.agendamento_id);
+                }
+              } catch (whatsappError) {
+                logger.error('❌ [MercadoPagoWebhook] (bg) Erro ao enviar confirmação WhatsApp:', whatsappError);
+              }
+            });
+
+            if (eventRowId) {
+              await db('mercadopago_webhook_events')
+                .where('id', eventRowId)
+                .update({
+                  processed_at: new Date(),
+                  processing_error: null
+                });
+            }
+
+            return res.status(200).json({ success: true });
+          }
+        }
+
         if (!preapproval) {
           const preapprovalId = this.derivePreapprovalIdFromPayment(payment);
           if (preapprovalId) {

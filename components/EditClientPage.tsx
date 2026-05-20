@@ -18,6 +18,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birthDateText, setBirthDateText] = useState('');
   const [isSubscriber, setIsSubscriber] = useState(false);
+  const [exigeSinalExcecao, setExigeSinalExcecao] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'Ativo' | 'Pagamento Pendente' | 'Cancelado'>('Ativo');
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date | null>(null);
   const [subscriptionStartDateText, setSubscriptionStartDateText] = useState('');
@@ -109,6 +110,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
           setBirthDate(parsedBirthDate);
           setBirthDateText(parsedBirthDate ? formatDateToDDMMYYYY(parsedBirthDate) : '');
           setIsSubscriber(client.isSubscriber || false);
+          setExigeSinalExcecao(Boolean((client as any).exigeSinalExcecao));
           if (client.isSubscriber) {
             const fromApi = (client as any).assinaturaStatus;
             const normalized = fromApi === 'Pagamento Pendente' || fromApi === 'Cancelado' || fromApi === 'Ativo'
@@ -190,6 +192,7 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
         mp_customer_email: mpCustomerEmail.trim() ? mpCustomerEmail.trim() : null,
         data_nascimento: birthDate ? birthDate.toISOString().split('T')[0] : null,
         is_assinante: isSubscriber,
+        exige_sinal_excecao: exigeSinalExcecao,
         assinatura_status: isSubscriber ? subscriptionStatus : null,
         data_inicio_assinatura: isSubscriber && subscriptionStartDate ? subscriptionStartDate.toISOString().split('T')[0] : undefined,
         assinatura_plano_id: isSubscriber ? parseInt(subscriptionPlanId) : null
@@ -404,6 +407,31 @@ const EditClientPage: React.FC<EditClientPageProps> = ({ clientId, setActiveView
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                           Assinantes têm acesso a recursos premium e notificações especiais.
+                      </p>
+                  </div>
+
+                  <div>
+                      <label className="text-sm font-medium text-gray-600 mb-2 block">Apenas agendamento mediante sinal</label>
+                      <div className="flex items-center space-x-4">
+                          <button
+                              type="button"
+                              className={`${exigeSinalExcecao ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed`}
+                              role="switch"
+                              aria-checked={exigeSinalExcecao}
+                              onClick={() => setExigeSinalExcecao(v => !v)}
+                              disabled={isSubmitting}
+                          >
+                              <span
+                                  aria-hidden="true"
+                                  className={`${exigeSinalExcecao ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                              />
+                          </button>
+                          <span className={`font-semibold ${exigeSinalExcecao ? 'text-green-700 bg-green-100 px-2.5 py-1 rounded-full text-xs' : 'text-gray-700 bg-gray-100 px-2.5 py-1 rounded-full text-xs'}`}>
+                              {exigeSinalExcecao ? 'Ativo' : 'Inativo'}
+                          </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                          Força a cobrança de sinal para este cliente em qualquer serviço online.
                       </p>
                   </div>
 

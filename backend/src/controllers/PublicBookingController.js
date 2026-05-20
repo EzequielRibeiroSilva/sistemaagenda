@@ -22,6 +22,8 @@ const AssinaturaEstornoService = require('../services/AssinaturaEstornoService')
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 const PlanoAssinatura = require('../models/PlanoAssinatura');
+const crypto = require('crypto');
+const { decrypt } = require('../utils/encryption');
 
 class PublicBookingController {
   constructor() {
@@ -1286,7 +1288,8 @@ class PublicBookingController {
           'clientes.primeiro_nome',
           'clientes.ultimo_nome',
           'clientes.telefone',
-          'clientes.data_nascimento'
+          'clientes.data_nascimento',
+          'clientes.exige_sinal_excecao'
         )
         .first();
 
@@ -1302,7 +1305,8 @@ class PublicBookingController {
             primeiro_nome: cliente.primeiro_nome,
             ultimo_nome: cliente.ultimo_nome,
             telefone: cliente.telefone,
-            data_nascimento: cliente.data_nascimento
+            data_nascimento: cliente.data_nascimento,
+            exigeSinalExcecao: Boolean(cliente.exige_sinal_excecao)
           }
         });
       } else {
@@ -1507,7 +1511,7 @@ class PublicBookingController {
       const servicos = await trx('servicos')
         .whereIn('id', servico_ids)
         .where('status', 'Ativo')
-        .select('id', 'nome', 'preco', 'duracao_minutos');
+        .select('id', 'nome', 'preco', 'duracao_minutos', 'exige_sinal', 'valor_sinal');
 
       if (servicos.length !== servico_ids.length) {
         await trx.rollback();
@@ -1991,6 +1995,141 @@ class PublicBookingController {
         observacoes: observacoes || null
       }).returning('*');
 
+      // ✅ Sprint 3 (Passo 2): gerar Pix Mercado Pago + persistir pagamento PENDING
+      // Regra: se algum serviço exige sinal OU se o cliente possui exceção, então deve cobrar sinal.
+      const clienteExigeSinalExcecao = Boolean(cliente?.exige_sinal_excecao);
+      const algumServicoExigeSinal = (servicos || []).some(s => Boolean(s?.exige_sinal));
+      const deveCobrarSinal = algumServicoExigeSinal || clienteExigeSinalExcecao;
+
+      let pixPayload = null;
+
+      if (deveCobrarSinal) {
+        const totalSinal = (servicos || [])
+          .filter(s => Boolean(s?.exige_sinal))
+          .reduce((sum, s) => sum + (Number(s?.valor_sinal) || 0), 0);
+
+        const amount = Math.max(0, Number(totalSinal) || 0);
+        if (!(amount > 0)) {
+          const err = new Error('Sinal calculado inválido. Verifique valor_sinal dos serviços.');
+          err.code = 'INVALID_DEPOSIT_AMOUNT';
+          throw err;
+        }
+
+        // Buscar token OAuth da unidade (multi-tenant)
+        const integracao = await trx('integracoes_mercadopago')
+          .where({ unidade_id: unidade_id, usuario_id: usuarioId, status: 'CONNECTED' })
+          .select(
+            'id',
+            'access_token_ciphertext',
+            'access_token_iv',
+            'access_token_auth_tag',
+            'expires_at'
+          )
+          .first();
+
+        if (!integracao) {
+          const err = new Error('Integração Mercado Pago não conectada para esta unidade');
+          err.code = 'MP_NOT_CONNECTED';
+          throw err;
+        }
+
+        if (integracao.expires_at && new Date(integracao.expires_at).getTime() <= Date.now()) {
+          const err = new Error('Token do Mercado Pago expirado. Reconecte a integração.');
+          err.code = 'MP_TOKEN_EXPIRED';
+          throw err;
+        }
+
+        const accessToken = decrypt({
+          ciphertext: integracao.access_token_ciphertext,
+          iv: integracao.access_token_iv,
+          authTag: integracao.access_token_auth_tag
+        });
+
+        const idempotencyKey = crypto.randomBytes(32).toString('hex');
+
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        const dateOfExpiration = expiresAt.toISOString();
+        const externalReference = `agendamento_${agendamento.id}`;
+
+        // Chamada Mercado Pago - Pix
+        const mpResp = await fetch('https://api.mercadopago.com/v1/payments', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey
+          },
+          body: JSON.stringify({
+            transaction_amount: amount,
+            description: `Sinal agendamento #${agendamento.id}`,
+            payment_method_id: 'pix',
+            external_reference: externalReference,
+            date_of_expiration: dateOfExpiration,
+            payer: {
+              first_name: String(cliente?.primeiro_nome || '').trim() || 'Cliente',
+              last_name: String(cliente?.ultimo_nome || '').trim() || ' ',
+              email: String(cliente?.mp_customer_email || 'cliente@exemplo.com').trim().toLowerCase()
+            },
+            metadata: {
+              unidade_id: Number(unidade_id),
+              agendamento_id: Number(agendamento.id),
+              cliente_id: Number(cliente.id)
+            }
+          })
+        });
+
+        const mpJson = await mpResp.json().catch(() => null);
+
+        if (!mpResp.ok) {
+          const err = new Error('Falha ao gerar Pix no Mercado Pago');
+          err.code = 'MP_PIX_CREATE_FAILED';
+          err.httpStatus = mpResp.status;
+          err.mpError = mpJson;
+          throw err;
+        }
+
+        const mpPaymentId = mpJson?.id != null ? String(mpJson.id) : null;
+        const qrCodeBase64 = mpJson?.point_of_interaction?.transaction_data?.qr_code_base64 || null;
+        const qrCode = mpJson?.point_of_interaction?.transaction_data?.qr_code || null;
+
+        if (!mpPaymentId || !qrCodeBase64 || !qrCode) {
+          const err = new Error('Resposta inválida do Mercado Pago (dados Pix ausentes)');
+          err.code = 'MP_PIX_INVALID_RESPONSE';
+          err.mpError = mpJson;
+          throw err;
+        }
+
+        // Persistir pagamento pendente
+        await trx('agendamento_pagamentos').insert({
+          usuario_id: usuarioId,
+          unidade_id: unidade_id,
+          agendamento_id: agendamento.id,
+          mp_payment_id: mpPaymentId,
+          external_reference: externalReference,
+          status: 'PENDING',
+          amount: amount,
+          idempotency_key: idempotencyKey,
+          pix_qr_code_base64: qrCodeBase64,
+          pix_copia_cola: qrCode,
+          expires_at: expiresAt,
+          created_at: new Date(),
+          updated_at: new Date()
+        });
+
+        pixPayload = {
+          qr_code: qrCodeBase64,
+          qr_code_copy: qrCode,
+          expires_at: expiresAt.toISOString()
+        };
+
+        logger.log('✅ [PublicBooking] Pix gerado e pagamento PENDING persistido:', {
+          agendamento_id: agendamento.id,
+          mp_payment_id: mpPaymentId,
+          amount,
+          expires_at: pixPayload.expires_at
+        });
+      }
+
       // ✅ GATILHO DE PONTOS (BOOKING PÚBLICO): Gerar pontos automaticamente ao criar agendamento
       // Importante: a regra "só pode usar a partir do 2º agendamento" não impede acumular;
       // aqui apenas CREDITAMOS pontos se o sistema estiver ativo.
@@ -2350,9 +2489,13 @@ class PublicBookingController {
         try {
           logger.log(`📧 [PublicBooking] Iniciando envio de confirmação para agendamento #${agendamento.id}`);
           
-          // 1. Enviar confirmação imediata
-          await this.whatsAppService.sendAppointmentConfirmation(agendamentoCompleto);
-          logger.log(`✅ [PublicBooking] Confirmação enviada para agendamento #${agendamento.id}`);
+          // 1. Enviar confirmação imediata (apenas se NÃO houver sinal)
+          if (deveCobrarSinal) {
+            logger.log(`⏭️ [PublicBooking] Confirmação WhatsApp adiada (aguardando sinal Pix aprovado) para agendamento #${agendamento.id}`);
+          } else {
+            await this.whatsAppService.sendAppointmentConfirmation(agendamentoCompleto);
+            logger.log(`✅ [PublicBooking] Confirmação enviada para agendamento #${agendamento.id}`);
+          }
           
           // 2. Criar lembretes programados (24h e 1h antes)
           logger.log(`📅 [PublicBooking] Criando lembretes programados para agendamento #${agendamento.id}`);
@@ -2376,7 +2519,8 @@ class PublicBookingController {
         success: true,
         data: {
           agendamento_id: agendamento.id,
-          ...agendamentoCompleto
+          ...agendamentoCompleto,
+          pix: pixPayload
         },
         message: 'Agendamento criado com sucesso'
       });

@@ -195,6 +195,7 @@ class ClienteController {
         phone: cliente.telefone,
         birthDate: cliente.data_nascimento,
         isSubscriber: cliente.is_assinante,
+        exigeSinalExcecao: Boolean(cliente.exige_sinal_excecao),
         assinaturaStatus: (cliente.is_assinante && !clientesComRenovacao.has(cliente.id))
           ? 'Pagamento Pendente'
           : cliente.assinatura_status,
@@ -275,6 +276,13 @@ class ClienteController {
         });
       }
 
+      if (Object.prototype.hasOwnProperty.call(req.body, 'exige_sinal_excecao') && typeof req.body.exige_sinal_excecao !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          message: 'exige_sinal_excecao deve ser boolean'
+        });
+      }
+
       // Criar cliente
       const novoCliente = await this.clienteModel.create(req.body, unidadeId);
 
@@ -289,6 +297,7 @@ class ClienteController {
           mpCustomerEmail: novoCliente.mp_customer_email,
           birthDate: novoCliente.data_nascimento,
           isSubscriber: novoCliente.is_assinante,
+          exigeSinalExcecao: Boolean(novoCliente.exige_sinal_excecao),
           subscriptionStartDate: novoCliente.data_inicio_assinatura,
           subscriptionPlanId: novoCliente.assinatura_plano_id,
           status: novoCliente.status
@@ -357,6 +366,7 @@ class ClienteController {
           mpCustomerEmail: cliente.mp_customer_email,
           birthDate: cliente.data_nascimento,
           isSubscriber: cliente.is_assinante,
+          exigeSinalExcecao: Boolean(cliente.exige_sinal_excecao),
           assinaturaStatus: cliente.assinatura_status,
           subscriptionStartDate: cliente.data_inicio_assinatura,
           subscriptionPlanId: cliente.assinatura_plano_id,
@@ -400,6 +410,13 @@ class ClienteController {
         });
       }
 
+      if (Object.prototype.hasOwnProperty.call(req.body, 'exige_sinal_excecao') && typeof req.body.exige_sinal_excecao !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          message: 'exige_sinal_excecao deve ser boolean'
+        });
+      }
+
       // Atualizar cliente
       const clienteAtualizado = await this.clienteModel.update(clienteId, req.body, unidadeId);
 
@@ -414,6 +431,7 @@ class ClienteController {
           mpCustomerEmail: clienteAtualizado.mp_customer_email,
           birthDate: clienteAtualizado.data_nascimento,
           isSubscriber: clienteAtualizado.is_assinante,
+          exigeSinalExcecao: Boolean(clienteAtualizado.exige_sinal_excecao),
           assinaturaStatus: clienteAtualizado.assinatura_status,
           subscriptionStartDate: clienteAtualizado.data_inicio_assinatura,
           subscriptionPlanId: clienteAtualizado.assinatura_plano_id,

@@ -12,6 +12,7 @@ export interface Client {
   mpCustomerEmail?: string | null;
   birthDate?: string;
   isSubscriber: boolean;
+  exigeSinalExcecao?: boolean;
   assinaturaStatus?: 'Ativo' | 'Pagamento Pendente' | 'Cancelado' | null;
   subscriptionStartDate?: string;
   subscriptionPlanId?: number | null;
@@ -59,6 +60,7 @@ export interface CreateClientData {
   mp_customer_email?: string | null;
   data_nascimento?: string;
   is_assinante?: boolean;
+  exige_sinal_excecao?: boolean;
   assinatura_status?: 'Ativo' | 'Pagamento Pendente' | 'Cancelado' | null;
   data_inicio_assinatura?: string;
   assinatura_plano_id?: number | null;

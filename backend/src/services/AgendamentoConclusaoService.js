@@ -146,7 +146,29 @@ class AgendamentoConclusaoService {
             }
 
             const subtotalCents = itens.reduce((sum, i) => sum + this.toCents(i.total_snapshot), 0);
-            const totalCents = subtotalCents;
+
+            // Sprint 4 (Passo 3): Abater sinal Pix aprovado do total da venda no PDV
+            let sinalCents = 0;
+            try {
+              const sinalRow = await trx('agendamento_pagamentos')
+                .where({ agendamento_id: agendamentoIdNum, status: 'APPROVED' })
+                .select('amount')
+                .orderBy('id', 'desc')
+                .first();
+
+              if (sinalRow?.amount != null) {
+                sinalCents = this.toCents(sinalRow.amount);
+              }
+            } catch (_) {
+              sinalCents = 0;
+            }
+
+            if (Number.isFinite(sinalCents) && sinalCents > 0) {
+              const sinalBRL = this.centsToDecimal(sinalCents);
+              console.log(`💰 [PDV-Checkout] Sinal de R$ ${sinalBRL} localizado para o agendamento ${agendamentoIdNum}. Abatendo do total da venda.`);
+            }
+
+            const totalCents = Math.max(0, subtotalCents - (Number.isFinite(sinalCents) ? sinalCents : 0));
 
             const subtotal = this.centsToDecimal(subtotalCents);
             const total = this.centsToDecimal(totalCents);

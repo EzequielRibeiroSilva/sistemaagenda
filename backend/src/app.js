@@ -11,6 +11,7 @@ const { testConnection } = require('./config/database');
 const apiRoutes = require('./routes/index');
 const webhooksRoutes = require('./routes/webhooks');
 const reminderJob = require('./jobs/reminderJob');
+const pendingPaymentCleanupJob = require('./jobs/pendingPaymentCleanupJob');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
 
@@ -283,12 +284,17 @@ async function startServer() {
       // Iniciar cron job de lembretes
       logger.log('\n🔔 Inicializando sistema de lembretes automáticos...');
       reminderJob.start();
+
+      // Iniciar job de limpeza de pagamentos pendentes (Pix)
+      logger.log('\n🧹 Inicializando cleanup de pagamentos pendentes (Pix)...');
+      pendingPaymentCleanupJob.start();
     });
     
     // Graceful shutdown
     process.on('SIGTERM', () => {
       logger.log('🛑 Recebido SIGTERM, encerrando servidor...');
       reminderJob.stop();
+      pendingPaymentCleanupJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -298,6 +304,7 @@ async function startServer() {
     process.on('SIGINT', () => {
       logger.log('🛑 Recebido SIGINT, encerrando servidor...');
       reminderJob.stop();
+      pendingPaymentCleanupJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);

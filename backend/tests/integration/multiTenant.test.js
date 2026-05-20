@@ -23,22 +23,25 @@ describe('🔒 Testes de Isolamento Multi-Tenant', () => {
   let adminA, adminB, unidadeA, unidadeB;
   let clienteA, clienteB;
   let tokenAdminA, tokenAdminB;
+  let runId;
   
   beforeAll(async () => {
     // Importar app
     const appModule = require('../../src/app');
     app = appModule.app;
+
+    runId = Date.now().toString();
     
     // Limpar dados de teste anteriores
     await cleanupTestData();
     
     // Criar Admin A com sua unidade
-    adminA = await createAdminWithUnit('adminA');
+    adminA = await createAdminWithUnit('adminA', runId);
     unidadeA = adminA.unidade;
     tokenAdminA = await loginUser(adminA.user.email, 'Test@123');
     
     // Criar Admin B com sua unidade
-    adminB = await createAdminWithUnit('adminB');
+    adminB = await createAdminWithUnit('adminB', runId);
     unidadeB = adminB.unidade;
     tokenAdminB = await loginUser(adminB.user.email, 'Test@123');
     
@@ -128,11 +131,11 @@ describe('🔒 Testes de Isolamento Multi-Tenant', () => {
       // Criar agentes, serviços e agendamentos para cada unidade
       agenteA = await createAgente(adminA.user.id, unidadeA.id, 'AgenteA');
       servicoA = await createServico(adminA.user.id, 'ServicoA');
-      agendamentoA = await createAgendamento(unidadeA.id, clienteA.id, agenteA.id, servicoA.id);
+      agendamentoA = await createAgendamento(unidadeA.id, clienteA.id, agenteA.id, servicoA.id, adminA.user.id);
       
       agenteB = await createAgente(adminB.user.id, unidadeB.id, 'AgenteB');
       servicoB = await createServico(adminB.user.id, 'ServicoB');
-      agendamentoB = await createAgendamento(unidadeB.id, clienteB.id, agenteB.id, servicoB.id);
+      agendamentoB = await createAgendamento(unidadeB.id, clienteB.id, agenteB.id, servicoB.id, adminB.user.id);
     });
     
     test('Admin A deve ver apenas seus agendamentos', async () => {
@@ -172,7 +175,10 @@ describe('🔒 Testes de Isolamento Multi-Tenant', () => {
 
 // Funções auxiliares
 async function cleanupTestData() {
-  await db('lembretes_enviados').whereRaw("1=1").del().catch(() => {});
+  await db('lembretes_enviados')
+    .whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%MT_TEST%')`)
+    .del()
+    .catch(() => {});
   await db('agendamento_servicos').whereRaw(`agendamento_id IN (SELECT id FROM agendamentos WHERE observacoes LIKE '%MT_TEST%')`).del().catch(() => {});
   await db('agendamentos')
     .where('observacoes', 'like', '%MT_TEST%')
@@ -188,10 +194,10 @@ async function cleanupTestData() {
   await db('usuarios').where('email', 'like', '%mt_test%').del().catch(() => {});
 }
 
-async function createAdminWithUnit(prefix) {
+async function createAdminWithUnit(prefix, runId) {
   const senhaHash = await bcrypt.hash('Test@123', 10);
   const [user] = await db('usuarios').insert({
-    email: `${prefix.toLowerCase()}_mt_test@test.com`,
+    email: `${prefix.toLowerCase()}_mt_test_${runId}@test.com`,
     nome: `${prefix} MT_TEST`,
     senha_hash: senhaHash,
     role: 'ADMIN', tipo_usuario: 'admin', status: 'Ativo',
@@ -231,8 +237,9 @@ async function createCliente(unidadeId, prefix) {
 
 async function createAgente(usuarioId, unidadeId, prefix) {
   const senhaHash = await bcrypt.hash('Test@123', 10);
+  const uniq = `${Date.now()}`;
   const [agenteUser] = await db('usuarios').insert({
-    email: `${prefix.toLowerCase()}_mt_test@test.com`,
+    email: `${prefix.toLowerCase()}_mt_test_${uniq}@test.com`,
     nome: `${prefix} MT_TEST`, senha_hash: senhaHash,
     role: 'AGENTE', tipo_usuario: 'agent', status: 'Ativo',
     unidade_id: unidadeId,
@@ -242,7 +249,7 @@ async function createAgente(usuarioId, unidadeId, prefix) {
   const [agente] = await db('agentes').insert({
     nome: `${prefix} MT_TEST`, sobrenome: 'Agente',
     email: agenteUser.email, telefone: '11988888888',
-    usuario_id: agenteUser.id, unidade_id: unidadeId, status: 'Ativo',
+    usuario_id: usuarioId, unidade_id: unidadeId, status: 'Ativo',
     created_at: new Date(), updated_at: new Date()
   }).returning('*');
 
@@ -261,16 +268,29 @@ async function createServico(usuarioId, prefix) {
   const [servico] = await db('servicos').insert({
     nome: `${prefix}_MT_TEST`, descricao: 'Serviço de teste',
     preco: '50.00', duracao_minutos: 30, usuario_id: usuarioId,
-    status: 'Ativo', created_at: new Date(), updated_at: new Date()
+    status: 'Ativo', exige_sinal: false, valor_sinal: null, created_at: new Date(), updated_at: new Date()
   }).returning('*');
   return servico;
 }
 
-async function createAgendamento(unidadeId, clienteId, agenteId, servicoId) {
+async function createAgendamento(unidadeId, clienteId, agenteId, servicoId, usuarioId) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  // Garantir que serviço está associado à unidade (many-to-many)
+  if (unidadeId && servicoId) {
+    await db('unidade_servicos')
+      .insert({ unidade_id: unidadeId, servico_id: servicoId })
+      .onConflict(['unidade_id', 'servico_id'])
+      .ignore();
+  }
+
+  const usuarioIdFinal = Number(usuarioId);
+  const usuarioIdSafe = Number.isFinite(usuarioIdFinal) ? usuarioIdFinal : null;
+
   const [agendamento] = await db('agendamentos').insert({
+    usuario_id: usuarioIdSafe,
+    numero_agendamento: 1,
     cliente_id: clienteId, agente_id: agenteId, unidade_id: unidadeId,
     data_agendamento: tomorrow.toISOString().split('T')[0],
     hora_inicio: '10:00', hora_fim: '10:30', status: 'Aprovado',

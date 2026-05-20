@@ -49,6 +49,11 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [isValidatingCupom, setIsValidatingCupom] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
 
+  const [pixData, setPixData] = useState<{ qr_code: string; qr_code_copy: string; expires_at: string } | null>(null);
+  const [pixRemainingSeconds, setPixRemainingSeconds] = useState<number | null>(null);
+  const [pixExpired, setPixExpired] = useState(false);
+  const [pixCopyFeedback, setPixCopyFeedback] = useState(false);
+
   const [assinaturaInfo, setAssinaturaInfo] = useState<any>(null);
   const [isLoadingAssinatura, setIsLoadingAssinatura] = useState(false);
   const [usarAssinaturaItens, setUsarAssinaturaItens] = useState<{ servico_ids: number[]; servico_extra_ids: number[] } | null>(null);
@@ -77,6 +82,36 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (!pixData?.expires_at || currentStep !== 11) {
+      setPixRemainingSeconds(null);
+      setPixExpired(false);
+      return;
+    }
+
+    const expiresMs = new Date(pixData.expires_at).getTime();
+    if (Number.isNaN(expiresMs)) {
+      setPixRemainingSeconds(null);
+      setPixExpired(true);
+      return;
+    }
+
+    const tick = () => {
+      const diffSeconds = Math.floor((expiresMs - Date.now()) / 1000);
+      if (diffSeconds <= 0) {
+        setPixRemainingSeconds(0);
+        setPixExpired(true);
+        return;
+      }
+      setPixRemainingSeconds(diffSeconds);
+      setPixExpired(false);
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [pixData?.expires_at, currentStep]);
 
   useEffect(() => {
     if (bookingSubmitError) {
@@ -367,7 +402,25 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
 
   const resetToStep = (step: number) => {
     setCurrentStep(step);
-    if (step <= 1) { setSelectedLocationId(null); setTempSelectedLocationId(null); }
+    if (step <= 1) {
+      setSelectedLocationId(null);
+      setTempSelectedLocationId(null);
+
+      setPixData(null);
+      setPixRemainingSeconds(null);
+      setPixExpired(false);
+      setPixCopyFeedback(false);
+
+      setCupomCodigo('');
+      setCupomAplicado(null);
+      setCupomErro(null);
+      setIsValidatingCupom(false);
+
+      setBookingSubmitError(null);
+      setAssinaturaInfo(null);
+      setUsarAssinaturaItens(null);
+      setNextStepAfterSubscription(null);
+    }
     if (step <= 2) { setSelectedServiceIds([]); setTempSelectedServiceIds([]); }
     if (step <= 3) { setSelectedAgentId(null); setTempSelectedAgentId(null); }
     if (step <= 4) { setSelectedExtraServiceIds([]); setTempSelectedExtraServiceIds([]); }
@@ -455,6 +508,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     else if (currentStep === 8) stageLabel = 'Data de Nascimento';
     else if (currentStep === 9) stageLabel = 'Revisão';
     else if (currentStep === 10) stageLabel = 'Concluído';
+    else if (currentStep === 11) stageLabel = 'Pagamento';
 
     return { stage, totalStages, percent, stageLabel };
   }, [currentStep]);
@@ -847,6 +901,105 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       </div>
     </div>
   );
+
+  const renderPixPayment = () => {
+    const formatMMSS = (seconds: number | null) => {
+      if (seconds == null) return '--:--';
+      const clamped = Math.max(0, seconds);
+      const mm = Math.floor(clamped / 60);
+      const ss = clamped % 60;
+      return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    };
+
+    const handleCopyPix = async () => {
+      if (!pixData?.qr_code_copy || pixExpired) return;
+      try {
+        await navigator.clipboard.writeText(pixData.qr_code_copy);
+        setPixCopyFeedback(true);
+        window.setTimeout(() => setPixCopyFeedback(false), 1500);
+      } catch {
+        // Se falhar, não quebra o fluxo. (Sem fallback por enquanto)
+      }
+    };
+
+    const qrSrc = pixData?.qr_code ? `data:image/png;base64,${pixData.qr_code}` : '';
+
+    return (
+      <div className="flex flex-col">
+        <StepHeader title="Pagamento" onBack={() => resetToStep(9)} />
+
+        <div className="p-4 space-y-4">
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Finalize o pagamento do sinal</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Você tem <span className="font-semibold text-gray-900">15 minutos</span> para concluir o Pix e garantir o horário.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-5">
+              <span className="text-sm font-medium text-gray-700">Tempo restante</span>
+              <span className={`text-sm font-bold ${pixExpired ? 'text-red-600' : 'text-gray-900'}`}>
+                {pixExpired ? 'Expirado' : formatMMSS(pixRemainingSeconds)}
+              </span>
+            </div>
+
+            {pixExpired && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-5">
+                <p className="text-sm text-red-700 font-medium">
+                  O tempo para pagamento expirou. Reinicie o agendamento para gerar um novo Pix.
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-col items-center">
+              {qrSrc ? (
+                <img
+                  src={qrSrc}
+                  alt="QR Code Pix"
+                  className={`w-56 h-56 rounded-lg border ${pixExpired ? 'opacity-40 border-gray-200' : 'border-gray-300'}`}
+                />
+              ) : (
+                <div className="w-56 h-56 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-sm text-gray-500">
+                  QR Code indisponível
+                </div>
+              )}
+
+              <div className="w-full mt-6">
+                <label className="block text-sm font-semibold text-gray-800 mb-2">Pix Copia e Cola</label>
+                <div className="flex gap-2">
+                  <input
+                    value={pixData?.qr_code_copy || ''}
+                    readOnly
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg px-3 py-3 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyPix}
+                    disabled={pixExpired || !pixData?.qr_code_copy}
+                    className={`shrink-0 px-4 py-3 rounded-lg font-bold text-sm transition-colors ${pixExpired || !pixData?.qr_code_copy ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : pixCopyFeedback ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                  >
+                    {pixCopyFeedback ? 'Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Após copiar, cole no app do seu banco para concluir o pagamento.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => resetToStep(1)}
+            className="w-full bg-gray-100 text-gray-800 font-bold py-3 px-6 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cancelar e recomeçar
+          </button>
+        </div>
+      </div>
+    );
+  };
   
   const renderServiceSelection = () => (
     <div className="flex flex-col">
@@ -1661,7 +1814,19 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         lastAssinaturaCheckKeyRef.current = '';
         setAssinaturaInfo(null);
         
-        setCurrentStep(10); // Ir para tela de sucesso
+        const pix = (agendamentoCriado as any)?.pix;
+        if (pix && pix.qr_code && pix.qr_code_copy && pix.expires_at) {
+          setPixData({
+            qr_code: String(pix.qr_code),
+            qr_code_copy: String(pix.qr_code_copy),
+            expires_at: String(pix.expires_at)
+          });
+          setPixCopyFeedback(false);
+          setCurrentStep(11);
+        } else {
+          setPixData(null);
+          setCurrentStep(10); // Ir para tela de sucesso
+        }
       }
 
     } catch (error) {
@@ -2148,6 +2313,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       case 8: return renderBirthDateStep();
       case 9: return renderCheckout();
       case 10: return renderSuccess();
+      case 11: return renderPixPayment();
       default: return renderLocationSelection();
     }
   }
