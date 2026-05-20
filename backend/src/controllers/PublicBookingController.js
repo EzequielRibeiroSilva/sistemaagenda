@@ -1997,6 +1997,13 @@ class PublicBookingController {
 
       // ✅ Sprint 3 (Passo 2): gerar Pix Mercado Pago + persistir pagamento PENDING
       // Regra: se algum serviço exige sinal OU se o cliente possui exceção, então deve cobrar sinal.
+      logger.log('ℹ️ [PublicBooking] Validando sinal para cliente', {
+        cliente_id: cliente?.id ?? null,
+        unidade_id: cliente?.unidade_id ?? null,
+        telefone: cliente?.telefone ? String(cliente.telefone).slice(-4) : null,
+        exige_sinal_excecao: Boolean(cliente?.exige_sinal_excecao)
+      });
+
       const clienteExigeSinalExcecao = Boolean(cliente?.exige_sinal_excecao);
       const algumServicoExigeSinal = (servicos || []).some(s => Boolean(s?.exige_sinal));
       const deveCobrarSinal = algumServicoExigeSinal || clienteExigeSinalExcecao;
@@ -2004,9 +2011,15 @@ class PublicBookingController {
       let pixPayload = null;
 
       if (deveCobrarSinal) {
-        const totalSinal = (servicos || [])
+        let totalSinal = (servicos || [])
           .filter(s => Boolean(s?.exige_sinal))
           .reduce((sum, s) => sum + (Number(s?.valor_sinal) || 0), 0);
+
+        // Caso especial: cliente marcado para exigir sinal (anti no-show), mas nenhum serviço tem valor_sinal.
+        // Nesse caso, usar o valor total do agendamento como sinal.
+        if (!(totalSinal > 0) && clienteExigeSinalExcecao) {
+          totalSinal = Number(valorTotal) || 0;
+        }
 
         const amount = Math.max(0, Number(totalSinal) || 0);
         if (!(amount > 0)) {
