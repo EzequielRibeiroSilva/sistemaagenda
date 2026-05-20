@@ -2540,10 +2540,17 @@ class PublicBookingController {
 
     } catch (error) {
       await trx.rollback();
-      logger.error('[PublicBooking] Erro ao criar agendamento:', error);
-      if (process.env.NODE_ENV === 'development') {
-        logger.error('[PublicBooking] Error message:', error?.message);
-        logger.error('[PublicBooking] Stack trace:', error?.stack);
+      logger.error('[PublicBooking] Erro ao criar agendamento:', {
+        name: error?.name,
+        message: error?.message,
+        pg_error_code: error?.code,
+        constraint: error?.constraint,
+        table: error?.table,
+        detail: error?.detail,
+        where: error?.where
+      });
+      if (error?.stack) {
+        logger.error('[PublicBooking] Stack trace:', error.stack);
       }
 
       if (error && (error.code === '23P01' || error.constraint === 'agendamentos_no_overlap')) {
