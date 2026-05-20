@@ -725,30 +725,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
             </div>
 
             <div className="flex items-center gap-3">
-              {!isMercadoPagoConnected ? (
+              <button
+                type="button"
+                onClick={handleConnectMercadoPago}
+                disabled={mercadoPagoLoading}
+                className={`flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors ${
+                  'bg-blue-600 hover:bg-blue-700'
+                } ${mercadoPagoLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                {mercadoPagoLoading ? 'Conectando...' : (isMercadoPagoConnected ? 'Reconectar' : 'Conectar')}
+              </button>
+
+              {isMercadoPagoConnected && (
                 <button
                   type="button"
-                  onClick={handleConnectMercadoPago}
-                  disabled={mercadoPagoLoading}
-                  className={`flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors ${
-                    'bg-blue-600 hover:bg-blue-700'
-                  } ${mercadoPagoLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  onClick={handleDisconnectMercadoPago}
+                  className="px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                 >
-                  {mercadoPagoLoading ? 'Conectando...' : 'Conectar com Mercado Pago'}
+                  Desconectar
                 </button>
-              ) : (
-                <>
-                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-100 text-green-800">
-                    Conectado
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectMercadoPago}
-                    className="px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  >
-                    Desconectar
-                  </button>
-                </>
               )}
             </div>
           </div>

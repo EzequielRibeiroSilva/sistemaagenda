@@ -181,6 +181,39 @@ class MercadoPagoOAuthController {
 
       const url = this.service.getAuthorizationUrl(unidadeId);
 
+      try {
+        const parsed = new URL(url);
+        const isOfficialHost = parsed.host === 'auth.mercadopago.com.br';
+        const isOfficialPath = parsed.pathname === '/authorization';
+
+        let redirectHost = null;
+        let redirectPath = null;
+        try {
+          const redirectUri = parsed.searchParams.get('redirect_uri');
+          if (redirectUri) {
+            const parsedRedirect = new URL(redirectUri);
+            redirectHost = parsedRedirect.host;
+            redirectPath = parsedRedirect.pathname;
+          }
+        } catch {
+          // ignore
+        }
+
+        logger.log('ℹ️ [MercadoPagoOAuthController.getRedirectUrl] OAuth URL gerada', {
+          unidade_id: unidadeId,
+          host: parsed.host,
+          path: parsed.pathname,
+          redirectHost,
+          redirectPath,
+          isOfficial: Boolean(isOfficialHost && isOfficialPath)
+        });
+      } catch (err) {
+        logger.error('❌ [MercadoPagoOAuthController.getRedirectUrl] Falha ao auditar URL do OAuth', {
+          unidade_id: unidadeId,
+          message: err?.message
+        });
+      }
+
       return res.status(200).json({
         success: true,
         data: {
