@@ -49,6 +49,10 @@ router.get('/integracoes/mercadopago/status', authenticate(), async (req, res) =
   await mercadoPagoOAuthController.getStatus(req, res);
 });
 
+router.delete('/integracoes/mercadopago/disconnect', authenticate(), async (req, res) => {
+  await mercadoPagoOAuthController.disconnect(req, res);
+});
+
 // Rotas RBAC (com controle de acesso baseado em roles)
 router.use('/rbac', rbacRoutes);
 

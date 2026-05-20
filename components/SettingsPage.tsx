@@ -207,13 +207,42 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
         const confirmed = window.confirm('Tem certeza que deseja desconectar o Mercado Pago?');
         if (!confirmed) return;
 
-        setIsMercadoPagoConnected(false);
-        toast.success('Mercado Pago', 'Desconectado.');
-
-        const unidadeId = user?.unidade_id;
-        if (unidadeId) {
-            await fetchMercadoPagoStatus(unidadeId);
+        if (!user?.unidade_id) {
+            toast.error('Mercado Pago', 'Selecione uma unidade válida para desconectar.');
+            return;
         }
+
+        if (!token) {
+            toast.error('Mercado Pago', 'Você precisa estar autenticado para desconectar.');
+            return;
+        }
+
+        setMercadoPagoLoading(true);
+        try {
+            const resp = await fetch(`${API_BASE_URL}/integracoes/mercadopago/disconnect?unidade_id=${user.unidade_id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const json = await resp.json().catch(() => null);
+            if (!resp.ok || !json?.success) {
+                const msg = json?.message || json?.error || 'Erro ao desconectar Mercado Pago';
+                toast.error('Mercado Pago', msg);
+                return;
+            }
+
+            toast.success('Mercado Pago', 'Desconectado.');
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Erro ao desconectar Mercado Pago';
+            toast.error('Mercado Pago', msg);
+        } finally {
+            setMercadoPagoLoading(false);
+        }
+
+        await fetchMercadoPagoStatus(user.unidade_id);
     };
 
     const lastWhatsAppToastRef = useRef<{ message: string | null; ts: number }>({ message: null, ts: 0 });

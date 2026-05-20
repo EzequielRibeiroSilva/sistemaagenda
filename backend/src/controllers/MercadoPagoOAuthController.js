@@ -13,6 +13,11 @@ class MercadoPagoOAuthController {
       const usuarioId = req.user?.id;
       const unidadeId = req.query?.unidade_id ? Number(req.query.unidade_id) : null;
 
+      logger.log('ℹ️ [MercadoPagoOAuthController.getStatus] Status requisitado', {
+        usuario_id: usuarioId || null,
+        unidade_id: unidadeId || null
+      });
+
       if (!usuarioId) {
         return res.status(401).json({
           success: false,
@@ -59,6 +64,69 @@ class MercadoPagoOAuthController {
       return res.status(500).json({
         success: false,
         error: 'Erro ao consultar status do Mercado Pago',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  // DELETE /api/integracoes/mercadopago/disconnect?unidade_id=1
+  async disconnect(req, res) {
+    try {
+      const usuarioId = req.user?.id;
+      const unidadeId = req.query?.unidade_id ? Number(req.query.unidade_id) : null;
+
+      if (!usuarioId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não autenticado'
+        });
+      }
+
+      if (!unidadeId || !Number.isFinite(unidadeId) || unidadeId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'unidade_id inválido'
+        });
+      }
+
+      const unidade = await db('unidades')
+        .where({ id: unidadeId, usuario_id: usuarioId })
+        .select('id')
+        .first();
+
+      if (!unidade) {
+        return res.status(404).json({
+          success: false,
+          error: 'Unidade não encontrada ou acesso negado'
+        });
+      }
+
+      await db('integracoes_mercadopago')
+        .where({ unidade_id: unidadeId, usuario_id: usuarioId })
+        .update({
+          status: 'DISCONNECTED',
+          updated_at: db.fn.now()
+        });
+
+      logger.log('✅ [MercadoPagoOAuthController.disconnect] Integração Mercado Pago desconectada', {
+        usuario_id: usuarioId,
+        unidade_id: unidadeId
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          conectado: false
+        }
+      });
+    } catch (error) {
+      logger.error('❌ [MercadoPagoOAuthController.disconnect] Erro:', {
+        message: error?.message
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao desconectar Mercado Pago',
         message: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
