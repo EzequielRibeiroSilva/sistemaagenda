@@ -3,11 +3,38 @@ const logger = require('../utils/logger');
 const { db } = require('../config/knex');
 const AssinaturaRenovacaoService = require('../services/AssinaturaRenovacaoService');
 const WhatsAppService = require('../services/WhatsAppService');
+const { decrypt } = require('../utils/encryption');
 
 class MercadoPagoWebhookController {
   constructor() {
     this.assinaturaRenovacaoService = new AssinaturaRenovacaoService();
     this.whatsAppService = new WhatsAppService();
+  }
+
+  async resolveUnidadeIdForPaymentId(paymentId) {
+    const mpPaymentId = paymentId != null ? String(paymentId) : null;
+    if (!mpPaymentId) return null;
+
+    const row = await db('agendamento_pagamentos as ap')
+      .join('agendamentos as a', 'ap.agendamento_id', 'a.id')
+      .where('ap.mp_payment_id', mpPaymentId)
+      .whereNull('a.deleted_at')
+      .select('a.unidade_id')
+      .first();
+
+    return row?.unidade_id ? Number(row.unidade_id) : null;
+  }
+
+  async resolveUnidadeIdForPreapprovalId(preapprovalId) {
+    const pId = preapprovalId != null ? String(preapprovalId) : null;
+    if (!pId) return null;
+
+    const row = await db('clientes')
+      .where('mp_preapproval_id', pId)
+      .select('unidade_id')
+      .first();
+
+    return row?.unidade_id ? Number(row.unidade_id) : null;
   }
 
   getWebhookSecret() {
@@ -109,14 +136,58 @@ class MercadoPagoWebhookController {
     return { topic, action, resourceId: resourceId ? String(resourceId) : null };
   }
 
-  getAccessToken() {
-    return process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || null;
+  async getAccessTokenForUnidade(unidadeId, trx = null) {
+    const uId = Number(unidadeId);
+    if (!Number.isFinite(uId) || uId <= 0) {
+      const err = new Error('unidade_id inválido');
+      err.code = 'INVALID_UNIDADE_ID';
+      throw err;
+    }
+
+    const q = trx || db;
+    const integracao = await q('integracoes_mercadopago')
+      .where({ unidade_id: uId, status: 'CONNECTED' })
+      .select(
+        'id',
+        'access_token_ciphertext',
+        'access_token_iv',
+        'access_token_auth_tag',
+        'expires_at'
+      )
+      .first();
+
+    if (!integracao) {
+      const err = new Error('Integração Mercado Pago não conectada para esta unidade');
+      err.code = 'MP_NOT_CONNECTED';
+      throw err;
+    }
+
+    if (integracao.expires_at && new Date(integracao.expires_at).getTime() <= Date.now()) {
+      const err = new Error('Token do Mercado Pago expirado. Reconecte a integração.');
+      err.code = 'MP_TOKEN_EXPIRED';
+      throw err;
+    }
+
+    const accessToken = decrypt({
+      ciphertext: integracao.access_token_ciphertext,
+      iv: integracao.access_token_iv,
+      authTag: integracao.access_token_auth_tag
+    });
+
+    if (!accessToken) {
+      const err = new Error('Token do Mercado Pago inválido');
+      err.code = 'MP_TOKEN_INVALID';
+      throw err;
+    }
+
+    return accessToken;
   }
 
-  async mpFetchJson(url) {
-    const accessToken = this.getAccessToken();
+  async mpFetchJson(url, accessToken) {
     if (!accessToken) {
-      throw new Error('MP_ACCESS_TOKEN não configurado');
+      const err = new Error('Access token Mercado Pago ausente');
+      err.code = 'MP_ACCESS_TOKEN_MISSING';
+      throw err;
     }
 
     const resp = await fetch(url, {
@@ -136,14 +207,20 @@ class MercadoPagoWebhookController {
     return json;
   }
 
-  async fetchPreapproval(preapprovalId) {
+  async fetchPreapproval(preapprovalId, accessToken) {
     if (!preapprovalId) return null;
-    return this.mpFetchJson(`https://api.mercadopago.com/preapproval/${encodeURIComponent(String(preapprovalId))}`);
+    return this.mpFetchJson(
+      `https://api.mercadopago.com/preapproval/${encodeURIComponent(String(preapprovalId))}`,
+      accessToken
+    );
   }
 
-  async fetchPayment(paymentId) {
+  async fetchPayment(paymentId, accessToken) {
     if (!paymentId) return null;
-    return this.mpFetchJson(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(String(paymentId))}`);
+    return this.mpFetchJson(
+      `https://api.mercadopago.com/v1/payments/${encodeURIComponent(String(paymentId))}`,
+      accessToken
+    );
   }
 
   mapPreapprovalToTally(preapprovalStatus) {
@@ -319,7 +396,12 @@ class MercadoPagoWebhookController {
       const topicLower = topic ? String(topic).toLowerCase() : null;
       if (topicLower === 'payment') {
         if (!payment) {
-          payment = await this.fetchPayment(resourceId);
+          const unidadeIdForPayment = await this.resolveUnidadeIdForPaymentId(resourceId);
+          if (!unidadeIdForPayment) {
+            throw new Error('Não foi possível resolver unidade_id para payment_id');
+          }
+          const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPayment);
+          payment = await this.fetchPayment(resourceId, accessToken);
         }
 
         // ✅ Sprint 4 (Passo 1): Gancho de aprovação do Pix do sinal
@@ -393,12 +475,21 @@ class MercadoPagoWebhookController {
         if (!preapproval) {
           const preapprovalId = this.derivePreapprovalIdFromPayment(payment);
           if (preapprovalId) {
-            preapproval = await this.fetchPreapproval(preapprovalId);
+            const unidadeIdForPreapproval = await this.resolveUnidadeIdForPreapprovalId(preapprovalId);
+            if (unidadeIdForPreapproval) {
+              const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPreapproval);
+              preapproval = await this.fetchPreapproval(preapprovalId, accessToken);
+            }
           }
         }
       } else if (topicLower === 'preapproval' || topicLower === 'subscription') {
         if (!preapproval) {
-          preapproval = await this.fetchPreapproval(resourceId);
+          const unidadeIdForPreapproval = await this.resolveUnidadeIdForPreapprovalId(resourceId);
+          if (!unidadeIdForPreapproval) {
+            throw new Error('Não foi possível resolver unidade_id para preapproval_id');
+          }
+          const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPreapproval);
+          preapproval = await this.fetchPreapproval(resourceId, accessToken);
         }
       } else {
         // Tópico desconhecido: ainda assim tentamos tratar se vier com IDs reconhecíveis
@@ -406,12 +497,20 @@ class MercadoPagoWebhookController {
         if (resourceId) {
           try {
             if (!preapproval) {
-              preapproval = await this.fetchPreapproval(resourceId);
+              const unidadeIdForPreapproval = await this.resolveUnidadeIdForPreapprovalId(resourceId);
+              if (unidadeIdForPreapproval) {
+                const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPreapproval);
+                preapproval = await this.fetchPreapproval(resourceId, accessToken);
+              }
             }
           } catch (_) {
             try {
               if (!payment) {
-                payment = await this.fetchPayment(resourceId);
+                const unidadeIdForPayment = await this.resolveUnidadeIdForPaymentId(resourceId);
+                if (unidadeIdForPayment) {
+                  const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPayment);
+                  payment = await this.fetchPayment(resourceId, accessToken);
+                }
               }
             } catch (_) {
               // Ignorar: será marcado como processado sem atualização.

@@ -194,7 +194,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onShowPreview }) => {
                 return;
             }
 
-            window.open(json.data.url, '_blank', 'noopener,noreferrer');
+            window.location.href = json.data.url;
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Erro ao conectar Mercado Pago';
             toast.error('Mercado Pago', msg);
