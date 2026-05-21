@@ -636,6 +636,26 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
         loadAppointmentsForDateRange();
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
+    // ✅ Polling silencioso: atualizar agendamentos a cada 60s
+    // Regra de ouro: pausar quando a aba estiver oculta para poupar recursos
+    useEffect(() => {
+        const poll = async () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                return;
+            }
+
+            await loadAppointmentsForDateRange();
+        };
+
+        const intervalId = window.setInterval(() => {
+            void poll();
+        }, 60_000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
+
     const handleAppointmentClick = (app: Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string }) => {
         
         // ✅ DEBUG: Verificar backendAppointments
@@ -1422,6 +1442,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                 })}
 
                                 {agentAppointments.map(app => {
+                                    console.log('Monitorando agendamento:', app.id, 'Status:', app.status);
                                     let service = services.find(s => s.id.toString() === app.serviceId);
                                     
                                     // Fallback: se serviço não encontrado, usar o primeiro disponível
@@ -1774,6 +1795,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                     })}
                                     
                                     {agentAppointments.map(app => {
+                                        console.log('Monitorando agendamento:', app.id, 'Status:', app.status);
                                         // ✅ Buscar serviço usando o ID real do banco de dados
                                         let service = services.find(s => s.id.toString() === app.serviceId);
 
@@ -2057,6 +2079,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
                                         })}
 
                                         {agentAppointments.map((app, index) => {
+                                            console.log('Monitorando agendamento:', app.id, 'Status:', app.status);
                                             // ✅ DEBUG CRÍTICO: Log do objeto app ANTES de renderizar
                                             
                                             // ✅ Buscar serviço usando o ID real do banco de dados
