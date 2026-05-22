@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { getAssetUrl } from '../utils/api'; // ✅ NOVO: Importar função para URLs de assets
 import PerformanceSection from './PerformanceSection';
 import NewAppointmentModal from './NewAppointmentModal';
+import PendingAppointmentsDrawer from './PendingAppointmentsDrawer';
 import type { PerformanceMetric, Agent, Service, Location } from '../types';
-import { Crown } from './Icons';
 
 interface DashboardPageProps {
   loggedInAgentId: string | null;
@@ -53,11 +52,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     // ✅ NOVO: Estado para agendamentos do período anterior (para cálculo de variações)
     const [previousPeriodAgendamentos, setPreviousPeriodAgendamentos] = useState<any[]>([]);
     
-    const [isPendentesModalOpen, setIsPendentesModalOpen] = useState(false);
+    const [isPendingOpen, setIsPendingOpen] = useState(false);
     const [isAppointmentModalOpen, setAppointmentModalOpen] = useState(false);
     const [modalData, setModalData] = useState<{ appointmentId?: number } | null>(null);
-
-    const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+    const [isPendingStackFlow, setIsPendingStackFlow] = useState(false);
 
     const pendentesAtrasados = useMemo(() => {
         const now = new Date();
@@ -72,7 +70,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     }, [agendamentos]);
 
     const handleOpenPendente = (agendamentoId: number) => {
-        setIsPendentesModalOpen(false);
+        setIsPendingOpen(false);
+        setIsPendingStackFlow(true);
         setModalData({ appointmentId: agendamentoId });
         setAppointmentModalOpen(true);
     };
@@ -80,6 +79,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
     const handleCloseModal = () => {
         setAppointmentModalOpen(false);
         setModalData(null);
+
+        if (isPendingStackFlow) {
+            setIsPendingOpen(true);
+            setIsPendingStackFlow(false);
+        }
     };
 
     // ✅ Callback para recarregar dados após criar/editar agendamento (modal vindo dos pendentes)
@@ -430,93 +434,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ loggedInAgentId, userRole
                 onDateRangeChange={setDateRange}
                 onMetricClick={(metric) => {
                     if (metric.title === 'Agendamentos Pendentes') {
-                        setIsPendentesModalOpen(true);
+                        setIsPendingOpen(true);
                     }
                 }}
             />
 
-            {isPendentesModalOpen && portalRoot && createPortal(
-                <div
-                    className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
-                    onClick={() => setIsPendentesModalOpen(false)}
-                    aria-labelledby="pendentes-modal-title"
-                    role="dialog"
-                    aria-modal="true"
-                >
-                    <div
-                        className="w-full max-w-3xl bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                            <div>
-                                <h3 id="pendentes-modal-title" className="text-lg font-semibold text-gray-900">Agendamentos Pendentes</h3>
-                                <p className="text-sm text-gray-500">Aprovados com término já passado</p>
-                            </div>
-                            <button
-                                className="px-4 py-2 text-sm font-semibold rounded-lg bg-white border border-gray-300 text-gray-800 hover:bg-gray-50"
-                                onClick={() => setIsPendentesModalOpen(false)}
-                            >
-                                Fechar
-                            </button>
-                        </div>
-
-                        <div className="p-4">
-                            {pendentesAtrasados.length === 0 ? (
-                                <div className="text-sm text-gray-600">Nenhum agendamento pendente no período atual.</div>
-                            ) : (
-                                <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                                    {pendentesAtrasados.map((a: any) => {
-                                        const dateStr = String(a.data_agendamento || '').split('T')[0];
-                                        const horario = `${a.hora_inicio || ''} - ${a.hora_fim || ''}`;
-                                        const clientName = (a as any).cliente_nome || (a as any).clienteNome || `Cliente #${a.cliente_id}`;
-                                        const isClube = (a as any).coberto_clube === true;
-                                        return (
-                                            <div
-                                                key={a.id}
-                                                className="flex items-center justify-between gap-3 border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
-                                                onClick={() => handleOpenPendente(a.id)}
-                                                role="button"
-                                                tabIndex={0}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === ' ') {
-                                                        e.preventDefault();
-                                                        handleOpenPendente(a.id);
-                                                    }
-                                                }}
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
-                                                        <span>#{a.numero_agendamento || a.id} {clientName}</span>
-                                                        {isClube && (
-                                                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5 text-[11px] font-semibold flex-shrink-0">
-                                                                <Crown className="h-3 w-3" />
-                                                                Clube
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">{dateStr} | {horario}</div>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    <button
-                                                        className="px-3 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleOpenPendente(a.id);
-                                                        }}
-                                                    >
-                                                        Editar
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>,
-                portalRoot
-            )}
+            <PendingAppointmentsDrawer
+                isOpen={isPendingOpen}
+                onClose={() => setIsPendingOpen(false)}
+                pendentesAtrasados={pendentesAtrasados}
+                onOpenPendente={handleOpenPendente}
+            />
             
             <NewAppointmentModal
                 isOpen={isAppointmentModalOpen}
