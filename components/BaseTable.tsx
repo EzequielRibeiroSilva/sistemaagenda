@@ -127,8 +127,8 @@ export function BaseTable<T = any>({
   });
   
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="overflow-x-auto">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full max-w-full overflow-x-hidden">
+      <div className="overflow-x-auto w-full max-w-full">
         <table className={`w-full ${minWidth} text-sm table-fixed`}>
           {/* CABEÇALHO */}
           <thead className="bg-gray-50">

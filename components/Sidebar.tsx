@@ -84,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
 
   const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
+  const clampSubmenuLeft = (desiredLeft: number, submenuWidthPx: number) => {
+    if (typeof window === 'undefined') return desiredLeft;
+    const maxLeft = Math.max(0, window.innerWidth - submenuWidthPx - 8);
+    return Math.min(Math.max(8, desiredLeft), maxLeft);
+  };
+
   const handleShowClientsSubmenu = () => {
     if (hideSubmenuTimeout.current) {
         clearTimeout(hideSubmenuTimeout.current);
@@ -91,7 +97,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
     }
     if (!isCollapsed && clientsNavItemRef.current) {
         const rect = clientsNavItemRef.current.getBoundingClientRect();
-        setSubmenuPosition({ top: rect.top - 16, left: rect.right + 8 });
+        const desiredLeft = rect.right + 8;
+        const safeLeft = clampSubmenuLeft(desiredLeft, 224);
+        setSubmenuPosition({ top: rect.top - 16, left: safeLeft });
         setClientsSubmenuVisible(true);
     }
   };
@@ -109,7 +117,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
     }
     if (!isCollapsed && servicesNavItemRef.current) {
         const rect = servicesNavItemRef.current.getBoundingClientRect();
-        setServicesSubmenuPosition({ top: rect.top - 16, left: rect.right + 8 });
+        const desiredLeft = rect.right + 8;
+        const safeLeft = clampSubmenuLeft(desiredLeft, 224);
+        setServicesSubmenuPosition({ top: rect.top - 16, left: safeLeft });
         setServicesSubmenuVisible(true);
     }
   };
@@ -123,7 +133,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
   const clientsSubmenu = (
     <div
         className={`fixed w-56 bg-blue-600 text-white rounded-lg shadow-xl p-4 z-50 transform transition-all duration-200 ease-in-out ${clientsSubmenuVisible && !isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
-        style={{ top: `${submenuPosition.top}px`, left: `${submenuPosition.left}px` }}
+        style={{ top: `${submenuPosition.top}px`, left: `${submenuPosition.left}px`, maxWidth: '90vw' }}
         onMouseEnter={handleShowClientsSubmenu}
         onMouseLeave={handleHideClientsSubmenu}
       >
@@ -142,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView
   const servicesSubmenu = (
     <div
         className={`fixed w-56 bg-blue-600 text-white rounded-lg shadow-xl p-4 z-50 transform transition-all duration-200 ease-in-out ${servicesSubmenuVisible && !isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
-        style={{ top: `${servicesSubmenuPosition.top}px`, left: `${servicesSubmenuPosition.left}px` }}
+        style={{ top: `${servicesSubmenuPosition.top}px`, left: `${servicesSubmenuPosition.left}px`, maxWidth: '90vw' }}
         onMouseEnter={handleShowServicesSubmenu}
         onMouseLeave={handleHideServicesSubmenu}
       >

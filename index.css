@@ -4,11 +4,17 @@
 @tailwind components;
 @tailwind utilities;
 
+ html, body {
+   width: 100%;
+   overflow-x: hidden;
+ }
+
  html, body, #root {
    height: 100%;
    margin: 0;
    padding: 0;
-   overflow: hidden;
+   overflow-x: hidden;
+   overflow-y: hidden;
  }
 
  #root {
