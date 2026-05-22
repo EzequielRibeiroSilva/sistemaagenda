@@ -657,7 +657,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ loggedInAgentId, userRole }
     }, [currentDate, view, fetchAppointments, selectedLocationFilter, isMultiPlan, loggedInAgentId]);
 
     const handleAppointmentClick = (app: Appointment & { date: string; status?: string; clientName?: string; clientPhone?: string }) => {
-        
+        setPopover(null);
+
         // ✅ DEBUG: Verificar backendAppointments
         const backendApp = backendAppointments.find(ba => ba.id === app.id);
         
@@ -1150,7 +1151,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
             left: `${rect.left}px`,
             top: positionAbove ? `${rect.top - POPOVER_MARGIN}px` : `${rect.bottom + POPOVER_MARGIN}px`,
             transform: positionAbove ? 'translateY(-100%)' : 'translateY(0)',
-            zIndex: 50,
+            zIndex: 40,
         };
 
         setPopover({
@@ -2417,7 +2418,7 @@ const timeToPositionStyleWeek = (startTime: string | null | undefined, endTime: 
             
             {/* ✅ Portal do Popover - Renderizado fora da hierarquia do DOM */}
             {popover?.visible && popover.content && createPortal(
-                <div style={popover.style}>
+                <div className="hidden md:block" style={popover.style}>
                     <AppointmentPopover appointment={popover.content} />
                 </div>,
                 document.body
