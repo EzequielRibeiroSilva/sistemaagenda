@@ -49,6 +49,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
   const [isValidatingCupom, setIsValidatingCupom] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
 
+  const [createdAgendamentoId, setCreatedAgendamentoId] = useState<number | null>(null);
   const [pixData, setPixData] = useState<{ qr_code: string; qr_code_copy: string; expires_at: string } | null>(null);
   const [pixRemainingSeconds, setPixRemainingSeconds] = useState<number | null>(null);
   const [pixExpired, setPixExpired] = useState(false);
@@ -112,6 +113,44 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
     const intervalId = window.setInterval(tick, 1000);
     return () => window.clearInterval(intervalId);
   }, [pixData?.expires_at, currentStep]);
+
+  useEffect(() => {
+    if (currentStep !== 11) return;
+    if (!createdAgendamentoId) return;
+    if (!clientPhone) return;
+    if (pixExpired) return;
+
+    let cancelled = false;
+
+    const telefoneLimpo = clientPhone.trim().replace(/\D/g, '');
+    if (!telefoneLimpo) return;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/public/agendamento/${createdAgendamentoId}?telefone=${encodeURIComponent(telefoneLimpo)}`
+        );
+        const data = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (!response.ok || !data?.success) return;
+
+        const paymentStatus = String(data?.data?.pagamento?.status || '').trim().toUpperCase();
+        if (paymentStatus === 'APPROVED') {
+          setPixData(null);
+          setCurrentStep(10);
+        }
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    checkStatus();
+    const intervalId = window.setInterval(checkStatus, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [currentStep, createdAgendamentoId, clientPhone, pixExpired]);
 
   useEffect(() => {
     if (bookingSubmitError) {
@@ -406,6 +445,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
       setSelectedLocationId(null);
       setTempSelectedLocationId(null);
 
+      setCreatedAgendamentoId(null);
       setPixData(null);
       setPixRemainingSeconds(null);
       setPixExpired(false);
@@ -1815,6 +1855,10 @@ const BookingPage: React.FC<BookingPageProps> = ({ isPreview = false, onExitPrev
         setAssinaturaInfo(null);
         
         const pix = (agendamentoCriado as any)?.pix;
+        const agendamentoIdCriado = Number((agendamentoCriado as any)?.agendamento_id);
+        if (!Number.isNaN(agendamentoIdCriado) && agendamentoIdCriado > 0) {
+          setCreatedAgendamentoId(agendamentoIdCriado);
+        }
         if (pix && pix.qr_code && pix.qr_code_copy && pix.expires_at) {
           setPixData({
             qr_code: String(pix.qr_code),

@@ -2716,6 +2716,12 @@ class PublicBookingController {
         .join('servicos_extras', 'agendamento_servicos_extras.servico_extra_id', 'servicos_extras.id')
         .select('servicos_extras.id', 'servicos_extras.nome', 'servicos_extras.preco', 'servicos_extras.duracao_minutos');
 
+      const ultimoPagamento = await this.agendamentoModel.db('agendamento_pagamentos')
+        .where('agendamento_id', id)
+        .orderBy('id', 'desc')
+        .select('id', 'status', 'mp_payment_id', 'amount', 'external_reference', 'expires_at', 'created_at', 'updated_at')
+        .first();
+
       // Montar resposta
       const response = {
         id: agendamento.id,
@@ -2750,7 +2756,19 @@ class PublicBookingController {
           nome: e.nome,
           preco: parseFloat(e.preco),
           duracao_minutos: e.duracao_minutos
-        }))
+        })),
+        pagamento: ultimoPagamento
+          ? {
+              id: ultimoPagamento.id,
+              status: ultimoPagamento.status,
+              mp_payment_id: ultimoPagamento.mp_payment_id,
+              amount: parseFloat(ultimoPagamento.amount),
+              external_reference: ultimoPagamento.external_reference,
+              expires_at: ultimoPagamento.expires_at,
+              created_at: ultimoPagamento.created_at,
+              updated_at: ultimoPagamento.updated_at
+            }
+          : null
       };
 
       res.json({
