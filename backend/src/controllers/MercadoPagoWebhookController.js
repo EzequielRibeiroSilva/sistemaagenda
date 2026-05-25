@@ -11,6 +11,19 @@ class MercadoPagoWebhookController {
     this.whatsAppService = new WhatsAppService();
   }
 
+  async resolveIntegracaoByMpUserId(mpUserId, trx = null) {
+    const mpId = mpUserId != null ? String(mpUserId).trim() : null;
+    if (!mpId) return null;
+
+    const q = trx || db;
+    const integracao = await q('integracoes_mercadopago')
+      .where({ mp_user_id: mpId, status: 'CONNECTED' })
+      .select('id', 'unidade_id', 'usuario_id', 'mp_user_id', 'status')
+      .first();
+
+    return integracao || null;
+  }
+
   async resolveUnidadeIdForPaymentId(paymentId) {
     const mpPaymentId = paymentId != null ? String(paymentId) : null;
     if (!mpPaymentId) return null;
@@ -339,11 +352,19 @@ class MercadoPagoWebhookController {
       const xRequestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']) : null;
       const xSignature = req.headers['x-signature'] ? String(req.headers['x-signature']) : null;
 
+      const mpUserIdFromWebhook = payload?.user_id != null ? String(payload.user_id) : null;
+
       eventMetaForUpdate = { topic, action, resourceId, xRequestId };
 
       const signatureResult = this.validateSignature(req);
-      if (!signatureResult.ok) {
-        // Importante para troubleshooting: registrar tentativa mesmo com assinatura inválida.
+
+      const integracaoByMpUserId = mpUserIdFromWebhook
+        ? await this.resolveIntegracaoByMpUserId(mpUserIdFromWebhook)
+        : null;
+
+      const allowWithoutValidSignature = Boolean(integracaoByMpUserId && integracaoByMpUserId.unidade_id);
+
+      if (!signatureResult.ok && !allowWithoutValidSignature) {
         await db('mercadopago_webhook_events')
           .insert({
             topic,
@@ -385,6 +406,14 @@ class MercadoPagoWebhookController {
       let payment = null;
       let preapproval = null;
 
+      let accessTokenFromWebhook = null;
+      let unidadeIdFromWebhook = null;
+
+      if (integracaoByMpUserId?.unidade_id) {
+        unidadeIdFromWebhook = Number(integracaoByMpUserId.unidade_id);
+        accessTokenFromWebhook = await this.getAccessTokenForUnidade(unidadeIdFromWebhook);
+      }
+
       // Suporte a testes internos: permitir objetos inline no payload
       if (payload?.payment && typeof payload.payment === 'object') {
         payment = payload.payment;
@@ -396,12 +425,20 @@ class MercadoPagoWebhookController {
       const topicLower = topic ? String(topic).toLowerCase() : null;
       if (topicLower === 'payment') {
         if (!payment) {
-          const unidadeIdForPayment = await this.resolveUnidadeIdForPaymentId(resourceId);
-          if (!unidadeIdForPayment) {
-            throw new Error('Não foi possível resolver unidade_id para payment_id');
+          if (!resourceId) {
+            throw new Error('payment_id ausente no payload');
           }
-          const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPayment);
-          payment = await this.fetchPayment(resourceId, accessToken);
+
+          if (accessTokenFromWebhook) {
+            payment = await this.fetchPayment(resourceId, accessTokenFromWebhook);
+          } else {
+            const unidadeIdForPayment = await this.resolveUnidadeIdForPaymentId(resourceId);
+            if (!unidadeIdForPayment) {
+              throw new Error('Não foi possível resolver unidade_id para payment_id');
+            }
+            const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPayment);
+            payment = await this.fetchPayment(resourceId, accessToken);
+          }
         }
 
         // ✅ Sprint 4 (Passo 1): Gancho de aprovação do Pix do sinal
@@ -417,13 +454,21 @@ class MercadoPagoWebhookController {
 
           if (pendingRow?.id && pendingRow?.agendamento_id) {
             await db.transaction(async (trx) => {
-              const updated = await trx('agendamento_pagamentos')
-                .where({ id: pendingRow.id, status: 'PENDING' })
-                .update({ status: 'APPROVED', updated_at: trx.fn.now() });
+              const row = await trx('agendamento_pagamentos')
+                .where({ id: pendingRow.id })
+                .forUpdate()
+                .select('id', 'agendamento_id', 'status')
+                .first();
 
-              if (updated > 0) {
+              if (row?.id && row?.agendamento_id) {
+                if (row.status === 'PENDING') {
+                  await trx('agendamento_pagamentos')
+                    .where({ id: row.id })
+                    .update({ status: 'APPROVED', updated_at: trx.fn.now() });
+                }
+
                 await trx('agendamentos')
-                  .where({ id: pendingRow.agendamento_id })
+                  .where({ id: row.agendamento_id })
                   .whereNull('deleted_at')
                   .whereNot('status', 'Cancelado')
                   .update({ status: 'Aprovado', updated_at: trx.fn.now() });
@@ -484,12 +529,20 @@ class MercadoPagoWebhookController {
         }
       } else if (topicLower === 'preapproval' || topicLower === 'subscription') {
         if (!preapproval) {
-          const unidadeIdForPreapproval = await this.resolveUnidadeIdForPreapprovalId(resourceId);
-          if (!unidadeIdForPreapproval) {
-            throw new Error('Não foi possível resolver unidade_id para preapproval_id');
+          if (!resourceId) {
+            throw new Error('preapproval_id ausente no payload');
           }
-          const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPreapproval);
-          preapproval = await this.fetchPreapproval(resourceId, accessToken);
+
+          if (accessTokenFromWebhook) {
+            preapproval = await this.fetchPreapproval(resourceId, accessTokenFromWebhook);
+          } else {
+            const unidadeIdForPreapproval = await this.resolveUnidadeIdForPreapprovalId(resourceId);
+            if (!unidadeIdForPreapproval) {
+              throw new Error('Não foi possível resolver unidade_id para preapproval_id');
+            }
+            const accessToken = await this.getAccessTokenForUnidade(unidadeIdForPreapproval);
+            preapproval = await this.fetchPreapproval(resourceId, accessToken);
+          }
         }
       } else {
         // Tópico desconhecido: ainda assim tentamos tratar se vier com IDs reconhecíveis
@@ -522,6 +575,20 @@ class MercadoPagoWebhookController {
       const preapprovalIdFinal =
         (preapproval?.id ? String(preapproval.id) : null) ||
         (payment ? this.derivePreapprovalIdFromPayment(payment) : null);
+
+      if (allowWithoutValidSignature && !signatureResult.ok) {
+        if (!payment && !preapproval) {
+          await db('mercadopago_webhook_events')
+            .modify((qb) => this.buildEventWhereClause(qb, { topic, action, resourceId, xRequestId }))
+            .orderBy('id', 'desc')
+            .update({
+              processed_at: new Date(),
+              processing_error: 'Assinatura inválida e recurso não pôde ser consultado via OAuth'
+            });
+
+          return res.status(401).json({ success: false, error: 'Webhook não autorizado' });
+        }
+      }
 
       const payerEmail = this.derivePayerEmail({ preapproval, payment });
       const resolveResult = await this.resolveCliente({ preapprovalId: preapprovalIdFinal, payerEmail });

@@ -6,6 +6,7 @@ class MercadoPagoOAuthService {
   constructor() {
     this.authorizationBaseUrl = 'https://auth.mercadopago.com.br/authorization';
     this.tokenUrl = 'https://api.mercadopago.com/oauth/token';
+    this.webhooksUrl = 'https://api.mercadopago.com/v1/webhooks';
   }
 
   readEnv(name) {
@@ -106,6 +107,41 @@ class MercadoPagoOAuthService {
     return json;
   }
 
+  async registerWebhook({ accessToken, unidadeId, mpUserId }) {
+    const token = accessToken != null ? String(accessToken).trim() : null;
+    if (!token) {
+      throw new Error('Access token ausente para registrar webhook');
+    }
+
+    const payload = {
+      url: 'https://app.tally.com.br/api/webhooks/mercadopago',
+      events: ['payment', 'plan', 'subscription']
+    };
+
+    const resp = await fetch(this.webhooksUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      const json = await resp.json().catch(() => null);
+      const msg = json?.message || json?.error || `HTTP ${resp.status}`;
+      const err = new Error(`Falha ao registrar webhook no Mercado Pago: ${msg}`);
+      err.httpStatus = resp.status;
+      err.mpError = msg;
+      err.unidadeId = unidadeId;
+      err.mpUserId = mpUserId;
+      throw err;
+    }
+
+    const json = await resp.json().catch(() => null);
+    return json;
+  }
+
   /**
    * Troca code por tokens, criptografa e faz upsert em integracoes_mercadopago.
    *
@@ -198,6 +234,26 @@ class MercadoPagoOAuthService {
       mp_user_id: mpUserId,
       status: 'CONNECTED'
     });
+
+    try {
+      await this.registerWebhook({
+        accessToken,
+        unidadeId: tenant.unidadeId,
+        mpUserId
+      });
+
+      logger.log('✅ [MercadoPagoOAuthService] Webhook registrado no Mercado Pago', {
+        unidade_id: tenant.unidadeId,
+        mp_user_id: mpUserId
+      });
+    } catch (error) {
+      logger.warn('⚠️ [MercadoPagoOAuthService] Não foi possível registrar webhook automaticamente (prosseguindo):', {
+        unidade_id: tenant.unidadeId,
+        mp_user_id: mpUserId,
+        httpStatus: error?.httpStatus,
+        message: error?.message
+      });
+    }
 
     return {
       success: true,
