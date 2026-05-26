@@ -5,7 +5,7 @@ const fs = require('fs');
 // Carregar .env da raiz do projeto (repo) primeiro.
 // Se o processo estiver rodando a partir de /backend, o dotenv padrão procuraria /backend/.env e falharia.
 const backendEnvPath = path.resolve(__dirname, '../../.env');
-dotenv.config({ path: backendEnvPath, override: true });
+dotenv.config({ path: backendEnvPath, override: false });
 
 // Diagnóstico/garantia: se a criptografia é exigida no load-time, o .env precisa estar carregado aqui.
 // Se o arquivo existe mas a variável não está presente, falhar com mensagem clara.
