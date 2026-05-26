@@ -35,16 +35,12 @@ git pull origin master
 # 2. Verificar mudanças
 git log -1 --stat
 
-# 3. Build do frontend (se houver mudanças no frontend)
+# 3. Build (se houver mudanças no frontend ou backend)
 docker compose -f docker-compose.prod.yml --env-file .env.prod build \
-  --build-arg VITE_API_BASE_URL=https://app.tally.com.br/api \
-  frontend_app
+  --build-arg VITE_API_BASE_URL=https://app.tally.com.br/api
 
-# 4. Build do backend (se houver mudanças no backend)
-docker compose -f docker-compose.prod.yml --env-file .env.prod build backend
-
-# 5. Restart dos containers
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+# 4. Restart dos containers
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate
 
 # 6. Aguardar containers ficarem healthy (30-60 segundos)
 sleep 30
