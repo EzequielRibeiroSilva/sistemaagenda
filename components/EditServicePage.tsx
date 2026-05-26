@@ -179,9 +179,31 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
 
     const { token, isAuthenticated } = useAuth();
 
-    type ProdutoRow = { id: number; nome: string; marca?: string | null; unidade_medida?: string | null };
+    const effectiveServiceId = serviceId || localStorage.getItem('tally_editing_service_id');
+
+    useEffect(() => {
+        if (serviceId) {
+            localStorage.setItem('tally_editing_service_id', String(serviceId));
+        }
+    }, [serviceId]);
+
+    type ProdutoRow = {
+        id: number;
+        nome: string;
+        marca?: string | null;
+        unidade_medida?: string | null;
+        uom_consumo?: string | null;
+        tipo_item?: string | null;
+    };
     const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
     const [insumos, setInsumos] = useState<Array<{ produto_id: string; quantidade: string }>>([]);
+
+    const produtosInsumos = useMemo(() => {
+        return (produtos || []).filter((p) => {
+            const tipo = String(p?.tipo_item || '').toUpperCase();
+            return tipo === 'CONSUMO' || tipo === 'AMBOS';
+        });
+    }, [produtos]);
 
     // Estados do formulário
     const [nome, setNome] = useState('');
@@ -212,7 +234,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         let isMounted = true;
 
         const loadService = async () => {
-            if (!serviceId) {
+            if (!effectiveServiceId) {
                 setLoadingService(false);
                 return;
             }
@@ -221,7 +243,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                 setLoadingService(true);
                 setSubmitError(null);
 
-                const service = await fetchService(Number(serviceId));
+                const service = await fetchService(Number(effectiveServiceId));
 
                 if (isMounted && service) {
                     setNome(service.nome);
@@ -254,7 +276,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         return () => {
             isMounted = false;
         };
-    }, [serviceId, fetchService]);
+    }, [effectiveServiceId, fetchService]);
 
     useEffect(() => {
         let cancelled = false;
@@ -287,7 +309,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
     }, [isAuthenticated, token]);
 
     useEffect(() => {
-        if (!serviceId) {
+        if (!effectiveServiceId) {
             setInsumos([]);
             return;
         }
@@ -297,7 +319,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
 
         const loadInsumos = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/servicos/${serviceId}/insumos`, {
+                const res = await fetch(`${API_BASE_URL}/servicos/${effectiveServiceId}/insumos`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -331,7 +353,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
         return () => {
             cancelled = true;
         };
-    }, [serviceId, isAuthenticated, token]);
+    }, [effectiveServiceId, isAuthenticated, token]);
 
     // ✅ CORRIGIDO: Configurar agentes selecionados quando agents E loadedService estiverem prontos
     useEffect(() => {
@@ -457,7 +479,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                     .filter((i) => Number.isFinite(i.produto_id) && i.produto_id > 0 && Number.isFinite(i.quantidade) && i.quantidade > 0)
             };
 
-            const result = await updateService(Number(serviceId), serviceData);
+            const result = await updateService(Number(effectiveServiceId), serviceData);
 
             if (result.success) {
                 toast.success('Serviço Atualizado!', `As alterações no serviço "${nome}" foram salvas com sucesso.`);
@@ -697,10 +719,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                          {extraServices.length === 0 ? (
                             <div className="text-center py-8">
                                 <p className="text-gray-500 text-sm">
-                                    ⭐ Nenhum serviço extra encontrado.
-                                </p>
-                                <p className="text-gray-400 text-xs mt-1">
-                                    Cadastre serviços extras primeiro para associá-los aos serviços principais.
+                                    Nenhum serviço extra encontrado
                                 </p>
                             </div>
                          ) : (
@@ -743,7 +762,9 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                         ) : (
                             <div className="mt-4 space-y-3">
                                 {insumos.map((row, idx) => {
-                                    const unidadeMedida = produtos.find((p) => String(p.id) === String(row.produto_id))?.unidade_medida;
+                                    const produtoSelecionado = produtosInsumos.find((p) => String(p.id) === String(row.produto_id));
+                                    const uomConsumo = (produtoSelecionado?.uom_consumo || '').trim();
+                                    const uomConsumoLabel = uomConsumo ? uomConsumo.toLowerCase() : '';
 
                                     return (
                                         <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
@@ -759,7 +780,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                                                         className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
                                                     >
                                                         <option value="">Selecione...</option>
-                                                        {produtos.map((p) => (
+                                                        {produtosInsumos.map((p) => (
                                                             <option key={p.id} value={String(p.id)}>
                                                                 {p.nome}{p.marca ? ` - ${p.marca}` : ''}
                                                             </option>
@@ -780,7 +801,7 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                                                         type="number"
                                                         step="0.001"
                                                         min="0"
-                                                        placeholder="Ex: 0.050"
+                                                        placeholder="Ex: 10"
                                                         value={row.quantidade}
                                                         onChange={(e) => {
                                                             const raw = e.target.value;
@@ -792,11 +813,11 @@ const EditServicePage: React.FC<EditServicePageProps> = ({ setActiveView, servic
                                                             const clamped = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
                                                             setInsumos((prev) => prev.map((p, i) => (i === idx ? { ...p, quantidade: String(clamped) } : p)));
                                                         }}
-                                                        className={`w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${unidadeMedida ? 'pr-16' : ''}`}
+                                                        className={`w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${uomConsumoLabel ? 'pr-16' : ''}`}
                                                     />
-                                                    {unidadeMedida && (
+                                                    {uomConsumoLabel && (
                                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
-                                                            {unidadeMedida}
+                                                            {uomConsumoLabel}
                                                         </span>
                                                     )}
                                                 </div>

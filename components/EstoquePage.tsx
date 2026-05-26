@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 import { useCalendarData } from '../hooks/useCalendarData';
-import { Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash } from './Icons';
+import { Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash, Package } from './Icons';
+import FormSection from './common/FormSection';
+import EmptyState from './common/EmptyState';
+import ProductCombobox from './common/ProductCombobox';
 
 type EstoqueTab = 'Produtos' | 'Inventário' | 'Movimentações' | 'Vendas';
 
@@ -195,6 +198,51 @@ const EstoquePage: React.FC = () => {
     setCurrentPage(1);
   }, [activeTab, selectedLocationId]);
 
+  const openNovoProdutoDrawer = () => {
+    setNovoProdutoError(null);
+    setEditProdutoId(null);
+    setNovoProdutoNome('');
+    setNovoProdutoMarca('');
+    setNovoProdutoUnidadeMedida('UN');
+    setNovoProdutoUomConsumo('ML');
+    setNovoProdutoTipoItem('VENDA');
+    setNovoProdutoFatorConversao('');
+    setNovoProdutoPrecoCusto('0');
+    setNovoProdutoPrecoVenda('0');
+    setNovoProdutoEstoqueMinimo('');
+    setNovoProdutoComissaoPercentual('0');
+    setNovoProdutoCategoriaId(null);
+    setNovoProdutoCategoriaNome('');
+    setNovoProdutoOpen(true);
+  };
+
+  const moneyDigitsToNumber = (digits: string) => {
+    const onlyDigits = String(digits ?? '').replace(/\D/g, '');
+    const cents = onlyDigits ? Number(onlyDigits) : 0;
+    return cents / 100;
+  };
+
+  const numberToMoneyDigits = (value: unknown) => {
+    const n = Number(value);
+    const safe = Number.isFinite(n) ? n : 0;
+    return String(Math.max(0, Math.round(safe * 100)));
+  };
+
+  const formatMoneyFromDigits = (digits: string) => {
+    return formatMoneyBR(moneyDigitsToNumber(digits));
+  };
+
+  const openEntradaDrawer = () => {
+    setEntradaError(null);
+    setEntradaProdutoId('');
+    setEntradaQuantidade('');
+    setEntradaMotivo('');
+    setEntradaDestino('VENDA');
+    setEntradaPrecoCustoEntrada('0');
+    setEntradaQuantidadeWarning(null);
+    setEntradaOpen(true);
+  };
+
   const makeAuthenticatedRequest = async (url: string, options?: { method?: string; body?: any }) => {
     if (!isAuthenticated || !token) {
       throw new Error('Usuário não autenticado');
@@ -228,6 +276,7 @@ const EstoquePage: React.FC = () => {
   const [novoProdutoNome, setNovoProdutoNome] = useState('');
   const [novoProdutoMarca, setNovoProdutoMarca] = useState('');
   const [novoProdutoUnidadeMedida, setNovoProdutoUnidadeMedida] = useState<'UN' | 'ML' | 'G'>('UN');
+  const [novoProdutoUomConsumo, setNovoProdutoUomConsumo] = useState<'UN' | 'ML' | 'G'>('ML');
   const [novoProdutoTipoItem, setNovoProdutoTipoItem] = useState<'VENDA' | 'CONSUMO' | 'AMBOS'>('VENDA');
   const [novoProdutoFatorConversao, setNovoProdutoFatorConversao] = useState('');
   const [novoProdutoPrecoCusto, setNovoProdutoPrecoCusto] = useState('');
@@ -348,6 +397,7 @@ const EstoquePage: React.FC = () => {
   const [entradaQuantidade, setEntradaQuantidade] = useState('');
   const [entradaMotivo, setEntradaMotivo] = useState('');
   const [entradaDestino, setEntradaDestino] = useState<'VENDA' | 'CONSUMO'>('VENDA');
+  const [entradaPrecoCustoEntrada, setEntradaPrecoCustoEntrada] = useState('');
   const [entradaQuantidadeWarning, setEntradaQuantidadeWarning] = useState<string | null>(null);
   const [entradaSaving, setEntradaSaving] = useState(false);
   const [entradaError, setEntradaError] = useState<string | null>(null);
@@ -370,10 +420,6 @@ const EstoquePage: React.FC = () => {
   }, [entradaOpen, selectedEntradaProduto?.tipo_item]);
 
   useEffect(() => {
-    if (entradaDestino !== 'VENDA') {
-      setEntradaQuantidadeWarning(null);
-      return;
-    }
     const qty = Number(entradaQuantidade);
     if (entradaQuantidade.trim() === '') {
       setEntradaQuantidadeWarning(null);
@@ -384,7 +430,7 @@ const EstoquePage: React.FC = () => {
       return;
     }
     if (!Number.isInteger(qty)) {
-      setEntradaQuantidadeWarning('Entradas para prateleira devem ser em unidades inteiras');
+      setEntradaQuantidadeWarning('Entradas devem ser em unidades inteiras');
     } else {
       setEntradaQuantidadeWarning(null);
     }
@@ -648,13 +694,7 @@ const EstoquePage: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               type="button"
               onClick={() => {
-                setEntradaError(null);
-                setEntradaProdutoId('');
-                setEntradaQuantidade('');
-                setEntradaMotivo('');
-                setEntradaDestino('VENDA');
-                setEntradaQuantidadeWarning(null);
-                setEntradaOpen(true);
+                openEntradaDrawer();
               }}
               disabled={!selectedLocationId}
             >
@@ -668,20 +708,7 @@ const EstoquePage: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               type="button"
               onClick={() => {
-                setNovoProdutoError(null);
-                setEditProdutoId(null);
-                setNovoProdutoNome('');
-                setNovoProdutoMarca('');
-                setNovoProdutoUnidadeMedida('UN');
-                setNovoProdutoTipoItem('VENDA');
-                setNovoProdutoFatorConversao('');
-                setNovoProdutoPrecoCusto('');
-                setNovoProdutoPrecoVenda('');
-                setNovoProdutoEstoqueMinimo('');
-                setNovoProdutoComissaoPercentual('0');
-                setNovoProdutoCategoriaId(null);
-                setNovoProdutoCategoriaNome('');
-                setNovoProdutoOpen(true);
+                openNovoProdutoDrawer();
               }}
             >
               <Plus className="w-4 h-4" />
@@ -722,8 +749,14 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
-          if (entradaDestino === 'VENDA' && !Number.isInteger(qty)) {
-            setEntradaError('Entradas para prateleira devem ser em unidades inteiras');
+          const precoCustoEntrada = moneyDigitsToNumber(entradaPrecoCustoEntrada);
+          if (!Number.isFinite(precoCustoEntrada) || precoCustoEntrada <= 0) {
+            setEntradaError('Valor unitário da compra inválido');
+            return;
+          }
+
+          if (!Number.isInteger(qty)) {
+            setEntradaError('Entradas devem ser em unidades inteiras');
             return;
           }
 
@@ -736,6 +769,7 @@ const EstoquePage: React.FC = () => {
                 produto_id: produtoId,
                 quantidade: qty,
                 destino: entradaDestino,
+                preco_custo_entrada: precoCustoEntrada,
                 motivo: entradaMotivo.trim() ? entradaMotivo.trim() : null
               }
             });
@@ -788,104 +822,119 @@ const EstoquePage: React.FC = () => {
                   </div>
                 )}
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Produto</label>
-                  <div className="relative">
-                    <select
-                      value={entradaProdutoId}
-                      onChange={(e) => setEntradaProdutoId(e.target.value)}
-                      className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={entradaSaving}
-                    >
-                      <option value="">Selecione...</option>
-                      {produtos.map((p) => (
-                        <option key={p.id} value={String(p.id)}>
-                          {p.nome}{p.marca ? ` - ${p.marca}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                <FormSection title="Dados do Item">
+                  <div className="space-y-4">
+                    <div>
+                      <ProductCombobox
+                        label="Produto"
+                        items={produtos}
+                        selectedId={entradaProdutoId}
+                        onSelect={setEntradaProdutoId}
+                        disabled={entradaSaving}
+                        placeholder="Busque pelo nome ou marca…"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Destino da Mercadoria</label>
+
+                      {(() => {
+                        const tipoItem = String(selectedEntradaProduto?.tipo_item || 'VENDA').toUpperCase();
+                        const allowVenda = tipoItem !== 'CONSUMO';
+                        const allowConsumo = tipoItem !== 'VENDA';
+
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'VENDA' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowVenda ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                              <input
+                                type="radio"
+                                name="destino"
+                                value="VENDA"
+                                checked={entradaDestino === 'VENDA'}
+                                onChange={() => setEntradaDestino('VENDA')}
+                                disabled={!allowVenda || entradaSaving}
+                              />
+                              <div>
+                                <div className="text-sm font-semibold text-gray-800">Prateleira (Venda)</div>
+                                <div className="text-xs text-gray-500">Abastece unidades inteiras</div>
+                              </div>
+                            </label>
+
+                            <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'CONSUMO' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowConsumo ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                              <input
+                                type="radio"
+                                name="destino"
+                                value="CONSUMO"
+                                checked={entradaDestino === 'CONSUMO'}
+                                onChange={() => setEntradaDestino('CONSUMO')}
+                                disabled={!allowConsumo || entradaSaving}
+                              />
+                              <div>
+                                <div className="text-sm font-semibold text-gray-800">Bancada (Uso)</div>
+                                <div className="text-xs text-gray-500">Abastece volume técnico</div>
+                              </div>
+                            </label>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
-                </div>
+                </FormSection>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Destino da Mercadoria</label>
+                <FormSection title="Detalhes da Entrada">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Valor Unitário da Compra</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyFromDigits(entradaPrecoCustoEntrada)}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '');
+                          setEntradaPrecoCustoEntrada(digits || '0');
+                        }}
+                        placeholder="Valor pago na unidade/frasco"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        disabled={entradaSaving}
+                      />
+                    </div>
 
-                  {(() => {
-                    const tipoItem = String(selectedEntradaProduto?.tipo_item || 'VENDA').toUpperCase();
-                    const allowVenda = tipoItem !== 'CONSUMO';
-                    const allowConsumo = tipoItem !== 'VENDA';
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'VENDA' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowVenda ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input
-                            type="radio"
-                            name="destino"
-                            value="VENDA"
-                            checked={entradaDestino === 'VENDA'}
-                            onChange={() => setEntradaDestino('VENDA')}
-                            disabled={!allowVenda || entradaSaving}
-                          />
-                          <div>
-                            <div className="text-sm font-semibold text-gray-800">Prateleira (Venda)</div>
-                            <div className="text-xs text-gray-500">Abastece unidades inteiras</div>
-                          </div>
-                        </label>
-
-                        <label className={`flex items-center gap-2 p-3 rounded-lg border ${entradaDestino === 'CONSUMO' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} ${!allowConsumo ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input
-                            type="radio"
-                            name="destino"
-                            value="CONSUMO"
-                            checked={entradaDestino === 'CONSUMO'}
-                            onChange={() => setEntradaDestino('CONSUMO')}
-                            disabled={!allowConsumo || entradaSaving}
-                          />
-                          <div>
-                            <div className="text-sm font-semibold text-gray-800">Bancada (Uso)</div>
-                            <div className="text-xs text-gray-500">Abastece volume técnico</div>
-                          </div>
-                        </label>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Quantidade</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={entradaQuantidade}
+                          onChange={(e) => setEntradaQuantidade(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                          step="1"
+                          min="0"
+                          disabled={entradaSaving}
+                        />
+                        {selectedEntradaProduto?.unidade_medida ? (
+                          <span className="text-sm text-gray-500 whitespace-nowrap">
+                            {String(selectedEntradaProduto.unidade_medida)}
+                          </span>
+                        ) : null}
                       </div>
-                    );
-                  })()}
-                </div>
+                      {entradaQuantidadeWarning && (
+                        <p className="text-xs text-amber-600 mt-1">{entradaQuantidadeWarning}</p>
+                      )}
+                    </div>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Quantidade</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={entradaQuantidade}
-                      onChange={(e) => setEntradaQuantidade(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      step={entradaDestino === 'VENDA' ? '1' : '0.001'}
-                      min="0"
-                      disabled={entradaSaving}
-                    />
-                    {entradaDestino === 'CONSUMO' && (
-                      <span className="text-sm text-gray-500 whitespace-nowrap">
-                        {String(selectedEntradaProduto?.uom_consumo || selectedEntradaProduto?.unidade_medida || '').toLowerCase()}
-                      </span>
-                    )}
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Motivo</label>
+                      <input
+                        type="text"
+                        value={entradaMotivo}
+                        onChange={(e) => setEntradaMotivo(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        placeholder="Compra Fornecedor"
+                        disabled={entradaSaving}
+                      />
+                    </div>
                   </div>
-                  {entradaQuantidadeWarning && (
-                    <p className="text-xs text-amber-600 mt-1">{entradaQuantidadeWarning}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Motivo</label>
-                  <input
-                    type="text"
-                    value={entradaMotivo}
-                    onChange={(e) => setEntradaMotivo(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    placeholder="Compra Fornecedor"
-                    disabled={entradaSaving}
-                  />
-                </div>
+                </FormSection>
               </div>
 
               <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
@@ -1038,13 +1087,13 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
-          const preco = novoProdutoPrecoCusto.trim() === '' ? 0 : Number(novoProdutoPrecoCusto);
+          const preco = moneyDigitsToNumber(novoProdutoPrecoCusto);
           if (!Number.isFinite(preco) || preco < 0) {
             setNovoProdutoError('Preço de custo médio inválido');
             return;
           }
 
-          const precoVenda = novoProdutoPrecoVenda.trim() === '' ? 0 : Number(novoProdutoPrecoVenda);
+          const precoVenda = moneyDigitsToNumber(novoProdutoPrecoVenda);
           if (!Number.isFinite(precoVenda) || precoVenda < 0) {
             setNovoProdutoError('Preço de venda inválido');
             return;
@@ -1063,7 +1112,17 @@ const EstoquePage: React.FC = () => {
             }
           }
 
-          const uomConsumoFinal = shouldHaveRendimento ? novoProdutoUnidadeMedida : null;
+          const precoCustoMedioFinal =
+            (tipoItemFinal === 'CONSUMO' || tipoItemFinal === 'AMBOS') && shouldHaveRendimento
+              ? Number((preco / (fatorConversaoFinal as number)).toFixed(6))
+              : preco;
+
+          if (!Number.isFinite(precoCustoMedioFinal) || precoCustoMedioFinal < 0) {
+            setNovoProdutoError('Preço de custo médio inválido');
+            return;
+          }
+
+          const uomConsumoFinal = shouldHaveRendimento ? novoProdutoUomConsumo : novoProdutoUnidadeMedida;
 
           const estoqueMinimo = novoProdutoEstoqueMinimo.trim() === '' ? 0 : Number(novoProdutoEstoqueMinimo);
           if (!Number.isFinite(estoqueMinimo) || estoqueMinimo < 0) {
@@ -1071,11 +1130,23 @@ const EstoquePage: React.FC = () => {
             return;
           }
 
-          const comissao = novoProdutoComissaoPercentual.trim() === '' ? 0 : Number(novoProdutoComissaoPercentual);
+          const comissaoRaw = novoProdutoComissaoPercentual;
+          if (comissaoRaw.includes('.') || comissaoRaw.includes(',')) {
+            setNovoProdutoError('A comissão deve ser um valor inteiro');
+            return;
+          }
+          const comissao = comissaoRaw.trim() === '' ? 0 : Number(comissaoRaw);
           if (!Number.isFinite(comissao) || comissao < 0) {
             setNovoProdutoError('Comissão inválida');
             return;
           }
+          if (!Number.isInteger(comissao)) {
+            setNovoProdutoError('A comissão deve ser um valor inteiro');
+            return;
+          }
+
+          const precoVendaFinal = tipoItemFinal === 'CONSUMO' ? 0 : precoVenda;
+          const comissaoFinal = tipoItemFinal === 'CONSUMO' ? 0 : comissao;
 
           setNovoProdutoSaving(true);
 
@@ -1117,10 +1188,10 @@ const EstoquePage: React.FC = () => {
                   tipo_item: tipoItemFinal,
                   fator_conversao: shouldHaveRendimento ? fatorConversaoFinal : null,
                   uom_consumo: uomConsumoFinal,
-                  preco_custo_medio: preco,
-                  preco_venda: precoVenda,
+                  preco_custo_medio: precoCustoMedioFinal,
+                  preco_venda: precoVendaFinal,
                   estoque_minimo: estoqueMinimo,
-                  comissao_percentual: comissao,
+                  comissao_percentual: comissaoFinal,
                   categoria_id: categoriaId
                 }
               });
@@ -1134,10 +1205,10 @@ const EstoquePage: React.FC = () => {
                   tipo_item: tipoItemFinal,
                   fator_conversao: shouldHaveRendimento ? fatorConversaoFinal : null,
                   uom_consumo: uomConsumoFinal,
-                  preco_custo_medio: preco,
-                  preco_venda: precoVenda,
+                  preco_custo_medio: precoCustoMedioFinal,
+                  preco_venda: precoVendaFinal,
                   estoque_minimo: estoqueMinimo,
-                  comissao_percentual: comissao,
+                  comissao_percentual: comissaoFinal,
                   categoria_id: categoriaId
                 }
               });
@@ -1192,173 +1263,224 @@ const EstoquePage: React.FC = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Nome</label>
+                <FormSection title="Identificação">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Nome</label>
+                      <input
+                        type="text"
+                        value={novoProdutoNome}
+                        onChange={(e) => setNovoProdutoNome(e.target.value)}
+                        placeholder="Nome do produto"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        disabled={novoProdutoSaving}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Marca</label>
+                      <input
+                        type="text"
+                        value={novoProdutoMarca}
+                        onChange={(e) => setNovoProdutoMarca(e.target.value)}
+                        placeholder="Marca (opcional)"
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        disabled={novoProdutoSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Categoria</label>
                     <input
                       type="text"
-                      value={novoProdutoNome}
-                      onChange={(e) => setNovoProdutoNome(e.target.value)}
-                      placeholder="Nome do produto"
+                      value={novoProdutoCategoriaNome}
+                      onChange={(e) => {
+                        setNovoProdutoCategoriaNome(e.target.value);
+                        setNovoProdutoCategoriaId(null);
+                      }}
+                      list="categorias-datalist"
                       className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
                       disabled={novoProdutoSaving}
                     />
+                    <datalist id="categorias-datalist">
+                      {categorias.map((c) => (
+                        <option key={c.id} value={c.nome} />
+                      ))}
+                    </datalist>
+                    {categoriasLoading && (
+                      <p className="text-xs text-gray-500 mt-1">Carregando categorias...</p>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Marca</label>
-                    <input
-                      type="text"
-                      value={novoProdutoMarca}
-                      onChange={(e) => setNovoProdutoMarca(e.target.value)}
-                      placeholder="Marca (opcional)"
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      disabled={novoProdutoSaving}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Finalidade</label>
+                      <div className="relative">
+                        <select
+                          value={novoProdutoTipoItem}
+                          onChange={(e) => {
+                            const next = (e.target.value as any) as 'VENDA' | 'CONSUMO' | 'AMBOS';
+                            setNovoProdutoTipoItem(next);
+                            if (next === 'VENDA') {
+                              setNovoProdutoFatorConversao('');
+                              setNovoProdutoUomConsumo(novoProdutoUnidadeMedida);
+                            }
+                          }}
+                          className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                          disabled={novoProdutoSaving}
+                        >
+                          <option value="VENDA">Venda</option>
+                          <option value="CONSUMO">Consumo</option>
+                          <option value="AMBOS">Ambos</option>
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </FormSection>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Comissão do Vendedor (%)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={novoProdutoComissaoPercentual}
-                      onChange={(e) => setNovoProdutoComissaoPercentual(e.target.value)}
-                      placeholder="Ex: 10"
-                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                      disabled={novoProdutoSaving}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Categoria</label>
-                  <input
-                    type="text"
-                    value={novoProdutoCategoriaNome}
-                    onChange={(e) => {
-                      setNovoProdutoCategoriaNome(e.target.value);
-                      setNovoProdutoCategoriaId(null);
-                    }}
-                    list="categorias-datalist"
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    disabled={novoProdutoSaving}
-                  />
-                  <datalist id="categorias-datalist">
-                    {categorias.map((c) => (
-                      <option key={c.id} value={c.nome} />
-                    ))}
-                  </datalist>
-                  {categoriasLoading && (
-                    <p className="text-xs text-gray-500 mt-1">Carregando categorias...</p>
-                  )}
-                </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Finalidade</label>
-            <div className="relative">
-              <select
-                value={novoProdutoTipoItem}
-                onChange={(e) => {
-                  const next = (e.target.value as any) as 'VENDA' | 'CONSUMO' | 'AMBOS';
-                  setNovoProdutoTipoItem(next);
-                  if (next === 'VENDA') {
-                    setNovoProdutoFatorConversao('');
+                <FormSection
+                  title={
+                    novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS'
+                      ? 'Custo e Volume'
+                      : 'Precificação'
                   }
-                }}
-                className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
-                disabled={novoProdutoSaving}
-              >
-                <option value="VENDA">Venda</option>
-                <option value="CONSUMO">Consumo</option>
-                <option value="AMBOS">Ambos</option>
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-            </div>
-          </div>
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Unidade de Medida (Compra/Estoque)</label>
+                      <div className="relative">
+                        <select
+                          value={novoProdutoUnidadeMedida}
+                          onChange={(e) => {
+                            const next = e.target.value as 'UN' | 'ML' | 'G';
+                            setNovoProdutoUnidadeMedida(next);
+                            if (novoProdutoTipoItem === 'VENDA') {
+                              setNovoProdutoUomConsumo(next);
+                            }
+                          }}
+                          className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                          disabled={novoProdutoSaving}
+                        >
+                          <option value="UN">UN</option>
+                          <option value="ML">ML</option>
+                          <option value="G">G</option>
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                      </div>
+                    </div>
 
-          {(novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS') && (
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Rendimento por Unidade (ex: 150{novoProdutoUnidadeMedida === 'UN' ? '' : novoProdutoUnidadeMedida.toLowerCase()})
-              </label>
-              <input
-                type="number"
-                value={novoProdutoFatorConversao}
-                onChange={(e) => setNovoProdutoFatorConversao(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                step="0.001"
-                min="0"
-                disabled={novoProdutoSaving}
-              />
-            </div>
-          )}
-        </div>
+                    {(novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS') && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-1">Unidade de Medida (Consumo)</label>
+                        <div className="relative">
+                          <select
+                            value={novoProdutoUomConsumo}
+                            onChange={(e) => setNovoProdutoUomConsumo(e.target.value as 'UN' | 'ML' | 'G')}
+                            className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                            disabled={novoProdutoSaving}
+                          >
+                            <option value="ML">ML</option>
+                            <option value="G">G</option>
+                            <option value="UN">UN</option>
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                        </div>
+                      </div>
+                    )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Unidade de Medida</label>
-            <div className="relative">
-              <select
-                value={novoProdutoUnidadeMedida}
-                onChange={(e) => setNovoProdutoUnidadeMedida(e.target.value as 'UN' | 'ML' | 'G')}
-                className="appearance-none w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
-                disabled={novoProdutoSaving}
-              >
-                <option value="UN">UN</option>
-                <option value="ML">ML</option>
-                <option value="G">G</option>
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-            </div>
-          </div>
+                    {(novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS') && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-1">Tamanho da Embalagem (Ex: 500 para 500ml/g)</label>
+                        <input
+                          type="number"
+                          value={novoProdutoFatorConversao}
+                          onChange={(e) => setNovoProdutoFatorConversao(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                          step="0.001"
+                          min="0"
+                          disabled={novoProdutoSaving}
+                        />
+                      </div>
+                    )}
 
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Custo Médio</label>
-            <input
-              type="number"
-              value={novoProdutoPrecoCusto}
-              onChange={(e) => setNovoProdutoPrecoCusto(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-              step="0.01"
-              min="0"
-              disabled={novoProdutoSaving}
-            />
-          </div>
-        </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">
+                        {novoProdutoTipoItem === 'CONSUMO' || novoProdutoTipoItem === 'AMBOS'
+                          ? 'Preço de Custo (da Embalagem)'
+                          : 'Preço de Custo Médio'}
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyFromDigits(novoProdutoPrecoCusto)}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '');
+                          setNovoProdutoPrecoCusto(digits || '0');
+                        }}
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        disabled={novoProdutoSaving}
+                      />
+                    </div>
+                  </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Venda</label>
-            <input
-              type="number"
-              value={novoProdutoPrecoVenda}
-              onChange={(e) => setNovoProdutoPrecoVenda(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-              step="0.01"
-              min="0"
-              disabled={novoProdutoSaving}
-            />
-          </div>
+                  {novoProdutoTipoItem !== 'CONSUMO' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-1">Preço de Venda</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyFromDigits(novoProdutoPrecoVenda)}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '');
+                            setNovoProdutoPrecoVenda(digits || '0');
+                          }}
+                          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                          disabled={novoProdutoSaving}
+                        />
+                      </div>
 
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Estoque Mínimo</label>
-            <input
-              type="number"
-              value={novoProdutoEstoqueMinimo}
-              onChange={(e) => setNovoProdutoEstoqueMinimo(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-              step="0.01"
-              min="0"
-              disabled={novoProdutoSaving}
-            />
-          </div>
-        </div>
-      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-1">Comissão do Vendedor (%)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={novoProdutoComissaoPercentual}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const digits = v.replace(/\D/g, '');
+                            setNovoProdutoComissaoPercentual(digits);
+                          }}
+                          onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                          placeholder="Ex: 10"
+                          className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                          disabled={novoProdutoSaving}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </FormSection>
+
+                <FormSection title="Controle de Estoque">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-1">Estoque Mínimo</label>
+                      <input
+                        type="number"
+                        value={novoProdutoEstoqueMinimo}
+                        onChange={(e) => setNovoProdutoEstoqueMinimo(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        step="0.01"
+                        min="0"
+                        disabled={novoProdutoSaving}
+                      />
+                    </div>
+                  </div>
+                </FormSection>
+              </div>
 
       <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
         <button
@@ -1434,8 +1556,22 @@ const EstoquePage: React.FC = () => {
                   </tr>
                 ) : produtos.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-8 text-center text-gray-500">
-                      Nenhum produto encontrado
+                    <td colSpan={10} className="p-0">
+                      <EmptyState
+                        icon={<Package className="w-10 h-10" />}
+                        title="Nenhum produto cadastrado"
+                        description="Cadastre seu primeiro produto para começar a controlar entradas, consumo e vendas."
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => openNovoProdutoDrawer()}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Cadastrar Produto
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1480,11 +1616,18 @@ const EstoquePage: React.FC = () => {
                             '—'
                           ) : (
                             <span className={belowMin ? 'text-red-600 font-semibold' : 'text-gray-700'}>
-                              {formatUnitInteger(saldoAtual)}
+                              {(() => {
+                                const tipoItem = String((p as any)?.tipo_item || '').toUpperCase();
+                                const qty = formatUnitInteger(saldoAtual);
+
+                                if (tipoItem === 'VENDA') {
+                                  return qty;
+                                }
+
+                                const uom = String((p as any)?.uom_consumo || '').trim().toLowerCase();
+                                return uom ? `${qty} ${uom}` : qty;
+                              })()}
                             </span>
-                          )}
-                          {String(p.unidade_medida || '').toUpperCase() === 'UN' ? null : (
-                            <span className="text-gray-400 ml-2">{p.unidade_medida || ''}</span>
                           )}
                         </td>
                         <td className="p-3 w-64 text-gray-600 whitespace-nowrap">
@@ -1507,12 +1650,20 @@ const EstoquePage: React.FC = () => {
                                 setNovoProdutoMarca(String(p.marca || ''));
                                 const um = (p.unidade_medida as any) || 'UN';
                                 setNovoProdutoUnidadeMedida(['UN', 'ML', 'G'].includes(um) ? um : 'UN');
+                                const uomConsumo = (p.uom_consumo as any) || (['UN', 'ML', 'G'].includes(um) ? um : 'UN');
+                                setNovoProdutoUomConsumo(['UN', 'ML', 'G'].includes(uomConsumo) ? uomConsumo : 'ML');
                                 const tipoItem = String(p.tipo_item || 'VENDA').toUpperCase();
                                 setNovoProdutoTipoItem(['VENDA', 'CONSUMO', 'AMBOS'].includes(tipoItem) ? (tipoItem as any) : 'VENDA');
                                 const fc = p.fator_conversao;
                                 setNovoProdutoFatorConversao(fc === null || fc === undefined ? '' : String(fc));
-                                setNovoProdutoPrecoCusto(custo === null ? '' : String(custo));
-                                setNovoProdutoPrecoVenda(venda === null ? '' : String(venda));
+                                const fcNum = fc === null || fc === undefined ? null : Number(fc);
+                                const isConsumoOuAmbos = tipoItem === 'CONSUMO' || tipoItem === 'AMBOS';
+                                const custoEmbalagem =
+                                  isConsumoOuAmbos && custo !== null && Number.isFinite(fcNum) && (fcNum as number) > 0
+                                    ? Number((Number(custo) * (fcNum as number)).toFixed(2))
+                                    : custo;
+                                setNovoProdutoPrecoCusto(custoEmbalagem === null ? '0' : numberToMoneyDigits(custoEmbalagem));
+                                setNovoProdutoPrecoVenda(venda === null ? '0' : numberToMoneyDigits(venda));
                                 const estMin = toNumber((p as any).estoque_minimo);
                                 setNovoProdutoEstoqueMinimo(estMin === null ? '' : String(estMin));
                                 const comPerc = toNumber((p as any).comissao_percentual);
@@ -1555,7 +1706,7 @@ const EstoquePage: React.FC = () => {
             </table>
           </div>
 
-          {renderPaginationFooter(produtos.length)}
+          {produtos.length > 0 ? renderPaginationFooter(produtos.length) : null}
         </div>
       )}
 
@@ -1595,8 +1746,23 @@ const EstoquePage: React.FC = () => {
                   </tr>
                 ) : snapshot.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Nenhum saldo encontrado
+                    <td colSpan={7} className="p-0">
+                      <EmptyState
+                        icon={<Package className="w-10 h-10" />}
+                        title="Nenhum saldo encontrado"
+                        description="Quando houver entradas, os saldos aparecerão aqui."
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => openEntradaDrawer()}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!selectedLocationId}
+                          >
+                            <Plus className="w-4 h-4" />
+                            Lançar Entrada
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1656,7 +1822,7 @@ const EstoquePage: React.FC = () => {
             </table>
           </div>
 
-          {renderPaginationFooter(snapshot.length)}
+          {snapshot.length > 0 ? renderPaginationFooter(snapshot.length) : null}
         </div>
       )}
 
@@ -1717,8 +1883,23 @@ const EstoquePage: React.FC = () => {
                   </tr>
                 ) : movs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Nenhuma movimentação encontrada
+                    <td colSpan={7} className="p-0">
+                      <EmptyState
+                        icon={<Package className="w-10 h-10" />}
+                        title="Nenhuma movimentação encontrada"
+                        description="Lançamentos de entrada, saída e consumo aparecerão aqui."
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => openEntradaDrawer()}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!selectedLocationId}
+                          >
+                            <Plus className="w-4 h-4" />
+                            Lançar Entrada
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1762,7 +1943,7 @@ const EstoquePage: React.FC = () => {
             </table>
           </div>
 
-          {renderPaginationFooter(movs.length)}
+          {movs.length > 0 ? renderPaginationFooter(movs.length) : null}
         </div>
       )}
 
@@ -1802,8 +1983,12 @@ const EstoquePage: React.FC = () => {
                   </tr>
                 ) : vendas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Nenhuma venda avulsa encontrada
+                    <td colSpan={7} className="p-0">
+                      <EmptyState
+                        icon={<Package className="w-10 h-10" />}
+                        title="Nenhuma venda registrada"
+                        description="As vendas aparecerão aqui assim que forem registradas no PDV."
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1913,7 +2098,7 @@ const EstoquePage: React.FC = () => {
             </table>
           </div>
 
-          {renderPaginationFooter(vendas.length)}
+          {vendas.length > 0 ? renderPaginationFooter(vendas.length) : null}
         </div>
       )}
 

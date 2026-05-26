@@ -195,9 +195,23 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
 
     const { token, isAuthenticated } = useAuth();
 
-    type ProdutoRow = { id: number; nome: string; marca?: string | null; unidade_medida?: string | null };
+    type ProdutoRow = {
+        id: number;
+        nome: string;
+        marca?: string | null;
+        unidade_medida?: string | null;
+        uom_consumo?: string | null;
+        tipo_item?: string | null;
+    };
     const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
     const [insumos, setInsumos] = useState<Array<{ produto_id: string; quantidade: string }>>([]);
+
+    const produtosInsumos = useMemo(() => {
+        return (produtos || []).filter((p) => {
+            const tipo = String(p?.tipo_item || '').toUpperCase();
+            return tipo === 'CONSUMO' || tipo === 'AMBOS';
+        });
+    }, [produtos]);
 
     useEffect(() => {
         let cancelled = false;
@@ -658,7 +672,9 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                         ) : (
                             <div className="mt-4 space-y-3">
                                 {insumos.map((row, idx) => {
-                                    const unidadeMedida = produtos.find((p) => String(p.id) === String(row.produto_id))?.unidade_medida;
+                                    const produtoSelecionado = produtosInsumos.find((p) => String(p.id) === String(row.produto_id));
+                                    const uomConsumo = (produtoSelecionado?.uom_consumo || '').trim();
+                                    const uomConsumoLabel = uomConsumo ? uomConsumo.toLowerCase() : '';
 
                                     return (
                                         <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
@@ -674,7 +690,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                                         className="appearance-none w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 pr-8 focus:ring-blue-500 focus:border-blue-500"
                                                     >
                                                         <option value="">Selecione...</option>
-                                                        {produtos.map((p) => (
+                                                        {produtosInsumos.map((p) => (
                                                             <option key={p.id} value={String(p.id)}>
                                                                 {p.nome}{p.marca ? ` - ${p.marca}` : ''}
                                                             </option>
@@ -691,7 +707,7 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                                         type="number"
                                                         step="0.001"
                                                         min="0"
-                                                        placeholder="Ex: 0.050"
+                                                        placeholder="Ex: 10"
                                                         value={row.quantidade}
                                                         onChange={(e) => {
                                                             const raw = e.target.value;
@@ -703,11 +719,11 @@ const CreateServicePage: React.FC<CreateServicePageProps> = ({ setActiveView }) 
                                                             const clamped = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
                                                             setInsumos((prev) => prev.map((p, i) => (i === idx ? { ...p, quantidade: String(clamped) } : p)));
                                                         }}
-                                                        className={`w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${unidadeMedida ? 'pr-16' : ''}`}
+                                                        className={`w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 ${uomConsumoLabel ? 'pr-16' : ''}`}
                                                     />
-                                                    {unidadeMedida && (
+                                                    {uomConsumoLabel && (
                                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
-                                                            {unidadeMedida}
+                                                            {uomConsumoLabel}
                                                         </span>
                                                     )}
                                                 </div>

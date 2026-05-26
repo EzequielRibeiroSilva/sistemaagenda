@@ -77,6 +77,7 @@ class EstoqueController {
       const quantidade = req.body?.quantidade;
       const motivo = req.body?.motivo;
       const destinoRaw = req.body?.destino;
+      const precoCustoEntradaRaw = req.body?.preco_custo_entrada;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -99,6 +100,16 @@ class EstoqueController {
         });
       }
 
+      // preco_custo_entrada é obrigatório para ENTRADA (reabastecimento) e é o valor unitário pago na NF.
+      const precoCustoEntrada = Number(precoCustoEntradaRaw);
+      if (!Number.isFinite(precoCustoEntrada) || precoCustoEntrada <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'preco_custo_entrada é obrigatório',
+          message: 'preco_custo_entrada deve ser um número > 0'
+        });
+      }
+
       const destinoFinal = destinoRaw ? String(destinoRaw).toUpperCase() : 'VENDA';
       if (!['VENDA', 'CONSUMO'].includes(destinoFinal)) {
         return res.status(400).json({
@@ -117,6 +128,7 @@ class EstoqueController {
         quantidade,
         destino: destinoFinal,
         motivo,
+        preco_custo_entrada: precoCustoEntrada,
         created_by: usuarioId
       });
 

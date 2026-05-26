@@ -69,6 +69,7 @@ class InventoryService {
       motivo,
       origem_id,
       destino,
+      preco_custo_entrada,
       created_by,
       trx: trxExternal
     } = params;
@@ -85,8 +86,8 @@ class InventoryService {
       throw err;
     }
 
-    const qty = Number(quantidade);
-    if (Number.isNaN(qty) || qty <= 0) {
+    const qtyRaw = Number(quantidade);
+    if (Number.isNaN(qtyRaw) || qtyRaw <= 0) {
       const err = new Error('Quantidade inválida');
       err.code = 'INVALID_QUANTIDADE';
       throw err;
@@ -96,15 +97,16 @@ class InventoryService {
     // Observação: a validação do tipo_item depende do produto e será feita após o fetch.
 
     // Para CONVERSAO_INTERNA, não existe delta direto aqui (é um evento de auditoria).
-    const deltaLegacy = (tipo === 'ENTRADA' || tipo === 'ESTORNO') ? qty : -qty;
+    const deltaLegacy = (tipo === 'ENTRADA' || tipo === 'ESTORNO') ? qtyRaw : -qtyRaw;
     const isDebitLegacy = deltaLegacy < 0;
 
     const run = async (trx) => {
+      let qty = qtyRaw;
       // 1) Segurança multi-tenant: produto precisa pertencer ao usuario_id
       const produto = await trx('produtos')
         .where({ id: produto_id, usuario_id })
         .whereNull('deleted_at')
-        .select('id', 'tipo_item', 'uom_consumo', 'fator_conversao')
+        .select('id', 'tipo_item', 'uom_consumo', 'fator_conversao', 'preco_custo_medio')
         .first();
 
       if (!produto) {
@@ -121,6 +123,19 @@ class InventoryService {
         const d = String(destino).toUpperCase();
         if (d === 'VENDA') bucket = 'VENDA';
         if (d === 'CONSUMO') bucket = 'CONSUMO';
+      }
+
+      // Regra de negócio: o usuário sempre digita ENTRADA em unidades de compra.
+      // Se o destino for CONSUMO e o item for CONSUMO/AMBOS, converter a quantidade para a unidade de consumo.
+      if (tipo === 'ENTRADA' && bucket === 'CONSUMO') {
+        const tipoItem = String(produtoTipoItem || '').toUpperCase();
+        const isConsumoOuAmbos = tipoItem === 'CONSUMO' || tipoItem === 'AMBOS';
+        if (isConsumoOuAmbos) {
+          const fator = Number(produto?.fator_conversao) || 0;
+          if (Number.isFinite(fator) && fator > 0) {
+            qty = this.round3(qtyRaw * fator);
+          }
+        }
       }
 
       // Atomicidade: impedir fracionamento para VENDA e qualquer SAIDA
@@ -167,6 +182,84 @@ class InventoryService {
       const saldoAntes = snapshotBefore ? Number(snapshotBefore.saldo_atual) : 0;
       const saldoVendaAntes = snapshotBefore ? Number(snapshotBefore.saldo_venda) : 0;
       const saldoConsumoAntes = snapshotBefore ? Number(snapshotBefore.saldo_consumo) : 0;
+
+      // CMP (Custo Médio Ponderado) - aplicar APENAS em ENTRADA quando vier preco_custo_entrada.
+      // Observação: preco_custo_medio em produtos é tratado como:
+      // - VENDA: custo por unidade (unidade_medida)
+      // - CONSUMO/AMBOS: custo por unidade de consumo (uom_consumo), derivado por fator_conversao
+      if (tipo === 'ENTRADA') {
+        try {
+          // 1. Blindagem estrita de tipos (Garantir que tudo vire número real)
+          const currentCost = Number(produto?.preco_custo_medio) || 0;
+          const conversionFactor = Number(produto?.fator_conversao) || 1;
+          const inputPrice = Number(preco_custo_entrada) || 0;
+          const inputQty = Number(qtyRaw) || 0;
+
+          const currentSaleStock = Number(snapshotBefore?.saldo_venda) || 0;
+          const currentConsumpStock = Number(snapshotBefore?.saldo_consumo) || 0;
+
+          if (inputPrice <= 0 || inputQty <= 0) {
+            // Entrada sem valores válidos não recalcula CMP.
+            // A movimentação de estoque (quantidade) continua funcionando.
+          } else {
+            const tipoItem = String(produto?.tipo_item || produtoTipoItem || 'VENDA').toUpperCase();
+            const isConsumoOuAmbos = tipoItem === 'CONSUMO' || tipoItem === 'AMBOS';
+
+            // 2. Recalcule a base qty e o custo unitário da entrada blindando os valores
+            let entradaBaseQty = inputQty;
+            let entradaBaseUnitCost = inputPrice;
+
+            const destinoFinal = destino ? String(destino).toUpperCase() : bucket;
+
+            if (destinoFinal === 'VENDA' && isConsumoOuAmbos) {
+              entradaBaseQty = inputQty * conversionFactor;
+              entradaBaseUnitCost = conversionFactor > 0 ? (inputPrice / conversionFactor) : inputPrice;
+            } else if (destinoFinal === 'CONSUMO') {
+              // Entrada em Bancada: usuário informa unidades de compra (frasco/caixa).
+              // O sistema converte para base de consumo (ml/g) e custo unitário técnico.
+              if (isConsumoOuAmbos) {
+                entradaBaseQty = inputQty * conversionFactor;
+                entradaBaseUnitCost = conversionFactor > 0 ? (inputPrice / conversionFactor) : inputPrice;
+              } else {
+                entradaBaseQty = inputQty;
+                entradaBaseUnitCost = inputPrice;
+              }
+            }
+
+            const saldoBaseAntes = isConsumoOuAmbos
+              ? (currentConsumpStock + (currentSaleStock * conversionFactor))
+              : currentSaleStock;
+
+            const totalEnteringQty = entradaBaseQty;
+
+            // 3. Cálculo final blindado contra NaN
+            let novoCustoFinal = currentCost;
+            if (saldoBaseAntes + totalEnteringQty > 0) {
+              const valorAtual = saldoBaseAntes * currentCost;
+              const valorEntrada = totalEnteringQty * entradaBaseUnitCost;
+              novoCustoFinal = (valorAtual + valorEntrada) / (saldoBaseAntes + totalEnteringQty);
+            } else {
+              novoCustoFinal = entradaBaseUnitCost;
+            }
+
+            // 4. Wrap de segurança para o UPDATE
+            if (Number.isNaN(novoCustoFinal) || !Number.isFinite(novoCustoFinal)) {
+              throw new Error('O cálculo do Custo Médio Ponderado gerou um valor inválido (NaN).');
+            }
+
+            const novoCustoFinalRounded = Number(novoCustoFinal.toFixed(6));
+            await trx('produtos')
+              .where({ id: produto_id, usuario_id })
+              .update({
+                preco_custo_medio: novoCustoFinalRounded,
+                updated_at: new Date()
+              });
+          }
+        } catch (error) {
+          console.error('Erro detalhado no estoque:', error);
+          throw error;
+        }
+      }
 
       // Bifurcação: definir delta por bucket
       const signedQty = (tipo === 'ENTRADA' || tipo === 'ESTORNO') ? qty : -qty;
@@ -362,6 +455,7 @@ class InventoryService {
           quantidade: qty,
           motivo: motivo || null,
           origem_id: origem_id || null,
+          preco_unitario_entrada: tipo === 'ENTRADA' && Number.isFinite(Number(preco_custo_entrada)) ? Number(preco_custo_entrada) : null,
           created_by: created_by || null,
           created_at: new Date()
         })
