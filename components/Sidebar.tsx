@@ -1,384 +1,199 @@
-
-import React, { useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 // FIX: Removed unused 'BarChart3' import as it is not an exported member of './Icons'.
 import {
-  Box, Briefcase, Calendar, ChevronDown, Cog, LayoutDashboard,
-  Users, ChevronRight, MapPin, Ticket, Bell, UserPlus, Gift, Package, LineChart
+  Briefcase,
+  Calendar,
+  Cog,
+  LayoutDashboard,
+  MapPin,
+  Ticket,
+  Bell,
+  UserPlus,
+  Gift,
+  Package,
+  LineChart
 } from './Icons';
+
+import { sidebarNavigation, type Role } from '../config/sidebarConfig';
+import { NavAccordionItem } from './sidebar/NavAccordionItem';
 
 interface NavItemProps {
   icon: React.ReactNode;
   label: string;
   isCollapsed: boolean;
   isActive?: boolean;
-  hasSubmenu?: boolean;
   onClick?: () => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = false, hasSubmenu = false, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = false, onClick }) => (
   <a
     href="#"
     onClick={(e) => {
-        e.preventDefault();
-        onClick?.();
+      e.preventDefault();
+      onClick?.();
     }}
     className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
       isActive ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
     } ${isCollapsed ? 'lg:justify-center' : ''}`}
   >
-    <div>
-      {icon}
-    </div>
+    <div>{icon}</div>
     <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>{label}</span>
-    <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
-      {hasSubmenu && <ChevronDown className="h-4 w-4 text-gray-400" />}
-    </div>
   </a>
 );
 
 interface SidebarProps {
-    isCollapsed: boolean;
-    setCollapsed: (isCollapsed: boolean) => void;
-    activeView: string;
-    setActiveView: (view: string) => void;
-    userRole: 'ADMIN' | 'AGENTE';
-    isOpenOnMobile: boolean;
-    setOpenOnMobile: (isOpen: boolean) => void;
-    user?: {
-        role: string;
-        plano?: string;
-        userData?: any;
-    };
+  isCollapsed: boolean;
+  setCollapsed: (isCollapsed: boolean) => void;
+  activeView: string;
+  setActiveView: (view: string) => void;
+  userRole: 'ADMIN' | 'AGENTE';
+  isOpenOnMobile: boolean;
+  setOpenOnMobile: (isOpen: boolean) => void;
+  user?: {
+    role: string;
+    plano?: string;
+    userData?: any;
+  };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed, activeView, setActiveView, userRole, isOpenOnMobile, setOpenOnMobile, user }) => {
-  const [clientsSubmenuVisible, setClientsSubmenuVisible] = useState(false);
-  const clientsNavItemRef = useRef<HTMLDivElement>(null);
-  const [submenuPosition, setSubmenuPosition] = useState({ top: 0, left: 0 });
-  const hideSubmenuTimeout = useRef<number | null>(null);
+const Sidebar: React.FC<SidebarProps> = ({
+  isCollapsed,
+  setCollapsed,
+  activeView,
+  setActiveView,
+  userRole,
+  isOpenOnMobile,
+  setOpenOnMobile
+}) => {
+  const hasAccess = (allowedRoles?: Role[]) => !allowedRoles || allowedRoles.includes(userRole);
 
-  const [servicesSubmenuVisible, setServicesSubmenuVisible] = useState(false);
-  const servicesNavItemRef = useRef<HTMLDivElement>(null);
-  const [servicesSubmenuPosition, setServicesSubmenuPosition] = useState({ top: 0, left: 0 });
-  const hideServicesSubmenuTimeout = useRef<number | null>(null);
+  const isLegacyGroupActive = (view: string, current: string) => {
+    if (current === view) return true;
 
-  // Função para verificar se deve mostrar o item LOCAIS
-  const shouldShowLocais = () => {
-    if (!user) return false;
-
-    // MASTER sempre pode ver LOCAIS
-    if (user.role === 'MASTER') {
-      return true;
-    }
-
-    // ✅ CORREÇÃO: ADMIN sempre pode ver LOCAIS (independente do plano)
-    // Mesmo com plano Single, o ADMIN precisa gerenciar seu local (editar horários, bloquear, etc.)
-    const isAdmin = user.role === 'salon' || user.userData?.role === 'ADMIN';
-    if (isAdmin) {
-      return true;
-    }
+    // Mantém o comportamento legado de highlight durante views de edição
+    if (view === 'agents-list') return current.startsWith('agents');
+    if (view === 'locations-list') return current.startsWith('locations');
+    if (view === 'cupons-list') return current.startsWith('cupons');
+    if (view === 'subscriptions-list') return current.startsWith('subscriptions') || current.startsWith('services-subscriptions');
 
     return false;
   };
 
-  const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
-
-  const clampSubmenuLeft = (desiredLeft: number, submenuWidthPx: number) => {
-    if (typeof window === 'undefined') return desiredLeft;
-    const maxLeft = Math.max(0, window.innerWidth - submenuWidthPx - 8);
-    return Math.min(Math.max(8, desiredLeft), maxLeft);
-  };
-
-  const handleShowClientsSubmenu = () => {
-    if (hideSubmenuTimeout.current) {
-        clearTimeout(hideSubmenuTimeout.current);
-        hideSubmenuTimeout.current = null;
-    }
-    if (!isCollapsed && clientsNavItemRef.current) {
-        const rect = clientsNavItemRef.current.getBoundingClientRect();
-        const desiredLeft = rect.right + 8;
-        const safeLeft = clampSubmenuLeft(desiredLeft, 224);
-        setSubmenuPosition({ top: rect.top - 16, left: safeLeft });
-        setClientsSubmenuVisible(true);
-    }
-  };
-
-  const handleHideClientsSubmenu = () => {
-    hideSubmenuTimeout.current = window.setTimeout(() => {
-        setClientsSubmenuVisible(false);
-    }, 200);
-  };
-
-  const handleShowServicesSubmenu = () => {
-    if (hideServicesSubmenuTimeout.current) {
-        clearTimeout(hideServicesSubmenuTimeout.current);
-        hideServicesSubmenuTimeout.current = null;
-    }
-    if (!isCollapsed && servicesNavItemRef.current) {
-        const rect = servicesNavItemRef.current.getBoundingClientRect();
-        const desiredLeft = rect.right + 8;
-        const safeLeft = clampSubmenuLeft(desiredLeft, 224);
-        setServicesSubmenuPosition({ top: rect.top - 16, left: safeLeft });
-        setServicesSubmenuVisible(true);
-    }
-  };
-
-  const handleHideServicesSubmenu = () => {
-    hideServicesSubmenuTimeout.current = window.setTimeout(() => {
-        setServicesSubmenuVisible(false);
-    }, 200);
-  };
-  
-  const clientsSubmenu = (
-    <div
-        className={`fixed w-56 bg-blue-600 text-white rounded-lg shadow-xl p-4 z-50 transform transition-all duration-200 ease-in-out ${clientsSubmenuVisible && !isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
-        style={{ top: `${submenuPosition.top}px`, left: `${submenuPosition.left}px`, maxWidth: '90vw' }}
-        onMouseEnter={handleShowClientsSubmenu}
-        onMouseLeave={handleHideClientsSubmenu}
-      >
-        <h3 className="text-xl font-bold opacity-75 mb-3 px-2">Clientes</h3>
-        <ul>
-            <li>
-                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('clients-list'); setClientsSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">LISTA DE CLIENTES</a>
-            </li>
-            <li>
-                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('clients-add'); setClientsSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">NOVO CLIENTE</a>
-            </li>
-        </ul>
-    </div>
-  );
-
-  const servicesSubmenu = (
-    <div
-        className={`fixed w-56 bg-blue-600 text-white rounded-lg shadow-xl p-4 z-50 transform transition-all duration-200 ease-in-out ${servicesSubmenuVisible && !isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
-        style={{ top: `${servicesSubmenuPosition.top}px`, left: `${servicesSubmenuPosition.left}px`, maxWidth: '90vw' }}
-        onMouseEnter={handleShowServicesSubmenu}
-        onMouseLeave={handleHideServicesSubmenu}
-      >
-        <h3 className="text-xl font-bold opacity-75 mb-3 px-2">Serviços</h3>
-        <ul>
-            <li>
-                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-list'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">SERVIÇOS</a>
-            </li>
-            <li>
-                <a href="#" onClick={(e) => { e.preventDefault(); setActiveView('services-extra'); setServicesSubmenuVisible(false); setOpenOnMobile(false); }} className="block py-2 rounded hover:bg-blue-700 px-2 font-medium">SERVIÇOS EXTRAS</a>
-            </li>
-        </ul>
-    </div>
-  );
-  
   const handleNavItemClick = (view: string) => {
     setActiveView(view);
     setOpenOnMobile(false);
-  }
+  };
 
   const sidebarContent = (
     <>
       <div className="flex items-center h-16 border-b border-gray-200 px-4 flex-shrink-0">
         {/* Logo Tally - Desktop (lg+) */}
-        <button 
-          onClick={() => setCollapsed(!isCollapsed)} 
+        <button
+          onClick={() => setCollapsed(!isCollapsed)}
           className={`hidden lg:block focus:outline-none transition-all duration-200 hover:opacity-80 ${isCollapsed ? 'mx-auto' : ''}`}
           aria-label="Toggle sidebar"
         >
-          <span 
-            className="font-genty text-3xl font-bold tracking-wide"
-            style={{ color: '#2663EB' }}
-          >
+          <span className="font-genty text-3xl font-bold tracking-wide" style={{ color: '#2663EB' }}>
             {isCollapsed ? 'T' : 'Tally'}
           </span>
         </button>
-        
+
         {/* Logo Tally - Mobile */}
         <div className="lg:hidden">
-          <span 
-            className="font-genty text-3xl font-bold tracking-wide"
-            style={{ color: '#2663EB' }}
-          >
+          <span className="font-genty text-3xl font-bold tracking-wide" style={{ color: '#2663EB' }}>
             Tally
           </span>
         </div>
       </div>
 
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        <NavItem 
-            icon={<LayoutDashboard className="h-5 w-5" />} 
-            label="PAINEL" 
-            isCollapsed={isCollapsed}
-            isActive={activeView === 'dashboard'}
-            onClick={() => handleNavItemClick('dashboard')}
-        />
-        <NavItem
-            icon={<Calendar className="h-5 w-5" />}
-            label="AGENDA"
-            isCollapsed={isCollapsed}
-            isActive={activeView === 'calendar'}
-            onClick={() => handleNavItemClick('calendar')}
-        />
-        <NavItem
-            icon={<Briefcase className="h-5 w-5" />}
-            label="AGENDAMENTOS"
-            isCollapsed={isCollapsed}
-            isActive={activeView === 'compromissos'}
-            onClick={() => handleNavItemClick('compromissos')}
-        />
-        
-        {userRole === 'ADMIN' && (
-            <div
-                ref={clientsNavItemRef}
-                className="relative"
-            >
-                <a
-                    href="#"
-                    onClick={(e) => {
-                        e.preventDefault();
-                        handleNavItemClick('clients-list');
-                    }}
-                    onMouseEnter={handleShowClientsSubmenu}
-                    onMouseLeave={handleHideClientsSubmenu}
-                    className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
-                        activeView.startsWith('clients') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-                    } ${isCollapsed ? 'lg:justify-center' : ''}`}
-                >
-                    <div>
-                        <Users className="h-5 w-5" />
-                    </div>
-                    <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>CLIENTES</span>
-                    <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
-                       <ChevronRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                </a>
-            </div>
-        )}
-        
-        {userRole === 'ADMIN' && (
-          <>
-            <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Gestão</div>
-            <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
+        {sidebarNavigation.map((category, index) => {
+          if (!hasAccess(category.roles)) return null;
 
-            <NavItem
-              icon={<Package className="h-5 w-5" />}
-              label="ESTOQUE"
-              isCollapsed={isCollapsed}
-              isActive={activeView === 'estoque'}
-              onClick={() => handleNavItemClick('estoque')}
-            />
+          const categoryTopMargin = index === 0 ? 'mt-2' : 'mt-6';
 
-            <div 
-                ref={servicesNavItemRef}
-                className="relative"
-            >
-                <a
-                    href="#"
-                    onClick={(e) => {
-                        e.preventDefault();
-                        handleNavItemClick('services-list');
-                    }}
-                    onMouseEnter={handleShowServicesSubmenu}
-                    onMouseLeave={handleHideServicesSubmenu}
-                    className={`flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
-                        activeView.startsWith('services') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-                    } ${isCollapsed ? 'lg:justify-center' : ''}`}
-                >
-                    <div>
-                        <Box className="h-5 w-5" />
-                    </div>
-                    <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>SERVIÇOS</span>
-                     <div className={`${isCollapsed ? 'lg:hidden' : ''}`}>
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                </a>
-            </div>
-            <NavItem
-              icon={<UserPlus className="h-5 w-5" />}
-              label="EQUIPE"
-              isCollapsed={isCollapsed}
-              isActive={activeView.startsWith('agents')}
-              onClick={() => handleNavItemClick('agents-list')}
-            />
-            {shouldShowLocais() && (
-              <NavItem
-                icon={<MapPin className="h-5 w-5" />}
-                label="UNIDADE"
-                isCollapsed={isCollapsed}
-                isActive={activeView.startsWith('locations')}
-                onClick={() => handleNavItemClick('locations-list')}
-              />
-            )}
+          return (
+            <div key={category.title} className="space-y-2">
+              {!isCollapsed ? (
+                <div className={`text-xs font-semibold text-gray-400 mb-2 px-4 ${categoryTopMargin}`}>{category.title}</div>
+              ) : null}
 
-            <NavItem
-              icon={<LineChart className="h-5 w-5" />}
-              label="FINANCEIRO"
-              isCollapsed={isCollapsed}
-              isActive={activeView === 'despesas'}
-              onClick={() => handleNavItemClick('despesas')}
-            />
+              {category.items.map((item) => {
+                if (!hasAccess(item.roles)) return null;
 
-            <NavItem
-              icon={<Gift className="h-5 w-5" />}
-              label="CLUBE"
-              isCollapsed={isCollapsed}
-              isActive={activeView.startsWith('subscriptions') || activeView.startsWith('services-subscriptions')}
-              onClick={() => handleNavItemClick('subscriptions-list')}
-            />
-
-            {userRole === 'ADMIN' && (
-                <NavItem
-                  icon={<Ticket className="h-5 w-5" />}
-                  label="CUPONS"
-                  isCollapsed={isCollapsed}
-                  isActive={activeView.startsWith('cupons')}
-                  onClick={() => handleNavItemClick('cupons-list')}
-                />
-            )}
-          </>
-        )}
-
-        <div className={`pt-4 pb-2 px-4 text-xs text-gray-400 font-semibold uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''}`}>Ajustes</div>
-        <div className={`w-full border-t border-gray-200 my-2 ${isCollapsed ? 'lg:hidden' : ''}`}></div>
-
-        {userRole === 'ADMIN' && (
-          <NavItem
-            icon={<Bell className="h-5 w-5" />}
-            label="AVISOS"
-            isCollapsed={isCollapsed}
-            isActive={activeView === 'lembretes'}
-            onClick={() => handleNavItemClick('lembretes')}
-          />
-        )}
-
-        <NavItem 
-            icon={<Cog className="h-5 w-5" />} 
-            label="CONFIGURAÇÕES" 
-            isCollapsed={isCollapsed}
-            isActive={activeView === 'settings' || (userRole === 'AGENTE' && activeView === 'agents-edit')}
-            onClick={() => {
-                if (userRole === 'AGENTE') {
-                    handleNavItemClick('agents-edit');
-                } else {
-                    handleNavItemClick('settings');
+                if (item.children && item.children.length > 0) {
+                  return (
+                    <NavAccordionItem
+                      key={item.view}
+                      item={item}
+                      currentView={activeView}
+                      isCollapsed={isCollapsed}
+                      onNavigate={handleNavItemClick}
+                    />
+                  );
                 }
-            }}
-        />
+
+                const Icon = item.icon;
+
+                // Fallback de ícones para manter compatibilidade com config incompleto
+                const resolvedIcon = Icon ? (
+                  <Icon className="h-5 w-5" />
+                ) : item.view === 'dashboard' ? (
+                  <LayoutDashboard className="h-5 w-5" />
+                ) : item.view === 'calendar' ? (
+                  <Calendar className="h-5 w-5" />
+                ) : item.view === 'compromissos' ? (
+                  <Briefcase className="h-5 w-5" />
+                ) : item.view === 'agents-list' ? (
+                  <UserPlus className="h-5 w-5" />
+                ) : item.view === 'estoque' ? (
+                  <Package className="h-5 w-5" />
+                ) : item.view === 'despesas' ? (
+                  <LineChart className="h-5 w-5" />
+                ) : item.view === 'subscriptions-list' ? (
+                  <Gift className="h-5 w-5" />
+                ) : item.view === 'cupons-list' ? (
+                  <Ticket className="h-5 w-5" />
+                ) : item.view === 'lembretes' ? (
+                  <Bell className="h-5 w-5" />
+                ) : item.view === 'settings' || item.view === 'agents-edit' ? (
+                  <Cog className="h-5 w-5" />
+                ) : item.view === 'locations-list' ? (
+                  <MapPin className="h-5 w-5" />
+                ) : null;
+
+                return (
+                  <NavItem
+                    key={item.view}
+                    icon={resolvedIcon}
+                    label={item.label}
+                    isCollapsed={isCollapsed}
+                    isActive={isLegacyGroupActive(item.view, activeView)}
+                    onClick={() => handleNavItemClick(item.view)}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
-      {portalRoot && userRole === 'ADMIN' && createPortal(clientsSubmenu, portalRoot)}
-      {portalRoot && userRole === 'ADMIN' && createPortal(servicesSubmenu, portalRoot)}
     </>
   );
 
   return (
     <>
-       <div 
-        className={`fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden transition-opacity ${isOpenOnMobile ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      <div
+        className={`fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden transition-opacity ${
+          isOpenOnMobile ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
         style={{ pointerEvents: isOpenOnMobile ? 'auto' : 'none' }}
         onClick={() => setOpenOnMobile(false)}
         aria-hidden="true"
       ></div>
-       <div
+      <div
         className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64 transition-transform duration-300 ease-in-out lg:relative lg:z-30 lg:translate-x-0 ${
           isOpenOnMobile ? 'translate-x-0' : '-translate-x-full'
-        } ${ isCollapsed ? 'lg:w-20' : 'lg:w-64' }`}
+        } ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
         {sidebarContent}
       </div>
