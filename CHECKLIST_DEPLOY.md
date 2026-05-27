@@ -6,6 +6,7 @@
 - [ ] Commit enviado para GitHub (`git push origin master`)
 - [ ] Changelog/Release notes atualizados
 - [ ] Verificar se há migrations de banco de dados
+- [ ] Confirmar que o backend está usando `docker-entrypoint.sh` (trava de segurança) para executar `npx knex migrate:latest` automaticamente no boot do container antes de subir a API
 - [ ] Revisar variáveis de ambiente necessárias
 
 ## 🔒 BACKUP (OBRIGATÓRIO)

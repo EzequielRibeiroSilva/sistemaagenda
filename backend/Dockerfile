@@ -25,8 +25,16 @@ EXPOSE 3001
 # Definir usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
+
+# Entrypoint: rodar migrations antes de iniciar a API
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 RUN chown -R nodejs:nodejs /app
 USER nodejs
+
+# Entrypoint
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Comando padrão
 CMD ["npm", "start"]
