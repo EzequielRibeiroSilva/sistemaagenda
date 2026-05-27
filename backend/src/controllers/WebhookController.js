@@ -1,5 +1,6 @@
 const Usuario = require('../models/Usuario');
 const logger = require('../utils/logger');
+const WhatsappQueueService = require('../queues/WhatsappQueue');
 
 class WebhookController {
   constructor() {
@@ -21,6 +22,18 @@ class WebhookController {
       const apikey = payload?.apikey;
       const sender = payload?.sender;
 
+      // NOVO BLOCO: Enfileira mensagens e responde na hora (Padrão Assíncrono)
+      if (event === 'messages.upsert') {
+        try {
+          await WhatsappQueueService.addMessage(payload);
+          return res.status(200).json({ success: true, queued: true });
+        } catch (error) {
+          console.error('[Webhook] Erro ao enfileirar mensagem:', error);
+          return res.status(500).json({ success: false, message: 'Erro interno na fila' });
+        }
+      }
+
+      // LÓGICA ORIGINAL MANTIDA
       if (event !== 'connection.update') {
         return res.status(200).json({ success: true, ignored: true });
       }

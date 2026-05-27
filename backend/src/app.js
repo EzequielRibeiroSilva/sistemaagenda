@@ -12,6 +12,7 @@ const apiRoutes = require('./routes/index');
 const webhooksRoutes = require('./routes/webhooks');
 const reminderJob = require('./jobs/reminderJob');
 const pendingPaymentCleanupJob = require('./jobs/pendingPaymentCleanupJob');
+const whatsappWorker = require('./workers/WhatsappWorker');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
 
@@ -288,6 +289,8 @@ async function startServer() {
       // Iniciar job de limpeza de pagamentos pendentes (Pix)
       logger.log('\n🧹 Inicializando cleanup de pagamentos pendentes (Pix)...');
       pendingPaymentCleanupJob.start();
+
+      whatsappWorker.start();
     });
     
     // Graceful shutdown
