@@ -431,6 +431,11 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
   generateBookingLink(unidadeSlug, unidadeId) {
     const baseUrl = this.getFrontendBaseUrl();
     // Formato: /{slug}/booking/{unidade_id}
+    if (!unidadeSlug) {
+      logger.warn(`⚠️ [WhatsAppService] unidadeSlug ausente ao gerar link de booking (unidadeId=${unidadeId}). Usando fallback sem slug.`);
+      return `${baseUrl}/booking/${unidadeId}`;
+    }
+
     return `${baseUrl}/${unidadeSlug}/booking/${unidadeId}`;
   }
 
