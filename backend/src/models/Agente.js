@@ -232,15 +232,25 @@ class Agente extends BaseModel {
 
       // 4. Criar horários de funcionamento (se agenda personalizada)
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
-        const horariosFormatados = horariosData.map(horario => ({
-          agente_id: finalAgenteId,
-          dia_semana: horario.dia_semana,
-          unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
-          periodos: JSON.stringify(horario.periodos),
-          ativo: true
-        }));
+        // ✅ DEFESA: Filtrar horários sem períodos ANTES de formatar
+        const horariosValidos = horariosData.filter(horario => 
+          horario.periodos && 
+          Array.isArray(horario.periodos) && 
+          horario.periodos.length > 0
+        );
 
-        await trx('horarios_funcionamento').insert(horariosFormatados);
+        // ✅ DEFESA: Apenas inserir se houver horários válidos
+        if (horariosValidos.length > 0) {
+          const horariosFormatados = horariosValidos.map(horario => ({
+            agente_id: finalAgenteId,
+            dia_semana: horario.dia_semana,
+            unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
+            periodos: JSON.stringify(horario.periodos),
+            ativo: true
+          }));
+
+          await trx('horarios_funcionamento').insert(horariosFormatados);
+        }
       }
 
       return finalAgenteId;
@@ -354,15 +364,25 @@ class Agente extends BaseModel {
       await trx('horarios_funcionamento').where('agente_id', agenteId).del();
 
       if (agenteData.agenda_personalizada && horariosData && horariosData.length > 0) {
-        const horariosFormatados = horariosData.map((horario) => ({
-          agente_id: agenteId,
-          dia_semana: horario.dia_semana,
-          unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
-          periodos: JSON.stringify(horario.periodos),
-          ativo: true
-        }));
+        // ✅ DEFESA: Filtrar horários sem períodos ANTES de formatar
+        const horariosValidos = horariosData.filter(horario => 
+          horario.periodos && 
+          Array.isArray(horario.periodos) && 
+          horario.periodos.length > 0
+        );
 
-        await trx('horarios_funcionamento').insert(horariosFormatados);
+        // ✅ DEFESA: Apenas inserir se houver horários válidos
+        if (horariosValidos.length > 0) {
+          const horariosFormatados = horariosValidos.map((horario) => ({
+            agente_id: agenteId,
+            dia_semana: horario.dia_semana,
+            unidade_id: horario.unidade_id || agenteData.unidade_id, // ✅ MULTI-UNIT: Usar unidade_id do horário ou do agente
+            periodos: JSON.stringify(horario.periodos),
+            ativo: true
+          }));
+
+          await trx('horarios_funcionamento').insert(horariosFormatados);
+        }
       }
 
         return agenteId;

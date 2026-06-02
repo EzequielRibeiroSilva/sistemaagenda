@@ -305,12 +305,16 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
             };
 
             // Preencher com dados do backend
+            // ✅ CORREÇÃO: Apenas ativar se houver períodos válidos
             unitHorarios.forEach((horario: any) => {
                 const dayName = dayNumberToName[horario.dia_semana];
-                if (dayName) {
+                const periodos = horario.periodos || [];
+                
+                // ✅ DEFESA: Apenas criar registro se houver períodos
+                if (dayName && periodos.length > 0) {
                     schedule[dayName] = {
                         isActive: true,
-                        periods: horario.periodos.map((p: any) => ({
+                        periods: periodos.map((p: any) => ({
                             id: p.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)),
                             start: p.inicio || p.start || '09:00',
                             end: p.fim || p.end || '17:00'
