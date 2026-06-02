@@ -131,7 +131,11 @@ class AIAvailabilityService {
     } else if (horarioAgente && (!horarioAgente.ativo || !horarioAgente.periodos || horarioAgente.periodos.length === 0)) {
       periodosParaUsar = [];
     } else {
-      periodosParaUsar = this.normalizePeriods(horariosJsonUnidade);
+      // ✅ CORREÇÃO CRÍTICA: FAIL-SAFE
+      // Sem registro de horário = agente indisponível
+      // Princípio: Ausência de configuração explícita não autoriza agenda
+      // (Não é porque a unidade abre que TODO agente trabalha)
+      periodosParaUsar = [];
     }
 
     if (!periodosParaUsar || periodosParaUsar.length === 0) {
