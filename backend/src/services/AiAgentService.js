@@ -1,4 +1,8 @@
 const OpenAI = require('openai');
+const logger = require('../utils/logger');
+
+// ⚠️ SYSTEM_PROMPT REMOVIDO - Agora é 100% dinâmico e injetado pelo WhatsappWorker
+// Cada unidade terá seu próprio prompt personalizado baseado em config_perfil
 
 class AiAgentService {
   constructor() {
@@ -11,7 +15,67 @@ class AiAgentService {
       },
     });
     
-    this.model = process.env.OPENROUTER_MODEL_DEV;
+    this.model = process.env.OPENROUTER_MODEL || process.env.OPENROUTER_MODEL_DEV;
+  }
+
+  async processMessage({ message, history = [], tools = null, systemPrompt = '' }) {
+    if (!this.model) {
+      throw new Error('OPENROUTER_MODEL (ou OPENROUTER_MODEL_DEV) não configurado');
+    }
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY não configurado');
+    }
+
+    // ⚠️ VALIDAÇÃO CRÍTICA: systemPrompt é obrigatório
+    // Cada unidade deve injetar seu próprio prompt personalizado
+    if (!systemPrompt || systemPrompt.trim() === '') {
+      throw new Error('systemPrompt é obrigatório - cada unidade deve ter seu prompt personalizado');
+    }
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+    if (Array.isArray(history) && history.length > 0) {
+      messages.push(...history);
+    }
+
+    if (message !== undefined && message !== null) {
+      messages.push({ role: 'user', content: String(message ?? '') });
+    }
+
+    const payload = {
+      model: this.model,
+      messages,
+    };
+
+    if (tools) {
+      payload.tools = tools;
+      payload.tool_choice = 'auto';
+    }
+
+    const completion = await this.openai.chat.completions.create(payload);
+
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        const usage = completion?.usage;
+        if (usage) {
+          logger.info('[AI][usage]', {
+            model: this.model,
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+          });
+        }
+      }
+    } catch {
+      // não bloquear fluxo por falha de log
+    }
+    const msg = completion?.choices?.[0]?.message;
+
+    return {
+      raw: completion,
+      message: msg || null,
+      content: msg?.content || null,
+      toolCalls: msg?.tool_calls || null,
+    };
   }
 
   async testConnection() {

@@ -564,6 +564,7 @@ class AgenteController {
         observacoes: agente.observacoes,
         data_admissao: agente.data_admissao,
         comissao_percentual: agente.comissao_percentual,
+        notifica_crise: agente.notifica_crise || false, // ✅ GESTÃO DE CRISE: Incluir flag no retorno
         // Serviços para pré-seleção
         servicos_disponiveis: servicosDisponiveis.map(s => ({
           id: s.id,
@@ -745,6 +746,11 @@ class AgenteController {
       // URL do avatar (do upload ou padrão)
       const finalAvatarUrl = req.avatarUrl || avatar_url || null;
 
+      // ✅ GESTÃO DE CRISE: Extrair notifica_crise do body com cast para boolean
+      const notificaCrise = req.body.notifica_crise === 'true' || 
+                            req.body.notifica_crise === true || 
+                            false;
+
       // Dados do agente
       const agenteData = {
         nome,
@@ -760,6 +766,7 @@ class AgenteController {
         observacoes,
         data_admissao,
         comissao_percentual: comissao_percentual ? parseFloat(comissao_percentual) : 0,
+        notifica_crise: notificaCrise, // ✅ GESTÃO DE CRISE: Flag para receber notificações de emergência
         status: 'Ativo'
       };
 
@@ -1006,6 +1013,26 @@ class AgenteController {
                                        agenda_personalizada === 'true' ||
                                        agenda_personalizada === '1';
 
+      // ✅ GESTÃO DE CRISE - REGRA DE SEGURANÇA CRÍTICA (RBAC):
+      // Apenas ADMIN/MASTER podem alterar notifica_crise.
+      // Um AGENTE NUNCA pode promover a si mesmo como receptor de notificações de crise.
+      let notificaCrise = agenteExistente.notifica_crise || false; // Manter valor atual por padrão
+
+      if (userRole === 'ADMIN' || userRole === 'MASTER') {
+        // ADMIN/MASTER podem alterar a flag
+        if (req.body.notifica_crise !== undefined) {
+          notificaCrise = req.body.notifica_crise === 'true' || 
+                          req.body.notifica_crise === true || 
+                          false;
+          logger.log(`✅ [AgenteController.update] ${userRole} alterando notifica_crise para: ${notificaCrise}`);
+        }
+      } else {
+        // AGENTE: ignorar tentativa de alteração (manter valor do banco)
+        if (req.body.notifica_crise !== undefined && req.body.notifica_crise !== notificaCrise) {
+          logger.warn(`🚨 [AgenteController.update] AGENTE tentou alterar notifica_crise - BLOQUEADO por RBAC`);
+        }
+      }
+
       // Preparar dados para atualização
       const agenteData = {
         nome,
@@ -1022,6 +1049,7 @@ class AgenteController {
         observacoes,
         data_admissao,
         comissao_percentual: comissao_percentual ? parseFloat(comissao_percentual) : 0,
+        notifica_crise: notificaCrise, // ✅ GESTÃO DE CRISE: Flag para receber notificações de emergência
         updated_at: new Date()
       };
 

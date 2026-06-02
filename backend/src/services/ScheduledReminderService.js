@@ -42,6 +42,33 @@ class ScheduledReminderService {
 
       logger.log(`📅 [ScheduledReminderService] Criando lembretes programados para agendamento #${agendamento_id}`);
 
+      const telefoneDestino = cliente_telefone ? String(cliente_telefone).trim() : '';
+      if (!telefoneDestino) {
+        logger.error('❌ [ScheduledReminderService] Telefone destino inválido. Pulando criação de lembretes programados.', {
+          agendamento_id,
+          unidade_id,
+          cliente_telefone
+        });
+        return {
+          success: false,
+          error: 'Telefone destino inválido',
+          code: 'INVALID_PHONE'
+        };
+      }
+
+      if (telefoneDestino.length > 20) {
+        logger.error('❌ [ScheduledReminderService] Telefone destino excede limite (20). Pulando criação de lembretes programados.', {
+          agendamento_id,
+          unidade_id,
+          telefoneLength: telefoneDestino.length
+        });
+        return {
+          success: false,
+          error: 'Telefone destino excede limite',
+          code: 'PHONE_TOO_LONG'
+        };
+      }
+
       // Calcular horários de envio
       const horarioLembrete24h = this.calcularHorarioEnvio(data_agendamento, hora_inicio, 24);
       const horarioLembrete1h = this.calcularHorarioEnvio(data_agendamento, hora_inicio, 1);
@@ -59,7 +86,7 @@ class ScheduledReminderService {
           tipo_lembrete: '24h',
           tipo_notificacao: 'lembrete_24h',
           status: 'programado',
-          telefone_destino: cliente_telefone,
+          telefone_destino: telefoneDestino,
           enviar_em: horarioLembrete24h,
           tentativas: 0,
           created_at: db.fn.now(),
@@ -78,7 +105,7 @@ class ScheduledReminderService {
           tipo_lembrete: '2h',
           tipo_notificacao: 'lembrete_1h',
           status: 'programado',
-          telefone_destino: cliente_telefone,
+          telefone_destino: telefoneDestino,
           enviar_em: horarioLembrete1h,
           tentativas: 0,
           created_at: db.fn.now(),

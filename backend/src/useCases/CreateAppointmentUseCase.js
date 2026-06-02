@@ -9,6 +9,14 @@ const ScheduledReminderService = require('../services/ScheduledReminderService')
 const logger = require('../utils/logger');
 const { decrypt } = require('../utils/encryption');
 
+function makeError(message, code, httpStatus, details) {
+  const err = new Error(message);
+  if (code) err.code = code;
+  if (httpStatus) err.httpStatus = httpStatus;
+  if (details !== undefined) err.details = details;
+  return err;
+}
+
 function normalizeTelefoneLimpo(value) {
   if (!value) return null;
   return String(value).replace(/@s\.whatsapp\.net$/i, '').replace(/\D/g, '');
@@ -26,71 +34,127 @@ function minutesToTime(totalMinutes) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function normalizeBoolean(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+  }
+  return Boolean(value);
+}
+
 async function runSideEffects({ agendamentoId, sendConfirmation = true }) {
-  const whatsAppService = new WhatsAppService();
-  const scheduledReminderService = new ScheduledReminderService();
+  try {
+    const whatsAppService = new WhatsAppService();
+    const scheduledReminderService = new ScheduledReminderService();
 
-  const agendamento = await db('agendamentos')
-    .where('id', agendamentoId)
-    .whereNull('deleted_at')
-    .first();
+    const agendamento = await db('agendamentos')
+      .where('id', agendamentoId)
+      .whereNull('deleted_at')
+      .first();
 
-  if (!agendamento) {
-    throw new Error('Agendamento não encontrado para disparar notificações');
+    if (!agendamento) {
+      logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Agendamento não encontrado para disparar notificações', { agendamentoId });
+      return { ok: false, reason: 'AGENDAMENTO_NOT_FOUND' };
+    }
+
+    const cliente = await db('clientes').where('id', agendamento.cliente_id).first();
+    const agente = await db('agentes').where('id', agendamento.agente_id).first();
+    const unidade = await db('unidades')
+      .where('id', agendamento.unidade_id)
+      .select('id', 'nome', 'telefone', 'slug_url', 'endereco')
+      .first();
+
+    if (!cliente || !agente || !unidade) {
+      logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Dados insuficientes para disparar notificações (cliente/agente/unidade)', {
+        agendamentoId,
+        hasCliente: !!cliente,
+        hasAgente: !!agente,
+        hasUnidade: !!unidade
+      });
+      return { ok: false, reason: 'MISSING_RELATED_DATA' };
+    }
+
+    const servicos = await db('agendamento_servicos')
+      .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
+      .where('agendamento_servicos.agendamento_id', agendamentoId)
+      .select('servicos.nome', 'agendamento_servicos.preco_aplicado as preco');
+
+    const nomeCliente = `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim() || 'Cliente';
+    const nomeAgente = `${agente.nome || ''} ${agente.sobrenome || ''}`.trim() || 'Agente';
+
+    const payload = {
+      cliente: { nome: nomeCliente },
+      cliente_telefone: cliente.telefone,
+      agente: { nome: nomeAgente },
+      agente_telefone: agente.telefone,
+      unidade: {
+        id: unidade.id,
+        nome: unidade.nome,
+        slug_url: unidade.slug_url
+      },
+      unidade_id: unidade.id,
+      unidade_telefone: unidade.telefone,
+      unidade_endereco: unidade.endereco,
+      agendamento_id: agendamento.id,
+      numero_agendamento: agendamento.numero_agendamento,
+      data_agendamento: agendamento.data_agendamento,
+      hora_inicio: agendamento.hora_inicio,
+      hora_fim: agendamento.hora_fim,
+      valor_total: agendamento.valor_total,
+      servicos: (servicos || []).map(s => ({ nome: s.nome, preco: s.preco }))
+    };
+
+    if (sendConfirmation) {
+      try {
+        await whatsAppService.sendAppointmentConfirmation(payload);
+      } catch (err) {
+        logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Erro ao enviar confirmação WhatsApp:', {
+          message: err?.message,
+          code: err?.code,
+          httpStatus: err?.httpStatus,
+          details: err?.details,
+          stack: process.env.NODE_ENV !== 'production' ? err?.stack : undefined,
+          agendamentoId
+        });
+      }
+    }
+
+    try {
+      await scheduledReminderService.criarLembretesProgramados({
+        agendamento_id: agendamento.id,
+        unidade_id: agendamento.unidade_id,
+        data_agendamento: agendamento.data_agendamento,
+        hora_inicio: agendamento.hora_inicio,
+        cliente_telefone: cliente.telefone
+      });
+    } catch (err) {
+      logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Erro ao criar lembretes programados:', {
+        message: err?.message,
+        code: err?.code,
+        constraint: err?.constraint,
+        detail: err?.detail,
+        stack: process.env.NODE_ENV !== 'production' ? err?.stack : undefined,
+        agendamentoId
+      });
+    }
+
+    return { ok: true };
+  } catch (err) {
+    logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Erro inesperado em side effects:', {
+      message: err?.message,
+      code: err?.code,
+      httpStatus: err?.httpStatus,
+      details: err?.details,
+      stack: process.env.NODE_ENV !== 'production' ? err?.stack : undefined,
+      agendamentoId
+    });
+    return { ok: false, reason: 'UNEXPECTED_ERROR' };
   }
-
-  const cliente = await db('clientes').where('id', agendamento.cliente_id).first();
-  const agente = await db('agentes').where('id', agendamento.agente_id).first();
-  const unidade = await db('unidades')
-    .where('id', agendamento.unidade_id)
-    .select('id', 'nome', 'telefone', 'slug_url', 'endereco')
-    .first();
-
-  if (!cliente || !agente || !unidade) {
-    throw new Error('Dados insuficientes para disparar notificações (cliente/agente/unidade)');
-  }
-
-  const servicos = await db('agendamento_servicos')
-    .join('servicos', 'agendamento_servicos.servico_id', 'servicos.id')
-    .where('agendamento_servicos.agendamento_id', agendamentoId)
-    .select('servicos.nome', 'agendamento_servicos.preco_aplicado as preco');
-
-  const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim() || 'Cliente';
-  const nomeAgente = `${agente.nome || ''} ${agente.sobrenome || ''}`.trim() || 'Agente';
-
-  const payload = {
-    cliente: { nome: nomeCliente },
-    cliente_telefone: cliente.telefone,
-    agente: { nome: nomeAgente },
-    agente_telefone: agente.telefone,
-    unidade: {
-      id: unidade.id,
-      nome: unidade.nome,
-      slug_url: unidade.slug_url
-    },
-    unidade_id: unidade.id,
-    unidade_telefone: unidade.telefone,
-    unidade_endereco: unidade.endereco,
-    agendamento_id: agendamento.id,
-    numero_agendamento: agendamento.numero_agendamento,
-    data_agendamento: agendamento.data_agendamento,
-    hora_inicio: agendamento.hora_inicio,
-    hora_fim: agendamento.hora_fim,
-    valor_total: agendamento.valor_total,
-    servicos: (servicos || []).map(s => ({ nome: s.nome, preco: s.preco }))
-  };
-
-  if (sendConfirmation) {
-    await whatsAppService.sendAppointmentConfirmation(payload);
-  }
-
-  await scheduledReminderService.criarLembretesProgramados({
-    agendamento_id: agendamento.id,
-    unidade_id: agendamento.unidade_id,
-    data_agendamento: agendamento.data_agendamento,
-    hora_inicio: agendamento.hora_inicio,
-    cliente_telefone: cliente.telefone
-  });
 }
 
 async function gerarPixSinal({
@@ -113,15 +177,21 @@ async function gerarPixSinal({
     .first();
 
   if (!integracao) {
-    const err = new Error('Integração Mercado Pago não conectada para esta unidade');
-    err.code = 'MP_NOT_CONNECTED';
-    throw err;
+    throw makeError(
+      'Integração Mercado Pago não conectada para esta unidade',
+      'INTEGRATION_ERROR',
+      400,
+      { provider: 'mercadopago', reason: 'MP_NOT_CONNECTED' }
+    );
   }
 
   if (integracao.expires_at && new Date(integracao.expires_at).getTime() <= Date.now()) {
-    const err = new Error('Token do Mercado Pago expirado. Reconecte a integração.');
-    err.code = 'MP_TOKEN_EXPIRED';
-    throw err;
+    throw makeError(
+      'Token do Mercado Pago expirado. Reconecte a integração.',
+      'INTEGRATION_ERROR',
+      400,
+      { provider: 'mercadopago', reason: 'MP_TOKEN_EXPIRED' }
+    );
   }
 
   const accessToken = decrypt({
@@ -205,7 +275,7 @@ async function gerarPixSinal({
 
 async function execute(data, context) {
   if (!context || !context.usuarioId) {
-    throw new Error('Contexto inválido: usuarioId é obrigatório');
+    throw makeError('Contexto inválido: usuarioId é obrigatório', 'UNAUTHORIZED', 401);
   }
 
   const {
@@ -222,7 +292,9 @@ async function execute(data, context) {
     horaFim,
     observacoes,
     recorrencia,
-    suppressNotification
+    suppressNotification,
+    skipPaymentValidation,
+    skipAvailabilityValidation  // 🔧 NOVO: Flag para pular validação redundante
   } = data || {};
 
   const unidadeIdInt = parseInt(unidadeId, 10);
@@ -230,7 +302,7 @@ async function execute(data, context) {
   const usuarioIdInt = parseInt(context.usuarioId, 10);
 
   if (!unidadeIdInt || !agenteIdInt || !dataAgendamento || !horaInicio) {
-    throw new Error('Dados obrigatórios não fornecidos para criar agendamento');
+    throw makeError('Dados obrigatórios não fornecidos para criar agendamento', 'MISSING_REQUIRED_FIELDS', 400);
   }
 
   let telefoneLimpo = normalizeTelefoneLimpo(clienteTelefone);
@@ -246,12 +318,12 @@ async function execute(data, context) {
       : normalizeTelefoneLimpo(clienteRow?.telefone);
 
     if (!telefoneLimpo) {
-      throw new Error('Telefone do cliente não encontrado');
+      throw makeError('Telefone do cliente não encontrado', 'CLIENT_PHONE_NOT_FOUND', 400);
     }
   }
 
   if (!telefoneLimpo) {
-    throw new Error('Telefone do cliente inválido');
+    throw makeError('Telefone do cliente inválido', 'INVALID_CLIENT_PHONE', 400);
   }
 
   const servicoIds = Array.isArray(servicos)
@@ -262,7 +334,7 @@ async function execute(data, context) {
     : [];
 
   if (servicoIds.length === 0) {
-    throw new Error('Serviços não informados');
+    throw makeError('Serviços não informados', 'MISSING_SERVICOS', 400);
   }
 
   const agendamentoModel = new Agendamento();
@@ -277,7 +349,7 @@ async function execute(data, context) {
       .first();
 
     if (!unidade) {
-      throw new Error('Unidade inválida ou não pertence ao usuário');
+      throw makeError('Unidade inválida ou não pertence ao usuário', 'UNIDADE_NOT_FOUND', 404);
     }
 
     const clienteModel = new Cliente();
@@ -292,11 +364,12 @@ async function execute(data, context) {
 
     if (!clienteRecord) {
       const nome = String(clienteNome || 'Cliente').trim();
+      console.log(`[CreateAppointmentUseCase] 🔍 AUDITORIA CADASTRO: clienteNome recebido="${clienteNome}", nome final="${nome}"`);
       clienteRecord = await clienteModel.findOrCreateForAgendamento(telefoneLimpo, nome, unidadeIdInt);
     }
 
     if (clienteRecord?.status === 'Bloqueado') {
-      throw new Error('Cliente bloqueado');
+      throw makeError('Cliente bloqueado', 'CLIENT_BLOCKED', 403);
     }
 
     const servicosRows = await db('servicos')
@@ -307,7 +380,7 @@ async function execute(data, context) {
       .select('servicos.id', 'servicos.preco', 'servicos.duracao_minutos', 'servicos.comissao_percentual');
 
     if (servicosRows.length !== servicoIds.length) {
-      throw new Error('Um ou mais serviços não estão disponíveis nesta unidade');
+      throw makeError('Um ou mais serviços não estão disponíveis nesta unidade', 'SERVICOS_NOT_AVAILABLE', 400);
     }
 
     const extraIds = Array.isArray(servicoExtraIds)
@@ -323,7 +396,7 @@ async function execute(data, context) {
       : [];
 
     if (extrasRows.length !== extraIds.length) {
-      throw new Error('Um ou mais serviços extras não estão disponíveis');
+      throw makeError('Um ou mais serviços extras não estão disponíveis', 'EXTRAS_NOT_AVAILABLE', 400);
     }
 
     const horaFimFinal = horaFim
@@ -380,7 +453,7 @@ async function execute(data, context) {
       .first();
 
     if (!unidade) {
-      throw new Error('Unidade inválida ou não pertence ao usuário');
+      throw makeError('Unidade inválida ou não pertence ao usuário', 'UNIDADE_NOT_FOUND', 404);
     }
 
     const servicosRows = await trx('servicos')
@@ -391,7 +464,7 @@ async function execute(data, context) {
       .select('servicos.id', 'servicos.preco', 'servicos.duracao_minutos', 'servicos.exige_sinal', 'servicos.valor_sinal', 'servicos.comissao_percentual');
 
     if (servicosRows.length !== servicoIds.length) {
-      throw new Error('Um ou mais serviços não estão disponíveis nesta unidade');
+      throw makeError('Um ou mais serviços não estão disponíveis nesta unidade', 'SERVICOS_NOT_AVAILABLE', 400);
     }
 
     const extraIds = Array.isArray(servicoExtraIds)
@@ -407,7 +480,7 @@ async function execute(data, context) {
       : [];
 
     if (extrasRows.length !== extraIds.length) {
-      throw new Error('Um ou mais serviços extras não estão disponíveis');
+      throw makeError('Um ou mais serviços extras não estão disponíveis', 'EXTRAS_NOT_AVAILABLE', 400);
     }
 
     const clienteModel = new Cliente();
@@ -423,6 +496,7 @@ async function execute(data, context) {
 
     if (!clienteRecord) {
       const nome = String(clienteNome || 'Cliente').trim();
+      console.log(`[CreateAppointmentUseCase] 🔍 AUDITORIA CADASTRO: clienteNome recebido="${clienteNome}", nome final="${nome}"`);
       clienteRecord = await clienteModel.findOrCreateForAgendamento(telefoneLimpo, nome, unidadeIdInt);
 
       if (dataNascimento && !clienteRecord.data_nascimento) {
@@ -433,12 +507,14 @@ async function execute(data, context) {
       }
     }
 
+    console.log(`[CreateAppointmentUseCase] ✅ Cliente identificado/cadastrado: ID ${clienteRecord.id}, Nome: ${clienteRecord.primeiro_nome || ''} ${clienteRecord.ultimo_nome || ''}`.trim());
+
     if (!clienteRecord) {
-      throw new Error('Cliente não encontrado');
+      throw makeError('Cliente não encontrado', 'CLIENT_NOT_FOUND', 404);
     }
 
     if (clienteRecord.status === 'Bloqueado') {
-      throw new Error('Cliente bloqueado');
+      throw makeError('Cliente bloqueado', 'CLIENT_BLOCKED', 403);
     }
 
     const horaFimFinal = horaFim
@@ -449,14 +525,72 @@ async function execute(data, context) {
           + extrasRows.reduce((sum, e) => sum + (Number(e.duracao_minutos) || 0), 0)
       );
 
-    await bookingAvailabilityService.validateOrThrow({
-      unidade_id: unidadeIdInt,
-      agente_id: agenteIdInt,
-      data_agendamento: dataAgendamento,
-      hora_inicio: horaInicio,
-      hora_fim: horaFimFinal,
-      trx
-    });
+    // 🔧 VALIDAÇÃO INTELIGENTE: Pula validação se já foi feita pela IA (skipAvailabilityValidation)
+    // Isso evita o "Conflito de Dois Mundos" onde a IA valida e depois o UseCase rejeita
+    if (skipAvailabilityValidation) {
+      console.log(`[CreateAppointmentUseCase] ⚡ VALIDAÇÃO PULADA: skipAvailabilityValidation=true (já validado pela IA)`);
+    } else {
+      console.log(`[CreateAppointmentUseCase] 🔍 Validando disponibilidade: ${dataAgendamento} ${horaInicio}-${horaFimFinal}`);
+      
+      try {
+        await bookingAvailabilityService.validateOrThrow({
+          unidade_id: unidadeIdInt,
+          agente_id: agenteIdInt,
+          data_agendamento: dataAgendamento,
+          hora_inicio: horaInicio,
+          hora_fim: horaFimFinal,
+          trx
+        });
+        console.log(`[CreateAppointmentUseCase] ✅ Validação de disponibilidade passou`);
+      } catch (validationError) {
+        // 🔧 TOLERÂNCIA A CONFLITOS: Se o erro é de conflito e o agendamento é do mesmo cliente,
+        // pode ser uma tentativa duplicada da IA. Verificamos se já existe agendamento recente.
+        if (validationError.code === 'SLOT_UNAVAILABLE' || validationError.message?.includes('já possui um agendamento')) {
+          console.warn(`[CreateAppointmentUseCase] ⚠️ Conflito detectado. Verificando se é duplicata...`);
+          
+          try {
+            const telefoneLimpo = normalizeTelefoneLimpo(clienteTelefone);
+            const agendamentoRecente = await trx('agendamentos')
+              .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+              .where('clientes.telefone', telefoneLimpo)
+              .where('agendamentos.agente_id', agenteIdInt)
+              .where('agendamentos.data_agendamento', dataAgendamento)
+              .where('agendamentos.hora_inicio', horaInicio)
+              .where('agendamentos.status', 'Aprovado')
+              .whereNull('agendamentos.deleted_at')
+              .where('agendamentos.created_at', '>=', trx.raw("NOW() - INTERVAL '5 minutes'"))
+              .select('agendamentos.id', 'agendamentos.numero_agendamento')
+              .first();
+
+            if (agendamentoRecente) {
+              console.warn(`[CreateAppointmentUseCase] 🔄 DUPLICATA DETECTADA: Agendamento #${agendamentoRecente.id} já existe. Retornando existente em vez de criar novo.`);
+              
+              // Retorna o agendamento existente em vez de criar novo
+              return {
+                agendamento: { id: agendamentoRecente.id, numero_agendamento: agendamentoRecente.numero_agendamento },
+                pix: null,
+                deveCobrarSinal: false,
+                isDuplicate: true
+              };
+            }
+          } catch (dupCheckErr) {
+            console.error(`[CreateAppointmentUseCase] ❌ Erro ao verificar duplicata:`, dupCheckErr.message);
+          }
+        }
+
+        // Se não é duplicata, lança o erro original
+        console.error(`[CreateAppointmentUseCase] ❌ Validação de disponibilidade falhou:`, {
+          error: validationError.message,
+          code: validationError.code,
+          unidade_id: unidadeIdInt,
+          agente_id: agenteIdInt,
+          data_agendamento: dataAgendamento,
+          hora_inicio: horaInicio,
+          hora_fim: horaFimFinal
+        });
+        throw validationError;
+      }
+    }
 
     const valorServicos = servicosRows.reduce((sum, s) => sum + (Number(s.preco) || 0), 0);
     const valorExtras = extrasRows.reduce((sum, e) => sum + (Number(e.preco) || 0), 0);
@@ -525,14 +659,22 @@ async function execute(data, context) {
       }
     }
 
-    const clienteExigeSinalExcecao = Boolean(clienteRecord?.exige_sinal_excecao);
-    const algumServicoExigeSinal = (servicosRows || []).some(s => Boolean(s?.exige_sinal));
-    const deveCobrarSinal = algumServicoExigeSinal || clienteExigeSinalExcecao;
+    const clienteExigeSinalExcecao = normalizeBoolean(clienteRecord?.exige_sinal_excecao);
+    const algumServicoExigeSinal = (servicosRows || []).some(s => normalizeBoolean(s?.exige_sinal));
+    const exigeSinalLogico = algumServicoExigeSinal || clienteExigeSinalExcecao;
+    const deveCobrarSinal = skipPaymentValidation ? false : exigeSinalLogico;
+
+    console.log('--- 🔍 AUDITORIA DE SINAL ---');
+    console.log('skipPaymentValidation:', data?.skipPaymentValidation);
+    console.log('algumServicoExigeSinal:', algumServicoExigeSinal);
+    console.log('clienteExigeSinalExcecao:', clienteExigeSinalExcecao);
+    console.log('deveCobrarSinal final:', deveCobrarSinal);
+    console.log('------------------------------');
 
     let pix = null;
     if (deveCobrarSinal) {
       let totalSinal = (servicosRows || [])
-        .filter(s => Boolean(s?.exige_sinal))
+        .filter(s => normalizeBoolean(s?.exige_sinal))
         .reduce((sum, s) => sum + (Number(s?.valor_sinal) || 0), 0);
 
       if (!(totalSinal > 0) && clienteExigeSinalExcecao) {

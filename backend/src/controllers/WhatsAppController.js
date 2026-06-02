@@ -232,6 +232,32 @@ class WhatsAppController {
         logger.warn(`⚠️ [WhatsAppController] Falha ao criar instância (pode já existir): status=${status} data=${msg}`);
       }
 
+      try {
+        const rawBase = process.env.WEBHOOK_BASE_URL;
+        const base = rawBase ? String(rawBase).replace(/\/+$/g, '') : null;
+        if (base) {
+          const webhookUrl = `${base}/api/webhooks/whatsapp`;
+          await this.client.post(`/settings/set/${encodeURIComponent(instanceName)}`, {
+            webhook: {
+              url: webhookUrl,
+              enabled: true,
+              events: ['messages.upsert', 'connection.update']
+            },
+            rejectCall: false,
+            groupsIgnore: true,
+            alwaysOnline: false,
+            readMessages: true,
+            readStatus: true,
+            syncFullHistory: false
+          });
+          logger.info(`[WhatsAppController] Webhook configurado com sucesso para ${webhookUrl}`);
+        } else {
+          logger.warn('[WhatsAppController] WEBHOOK_BASE_URL ausente; pulando configuração automática de webhook');
+        }
+      } catch (error) {
+        logger.error('[WhatsAppController] Falha crítica:', JSON.stringify(error?.response?.data, null, 2));
+      }
+
       const connectResponse = await this.client.get(`/instance/connect/${encodeURIComponent(instanceName)}`);
       const qrBase64 = this.extractQrBase64(connectResponse?.data);
 

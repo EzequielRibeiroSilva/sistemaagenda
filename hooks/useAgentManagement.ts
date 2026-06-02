@@ -32,6 +32,7 @@ export interface AgentDetails extends Agent {
   unidade_id: number;
   agenda_personalizada: boolean;
   observacoes?: string;
+  notifica_crise: boolean; // ✅ GESTÃO DE CRISE: Flag para receber notificações de emergência
   // Novos campos para pré-seleção
   servicos_disponiveis: Array<{
     id: number;
@@ -91,6 +92,7 @@ export interface CreateAgentData {
   observacoes?: string;
   data_admissao?: string;
   comissao_percentual?: number;
+  notifica_crise?: boolean; // ✅ GESTÃO DE CRISE: Flag para receber notificações de emergência
   servicos_oferecidos: number[];
   // ✅ ETAPA 3: Suporte para agendas multi-unidade (novo formato)
   agendas_multi_unidade?: Array<{

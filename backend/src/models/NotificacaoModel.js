@@ -9,6 +9,17 @@ const logger = require('./../utils/logger');
 
 const BIRTHDAY_TIPO = 'feliz_aniversario';
 
+const ALLOWED_TIPO_NOTIFICACAO = new Set([
+  'confirmacao',
+  'cancelamento',
+  'reagendamento',
+  'lembrete_24h',
+  'lembrete_1h',
+  'convite_retorno',
+  'assinatura_aviso_admin',
+  'assinatura_aviso_cliente'
+]);
+
 class NotificacaoModel {
   constructor() {
     this.tableName = 'lembretes_enviados';
@@ -267,16 +278,47 @@ class NotificacaoModel {
    */
   async create(data) {
     try {
+      const telefoneDestino = data?.telefone_destino ? String(data.telefone_destino).trim() : '';
+      if (!telefoneDestino) {
+        logger.warn('[NotificacaoService] Tentativa de logar lembrete inválido ignorada (telefone_destino vazio)', {
+          agendamento_id: data?.agendamento_id,
+          unidade_id: data?.unidade_id,
+          tipo_notificacao: data?.tipo_notificacao
+        });
+        return null;
+      }
+
+      if (telefoneDestino.length > 20) {
+        logger.warn('[NotificacaoService] Tentativa de logar lembrete inválido ignorada (telefone_destino > 20)', {
+          agendamento_id: data?.agendamento_id,
+          unidade_id: data?.unidade_id,
+          tipo_notificacao: data?.tipo_notificacao,
+          telefoneLength: telefoneDestino.length
+        });
+        return null;
+      }
+
+      const tipoNotificacao = data?.tipo_notificacao ? String(data.tipo_notificacao).trim() : '';
+      if (!tipoNotificacao || !ALLOWED_TIPO_NOTIFICACAO.has(tipoNotificacao)) {
+        logger.warn('[NotificacaoService] Tentativa de logar lembrete inválido ignorada (tipo_notificacao inválido)', {
+          agendamento_id: data?.agendamento_id,
+          unidade_id: data?.unidade_id,
+          tipo_notificacao: data?.tipo_notificacao
+        });
+        return null;
+      }
+
       const [id] = await db(this.tableName)
         .insert({
           agendamento_id: data.agendamento_id,
           unidade_id: data.unidade_id,
           cliente_id: data.cliente_id || null,
           assinatura_referencia: data.assinatura_referencia || null,
-          tipo_notificacao: data.tipo_notificacao,
+          tipo_lembrete: data.tipo_lembrete || null, // 🔧 CORREÇÃO: Adicionar tipo_lembrete (pode ser null para notificações que não são lembretes)
+          tipo_notificacao: tipoNotificacao,
           status: data.status || 'pendente',
           tentativas: data.tentativas || 0,
-          telefone_destino: data.telefone_destino,
+          telefone_destino: telefoneDestino,
           mensagem_enviada: data.mensagem_enviada || null,
           whatsapp_message_id: data.whatsapp_message_id || null,
           erro_detalhes: data.erro_detalhes || null,
@@ -290,8 +332,11 @@ class NotificacaoModel {
 
       return typeof id === 'object' ? id.id : id;
     } catch (error) {
-      logger.error('❌ [NotificacaoModel] Erro ao criar notificação:', error);
-      throw error;
+      // Blindagem total: o log no banco é opcional e nunca pode quebrar o fluxo.
+      // Qualquer falha (constraint, banco indisponível, dados inconsistentes, etc.) deve ser silenciada.
+      // Requisito: logar apenas um console.warn e retornar null.
+      console.warn(`[Notificacao] Log ignorado por erro de DB: ${error?.message || 'erro desconhecido'}`);
+      return null;
     }
   }
 

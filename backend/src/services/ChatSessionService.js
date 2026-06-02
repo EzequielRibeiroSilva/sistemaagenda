@@ -64,6 +64,22 @@ class ChatSessionService {
     return session.status === 'active';
   }
 
+  async shouldSuppressOutbound(unidadeId, telefone) {
+    const unidadeIdInt = parseInt(unidadeId);
+    if (!unidadeIdInt || !telefone) return false;
+
+    const telefoneLimpo = String(telefone).replace(/@s\.whatsapp\.net$/i, '').replace(/\D/g, '');
+    if (!telefoneLimpo) return false;
+
+    const session = await this.chatSessionModel.db(this.chatSessionModel.tableName)
+      .where('unidade_id', unidadeIdInt)
+      .where('cliente_telefone', telefoneLimpo)
+      .orderBy('id', 'desc')
+      .first();
+
+    return session?.status === 'active';
+  }
+
   async updateLastInteraction(unidadeId, telefone) {
     const unidadeIdInt = parseInt(unidadeId);
     if (!unidadeIdInt || !telefone) {

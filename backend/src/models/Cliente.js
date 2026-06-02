@@ -280,6 +280,8 @@ class Cliente extends BaseModel {
       whatsapp_id: dadosCliente.whatsapp_id || null
     };
 
+    console.log(`[Cliente.create] 🔧 Inserindo cliente no banco: primeiro_nome="${dadosParaInserir.primeiro_nome}", ultimo_nome="${dadosParaInserir.ultimo_nome}"`);
+
     const [clienteId] = await this.db(this.tableName).insert(dadosParaInserir).returning('id');
     return await this.findByIdAndUnidade(clienteId.id || clienteId, unidadeId);
   }
@@ -449,20 +451,55 @@ class Cliente extends BaseModel {
    * @returns {Promise<Object>} Cliente existente ou criado
    */
   async findOrCreateForAgendamento(telefone, nome, unidadeId) {
+    // ✅ NORMALIZAÇÃO BRUTAL: Remover TUDO que não é dígito
     const telefoneLimpo = this.limparTelefone(telefone);
 
-    // Buscar cliente existente
+    console.log(`[Cliente.findOrCreateForAgendamento] 🔍 [Auditoria Telefone] Original: ${telefone} | Limpo para Busca: ${telefoneLimpo}`);
+    console.log(`[Cliente.findOrCreateForAgendamento] 🔍 Buscando cliente: telefone_limpo=${telefoneLimpo}, unidade_id=${unidadeId}`);
+
+    // Buscar cliente existente usando telefone normalizado
     let cliente = await this.findByTelefoneAndUnidade(telefoneLimpo, unidadeId);
 
     if (!cliente) {
       // Criar cliente automaticamente
       const nomePartes = nome.trim().split(' ');
+      const primeiroNome = nomePartes[0] || '';
+      const ultimoNome = nomePartes.slice(1).join(' ') || '';
+      
+      console.log(`[Cliente.findOrCreateForAgendamento] 🔧 Cliente não encontrado. Criando novo com nome="${nome}" → primeiro_nome="${primeiroNome}", ultimo_nome="${ultimoNome}"`);
+      
       cliente = await this.create({
-        primeiro_nome: nomePartes[0] || '',
-        ultimo_nome: nomePartes.slice(1).join(' ') || '',
+        primeiro_nome: primeiroNome,
+        ultimo_nome: ultimoNome,
         telefone: telefone,
         is_assinante: false
       }, unidadeId);
+      
+      console.log(`[Cliente.findOrCreateForAgendamento] ✅ Cliente criado com sucesso: ID=${cliente.id}, primeiro_nome="${cliente.primeiro_nome}", ultimo_nome="${cliente.ultimo_nome}"`);
+    } else {
+      console.log(`[Cliente.findOrCreateForAgendamento] ✅ Cliente existente encontrado: ID=${cliente.id}, primeiro_nome="${cliente.primeiro_nome}", ultimo_nome="${cliente.ultimo_nome}"`);
+      
+      // ✅ PRIORIDADE DE IDENTIDADE: Se cliente tem nome genérico "Cliente" e IA forneceu nome real, atualizar
+      if (cliente.primeiro_nome === 'Cliente' && nome && nome !== 'Cliente') {
+        const nomePartes = nome.trim().split(' ');
+        const primeiroNome = nomePartes[0] || '';
+        const ultimoNome = nomePartes.slice(1).join(' ') || '';
+        
+        console.log(`[Cliente.findOrCreateForAgendamento] 🔄 Atualizando cliente genérico com nome real: "${nome}" → primeiro_nome="${primeiroNome}", ultimo_nome="${ultimoNome}"`);
+        
+        await this.db(this.tableName)
+          .where('id', cliente.id)
+          .where('unidade_id', unidadeId)
+          .update({
+            primeiro_nome: primeiroNome,
+            ultimo_nome: ultimoNome,
+            updated_at: this.db.fn.now()
+          });
+        
+        // Recarregar cliente atualizado
+        cliente = await this.findByIdAndUnidade(cliente.id, unidadeId);
+        console.log(`[Cliente.findOrCreateForAgendamento] ✅ Cliente atualizado com sucesso: ID=${cliente.id}, primeiro_nome="${cliente.primeiro_nome}", ultimo_nome="${cliente.ultimo_nome}"`);
+      }
     }
 
     return cliente;

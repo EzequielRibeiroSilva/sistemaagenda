@@ -629,6 +629,10 @@ class AgendamentoController extends BaseController {
   // POST /api/agendamentos - Criar novo agendamento
   async store(req, res) {
     try {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('[AgendamentoController.store] req.body recebido:', JSON.stringify(req.body || {}, null, 2));
+      }
+
       let usuarioId = req.user?.id;
       const userRole = req.user?.role;
       const userAgenteId = req.user?.agente_id;
@@ -659,13 +663,21 @@ class AgendamentoController extends BaseController {
         horaInicio: req.body.hora_inicio,
         horaFim: req.body.hora_fim,
         recorrencia: req.body.recorrencia,
+        skipPaymentValidation: true,
         suppressNotification: false
       };
 
       const context = { usuarioId };
       const resultado = await CreateAppointmentUseCase.execute(data, context);
-      return res.status(201).json(resultado);
+      return res.status(201).json({ success: true, data: resultado });
     } catch (error) {
+      logger.error('[AgendamentoController.store] Erro ao criar agendamento:', {
+        message: error?.message,
+        code: error?.code,
+        httpStatus: error?.httpStatus,
+        details: error?.details,
+        stack: process.env.NODE_ENV !== 'production' ? error?.stack : undefined,
+      });
       return res.status(400).json({ error: error.message });
     }
   }
@@ -1511,8 +1523,8 @@ class AgendamentoController extends BaseController {
         .where('agendamento_servicos.agendamento_id', agendamentoId)
         .select('servicos.nome', 'servicos.preco');
 
-      // CORREÇÃO: Lidar com estrutura antiga e nova da tabela clientes
-      const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
+      // ✅ CORREÇÃO: Usar CONCAT para nome completo
+      const nomeCliente = `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
       // NOVO: Calcular informações de pontos do cliente
       let pontosInfo = null;

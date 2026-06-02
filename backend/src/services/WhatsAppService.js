@@ -8,18 +8,29 @@ const NotificacaoModel = require('../models/NotificacaoModel');
 const Usuario = require('../models/Usuario');
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
+const ChatSessionService = require('./ChatSessionService');
 
 class WhatsAppService {
   constructor() {
     const rawUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
     this.evolutionApiUrl = String(rawUrl).replace(/\/+$/g, '');
     this.evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
-    this.instanceName = process.env.EVOLUTION_INSTANCE_NAME || 'PAINEL-DE-AGENDAMENTOS';
+    // ❌ REMOVIDO: this.instanceName - agora deve ser passado como argumento
     this.instanceId = process.env.EVOLUTION_INSTANCE_ID || '';
     this.enabled = process.env.WHATSAPP_ENABLED === 'true' || process.env.ENABLE_WHATSAPP_NOTIFICATIONS === 'true';
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
     this.notificacaoModel = new NotificacaoModel();
     this.usuarioModel = new Usuario();
+
+    // 🔍 VERIFICAÇÃO DE ENDPOINT
+    logger.log(`🔧 [WhatsAppService] Configurado com URL: ${this.evolutionApiUrl}`);
+    logger.log(`🔧 [WhatsAppService] Enabled: ${this.enabled} | Test Mode: ${this.testMode}`);
+    logger.log(`⚠️ [WhatsAppService] instanceName agora deve ser passado como argumento (não mais fallback)`);
+    
+    // ⚠️ ALERTA SE URL FOR LOCALHOST EM PRODUÇÃO
+    if (process.env.NODE_ENV === 'production' && this.evolutionApiUrl.includes('localhost')) {
+      logger.error('⚠️ [WhatsAppService] ATENÇÃO: URL localhost detectada em produção!');
+    }
   }
 
   async resolveOwnerUsuarioIdFromAgendamentoData(agendamentoData) {
@@ -60,37 +71,58 @@ class WhatsAppService {
     const payload = {
       number: formattedPhone,
       text: message,
-      delay: 1000,
       linkPreview: false
     };
 
-    const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': token
-      },
-      body: JSON.stringify(payload),
-      timeout: 30000
-    });
+    const targetUrl = `${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
 
-    const data = await response.json();
+    // 🔍 LOG ANTES DO ENVIO
+    logger.log(`🚀 [WhatsAppService] Tentando enviar para: ${targetUrl} | Instância: ${instanceName}`);
+    logger.log(`📦 [WhatsAppService] Payload:`, JSON.stringify(payload, null, 2));
 
-    if (response.ok) {
-      return { success: true, data };
-    }
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': token
+        },
+        body: JSON.stringify(payload),
+        timeout: 30000
+      });
 
-    logger.error('❌ [WhatsApp] Erro ao enviar mensagem (multi-tenant):');
-    logger.error('❌ [WhatsApp] Status:', response.status);
-    logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
-    return {
-      success: false,
-      error: {
-        status: response.status,
-        error: response.statusText,
-        response: data
+      const data = await response.json();
+
+      // 🔍 LOG DEPOIS DO ENVIO
+      logger.log(`📥 [WhatsAppService] Resposta recebida - Status: ${response.status}`);
+      logger.log(`📥 [WhatsAppService] Data:`, JSON.stringify(data, null, 2));
+
+      if (response.ok) {
+        return { success: true, data };
       }
-    };
+
+      logger.error('❌ [WhatsApp] Erro ao enviar mensagem (multi-tenant):');
+      logger.error('❌ [WhatsApp] Status:', response.status);
+      logger.error('❌ [WhatsApp] Data:', JSON.stringify(data, null, 2));
+      return {
+        success: false,
+        error: {
+          status: response.status,
+          error: response.statusText,
+          response: data
+        }
+      };
+    } catch (error) {
+      // 🔍 LOG DE ERRO CAPTURADO
+      logger.error('❌ [WhatsAppService] ERRO NO ENVIO:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: {
+          message: error.message,
+          response: error.response?.data || null
+        }
+      };
+    }
   }
 
   formatAssinaturaSaldoMessage(assinaturaSaldo) {
@@ -270,25 +302,24 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
 
   /**
    * Enviar mensagem via Evolution API
+   * @param {string} instanceName - Nome da instância WhatsApp (obrigatório)
+   * @param {string} phoneNumber - Número de telefone do destinatário
+   * @param {string} message - Texto da mensagem
    */
-  async sendMessage(phoneNumber, message) {
+  async sendMessage(instanceName, phoneNumber, message) {
     if (!this.isEnabled()) {
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
-    const isDev = process.env.NODE_ENV === 'development';
-    const minDelayMs = parseInt(process.env.WHATSAPP_DEV_MIN_DELAY_MS || '15000');
-    const maxDelayMs = parseInt(process.env.WHATSAPP_DEV_MAX_DELAY_MS || '40000');
+    if (!instanceName) {
+      logger.error('❌ [WhatsAppService] instanceName é obrigatório para sendMessage');
+      return { success: false, error: 'instanceName é obrigatório' };
+    }
 
-    const shouldApplyDevDelay = isDev && minDelayMs > 0 && maxDelayMs >= minDelayMs;
+    // 🔍 LOG DE DEBUG - Verificar número de destino
+    logger.log(`📞 [WhatsAppService] Enviando para o número: ${phoneNumber}`);
 
     const runInQueue = async () => {
-      if (shouldApplyDevDelay) {
-        const delayMs = WhatsAppService.getRandomIntInclusive(minDelayMs, maxDelayMs);
-        logger.log(`⏳ [WhatsApp] DEV: aguardando ${delayMs}ms antes do envio (delay variável)`);
-        await WhatsAppService.sleep(delayMs);
-      }
-
       // Modo de teste - simula envio bem-sucedido
       if (this.testMode) {
         const formattedPhone = this.formatPhoneNumber(phoneNumber);
@@ -311,16 +342,19 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
         // Modo legado: envio com credenciais globais (compatibilidade)
         const formattedPhone = this.formatPhoneNumber(phoneNumber);
 
-        const instanceIdentifier = this.instanceName || this.instanceId;
-
         const payload = {
           number: formattedPhone,
           text: message,
-          delay: 1000,
           linkPreview: false
         };
 
-        const response = await fetch(`${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceIdentifier)}`, {
+        const targetUrl = `${this.evolutionApiUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
+
+        // 🔍 LOG ANTES DO ENVIO (MODO LEGADO)
+        logger.log(`🚀 [WhatsAppService] [LEGADO] Tentando enviar para: ${targetUrl} | Instância: ${instanceName}`);
+        logger.log(`📦 [WhatsAppService] [LEGADO] Payload:`, JSON.stringify(payload, null, 2));
+
+        const response = await fetch(targetUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -331,6 +365,10 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
         });
 
         const data = await response.json();
+
+        // 🔍 LOG DEPOIS DO ENVIO (MODO LEGADO)
+        logger.log(`📥 [WhatsAppService] [LEGADO] Resposta recebida - Status: ${response.status}`);
+        logger.log(`📥 [WhatsAppService] [LEGADO] Data:`, JSON.stringify(data, null, 2));
 
         if (response.ok) {
           return { success: true, data };
@@ -349,7 +387,8 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
         };
 
       } catch (error) {
-        logger.error('❌ [WhatsApp] Erro na requisição:', error);
+        // 🔍 LOG DE ERRO CAPTURADO (MODO LEGADO)
+        logger.error('❌ [WhatsAppService] [LEGADO] ERRO NO ENVIO:', error.response?.data || error.message);
         return { success: false, error: error.message };
       }
     };
@@ -367,9 +406,18 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
+    const unidadeId = agendamentoData?.unidade_id || agendamentoData?.unidade?.id;
+    const isSuppressed = await ChatSessionService.shouldSuppressOutbound(unidadeId, phoneNumber);
+    if (isSuppressed) {
+      logger.info(`[WhatsAppService] Disparo suprimido para ${phoneNumber} (sessão IA ativa)`);
+      return { success: false, skipped: true, reason: 'ai_session_active' };
+    }
+
     // Modo de teste - simula envio bem-sucedido
     if (this.testMode) {
-      return await this.sendMessage(phoneNumber, message);
+      // Em testMode, usar instanceName genérico
+      const testInstanceName = process.env.EVOLUTION_INSTANCE_NAME || process.env.APP_NAME || 'test-instance';
+      return await this.sendMessage(testInstanceName, phoneNumber, message);
     }
 
     const usuarioId = await this.resolveOwnerUsuarioIdFromAgendamentoData(agendamentoData);
@@ -542,7 +590,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
         unidade_id: data.unidade_id,
         cliente_id: data.cliente_id || null,
         assinatura_referencia: data.assinatura_referencia || null,
-        tipo_notificacao: data.tipo_notificacao,
+        tipo_notificacao: data.tipo_notificacao || 'confirmacao',
         status: data.status || 'pendente',
         tentativas: data.tentativas || 0,
         telefone_destino: data.telefone_destino,

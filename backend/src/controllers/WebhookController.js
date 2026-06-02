@@ -2,6 +2,37 @@ const Usuario = require('../models/Usuario');
 const logger = require('../utils/logger');
 const WhatsappQueueService = require('../queues/WhatsappQueue');
 
+/**
+ * Valida se a requisição vem de uma origem permitida.
+ *
+ * Em produção: a validação é feita exclusivamente pelo apikey da Evolution API
+ * (já tratado mais abaixo no handler). Não há restrição de host porque o
+ * servidor fica atrás de um proxy reverso com IP fixo.
+ *
+ * Em desenvolvimento: se WEBHOOK_BASE_URL estiver definida, verifica se o
+ * header Host ou o header X-Forwarded-Host bate com o domínio do túnel ngrok.
+ * Isso evita que qualquer pessoa que descubra o endpoint local consiga postar.
+ *
+ * Retorna true se a origem for aceitável, false caso contrário.
+ */
+function isAllowedOrigin(req) {
+  // Em produção não fazemos restrição de host aqui — o apikey já cobre isso.
+  if (process.env.NODE_ENV === 'production') return true;
+
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) return true; // sem túnel configurado, aceita (dev local direto)
+
+  try {
+    const allowedHost = new URL(webhookBaseUrl).hostname;
+    const requestHost = (req.headers['x-forwarded-host'] || req.headers['host'] || '').split(':')[0];
+    return requestHost === allowedHost;
+  } catch {
+    // URL malformada no .env — não bloqueia, apenas loga
+    logger.warn('[Webhook] WEBHOOK_BASE_URL inválida no .env, validação de origem ignorada');
+    return true;
+  }
+}
+
 class WebhookController {
   constructor() {
     this.usuarioModel = new Usuario();
@@ -14,6 +45,12 @@ class WebhookController {
 
   async whatsapp(req, res) {
     try {
+      // ── Validação de origem (desenvolvimento com túnel ngrok) ──────────────
+      if (!isAllowedOrigin(req)) {
+        logger.warn(`⚠️ [Webhook] Requisição bloqueada: host não permitido (${req.headers['host']})`);
+        return res.status(403).json({ success: false, message: 'Origem não autorizada' });
+      }
+
       const payload = req.body || {};
 
       const event = payload.event;

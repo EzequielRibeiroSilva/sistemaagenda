@@ -362,7 +362,7 @@ describe('🚀 Testes Avançados de Funcionalidades', () => {
       const originalEnabled = whatsAppService.enabled;
       whatsAppService.enabled = false;
 
-      const result = await whatsAppService.sendMessage('11999998888', 'teste');
+      const result = await whatsAppService.sendMessage('test-instance', '11999998888', 'teste');
       expect(result.success).toBe(false);
 
       // Restaurar

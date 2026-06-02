@@ -42,6 +42,7 @@ class RBACAgendamentoController extends BaseController {
             data = await this.model.findByCliente(parseInt(cliente_id));
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
+            const { db } = require('../config/knex');
             data = await this.model.db(this.model.tableName)
               .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -52,7 +53,7 @@ class RBACAgendamentoController extends BaseController {
               })
               .select([
                 'agendamentos.*',
-                'clientes.nome as cliente_nome',
+                db.raw("CONCAT(clientes.primeiro_nome, ' ', clientes.ultimo_nome) as cliente_nome"),
                 'clientes.telefone as cliente_telefone',
                 'agentes.nome as agente_nome',
                 'unidades.nome as unidade_nome'
@@ -89,6 +90,7 @@ class RBACAgendamentoController extends BaseController {
               .whereNull('deleted_at');
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
+            const { db } = require('../config/knex');
             data = await this.model.db(this.model.tableName)
               .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -100,7 +102,7 @@ class RBACAgendamentoController extends BaseController {
               })
               .select([
                 'agendamentos.*',
-                'clientes.nome as cliente_nome',
+                db.raw("CONCAT(clientes.primeiro_nome, ' ', clientes.ultimo_nome) as cliente_nome"),
                 'clientes.telefone as cliente_telefone',
                 'agentes.nome as agente_nome',
                 'unidades.nome as unidade_nome'
@@ -129,6 +131,7 @@ class RBACAgendamentoController extends BaseController {
               .whereNull('deleted_at');
           } else if (page && limit) {
             const offset = (parseInt(page) - 1) * parseInt(limit);
+            const { db } = require('../config/knex');
             data = await this.model.db(this.model.tableName)
               .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
               .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -140,7 +143,7 @@ class RBACAgendamentoController extends BaseController {
               })
               .select([
                 'agendamentos.*',
-                'clientes.nome as cliente_nome',
+                db.raw("CONCAT(clientes.primeiro_nome, ' ', clientes.ultimo_nome) as cliente_nome"),
                 'clientes.telefone as cliente_telefone',
                 'agentes.nome as agente_nome',
                 'unidades.nome as unidade_nome'
@@ -349,6 +352,7 @@ class RBACAgendamentoController extends BaseController {
   // Método auxiliar para buscar dados completos do agendamento
   async buscarDadosCompletos(agendamentoId) {
     try {
+      const { db } = require('../config/knex');
       const dados = await this.model.db('agendamentos')
         .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
         .join('agentes', 'agendamentos.agente_id', 'agentes.id')
@@ -357,7 +361,7 @@ class RBACAgendamentoController extends BaseController {
         .whereNull('agendamentos.deleted_at')
         .select([
           'agendamentos.*',
-          'clientes.nome as cliente_nome',
+          db.raw("CONCAT(clientes.primeiro_nome, ' ', clientes.ultimo_nome) as cliente_nome"),
           'clientes.telefone as cliente_telefone',
           'agentes.nome as agente_nome',
           'unidades.nome as unidade_nome'

@@ -646,13 +646,44 @@ class ReminderService {
    */
   async createReminderRecord(agendamentoId, unidadeId, tipoLembrete, telefone) {
     try {
+      const telefoneDestino = telefone ? String(telefone).trim() : '';
+      if (!telefoneDestino) {
+        logger.error('❌ [ReminderService] Telefone destino inválido. Pulando registro de lembrete.', {
+          agendamentoId,
+          unidadeId,
+          tipoLembrete,
+          telefone
+        });
+        return null;
+      }
+
+      if (telefoneDestino.length > 20) {
+        logger.error('❌ [ReminderService] Telefone destino excede limite (20). Pulando registro de lembrete.', {
+          agendamentoId,
+          unidadeId,
+          tipoLembrete,
+          telefoneLength: telefoneDestino.length
+        });
+        return null;
+      }
+
+      const tipo = tipoLembrete ? String(tipoLembrete).trim() : '';
+      if (!tipo || (tipo !== '24h' && tipo !== '2h')) {
+        logger.error('❌ [ReminderService] tipo_lembrete inválido. Pulando registro de lembrete.', {
+          agendamentoId,
+          unidadeId,
+          tipoLembrete
+        });
+        return null;
+      }
+
       const result = await db('lembretes_enviados').insert({
         agendamento_id: agendamentoId,
         unidade_id: unidadeId,
-        tipo_lembrete: tipoLembrete,
+        tipo_lembrete: tipo,
         status: 'pendente',
         tentativas: 0,
-        telefone_destino: telefone,
+        telefone_destino: telefoneDestino,
         created_at: db.fn.now(),
         updated_at: db.fn.now()
       }).returning('id');

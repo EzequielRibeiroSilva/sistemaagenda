@@ -89,7 +89,8 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
     nome_exibicao: '',
     // unidade_id: 1, // REMOVIDO: Backend usa unidade_id do token JWT
     comissao_percentual: 0,
-    observacoes: ''
+    observacoes: '',
+    notifica_crise: false // ✅ GESTÃO DE CRISE: Default false
   });
   
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
@@ -280,7 +281,23 @@ const CreateAgentPage: React.FC<CreateAgentPageProps> = ({ setActiveView }) => {
         </div>
       )}
 
-      <FormCard title="Informações Gerais">
+      <FormCard 
+        title="Informações Gerais"
+        rightContent={
+          <label className="flex items-center cursor-pointer">
+            <button
+              type="button"
+              onClick={() => handleInputChange('notifica_crise', !formData.notifica_crise)}
+              role="switch"
+              aria-checked={formData.notifica_crise}
+              className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${formData.notifica_crise ? 'bg-blue-600' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${formData.notifica_crise ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <span className="ml-3 text-sm text-gray-600">Gerente</span>
+          </label>
+        }
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Avatar Upload */}
           <div className="md:col-span-2 flex items-center space-x-6">

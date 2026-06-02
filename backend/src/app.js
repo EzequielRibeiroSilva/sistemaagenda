@@ -12,6 +12,7 @@ const apiRoutes = require('./routes/index');
 const webhooksRoutes = require('./routes/webhooks');
 const reminderJob = require('./jobs/reminderJob');
 const pendingPaymentCleanupJob = require('./jobs/pendingPaymentCleanupJob');
+const waitingListJob = require('./jobs/waitingListJob');
 const whatsappWorker = require('./workers/WhatsappWorker');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
@@ -187,9 +188,17 @@ app.use('/api/whatsapp', (req, res, next) => {
 });
 
 // ✅ CORREÇÃO 1.4: Sanitização global de inputs (XSS + SQL Injection)
+// Excluir /api/webhooks/* pois são payloads de terceiros (Evolution API, Mercado Pago)
+// que podem conter texto livre com palavras reservadas SQL (ex: mensagens WhatsApp).
 const { sanitizeInput, detectSQLInjection } = require('./middleware/validation');
-app.use('/api', detectSQLInjection); // Detectar SQL Injection em todas as rotas da API
-app.use('/api', sanitizeInput); // Sanitizar XSS em todas as rotas da API
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/webhooks/')) return next();
+  return detectSQLInjection(req, res, next);
+});
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/webhooks/')) return next();
+  return sanitizeInput(req, res, next);
+});
 
 // Middleware específico para arquivos estáticos com headers CORS
 app.use('/uploads', corsStaticFiles());
@@ -228,11 +237,24 @@ app.get('/', (req, res) => {
   });
 });
 
-// Middleware de rotas da API
-app.use('/api', apiRoutes);
+// ── Catch-All de segurança para webhooks na raiz ──────────────────────────────
+// A Evolution API às vezes envia POST / em vez de POST /api/webhooks/whatsapp
+// (comportamento observado quando a URL do webhook está configurada sem o path).
+// Este middleware intercepta POSTs na raiz e força o re-roteamento para o
+// endpoint correto antes que qualquer outra rota processe a requisição.
+app.post('/', (req, res, next) => {
+  logger.warn('⚠️  [App] POST recebido na raiz — redirecionando para /api/webhooks/whatsapp');
+  req.url = '/api/webhooks/whatsapp';
+  next();
+});
 
 // Webhooks (sem autenticação JWT; segurança tratada no handler)
+// IMPORTANTE: deve ser registrado ANTES de app.use('/api', apiRoutes)
+// para evitar que o handler 404 do apiRoutes capture estas rotas.
 app.use('/api/webhooks', webhooksRoutes);
+
+// Middleware de rotas da API
+app.use('/api', apiRoutes);
 
 // Middleware de tratamento de erros 404
 app.use('*', (req, res) => {
@@ -290,6 +312,10 @@ async function startServer() {
       logger.log('\n🧹 Inicializando cleanup de pagamentos pendentes (Pix)...');
       pendingPaymentCleanupJob.start();
 
+      // Iniciar job de lista de espera inteligente (Fase 4)
+      logger.log('\n⏳ Inicializando sistema de lista de espera inteligente...');
+      waitingListJob.start();
+
       whatsappWorker.start();
     });
     
@@ -298,6 +324,7 @@ async function startServer() {
       logger.log('🛑 Recebido SIGTERM, encerrando servidor...');
       reminderJob.stop();
       pendingPaymentCleanupJob.stop();
+      waitingListJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -308,6 +335,7 @@ async function startServer() {
       logger.log('🛑 Recebido SIGINT, encerrando servidor...');
       reminderJob.stop();
       pendingPaymentCleanupJob.stop();
+      waitingListJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);

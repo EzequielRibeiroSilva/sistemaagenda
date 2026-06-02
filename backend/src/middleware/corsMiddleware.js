@@ -225,8 +225,9 @@ function corsMiddleware(options = {}) {
 
   return (req, res, next) => {
     const isMercadoPagoIntegrationRoute = (() => {
-      const p = req.path;
-      if (!p) return false;
+      // req.path é relativo ao ponto de montagem do middleware.
+      // req.originalUrl contém o path completo — usar para comparação segura.
+      const p = req.originalUrl ? req.originalUrl.split('?')[0] : (req.path || '');
       if (p === '/api/webhooks/mercadopago/callback') {
         return req.method === 'GET' || req.method === 'OPTIONS';
       }
@@ -235,6 +236,17 @@ function corsMiddleware(options = {}) {
       }
       return false;
     })();
+
+    // Requisições server-to-server (Evolution API, Mercado Pago, etc.) chegam
+    // sem header Origin. Não há CORS a aplicar — deixar passar diretamente.
+    const isWebhookRoute = (() => {
+      const p = req.originalUrl ? req.originalUrl.split('?')[0] : (req.path || '');
+      return p.startsWith('/api/webhooks/');
+    })();
+
+    if (isWebhookRoute && !req.get('origin')) {
+      return next();
+    }
 
     if (isMercadoPagoIntegrationRoute) {
       res.setHeader('Access-Control-Allow-Origin', '*');

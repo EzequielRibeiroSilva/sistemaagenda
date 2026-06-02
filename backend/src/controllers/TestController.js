@@ -35,7 +35,8 @@ class TestController {
       });
 
       // Testar envio direto
-      const resultado = await this.whatsAppService.sendMessage(telefone, mensagemTeste);
+      const instanceName = process.env.EVOLUTION_INSTANCE_NAME || process.env.APP_NAME || 'test-instance';
+      const resultado = await this.whatsAppService.sendMessage(instanceName, telefone, mensagemTeste);
 
       logger.log('🧪 [TestController] Resultado do teste:', resultado);
 

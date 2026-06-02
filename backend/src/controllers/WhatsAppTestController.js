@@ -241,7 +241,7 @@ class WhatsAppTestController {
         },
         body: JSON.stringify({
           instanceName: instanceName,
-          token: 'PAINEL-DE-AGENDAMENTOS',
+          token: process.env.EVOLUTION_DEFAULT_TOKEN || instanceName,
           qrcode: true,
           markMessagesRead: true,
           delayMessage: 1000,

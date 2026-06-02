@@ -116,6 +116,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState(''); // ✅ CORREÇÃO: Estado para capturar nova senha
     const [status, setStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
+    const [notificaCrise, setNotificaCrise] = useState<boolean>(false); // ✅ GESTÃO DE CRISE
 
     // Estados que são usados no useEffect devem ser declarados ANTES
     const [checkedServices, setCheckedServices] = useState<Record<number, boolean>>({});
@@ -142,6 +143,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                     setPhone(agent.telefone || '');
                     setEmail(agent.email || '');
                     setStatus(agent.status || 'Ativo');
+                    setNotificaCrise(agent.notifica_crise || false); // ✅ GESTÃO DE CRISE
 
                     // Implementar pré-seleção de serviços
                     if (agent.servicos_disponiveis && agent.servicos_atuais_ids) {
@@ -438,6 +440,7 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
                 agendas_multi_unidade: schedulesToSubmit,
                 agenda_personalizada: schedulesToSubmit.length > 0,
                 avatar: avatarFile,
+                notifica_crise: notificaCrise, // ✅ GESTÃO DE CRISE
                 ...(password.trim() !== '' && { senha: password })
             };
 
@@ -488,7 +491,25 @@ const EditAgentPage: React.FC<EditAgentPageProps> = ({ setActiveView, agentId })
         <div className="space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Editar Equipe</h1>
 
-            <FormCard title="Informações Gerais">
+            <FormCard 
+                title="Informações Gerais"
+                rightContent={
+                    user?.role === 'ADMIN' ? (
+                        <label className="flex items-center cursor-pointer">
+                            <button
+                                type="button"
+                                onClick={() => setNotificaCrise(!notificaCrise)}
+                                role="switch"
+                                aria-checked={notificaCrise}
+                                className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${notificaCrise ? 'bg-blue-600' : 'bg-gray-200'}`}
+                            >
+                                <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${notificaCrise ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                            <span className="ml-3 text-sm text-gray-600">Gerente</span>
+                        </label>
+                    ) : undefined
+                }
+            >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Avatar Upload */}
                     <div className="md:col-span-2 flex items-center space-x-6">

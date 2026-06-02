@@ -3311,8 +3311,8 @@ class PublicBookingController {
         .where('agendamento_servicos.agendamento_id', agendamentoId)
         .select('servicos.nome', 'servicos.preco');
 
-      // Formatar nome do cliente
-      const nomeCliente = cliente.nome || `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
+      // ✅ CORREÇÃO: Usar CONCAT para nome completo
+      const nomeCliente = `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim();
 
       // Retornar dados formatados para WhatsApp
       return {
