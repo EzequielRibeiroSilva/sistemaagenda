@@ -24,7 +24,7 @@ class ReactivateSessionsJob {
     try {
       const updated = await db('chat_sessions')
         .where('status', 'paused_by_human')
-        .andWhere('last_interaction_at', '<', db.raw("NOW() - INTERVAL '2 hours'"))
+        .andWhere('last_interaction_at', '<', db.raw("NOW() - INTERVAL '30 minutes'"))
         .update({
           status: 'active',
           updated_at: db.fn.now()

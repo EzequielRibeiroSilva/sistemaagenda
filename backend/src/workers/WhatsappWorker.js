@@ -96,13 +96,17 @@ function minifyToolResult(toolName, toolResult) {
       };
 
     case 'consultar_disponibilidade':
-      // Remove detalhes completos dos slots, mantém apenas contagem
+      // 🧠 PRESERVA system_directive (Chain of Thought Injetada) para combater Attention Decay
+      // ⚠️ NÃO cortar os slots: enviar a lista COMPLETA. O .slice(0, 5) anterior
+      // omitia horários da tarde/noite e fazia a IA responder "sem horários".
+      // Um array de 10-15 horários custa pouquíssimos tokens.
       return {
         ok: true,
         total_slots: Array.isArray(toolResult.slots) ? toolResult.slots.length : 0,
         has_availability: Array.isArray(toolResult.slots) && toolResult.slots.length > 0,
-        // Mantém apenas os primeiros 5 horários para referência
-        slots: Array.isArray(toolResult.slots) ? toolResult.slots.slice(0, 5) : []
+        slots: Array.isArray(toolResult.slots) ? toolResult.slots : [],
+        agente_trabalha_neste_dia: toolResult.agente_trabalha_neste_dia,
+        system_directive: toolResult.system_directive  // ⚡ CRÍTICO: Regra injetada junto com o dado
       };
 
     case 'validar_agendamento':
@@ -314,6 +318,20 @@ const redisOptions = {
   maxRetriesPerRequest: null
 };
 
+// ── 🧠 INSTÂNCIA REDIS PARA KILL SWITCH (FASE 2/3) ──────────────────────────
+// Usada para verificar se mensagens fromMe são do bot ou de humanos.
+let redisClient = null;
+
+function getRedisClient() {
+  if (!redisClient) {
+    redisClient = new Redis(redisOptions);
+    redisClient.on('error', (err) => {
+      logger.error('[Worker] Redis connection error:', err);
+    });
+  }
+  return redisClient;
+}
+
 class WhatsappWorker {
   async processPayload(payload, job = null) {
     logger.info(`[Worker] Processando job ${job?.id || 'manual'} - instância: ${payload?.instance}`);
@@ -364,6 +382,50 @@ class WhatsappWorker {
     if (!telefoneLimpo || !unidadeId) {
       logger.info('[Worker] Ignorando payload sem telefone ou unidade (provável status/system message).');
       return { ok: true, skipped: 'invalid_payload' };
+    }
+
+    // ── 🚨 KILL SWITCH DEFINITIVO (FASE 3) ──────────────────────────────────
+    // Extrai a flag fromMe para detectar mensagens enviadas pela própria instância.
+    // Consulta o Redis para distinguir se é do BOT (ignorar) ou do HUMANO (pausar).
+    const fromMe = payload?.data?.key?.fromMe === true;
+    if (fromMe) {
+      const messageId = payload?.data?.key?.id;
+      
+      if (!messageId) {
+        logger.warn('[Worker] Mensagem fromMe sem ID - ignorando por segurança');
+        return { ok: true, skipped: 'from_me_no_id' };
+      }
+
+      // Consultar Redis: essa mensagem foi enviada pelo bot?
+      const redis = getRedisClient();
+      let isBotMessage = false;
+      
+      try {
+        const exists = await redis.exists(`bot_msg:${messageId}`);
+        isBotMessage = exists === 1;
+      } catch (redisErr) {
+        logger.error('[Worker] Erro ao consultar Redis (Kill Switch):', redisErr.message);
+        // Em caso de erro no Redis, assumir que é do bot para evitar pausas incorretas
+        return { ok: true, skipped: 'from_me_redis_error' };
+      }
+
+      if (isBotMessage) {
+        // É uma mensagem enviada pelo bot - apenas ignorar (echo normal)
+        logger.debug(`[Worker] Ignorando echo do bot (message_id: ${messageId})`);
+        return { ok: true, skipped: 'bot_echo' };
+      }
+
+      // ⚠️ NÃO ESTÁ NO REDIS → É DO HUMANO! Ativar Kill Switch
+      logger.info(`[Worker] 🛑 KILL SWITCH ATIVADO - Humano assumiu conversa (message_id: ${messageId})`);
+      
+      try {
+        await ChatSessionService.pauseSession(unidadeId, telefoneLimpo, 'human_intervention');
+        logger.info(`[Worker] ✅ Sessão pausada com sucesso | unidade=${unidadeId} | telefone=${telefoneLimpo}`);
+      } catch (pauseErr) {
+        logger.error('[Worker] Erro ao pausar sessão:', pauseErr.message);
+      }
+      
+      return { ok: true, reason: 'kill_switch_activated' };
     }
 
     const shouldProcess = await ChatSessionService.shouldProcessMessage(unidadeId, telefoneLimpo);
@@ -624,8 +686,23 @@ Se o cliente fizer uma pergunta fora do escopo:
 - Pergunta: "Qual é o sentido da vida?"
   Resposta: "Essa é uma pergunta profunda que muitas pessoas refletem ao longo de suas vidas. O sentido da vida pode variar de pessoa para pessoa..." [TEXTO LONGO - PROIBIDO]
 
-👥 Profissionais disponíveis:
+👥 EQUIPE DA UNIDADE (Profissionais Cadastrados):
 ${agentesTexto}
+
+⚠️ ATENÇÃO - LEIA COM CUIDADO:
+Esses são os profissionais CADASTRADOS na unidade.
+Cada um tem sua própria agenda e dias de folga.
+
+🚫 VOCÊ NÃO SABE:
+- Quais dias cada um trabalha
+- Quais horários estão livres
+- Se estão trabalhando hoje
+
+✅ PARA SABER ISSO:
+Use a ferramenta consultar_disponibilidade SEMPRE que o cliente perguntar.
+
+💬 NUNCA diga: "O João trabalha na quinta" sem consultar antes!
+💬 SEMPRE diga: "Deixa eu conferir a agenda do João pra você!" [e consulte]
 
 🎯 Serviços disponíveis:
 ${servicosTexto}
@@ -647,24 +724,58 @@ ${temPreferencias ? `
 - NÃO invente preferências - só registre o que o cliente DISSE
 `}
 
-🎯 PROTOCOLO DE ESCOLHA DO PROFISSIONAL (OBRIGATÓRIO):
-1. Ao iniciar um agendamento, você DEVE apresentar os profissionais disponíveis e perguntar com qual deles o cliente deseja ser atendido
-2. NÃO consulte a disponibilidade antes de saber com qual profissional o cliente quer agendar
-3. A escolha do profissional é o PRIMEIRO PASSO do agendamento
-4. Fluxo obrigatório:
-   - Passo 1: Cliente manifesta interesse em agendar
-   - Passo 2: Você apresenta os profissionais: "${agentesContexto.map(a => a.nome).join(' e ')}"
-   - Passo 3: Cliente escolhe o profissional
-   - Passo 4: Você consulta disponibilidade usando o agente_id do profissional escolhido
-5. NUNCA pré-selecione um profissional automaticamente
-6. NUNCA use agente_id na ferramenta consultar_disponibilidade antes da escolha do cliente
+🗓️ REGRA DE OURO DA AGENDA (ANTI-ALUCINAÇÃO - PRIORIDADE MÁXIMA):
+Você é uma recepcionista que acabou de começar hoje. Você NÃO conhece a agenda de nenhum profissional de cor.
+Para QUALQUER pergunta sobre agenda, você é OBRIGADA a consultar o sistema primeiro.
 
-Diretrizes:
-- Seja curta, direta e humanizada
-- Ao agendar, SEMPRE consulte a disponibilidade (ferramenta 'consultar_disponibilidade') e apresente as opções de horário
-- NUNCA invente horários - sempre consulte a ferramenta primeiro
-- Se o agendamento for concluído, confirme o horário e o serviço
-- Use os serviços listados acima - não invente serviços que não existem
+⛔ PROIBIDO RESPONDER SEM CONSULTAR:
+- "O [profissional] trabalha na [dia]?"
+- "Que dias o [profissional] trabalha?"
+- "Tem horário na [dia] com [profissional]?"
+- "Qual o primeiro horário disponível com [profissional]?"
+- Qualquer variação dessas perguntas
+
+✅ FLUXO CORRETO:
+1. Cliente pergunta sobre agenda → "Deixa eu conferir a agenda dele pra você!"
+2. Você chama consultar_disponibilidade
+3. Você apresenta o resultado baseado no que o sistema retornou
+
+❌ FLUXO PROIBIDO (ALUCINAÇÃO):
+1. Cliente: "O Damião trabalha sexta?"
+2. Você: "Sim, trabalha!" [SEM CONSULTAR]
+❌ Isso é ALUCINAÇÃO. NUNCA faça isso.
+
+🎯 GATILHOS OBRIGATÓRIOS para consultar_disponibilidade:
+- Cliente menciona dia da semana + profissional
+- Cliente pergunta sobre disponibilidade
+- Cliente quer saber se profissional trabalha em determinado dia
+- Cliente quer ver horários
+- Cliente pergunta "que dias" ou "quais horários" de profissional
+
+💡 REGRA SIMPLES: Na dúvida, consulte. É melhor consultar demais do que alucinar.
+
+🎯 COMO INICIAR UM AGENDAMENTO (TOM DE VENDEDOR):
+Quando o cliente manifesta interesse em agendar, seja proativa e entusiasmada!
+
+✅ EXEMPLO CORRETO:
+Cliente: "Quero marcar um horário"
+Você: "Maravilha! Temos o ${agentesContexto.map(a => a.nome).join(' e o ')} aqui. Com qual dos dois você prefere se atender?"
+
+📌 IMPORTANTE:
+- NÃO consulte disponibilidade antes de saber qual profissional o cliente quer
+- A escolha do profissional vem PRIMEIRO
+- DEPOIS você consulta a agenda dele com consultar_disponibilidade
+
+⚠️ NUNCA pré-selecione automaticamente. Sempre pergunte com qual profissional o cliente quer ser atendido!
+
+🎭 COMO VOCÊ DEVE SE COMPORTAR:
+- Seja calorosa, entusiasmada e consultiva (recepcionista de salão, não robô de suporte técnico)
+- SEMPRE consulte a agenda antes de responder perguntas sobre disponibilidade
+- NUNCA presuma que um profissional trabalha em determinado dia sem consultar
+- NUNCA invente horários ou informações sobre agenda
+- Trate cada agendamento como uma venda: ofereça alternativas, seja proativa
+- Se não der certo com um profissional/dia, ofereça outro (vendedor experiente!)
+- Use linguagem natural: "Deixa eu ver aqui pra você", "Vou conferir", não "Executando consulta"
 
 🚫 REGRA ANTIDUPLICIDADE (CRÍTICA):
 - NUNCA chame a ferramenta criar_agendamento até que o cliente tenha confirmado EXPLICITAMENTE o serviço, a data e o horário escolhidos.
@@ -729,13 +840,58 @@ Você é uma especialista em retenção, mas NUNCA prende o cliente. Fluxo (apen
 - SEMPRE mencione o ID do agendamento cancelado (ex: "Agendamento #123 cancelado")
 - O ID está em 'agendamento_id' no retorno da ferramenta cancelar_agendamento
 
-⏳ PROTOCOLO DE LISTA DE ESPERA (FASE 4 - OCUPAÇÃO MÁXIMA):
-- SEMPRE que consultar_disponibilidade retornar VAZIO (sem horários disponíveis), você DEVE oferecer a lista de espera
-- Seja proativo e positivo: "Infelizmente não temos horários disponíveis nesse dia, mas posso te colocar na lista de espera! Se surgir uma desistência, eu te aviso imediatamente via WhatsApp. Quer entrar na lista?"
-- Se o cliente aceitar, chame a ferramenta adicionar_lista_espera com os dados do agendamento desejado
-- Após adicionar à lista, confirme: "Pronto! Você está na lista de espera para [data]. Se surgir uma vaga, você será o primeiro a saber! 🔔"
-- NÃO ofereça lista de espera se houver horários disponíveis - apenas quando consultar_disponibilidade retornar vazio
-- A lista de espera é uma solução inteligente para não perder o cliente quando não há disponibilidade imediata
+⏳ ÁRVORE DE DECISÃO DE DISPONIBILIDADE (HIERARQUIA OBRIGATÓRIA):
+Após chamar consultar_disponibilidade, você DEVE seguir EXATAMENTE esta ordem de análise:
+
+🔴 REGRA 1 - PROFISSIONAL DE FOLGA (Bloqueio Absoluto de Lista de Espera):
+Se agente_trabalha_neste_dia === false:
+- ⛔ PROIBIDO mencionar "lista de espera" em qualquer circunstância
+- ⛔ PROIBIDO oferecer aguardar vaga
+- ⛔ PROIBIDO usar palavras: "espera", "avisar quando surgir vaga", "desistência"
+- ✅ OBRIGATÓRIO: Oferecer alternativas imediatamente
+  
+  Resposta OBRIGATÓRIA (escolha uma das duas):
+  a) "O [Nome] não atende na [dia da semana]. Gostaria de verificar outro dia com ele ou agendar com [outro profissional disponível]?"
+  b) "Infelizmente o [Nome] não trabalha na [dia da semana]. Posso ver outros dias que ele atende ou mostrar outros profissionais disponíveis nesse dia. Qual você prefere?"
+  
+  🎯 AÇÃO SEGUINTE: Seja consultiva - pergunte qual alternativa cliente prefere e execute
+
+🟡 REGRA 2 - VENDA ATIVA (Profissional Trabalha, Tem Vagas, Mas Não no Horário Pedido):
+Se agente_trabalha_neste_dia === true E slots.length > 0 (mas cliente pediu horário específico ocupado):
+- ⛔ PROIBIDO mencionar "lista de espera" 
+- ✅ OBRIGATÓRIO: Vender os horários disponíveis ativamente
+  
+  Resposta OBRIGATÓRIA:
+  "Infelizmente o horário das [X] está ocupado, mas tenho esses outros horários disponíveis com [Nome]: [lista os horários]. Qual desses funciona melhor pra você?"
+  
+  🎯 AÇÃO SEGUINTE: Aguarde escolha do cliente e prossiga com agendamento
+
+🟢 REGRA 3 - AGENDA LOTADA (Única Situação para Lista de Espera):
+Se agente_trabalha_neste_dia === true E slots.length === 0 (ZERO horários livres):
+- ✅ AUTORIZADO: Oferecer lista de espera
+  
+  Resposta OBRIGATÓRIA:
+  "Infelizmente todos os horários com [Nome] na [dia] estão ocupados, mas posso te colocar na lista de espera! Se surgir uma desistência, eu te aviso imediatamente via WhatsApp. Quer entrar na lista?"
+  
+  🎯 AÇÃO SEGUINTE: Se cliente aceitar, chame adicionar_lista_espera
+
+⚠️ CHECKPOINT DE VALIDAÇÃO (ANTES DE RESPONDER):
+Antes de digitar QUALQUER resposta sobre disponibilidade, pergunte-se mentalmente:
+1. ✅ Eu consultei o sistema? (Se não, PARE e consulte)
+2. ✅ O profissional trabalha neste dia? (agente_trabalha_neste_dia)
+3. ✅ Se NÃO trabalha → Segui REGRA 1? (ofereci alternativas SEM mencionar lista de espera)
+4. ✅ Se trabalha e TEM slots → Segui REGRA 2? (vendi os horários disponíveis)
+5. ✅ Se trabalha e ZERO slots → Segui REGRA 3? (oferecer lista de espera)
+
+🚨 VIOLAÇÃO CRÍTICA - NUNCA FAÇA ISSO:
+❌ "O profissional não trabalha hoje, mas posso colocar você na lista de espera" [ERRADO - REGRA 1 VIOLADA]
+❌ "Tem horário às 14h, mas prefere lista de espera?" [ERRADO - REGRA 2 VIOLADA]
+❌ Oferecer lista de espera quando agente_trabalha_neste_dia === false [BLOQUEIO ABSOLUTO]
+
+✅ SEMPRE CORRETO:
+✅ "O profissional não trabalha hoje. Quer ver outro dia com ele ou outro profissional?" [REGRA 1]
+✅ "Esse horário está ocupado, mas tenho 14h e 15h livres. Qual prefere?" [REGRA 2]
+✅ "Todos os horários estão ocupados. Quer lista de espera?" [REGRA 3]
 
 🚨 GESTÃO DE CRISE (FASE 2 - Human-in-the-loop) - PRIORIDADE MÁXIMA:
 
@@ -819,6 +975,102 @@ Você DEVE acionar este protocolo IMEDIATAMENTE ao detectar qualquer um dos segu
       telefone: telefoneLimpo,
       has_tool_calls: Array.isArray(aiResult?.toolCalls) && aiResult.toolCalls.length > 0,
     });
+
+    // 🛡️ TRAVA DE INTERCEPÇÃO: FORÇAR USO DA FERRAMENTA QUANDO DETECTAR INTENÇÃO DE AGENDA
+    // 
+    // Problema: O LLM (GPT-4o-mini) está burlando o System Prompt e respondendo diretamente
+    // sobre horários/dias sem consultar a ferramenta consultar_disponibilidade, gerando alucinações.
+    // 
+    // Solução: Intercepção arquitetural que detecta intenção de agenda no messageText do usuário
+    // e FORÇA a IA a reprocessar caso ela tenha respondido sem usar a ferramenta.
+    // 
+    // Fluxo:
+    // 1. Detectar se a mensagem do usuário tem palavras-chave de agenda (regex)
+    // 2. Verificar se a IA retornou texto (content) SEM toolCalls
+    // 3. Se SIM, descartar a resposta, adicionar ordem do sistema e reprocessar (máx 1 retry)
+    const INTENT_AGENDA_REGEX = /\b(horário|agenda|vaga|disponível|disponivel|segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo|hoje|amanhã|amanha|marcar|agendar|damião|damiao|joão|joao)\b/i;
+    
+    const hasAgendaIntent = INTENT_AGENDA_REGEX.test(messageText || '');
+    const hasToolCalls = Array.isArray(aiResult?.toolCalls) && aiResult.toolCalls.length > 0;
+    const hasContent = aiResult?.content && String(aiResult.content).trim() !== '';
+    
+    // 🚨 DETECÇÃO DE ALUCINAÇÃO: Cliente perguntou sobre agenda, mas IA respondeu texto sem ferramenta
+    if (hasAgendaIntent && !hasToolCalls && hasContent) {
+      logger.warn('[Worker] ⚠️ INTERCEPÇÃO DE ALUCINAÇÃO: Cliente perguntou sobre agenda, mas IA tentou responder sem consultar ferramenta', {
+        message_text: messageText,
+        ai_content: aiResult.content,
+        chat_session_id: chatSession?.id,
+      });
+      
+      // 🔄 RETRY COM ORDEM FORÇADA DO SISTEMA (máximo 1 tentativa)
+      try {
+        // Adicionar mensagem invisível do sistema forçando o uso da ferramenta
+        const retryHistory = [
+          ...currentHistory,
+          { role: 'user', content: messageText },
+          { 
+            role: 'system', 
+            content: `🚨 ALERTA DE SISTEMA - VIOLAÇÃO CRÍTICA DETECTADA:
+
+O cliente perguntou sobre horários, dias da semana ou disponibilidade de profissionais.
+
+Você tentou responder com texto direto SEM chamar a ferramenta consultar_disponibilidade.
+
+Isso é ESTRITAMENTE PROIBIDO e gera ALUCINAÇÃO (informação incorreta ao cliente).
+
+📐 ORDEM IMEDIATA (NÃO NEGOCIÁVEL):
+1. Chame IMEDIATAMENTE a ferramenta consultar_disponibilidade com os parâmetros relevantes extraídos da mensagem do cliente
+2. NÃO responda com texto até receber o resultado da ferramenta
+3. Baseie sua resposta EXCLUSIVAMENTE no que a ferramenta retornar
+
+⛔ Se você responder novamente sem chamar a ferramenta, o sistema bloqueará o envio da mensagem ao cliente.
+
+Chame a ferramenta AGORA.` 
+          }
+        ];
+        
+        logger.info('[Worker] 🔄 Reprocessando mensagem com ordem forçada do sistema');
+        
+        aiResult = await aiAgentService.processMessage({
+          message: '', // Não repetir a mensagem do usuário (já está no history)
+          history: retryHistory,
+          tools,
+          systemPrompt,
+        });
+        
+        // Verificar se a IA obedeceu na segunda tentativa
+        const hasToolCallsRetry = Array.isArray(aiResult?.toolCalls) && aiResult.toolCalls.length > 0;
+        
+        if (!hasToolCallsRetry) {
+          // IA continuou desobedecendo: bloquear envio e alertar administrador
+          logger.error('[Worker] 🔥 BLOQUEIO CRÍTICO: IA ignorou ordem do sistema após retry - bloqueando resposta ao cliente', {
+            ai_result: aiResult,
+            chat_session_id: chatSession?.id,
+          });
+          
+          // Enviar mensagem de segurança ao cliente
+          await whatsAppService.sendMessage(
+            instanceName,
+            telefoneLimpo,
+            'Desculpe, estou com dificuldades técnicas para consultar a agenda no momento. Por favor, aguarde alguns instantes e tente novamente.'
+          );
+          
+          return { ok: true, blocked_hallucination: true, retry_failed: true };
+        }
+        
+        logger.info('[Worker] ✅ Retry bem-sucedido: IA chamou ferramenta após interceptação', {
+          tool_calls_count: aiResult.toolCalls.length,
+          chat_session_id: chatSession?.id,
+        });
+        
+      } catch (retryErr) {
+        logger.error('[Worker] Erro no retry de interceptação - continuando com resposta original (não ideal)', {
+          error: retryErr?.message,
+          chat_session_id: chatSession?.id,
+        });
+        // Continua com a resposta original (fallback)
+      }
+    }
 
     while (Array.isArray(aiResult?.toolCalls) && aiResult.toolCalls.length > 0 && depth < TOOL_CALL_DEPTH_LIMIT) {
       depth += 1;
@@ -968,12 +1220,96 @@ Você DEVE acionar este protocolo IMEDIATAMENTE ao detectar qualquer um dos segu
             // 🔍 LOG DE FERRAMENTA - Verificar parâmetros recebidos
             logger.debug('[Worker] Consultando disponibilidade', { args });
             
-            const slots = await AIAvailabilityService.getAvailableSlots(args);
+            const resultado = await AIAvailabilityService.getAvailableSlots(args);
+            
+            // 🎯 CONSULTORIA DE AGENDA: Detectar se resultado tem metadata (novo formato) ou é array legado
+            const slots = Array.isArray(resultado) ? resultado : (resultado.slots || []);
+            const metadata = resultado.metadata || { 
+              agente_trabalha_neste_dia: true, 
+              motivo: slots.length > 0 ? 'SLOTS_DISPONIVEIS' : 'AGENDA_LOTADA' 
+            };
+            
             // ✅ Exibir somente a hora de início (sem "HH:MM às HH:MM")
-            const slotsFormatados = (Array.isArray(slots) ? slots : []).map(s => ({
+            const slotsFormatados = slots.map(s => ({
               hora_inicio: s?.inicio || s?.hora_inicio
             }));
-            toolResult = { ok: true, slots: slotsFormatados };
+            
+            // 🧠 CHAIN OF THOUGHT INJETADA (System Injection)
+            // 
+            // Problema: GPT-4o-mini sofre de "Attention Decay" em System Prompts longos.
+            // Mesmo com "Regra 1, 2, 3" no System Prompt, o modelo ignora e segue padrões
+            // de comportamento treinados (ex: "barbearia sem horário = lista de espera").
+            // 
+            // Solução: Injetar a regra de negócio DIRETAMENTE no retorno da tool, como
+            // campo system_directive. Isso força o modelo a "ler" a instrução junto com
+            // o dado, sobrepondo qualquer "esquecimento" do System Prompt principal.
+            let systemDirective;
+            
+            if (slotsFormatados.length === 0 && metadata.agente_trabalha_neste_dia === false) {
+              // 🔴 REGRA 1: PROFISSIONAL DE FOLGA (Bloqueio Absoluto de Lista de Espera)
+              systemDirective = `⛔ CRÍTICO - LEIA ESTA INSTRUÇÃO ANTES DE RESPONDER:
+
+O profissional NÃO TRABALHA neste dia (folga/dia off).
+
+É ABSOLUTAMENTE PROIBIDO oferecer lista de espera neste cenário.
+
+AÇÃO OBRIGATÓRIA:
+1. Informe ao cliente que o profissional não atende neste dia da semana
+2. Ofereça IMEDIATAMENTE uma das duas alternativas:
+   a) Verificar outros dias em que o profissional trabalha
+   b) Agendar com outro profissional disponível neste dia
+3. Seja consultiva: pergunte qual alternativa o cliente prefere
+
+NUNCA use as palavras: "lista de espera", "avisar quando surgir vaga", "desistência".
+
+Esta instrução sobrepõe qualquer regra anterior do System Prompt.`;
+
+            } else if (slotsFormatados.length === 0 && metadata.agente_trabalha_neste_dia === true) {
+              // 🟢 REGRA 3: AGENDA LOTADA (Única Situação para Lista de Espera)
+              systemDirective = `✅ INSTRUÇÃO - LEIA ANTES DE RESPONDER:
+
+O profissional TRABALHA neste dia, mas todos os horários estão OCUPADOS.
+
+Esta é a ÚNICA situação em que você pode oferecer lista de espera.
+
+AÇÃO OBRIGATÓRIA:
+1. Informe que todos os horários com [nome do profissional] estão ocupados neste dia
+2. Ofereça a lista de espera: "Posso te colocar na lista de espera! Se surgir uma desistência, te aviso imediatamente via WhatsApp."
+3. Aguarde confirmação do cliente para chamar a ferramenta adicionar_lista_espera
+
+Esta instrução sobrepõe qualquer regra anterior do System Prompt.`;
+
+            } else if (slotsFormatados.length > 0) {
+              // 🟡 REGRA 2: VENDA ATIVA (Profissional Trabalha e Tem Vagas)
+              systemDirective = `💰 INSTRUÇÃO DE VENDA - LEIA ANTES DE RESPONDER:
+
+O profissional TRABALHA neste dia e TEM horários disponíveis.
+
+É PROIBIDO mencionar lista de espera neste cenário.
+
+AÇÃO OBRIGATÓRIA:
+1. Apresente os horários disponíveis de forma entusiasmada e vendedora
+2. Use linguagem como: "Tenho esses horários livres", "Qual desses funciona melhor pra você?"
+3. Se o cliente pediu um horário específico ocupado, venda ativamente os disponíveis
+4. NUNCA mencione "lista de espera" quando há horários livres
+
+Esta instrução sobrepõe qualquer regra anterior do System Prompt.`;
+            }
+            
+            toolResult = { 
+              ok: true, 
+              slots: slotsFormatados,
+              agente_trabalha_neste_dia: metadata.agente_trabalha_neste_dia,
+              motivo_indisponibilidade: slotsFormatados.length === 0 ? metadata.motivo : null,
+              system_directive: systemDirective  // 🧠 Injeção da regra junto com o dado
+            };
+            
+            logger.debug('[Worker] Disponibilidade retornada com System Injection', { 
+              slots_count: slotsFormatados.length,
+              agente_trabalha: metadata.agente_trabalha_neste_dia,
+              motivo: metadata.motivo,
+              directive_injected: !!systemDirective
+            });
           } else if (toolName === 'criar_agendamento') {
             // 🔒 BLOQUEIO DE DUPLICIDADE NÍVEL 1: se já criamos um agendamento nesta rodada,
             // não criamos outro. Reutilizamos o resultado anterior para a IA confirmar.

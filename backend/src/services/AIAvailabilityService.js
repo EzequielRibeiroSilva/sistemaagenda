@@ -126,20 +126,32 @@ class AIAvailabilityService {
       .first();
 
     let periodosParaUsar = [];
+    let agenteTrabalhaNesteNivel1 = false; // Flag para saber se agente tem horário configurado
+    
     if (horarioAgente && horarioAgente.ativo && Array.isArray(horarioAgente.periodos) && horarioAgente.periodos.length > 0) {
       periodosParaUsar = this.intersectPeriods(horarioAgente.periodos, horariosJsonUnidade);
+      agenteTrabalhaNesteNivel1 = true; // Tem horário ativo configurado
     } else if (horarioAgente && (!horarioAgente.ativo || !horarioAgente.periodos || horarioAgente.periodos.length === 0)) {
       periodosParaUsar = [];
+      agenteTrabalhaNesteNivel1 = false; // Horário existe mas está inativo ou vazio
     } else {
       // ✅ CORREÇÃO CRÍTICA: FAIL-SAFE
       // Sem registro de horário = agente indisponível
       // Princípio: Ausência de configuração explícita não autoriza agenda
       // (Não é porque a unidade abre que TODO agente trabalha)
       periodosParaUsar = [];
+      agenteTrabalhaNesteNivel1 = false; // Não tem registro de horário
     }
 
+    // 🎯 CONSULTORIA DE AGENDA: Se não há períodos, retornar metadata explicando o motivo
     if (!periodosParaUsar || periodosParaUsar.length === 0) {
-      return [];
+      return {
+        slots: [],
+        metadata: {
+          agente_trabalha_neste_dia: agenteTrabalhaNesteNivel1,
+          motivo: agenteTrabalhaNesteNivel1 ? 'AGENDA_LOTADA' : 'PROFISSIONAL_NAO_TRABALHA'
+        }
+      };
     }
 
     const hojeStr = this.getDateStrInTimeZone(this.tz);
@@ -190,7 +202,28 @@ class AIAvailabilityService {
       unique.set(`${s.inicio}-${s.fim}`, s);
     }
 
-    return Array.from(unique.values()).sort((a, b) => this.timeToMinutes(a.inicio) - this.timeToMinutes(b.inicio));
+    const slotsFinais = Array.from(unique.values()).sort((a, b) => this.timeToMinutes(a.inicio) - this.timeToMinutes(b.inicio));
+
+    // 🎯 CONSULTORIA DE AGENDA: Retornar metadata mesmo quando há slots disponíveis
+    if (slotsFinais.length === 0) {
+      // Profissional trabalha (tinha períodos) mas todos os slots estão ocupados
+      return {
+        slots: [],
+        metadata: {
+          agente_trabalha_neste_dia: true,
+          motivo: 'AGENDA_LOTADA'
+        }
+      };
+    }
+
+    // Há slots disponíveis
+    return {
+      slots: slotsFinais,
+      metadata: {
+        agente_trabalha_neste_dia: true,
+        motivo: 'SLOTS_DISPONIVEIS'
+      }
+    };
   }
 }
 

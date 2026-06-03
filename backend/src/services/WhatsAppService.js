@@ -4,11 +4,20 @@
  * Funcionalidades: Envio de notificações de agendamento, confirmações, lembretes
  */
 
+const Redis = require('ioredis');
 const NotificacaoModel = require('../models/NotificacaoModel');
 const Usuario = require('../models/Usuario');
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
 const ChatSessionService = require('./ChatSessionService');
+
+const redisOptions = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: process.env.REDIS_PORT || 6379,
+  password: process.env.REDIS_PASSWORD || undefined,
+  db: process.env.REDIS_DB || 0,
+  maxRetriesPerRequest: null
+};
 
 class WhatsAppService {
   constructor() {
@@ -21,6 +30,7 @@ class WhatsAppService {
     this.testMode = process.env.WHATSAPP_TEST_MODE === 'true';
     this.notificacaoModel = new NotificacaoModel();
     this.usuarioModel = new Usuario();
+    this.redis = new Redis(redisOptions);
 
     // 🔍 VERIFICAÇÃO DE ENDPOINT
     logger.log(`🔧 [WhatsAppService] Configurado com URL: ${this.evolutionApiUrl}`);
@@ -98,6 +108,19 @@ class WhatsAppService {
       logger.log(`📥 [WhatsAppService] Data:`, JSON.stringify(data, null, 2));
 
       if (response.ok) {
+        // ── 🧠 FASE 2: MEMÓRIA DO BOT (REDIS) ────────────────────────────────
+        // Registra o ID da mensagem enviada pelo bot no Redis com TTL de 5 minutos.
+        // Isso permite distinguir mensagens do bot de mensagens de humanos na Fase 3.
+        const messageId = data?.key?.id || data?.messageId;
+        if (messageId) {
+          try {
+            await this.redis.setex(`bot_msg:${messageId}`, 300, '1');
+            logger.debug(`[WhatsAppService] 🧠 Mensagem registrada no Redis: bot_msg:${messageId}`);
+          } catch (redisErr) {
+            logger.warn('[WhatsAppService] Falha ao registrar mensagem no Redis (não crítico):', redisErr.message);
+          }
+        }
+        
         return { success: true, data };
       }
 
@@ -371,6 +394,18 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
         logger.log(`📥 [WhatsAppService] [LEGADO] Data:`, JSON.stringify(data, null, 2));
 
         if (response.ok) {
+          // ── 🧠 FASE 2: MEMÓRIA DO BOT (REDIS) ────────────────────────────────
+          // Registra o ID da mensagem enviada pelo bot no Redis com TTL de 5 minutos.
+          const messageId = data?.key?.id || data?.messageId;
+          if (messageId) {
+            try {
+              await this.redis.setex(`bot_msg:${messageId}`, 300, '1');
+              logger.debug(`[WhatsAppService] 🧠 Mensagem registrada no Redis: bot_msg:${messageId}`);
+            } catch (redisErr) {
+              logger.warn('[WhatsAppService] Falha ao registrar mensagem no Redis (não crítico):', redisErr.message);
+            }
+          }
+          
           return { success: true, data };
         }
 

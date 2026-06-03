@@ -98,6 +98,31 @@ class ChatSessionService {
 
     return true;
   }
+
+  async pauseSession(unidadeId, telefone, reason = 'human_intervention') {
+    const unidadeIdInt = parseInt(unidadeId);
+    if (!unidadeIdInt || !telefone) {
+      throw new Error('unidadeId e telefone são obrigatórios');
+    }
+
+    const telefoneStr = String(telefone);
+
+    const updated = await this.chatSessionModel.db(this.chatSessionModel.tableName)
+      .where('unidade_id', unidadeIdInt)
+      .where('cliente_telefone', telefoneStr)
+      .update({
+        status: 'paused_by_human',
+        last_interaction_at: this.chatSessionModel.db.fn.now(),
+        updated_at: this.chatSessionModel.db.fn.now()
+      });
+
+    if (updated > 0) {
+      const logger = require('../utils/logger');
+      logger.info(`[ChatSessionService] 🛑 Sessão pausada | unidade=${unidadeIdInt} | telefone=${telefoneStr} | reason=${reason}`);
+    }
+
+    return updated > 0;
+  }
 }
 
 module.exports = new ChatSessionService();

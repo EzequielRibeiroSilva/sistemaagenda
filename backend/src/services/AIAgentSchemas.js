@@ -57,7 +57,7 @@ const schemas = {
     type: 'function',
     function: {
       name: 'consultar_disponibilidade',
-      description: 'Consulta horários livres para um agente em uma data específica. IMPORTANTE: Só use esta ferramenta APÓS o cliente escolher o profissional desejado.',
+      description: 'Consulta horários livres de um profissional em uma data específica. Esta é sua ÚNICA fonte confiável de informação sobre agenda. 🚨 GATILHOS OBRIGATÓRIOS - Use esta ferramenta IMEDIATAMENTE quando: 1) Cliente perguntar se profissional trabalha em um dia, 2) Cliente perguntar que dias profissional trabalha, 3) Cliente perguntar horários disponíveis, 4) Cliente mencionar data + profissional, 5) Cliente quiser agendar. ⛔ NUNCA responda perguntas sobre agenda sem chamar esta ferramenta primeiro. ⛔ NUNCA presuma que um profissional trabalha em determinado dia. ⛔ A lista de "Profissionais disponíveis" NÃO significa que trabalham hoje. ✅ Use APÓS o cliente escolher o profissional (não antes). ✅ Se o cliente perguntar exploratoriamente ("trabalha sexta?"), consulte de qualquer forma.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -210,7 +210,7 @@ const schemas = {
     type: 'function',
     function: {
       name: 'adicionar_lista_espera',
-      description: 'Adiciona o cliente à lista de espera quando não há horários disponíveis. O sistema notificará automaticamente o cliente caso surja uma vaga por cancelamento. Use esta ferramenta SEMPRE que consultar_disponibilidade retornar vazio (sem horários disponíveis). Seja proativo: ofereça a lista de espera como solução.',
+      description: '⚠️ PRÉ-REQUISITO OBRIGATÓRIO: Esta ferramenta SÓ pode ser usada quando agente_trabalha_neste_dia === true (profissional TRABALHA no dia mas está LOTADO). ⛔ BLOQUEIO ABSOLUTO: NUNCA use esta ferramenta quando agente_trabalha_neste_dia === false (profissional de FOLGA). Adiciona cliente à lista de espera quando NÃO HÁ horários disponíveis E profissional TRABALHA neste dia. O sistema notificará automaticamente o cliente caso surja vaga por cancelamento. HIERARQUIA: 1) Se profissional não trabalha (false) → Ofereça alternativas, NUNCA lista de espera. 2) Se profissional trabalha E tem slots → Venda os horários, NUNCA lista de espera. 3) Se profissional trabalha E zero slots → AÍ SIM use esta ferramenta.',
       parameters: {
         type: 'object',
         additionalProperties: false,
