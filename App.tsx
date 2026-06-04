@@ -348,15 +348,21 @@ const App: React.FC = () => {
                   status: u.status,
                   plan: u.plan,
                   unitLimit: u.unitLimit,
+                  iaEnabled: u.iaEnabled ?? true, // ✅ Feature Flag IA
                   activeUnits: u.activeUnits,
                   units: [],
                   clientCount: u.clientCount
                 }))}
                 loading={masterUsersHook.loading}
                 error={masterUsersHook.error}
+                searchQuery={masterUsersHook.searchQuery}
+                setSearchQuery={masterUsersHook.setSearchQuery}
+                statusFilter={masterUsersHook.statusFilter}
+                setStatusFilter={masterUsersHook.setStatusFilter}
                 createUser={masterUsersHook.createUser}
                 updateUser={masterUsersHook.updateUser}
                 updateUserStatus={masterUsersHook.updateUserStatus}
+                toggleUserIA={masterUsersHook.toggleUserIA} // ✅ Conectar função toggle IA
                 getUserUnits={masterUsersHook.getUserUnits}
                 updateUnitStatus={masterUsersHook.updateUnitStatus}
               />
@@ -388,15 +394,21 @@ const App: React.FC = () => {
               status: u.status,
               plan: u.plan,
               unitLimit: u.unitLimit,
+              iaEnabled: u.iaEnabled ?? true, // ✅ Feature Flag IA
               activeUnits: u.activeUnits,
               units: [],
               clientCount: u.clientCount
             }))}
             loading={masterUsersHook.loading}
             error={masterUsersHook.error}
+            searchQuery={masterUsersHook.searchQuery}
+            setSearchQuery={masterUsersHook.setSearchQuery}
+            statusFilter={masterUsersHook.statusFilter}
+            setStatusFilter={masterUsersHook.setStatusFilter}
             createUser={masterUsersHook.createUser}
             updateUser={masterUsersHook.updateUser}
             updateUserStatus={masterUsersHook.updateUserStatus}
+            toggleUserIA={masterUsersHook.toggleUserIA} // ✅ Conectar função toggle IA
             getUserUnits={masterUsersHook.getUserUnits}
             updateUnitStatus={masterUsersHook.updateUnitStatus}
           />

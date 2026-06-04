@@ -48,9 +48,23 @@ class AuthMiddleware {
           });
         }
 
+        // ✅ CORREÇÃO CRÍTICA DE SEGURANÇA: Validação em tempo real do status
+        // Mata tokens JWT órfãos de usuários recém-bloqueados imediatamente
+        // (não aguarda expiração de 2h do token)
         if (usuario.status !== 'Ativo') {
-          return res.status(401).json({
-            error: 'Usuário inativo',
+          // Adicionar token à blacklist para invalidação definitiva
+          const now = Math.floor(Date.now() / 1000);
+          const ttl = decoded.exp ? Math.max(decoded.exp - now, 60) : 3600;
+          
+          try {
+            await this.authService.logout(token);
+            logger.warn(`🚫 Token órfão invalidado - Usuário ${usuario.id} (${usuario.email}) bloqueado`);
+          } catch (blacklistErr) {
+            logger.error('❌ Erro ao adicionar token órfão à blacklist:', blacklistErr.message);
+          }
+
+          return res.status(403).json({
+            error: 'Acesso negado',
             message: 'Conta bloqueada ou inativa'
           });
         }

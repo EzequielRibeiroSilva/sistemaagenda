@@ -49,6 +49,15 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 /**
+ * PATCH /api/usuarios/:id/ia-toggle
+ * Alterna o status da Recepcionista IA de um usuário
+ * Body: { ia_enabled?: boolean } (opcional - se omitido, inverte o estado atual)
+ */
+router.patch('/:id/ia-toggle', async (req, res) => {
+  await masterUserController.toggleIaStatus(req, res);
+});
+
+/**
  * GET /api/usuarios/:id/unidades
  * Lista todas as unidades de um usuário
  */

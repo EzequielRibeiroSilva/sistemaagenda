@@ -16,9 +16,10 @@ class MasterUserService {
   /**
    * Lista todos os usuários ADMIN com dados calculados
    * @param {string} search - Termo de busca (nome ou email)
+   * @param {string} status - Filtro de status ('Ativo', 'Bloqueado', ou null para todos)
    * @returns {Promise<Array>} Lista de usuários com dados calculados
    */
-  async getAllUsers(search = '') {
+  async getAllUsers(search = '', status = null) {
     try {
       let query = knex('usuarios')
         .select(
@@ -29,6 +30,7 @@ class MasterUserService {
           'usuarios.status',
           'usuarios.plano as plan',
           'usuarios.limite_unidades as unitLimit',
+          'usuarios.ia_enabled as iaEnabled',
           'usuarios.created_at',
           'usuarios.updated_at'
         )
@@ -41,6 +43,11 @@ class MasterUserService {
           this.whereRaw('LOWER(usuarios.nome) LIKE ?', [searchTerm])
               .orWhereRaw('LOWER(usuarios.email) LIKE ?', [searchTerm]);
         });
+      }
+
+      // ✅ Aplicar filtro de status se fornecido
+      if (status && ['Ativo', 'Bloqueado'].includes(status)) {
+        query = query.where('usuarios.status', status);
       }
 
       const users = await query;
@@ -86,11 +93,17 @@ class MasterUserService {
     const trx = await knex.transaction();
     
     try {
-      const { nome, email, senha, telefone, plano, limite_unidades } = userData;
+      const { nome, email, senha, telefone } = userData;
 
       // Validar dados obrigatórios
-      if (!nome || !email || !senha || !telefone || !plano) {
+      if (!nome || !email || !senha || !telefone) {
         throw new Error('Todos os campos obrigatórios devem ser preenchidos');
+      }
+
+      // ✅ VALIDAÇÃO DE TELEFONE: Limpar e validar
+      const telefoneLimpo = telefone.replace(/\D/g, '');
+      if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+        throw new Error('Telefone inválido. Deve conter 10 ou 11 dígitos (DDD + número)');
       }
 
       // ✅ CORREÇÃO 1.9: Validação robusta de senha
@@ -110,20 +123,22 @@ class MasterUserService {
       // Hash da senha
       const senhaHash = await bcrypt.hash(senha, config.security.bcryptSaltRounds);
 
-      // Definir limite de unidades baseado no plano
-      const finalLimiteUnidades = plano === 'Single' ? 1 : (limite_unidades || 5);
+      // ✅ ENFORCE MODELO SINGLE: Sempre forçar plano Single e limite 1
+      const plano = 'Single';
+      const finalLimiteUnidades = 1;
 
       // Criar usuário
       const [userResult] = await trx('usuarios').insert({
         nome,
         email,
         senha_hash: senhaHash,
-        telefone,
+        telefone: telefoneLimpo, // ✅ Salvar apenas números no banco
         tipo_usuario: 'salon',
         role: 'ADMIN',
         status: 'Ativo',
         plano,
         limite_unidades: finalLimiteUnidades,
+        ia_enabled: userData.ia_enabled !== undefined ? Boolean(userData.ia_enabled) : true, // ✅ Feature Flag IA
         created_at: knex.fn.now(),
         updated_at: knex.fn.now()
       }).returning('id');
@@ -131,20 +146,16 @@ class MasterUserService {
       // Extrair o ID corretamente
       const userId = userResult.id || userResult;
 
-
-      // Se plano Single ou Multi, criar unidade inicial
-      if (plano === 'Single' || plano === 'Multi') {
-
-        await trx('unidades').insert({
-          nome: plano === 'Single' ? 'Unidade Principal' : 'Matriz',
-          endereco: 'A definir',
-          telefone: telefone,
-          usuario_id: userId,
-          status: 'Ativo',
-          created_at: knex.fn.now(),
-          updated_at: knex.fn.now()
-        });
-      }
+      // Criar unidade inicial (sempre 'Unidade Principal' no modelo Single)
+      await trx('unidades').insert({
+        nome: 'Unidade Principal',
+        endereco: 'A definir',
+        telefone: telefoneLimpo,
+        usuario_id: userId,
+        status: 'Ativo',
+        created_at: knex.fn.now(),
+        updated_at: knex.fn.now()
+      });
 
       await trx.commit();
 
@@ -167,7 +178,7 @@ class MasterUserService {
    */
   async updateUser(id, userData) {
     try {
-      const { nome, email, senha, telefone, plano, limite_unidades } = userData;
+      const { nome, email, senha, telefone } = userData;
 
       // Verificar se usuário existe
       const existingUser = await knex('usuarios').where('id', id).first();
@@ -193,14 +204,35 @@ class MasterUserService {
 
       if (nome) updateData.nome = nome;
       if (email) updateData.email = email;
-      if (telefone) updateData.telefone = telefone;
-      if (plano) {
-        updateData.plano = plano;
-        updateData.limite_unidades = plano === 'Single' ? 1 : (limite_unidades || existingUser.limite_unidades);
+      
+      // ✅ VALIDAÇÃO DE TELEFONE: Limpar e validar
+      if (telefone) {
+        const telefoneLimpo = telefone.replace(/\D/g, '');
+        if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+          throw new Error('Telefone inválido. Deve conter 10 ou 11 dígitos (DDD + número)');
+        }
+        updateData.telefone = telefoneLimpo;
+      }
+
+      // ✅ ENFORCE MODELO SINGLE: Sempre forçar plano Single e limite 1 (ignorar payload)
+      updateData.plano = 'Single';
+      updateData.limite_unidades = 1;
+
+      // ✅ FEATURE FLAG IA: Permitir atualização de ia_enabled via payload
+      if (userData.ia_enabled !== undefined) {
+        updateData.ia_enabled = Boolean(userData.ia_enabled);
       }
 
       // Atualizar senha apenas se fornecida
       if (senha && senha.trim()) {
+        // ✅ CORREÇÃO 1.9: Validação robusta de senha
+        const { validatePasswordStrength } = require('../middleware/passwordValidation');
+        const validation = validatePasswordStrength(senha);
+        
+        if (!validation.valid) {
+          throw new Error(`Senha não atende aos requisitos: ${validation.errors.join(', ')}`);
+        }
+        
         updateData.senha_hash = await bcrypt.hash(senha, config.security.bcryptSaltRounds);
       }
 
@@ -252,6 +284,8 @@ class MasterUserService {
 
   /**
    * Busca um usuário por ID com dados calculados
+   * ✅ RBAC: Filtra APENAS usuários ADMIN (inquilinos/tenants)
+   * Usuários MASTER não devem ser expostos por este endpoint
    * @param {number} id - ID do usuário
    * @returns {Promise<Object>} Usuário com dados calculados
    */
@@ -266,6 +300,7 @@ class MasterUserService {
           'status',
           'plano as plan',
           'limite_unidades as unitLimit',
+          'ia_enabled as iaEnabled',
           'created_at',
           'updated_at'
         )

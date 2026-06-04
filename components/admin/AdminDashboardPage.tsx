@@ -1,7 +1,7 @@
 
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { UserPlus, Edit, Slash } from '../Icons';
+import { UserPlus, Edit, Slash, Search } from '../Icons';
 import NewUserModal from './NewUserModal';
 import ManageUnitsModal from './ManageUnitsModal';
 import { BaseTable, type TableColumn } from '../BaseTable';
@@ -15,6 +15,7 @@ interface AdminUser {
   status: 'Ativo' | 'Bloqueado';
   plan: 'Single' | 'Multi';
   unitLimit: number;
+  iaEnabled?: boolean; // ✅ Feature Flag IA
   activeUnits?: number;
   units: Array<{ id: number; name: string; status: 'Ativo' | 'Bloqueado' }>;
   clientCount: number;
@@ -24,9 +25,14 @@ interface AdminDashboardPageProps {
   users: AdminUser[];
   loading: boolean;
   error: string | null;
-  createUser: (userData: { nome: string; email: string; senha: string; telefone: string; plano: 'Single' | 'Multi'; limite_unidades?: number; }) => Promise<any>;
-  updateUser: (id: number, userData: { nome?: string; email?: string; senha?: string; telefone?: string; plano?: 'Single' | 'Multi'; limite_unidades?: number; }) => Promise<any>;
+  searchQuery: string; // ✅ Query de busca do backend
+  setSearchQuery: (query: string) => void; // ✅ Setter da busca
+  statusFilter: string; // ✅ Filtro de status do backend
+  setStatusFilter: (status: string) => void; // ✅ Setter do filtro
+  createUser: (userData: { nome: string; email: string; senha: string; telefone: string; plano: 'Single' | 'Multi'; limite_unidades?: number; ia_enabled?: boolean; }) => Promise<any>;
+  updateUser: (id: number, userData: { nome?: string; email?: string; senha?: string; telefone?: string; plano?: 'Single' | 'Multi'; limite_unidades?: number; ia_enabled?: boolean; }) => Promise<any>;
   updateUserStatus: (id: number, status: 'Ativo' | 'Bloqueado') => Promise<any>;
+  toggleUserIA: (id: number, iaEnabled?: boolean) => Promise<any>; // ✅ Nova prop para toggle IA
   getUserUnits: (userId: number) => Promise<Array<{ id: number; name: string; status: 'Ativo' | 'Bloqueado' }>>;
   updateUnitStatus: (unitId: number, status: 'Ativo' | 'Bloqueado') => Promise<any>;
 }
@@ -39,6 +45,7 @@ type UserDataPayload = {
   contact: string;
   plan: 'Single' | 'Multi';
   unitLimit: number;
+  iaEnabled?: boolean; // ✅ Feature Flag IA
   password?: string;
 };
 
@@ -46,9 +53,14 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     users,
     loading,
     error,
+    searchQuery,
+    setSearchQuery,
+    statusFilter,
+    setStatusFilter,
     createUser,
     updateUser,
     updateUserStatus,
+    toggleUserIA, // ✅ Receber função de toggle IA
     getUserUnits,
     updateUnitStatus
 }) => {
@@ -77,6 +89,14 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         }
     };
     
+    const handleToggleIA = async (id: number) => {
+        try {
+            await toggleUserIA(id); // Toggle automático (inverte estado atual)
+        } catch (error) {
+            console.error('Erro ao alternar IA:', error);
+        }
+    };
+    
     const handleOpenNewModal = () => {
         setEditingUser(null);
         setUserModalOpen(true);
@@ -102,6 +122,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     telefone: userData.contact,
                     plano: userData.plan,
                     limite_unidades: userData.unitLimit,
+                    ia_enabled: userData.iaEnabled, // ✅ Incluir IA no update
                     ...(userData.password && { senha: userData.password })
                 };
                 await updateUser(userData.id, updateData);
@@ -113,7 +134,8 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     senha: userData.password || '',
                     telefone: userData.contact,
                     plano: userData.plan,
-                    limite_unidades: userData.unitLimit
+                    limite_unidades: userData.unitLimit,
+                    ia_enabled: userData.iaEnabled // ✅ Incluir IA na criação
                 };
                 await createUser(createData);
             }
@@ -288,6 +310,26 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 )
             },
             {
+                key: 'iaEnabled',
+                label: 'IA',
+                width: 'w-24',
+                align: 'center',
+                render: (user) => (
+                    <button
+                        onClick={() => handleToggleIA(user.id)}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold rounded-full transition-colors hover:opacity-80"
+                        style={{
+                            backgroundColor: user.iaEnabled ? '#2563eb' : '#9ca3af',
+                            color: 'white'
+                        }}
+                        title={user.iaEnabled ? 'IA Habilitada - Clique para desabilitar' : 'IA Desabilitada - Clique para habilitar'}
+                    >
+                        <span className="text-[10px]">●</span>
+                        {user.iaEnabled ? 'ON' : 'OFF'}
+                    </button>
+                )
+            },
+            {
                 key: 'status',
                 label: 'STATUS',
                 width: 'w-32',
@@ -322,7 +364,28 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     <h1 className="text-2xl font-bold text-gray-800">Usuários</h1>
                     <p className="text-sm text-gray-500">Mostrando {users.length} usuários</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {/* ✅ Campo de busca backend */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nome ou email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm w-64"
+                        />
+                    </div>
+                    {/* ✅ Filtro de status */}
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                    >
+                        <option value="todos">Todos os Status</option>
+                        <option value="Ativo">Ativos</option>
+                        <option value="Bloqueado">Bloqueados</option>
+                    </select>
                     <button 
                         onClick={handleOpenNewModal}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700">

@@ -11,11 +11,11 @@ class MasterUserController {
    */
   async getAllUsers(req, res) {
     try {
-      const { search } = req.query;
+      const { search, status } = req.query;
       
-      logger.log(`[MasterUserController] Buscando usuários - Search: "${search || 'todos'}"`);
+      logger.log(`[MasterUserController] Buscando usuários - Search: "${search || 'todos'}", Status: "${status || 'todos'}"`);
       
-      const users = await this.masterUserService.getAllUsers(search);
+      const users = await this.masterUserService.getAllUsers(search, status);
       
       logger.log(`[MasterUserController] Encontrados ${users.length} usuários`);
       
@@ -262,6 +262,58 @@ class MasterUserController {
         success: false,
         error: 'Erro interno do servidor',
         message: 'Erro ao alterar status da unidade'
+      });
+    }
+  }
+  /**
+   * PATCH /api/usuarios/:id/ia-toggle - Alterna o status da IA de um usuário ADMIN
+   * ✅ RBAC: Opera APENAS sobre usuários ADMIN (inquilinos/tenants)
+   */
+  async toggleIaStatus(req, res) {
+    try {
+      const { id } = req.params;
+      const { ia_enabled } = req.body;
+      
+      logger.log(`[MasterUserController] Toggle IA do usuário ${id}`);
+      
+      // Buscar usuário atual via service (já filtra por role='ADMIN')
+      const currentUser = await this.masterUserService.getUserById(parseInt(id));
+      
+      // Determinar novo estado:
+      // - Se ia_enabled foi enviado no body, usar esse valor
+      // - Caso contrário, inverter o estado atual (toggle)
+      const novoEstado = ia_enabled !== undefined 
+        ? Boolean(ia_enabled) 
+        : !currentUser.iaEnabled;
+      
+      // Atualizar via service
+      const updatedUser = await this.masterUserService.updateUser(parseInt(id), {
+        ia_enabled: novoEstado
+      });
+      
+      logger.log(`[MasterUserController] IA do usuário ${id} alterada para: ${novoEstado}`);
+      
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: `Recepcionista IA ${novoEstado ? 'habilitada' : 'desabilitada'} com sucesso`
+      });
+
+    } catch (error) {
+      logger.error('[MasterUserController] Erro ao alternar status da IA:', error);
+      
+      if (error.message.includes('não encontrado')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Usuário não encontrado',
+          message: error.message
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor',
+        message: 'Erro ao alternar status da IA'
       });
     }
   }

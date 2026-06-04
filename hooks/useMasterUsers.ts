@@ -10,6 +10,7 @@ interface MasterUser {
   status: 'Ativo' | 'Bloqueado';
   plan: 'Single' | 'Multi';
   unitLimit: number;
+  iaEnabled: boolean; // ✅ Feature Flag IA
   activeUnits: number;
   clientCount: number;
   created_at?: string;
@@ -29,6 +30,7 @@ interface CreateUserData {
   telefone: string;
   plano: 'Single' | 'Multi';
   limite_unidades?: number;
+  ia_enabled?: boolean; // ✅ Feature Flag IA
 }
 
 interface UpdateUserData {
@@ -38,6 +40,7 @@ interface UpdateUserData {
   telefone?: string;
   plano?: 'Single' | 'Multi';
   limite_unidades?: number;
+  ia_enabled?: boolean; // ✅ Feature Flag IA
 }
 
 interface UseMasterUsersReturn {
@@ -46,10 +49,13 @@ interface UseMasterUsersReturn {
   error: string | null;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  statusFilter: string; // ✅ Filtro de status
+  setStatusFilter: (status: string) => void; // ✅ Setter do filtro
   refreshUsers: () => Promise<void>;
   createUser: (userData: CreateUserData) => Promise<MasterUser>;
   updateUser: (id: number, userData: UpdateUserData) => Promise<MasterUser>;
   updateUserStatus: (id: number, status: 'Ativo' | 'Bloqueado') => Promise<MasterUser>;
+  toggleUserIA: (id: number, iaEnabled?: boolean) => Promise<MasterUser>; // ✅ Nova função toggle IA
   getUserUnits: (userId: number) => Promise<Unit[]>;
   updateUnitStatus: (unitId: number, status: 'Ativo' | 'Bloqueado') => Promise<Unit>;
   logout: () => Promise<void>;
@@ -62,6 +68,7 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('todos'); // ✅ Filtro de status
 
   // Usar AuthContext em vez de localStorage diretamente
   const { token, isAuthenticated, user, logout: authLogout } = useAuth();
@@ -90,13 +97,17 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
   }, [token, isAuthenticated]);
 
   // Função para buscar usuários
-  const fetchUsers = useCallback(async (search: string = '') => {
+  const fetchUsers = useCallback(async (search: string = '', status: string = 'todos') => {
     try {
       setLoading(true);
       setError(null);
 
-      const queryParam = search ? `?search=${encodeURIComponent(search)}` : '';
-      const data = await authenticatedFetch(`/usuarios${queryParam}`);
+      let queryParams = [];
+      if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+      if (status && status !== 'todos') queryParams.push(`status=${encodeURIComponent(status)}`);
+      
+      const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+      const data = await authenticatedFetch(`/usuarios${queryString}`);
 
       if (data.success) {
         setUsers(data.data);
@@ -113,8 +124,8 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
 
   // Função para atualizar a lista de usuários
   const refreshUsers = useCallback(async () => {
-    await fetchUsers(searchQuery);
-  }, [fetchUsers, searchQuery]);
+    await fetchUsers(searchQuery, statusFilter);
+  }, [fetchUsers, searchQuery, statusFilter]);
 
   // Função para criar usuário
   const createUser = useCallback(async (userData: CreateUserData): Promise<MasterUser> => {
@@ -198,6 +209,36 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     }
   }, [authenticatedFetch]);
 
+  // ✅ Função para alternar status da IA (toggle ou valor explícito)
+  const toggleUserIA = useCallback(async (id: number, iaEnabled?: boolean): Promise<MasterUser> => {
+    try {
+      setError(null);
+
+      const body = iaEnabled !== undefined ? { ia_enabled: iaEnabled } : {};
+
+      const data = await authenticatedFetch(`/usuarios/${id}/ia-toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+
+      if (data.success) {
+        // Atualizar usuário na lista local
+        setUsers(prevUsers => 
+          prevUsers.map(user => 
+            user.id === id ? { ...user, iaEnabled: data.data.iaEnabled } : user
+          )
+        );
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Erro ao alternar IA');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      setError(errorMessage);
+      throw err;
+    }
+  }, [authenticatedFetch]);
+
   // Função para buscar unidades de um usuário
   const getUserUnits = useCallback(async (userId: number): Promise<Unit[]> => {
     try {
@@ -256,18 +297,18 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     }
   }, [authenticatedFetch]);
 
-  // Effect para buscar usuários quando searchQuery muda - só executa se autenticado
+  // Effect para buscar usuários quando searchQuery ou statusFilter mudam - só executa se autenticado
   useEffect(() => {
     if (!isAuthenticated || !token || user.role !== 'MASTER') {
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      fetchUsers(searchQuery);
+      fetchUsers(searchQuery, statusFilter);
     }, 300); // Debounce de 300ms
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, isAuthenticated, token, user.role]); // Removido fetchUsers das dependências
+  }, [searchQuery, statusFilter, isAuthenticated, token, user.role]); // ✅ Adicionado statusFilter
 
   // Effect inicial para carregar usuários - só executa se autenticado
   useEffect(() => {
@@ -284,10 +325,13 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
     error,
     searchQuery,
     setSearchQuery,
+    statusFilter, // ✅ Exportar filtro de status
+    setStatusFilter, // ✅ Exportar setter
     refreshUsers,
     createUser,
     updateUser,
     updateUserStatus,
+    toggleUserIA, // ✅ Exportar função toggle IA
     getUserUnits,
     updateUnitStatus,
     logout,

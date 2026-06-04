@@ -341,20 +341,34 @@ class WhatsappWorker {
     const HARDCODED_USUARIO_ID = 468;
 
     let unidadeId = null;
+    let iaHabilitada = false;
 
     try {
-      const unidade = await db('unidades')
-        .where('usuario_id', HARDCODED_USUARIO_ID)
-        .whereIn('status', ['Ativo', 'ativo', 'active'])
-        .select('id', 'nome')
-        .orderBy('id', 'asc')
+      // 🚫 GATEKEEPER DA IA: Query otimizada com JOIN para buscar unidade + flag ia_enabled
+      // Performance: 1 query apenas (antes eram 2: unidade + usuário separados)
+      const unidadeComUsuario = await db('unidades')
+        .join('usuarios', 'unidades.usuario_id', 'usuarios.id')
+        .where('unidades.usuario_id', HARDCODED_USUARIO_ID)
+        .whereIn('unidades.status', ['Ativo', 'ativo', 'active'])
+        .select('unidades.id', 'unidades.nome', 'usuarios.ia_enabled')
+        .orderBy('unidades.id', 'asc')
         .first();
 
-      if (unidade?.id) {
-        unidadeId = unidade.id;
+      if (unidadeComUsuario?.id) {
+        unidadeId = unidadeComUsuario.id;
+        iaHabilitada = Boolean(unidadeComUsuario.ia_enabled);
+        
+        logger.debug(`[Worker] Unidade resolvida: ${unidadeId} | IA habilitada: ${iaHabilitada}`);
       }
     } catch (err) {
       logger.error(`[Worker] Erro ao buscar unidade para usuario_id=${HARDCODED_USUARIO_ID}:`, err?.message);
+    }
+
+    // ── 🚫 GATEKEEPER: Bloquear processamento se IA desabilitada ────────────
+    // Protege contra custos desnecessários ao LLM (OpenRouter)
+    if (!iaHabilitada) {
+      logger.info(`[Worker] 🚫 IA DESABILITADA para usuario_id=${HARDCODED_USUARIO_ID} | Mensagem ignorada`);
+      return { ok: true, skipped: 'ia_disabled' };
     }
 
     // ── Capturar instanceName para uso posterior ────────────────────────────

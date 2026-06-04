@@ -37,31 +37,37 @@ const NewUserModal: React.FC<NewUserModalProps> = ({ isOpen, onClose, onSave, us
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [contact, setContact] = useState('');
-  const [plan, setPlan] = useState<'Single' | 'Multi'>('Single');
-  const [unitLimit, setUnitLimit] = useState(1);
+  const [plan] = useState<'Single' | 'Multi'>('Single'); // ✅ LOCKED: Sempre 'Single'
+  const [unitLimit] = useState(1); // ✅ LOCKED: Sempre 1
+  const [iaEnabled, setIaEnabled] = useState(true); // ✅ Feature Flag IA: Default TRUE
 
-  useEffect(() => {
-    if (plan === 'Single') {
-      setUnitLimit(1);
-    }
-  }, [plan]);
+  // ✅ Função de formatação de telefone (XX) XXXXX-XXXX
+  const formatPhone = (value: string): string => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 2) return numbers;
+    if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+  };
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value);
+    setContact(formatted);
+  };
 
   useEffect(() => {
     if (isOpen) {
       if (userToEdit) {
         setName(userToEdit.name);
         setEmail(userToEdit.email);
-        setContact(userToEdit.contact);
-        setPlan(userToEdit.plan);
-        setUnitLimit(userToEdit.unitLimit);
+        setContact(formatPhone(userToEdit.contact)); // ✅ Formatar telefone ao carregar
+        setIaEnabled(userToEdit.iaEnabled ?? true); // ✅ Carregar estado IA do usuário
         setPassword('');
       } else {
         setName('');
         setEmail('');
         setPassword('');
         setContact('');
-        setPlan('Single');
-        setUnitLimit(1);
+        setIaEnabled(true); // ✅ Default TRUE para novos usuários
       }
     }
   }, [userToEdit, isOpen]);
@@ -75,6 +81,7 @@ const NewUserModal: React.FC<NewUserModalProps> = ({ isOpen, onClose, onSave, us
       contact,
       plan,
       unitLimit,
+      iaEnabled, // ✅ Enviar estado da IA
     };
     if (password) {
       userData.password = password;
@@ -112,20 +119,51 @@ const NewUserModal: React.FC<NewUserModalProps> = ({ isOpen, onClose, onSave, us
           </div>
           <div>
             <Label>Contato (Telefone)</Label>
-            <Input type="tel" placeholder="+55 (00) 00000-0000" value={contact} onChange={(e) => setContact(e.target.value)} />
+            <Input 
+              type="tel" 
+              placeholder="(00) 00000-0000" 
+              value={contact} 
+              onChange={handleContactChange}
+              maxLength={15}
+              required
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Plano</Label>
-              <Select value={plan} onChange={(e) => setPlan(e.target.value as 'Single' | 'Multi')}>
-                <option value="Single">Single</option>
-                <option value="Multi">Multi</option>
+              <Select value={plan} disabled>
+                <option value="Single">Single - R$ 99,90/mês</option>
               </Select>
             </div>
             <div>
               <Label>Limite de Unidades</Label>
-              <Input type="number" min="1" value={unitLimit} onChange={(e) => setUnitLimit(parseInt(e.target.value, 10))} disabled={plan === 'Single'} required />
+              <Input type="number" value={unitLimit} disabled />
             </div>
+          </div>
+          <div>
+            <Label>Recepcionista IA</Label>
+            <div className="flex items-center gap-3 mt-1">
+              <button
+                type="button"
+                onClick={() => setIaEnabled(!iaEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  iaEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+                aria-label="Toggle Recepcionista IA"
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    iaEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-sm font-medium ${iaEnabled ? 'text-blue-700' : 'text-gray-500'}`}>
+                {iaEnabled ? 'Habilitada' : 'Desabilitada'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Quando desabilitada, mensagens do WhatsApp não serão processadas pela IA
+            </p>
           </div>
         </div>
         <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">

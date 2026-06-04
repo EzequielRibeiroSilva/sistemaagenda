@@ -28,6 +28,26 @@ class Usuario extends BaseModel {
       delete data.senha;
     }
 
+    // ✅ VALIDAÇÃO DE TELEFONE: Limpar e validar
+    if (data.telefone) {
+      const telefoneLimpo = data.telefone.replace(/\D/g, '');
+      if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+        throw new Error('Telefone inválido. Deve conter 10 ou 11 dígitos (DDD + número)');
+      }
+      data.telefone = telefoneLimpo;
+    }
+
+    // ✅ ENFORCE MODELO SINGLE: Sempre forçar plano Single e limite 1 para role ADMIN
+    if (data.role === 'ADMIN') {
+      data.plano = 'Single';
+      data.limite_unidades = 1;
+    }
+
+    // ✅ FEATURE FLAG IA: Garantir default TRUE se não fornecido
+    if (data.ia_enabled === undefined) {
+      data.ia_enabled = true;
+    }
+
     return await this.db('usuarios').insert(data).returning('*');
   }
 
@@ -46,6 +66,24 @@ class Usuario extends BaseModel {
       data.senha_hash = await bcrypt.hash(data.senha, config.security.bcryptSaltRounds);
       delete data.senha;
     }
+
+    // ✅ VALIDAÇÃO DE TELEFONE: Limpar e validar
+    if (data.telefone) {
+      const telefoneLimpo = data.telefone.replace(/\D/g, '');
+      if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+        throw new Error('Telefone inválido. Deve conter 10 ou 11 dígitos (DDD + número)');
+      }
+      data.telefone = telefoneLimpo;
+    }
+
+    // ✅ ENFORCE MODELO SINGLE: Sempre forçar plano Single e limite 1 para role ADMIN
+    if (data.role === 'ADMIN' || data.plano) {
+      data.plano = 'Single';
+      data.limite_unidades = 1;
+    }
+
+    // ✅ FEATURE FLAG IA: Permitir atualização explícita de ia_enabled
+    // (se o campo foi enviado como false, boolean ou undefined, o knex lida corretamente)
 
     return await this.db('usuarios').where({ id }).update(data).returning('*');
   }

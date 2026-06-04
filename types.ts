@@ -165,6 +165,7 @@ export interface AdminUser {
   status: 'Ativo' | 'Bloqueado';
   plan: 'Single' | 'Multi';
   unitLimit: number;
+  iaEnabled: boolean; // ✅ Feature Flag IA: Controle da Recepcionista Virtual
   units: Unit[];
   clientCount: number;
 }
