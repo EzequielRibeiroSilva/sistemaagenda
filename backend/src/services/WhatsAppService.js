@@ -520,27 +520,69 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
    * Gerar link de booking da unidade
    * @param {string} unidadeSlug - Slug da unidade (ex: 'barbearia-dudu')
    * @param {number} unidadeId - ID da unidade (obrigatório)
-   * @returns {string} Link completo de booking
+   * @returns {Promise<string>} Link completo de booking
    */
-  generateBookingLink(unidadeSlug, unidadeId) {
+  async generateBookingLink(unidadeSlug, unidadeId) {
     const baseUrl = this.getFrontendBaseUrl();
-    // Formato: /{slug}/booking/{unidade_id}
+    
+    // ✅ CORREÇÃO CRÍTICA: Se slug ausente, buscar do banco com cache
     if (!unidadeSlug) {
-      logger.warn(`⚠️ [WhatsAppService] unidadeSlug ausente ao gerar link de booking (unidadeId=${unidadeId}). Usando fallback sem slug.`);
-      return `${baseUrl}/booking/${unidadeId}`;
+      logger.warn(`⚠️ [WhatsAppService] unidadeSlug ausente (unidadeId=${unidadeId}). Buscando do banco...`);
+      
+      try {
+        // Verificar cache Redis primeiro
+        const cacheKey = `unidade:slug:${unidadeId}`;
+        let slugFromCache = null;
+        
+        try {
+          slugFromCache = await this.redis.get(cacheKey);
+        } catch (redisErr) {
+          logger.warn(`[WhatsAppService] Redis não disponível para cache de slug: ${redisErr.message}`);
+        }
+        
+        if (slugFromCache) {
+          logger.debug(`[WhatsAppService] ✅ Slug recuperado do cache: ${slugFromCache}`);
+          unidadeSlug = slugFromCache;
+        } else {
+          // Buscar do banco
+          const unidade = await db('unidades')
+            .where('id', unidadeId)
+            .select('slug_url')
+            .first();
+          
+          if (unidade?.slug_url) {
+            unidadeSlug = unidade.slug_url;
+            logger.info(`[WhatsAppService] ✅ Slug recuperado do banco: ${unidadeSlug}`);
+            
+            // Cachear por 24 horas
+            try {
+              await this.redis.setex(cacheKey, 86400, unidadeSlug);
+            } catch (redisErr) {
+              logger.warn(`[WhatsAppService] Falha ao cachear slug: ${redisErr.message}`);
+            }
+          } else {
+            logger.error(`❌ [WhatsAppService] SLUG NÃO ENCONTRADO para unidade_id=${unidadeId}. URL será gerada sem slug.`);
+            return `${baseUrl}/booking/${unidadeId}`;
+          }
+        }
+      } catch (err) {
+        logger.error(`❌ [WhatsAppService] Erro ao buscar slug do banco: ${err.message}`);
+        return `${baseUrl}/booking/${unidadeId}`;
+      }
     }
 
+    // Formato: /{slug}/booking/{unidade_id}
     return `${baseUrl}/${unidadeSlug}/booking/${unidadeId}`;
   }
 
   /**
    * Convite de retorno (pós-serviço) - CLIENTE
    */
-  generateReturnInviteMessage(agendamentoData) {
+  async generateReturnInviteMessage(agendamentoData) {
     const { cliente, unidade, servicos } = agendamentoData;
 
     const servicoNome = servicos?.[0]?.nome || 'serviço';
-    const linkCliente = this.generateBookingLink(unidade.slug_url, unidade.id);
+    const linkCliente = await this.generateBookingLink(unidade.slug_url, unidade.id);
 
     return `Oi, ${cliente.nome}! Saudade de você aqui na ${unidade.nome}. ✨
 
@@ -1142,12 +1184,12 @@ _Mensagem automática do Tally_`;
   /**
    * 2. CONFIRMAÇÃO DE CANCELAMENTO - CLIENTE
    */
-  generateCancellationClient(agendamentoData) {
+  async generateCancellationClient(agendamentoData) {
     const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agente_telefone, unidade_telefone, unidade_slug, agendamento_id } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
-    const linkBooking = this.generateBookingLink(unidade_slug || unidade.slug_url, unidade.id);
+    const linkBooking = await this.generateBookingLink(unidade_slug || unidade.slug_url, unidade.id);
     const wppLocal = this.generateWhatsAppLink(unidade_telefone);
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
 
@@ -1242,9 +1284,12 @@ _Mensagem automática do Tally_`;
 
       const results = { cliente: null, agente: null };
 
+      // ✅ BYPASS CRÍTICO: Confirmação de cancelamento é transacional e SEMPRE deve chegar
+      const bypassOptions = { isSystemConfirmation: true };
+
       // Enviar para o cliente
-      const messageCliente = this.generateCancellationClient(agendamentoData);
-      results.cliente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, messageCliente);
+      const messageCliente = await this.generateCancellationClient(agendamentoData);
+      results.cliente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.cliente_telefone, messageCliente, bypassOptions);
 
       // ✅ Registrar notificação para o cliente
       await this.registrarNotificacao({
@@ -1265,10 +1310,10 @@ _Mensagem automática do Tally_`;
         logger.log(`✅ [WhatsApp] Cancelamento enviado para cliente ${agendamentoData.cliente.nome}`);
       }
 
-      // Enviar para o agente
+      // Enviar para o agente (também com bypass, pois é notificação crítica)
       if (agendamentoData.agente_telefone) {
         const messageAgente = this.generateCancellationAgent(agendamentoData);
-        results.agente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.agente_telefone, messageAgente);
+        results.agente = await this.sendMessageForAgendamento(agendamentoData, agendamentoData.agente_telefone, messageAgente, bypassOptions);
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({

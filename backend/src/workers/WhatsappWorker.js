@@ -133,11 +133,14 @@ function minifyToolResult(toolName, toolResult) {
       };
 
     case 'cancelar_agendamento':
-      // Mantém apenas confirmação e ID
+      // Mantém confirmação, IDs e informações de série/estorno
       return {
         ok: true,
         agendamento_id: toolResult.agendamento_id,
-        message: 'Agendamento cancelado com sucesso'
+        agendamentos_cancelados: toolResult.agendamentos_cancelados || 1,
+        cota_consumida: toolResult.cota_consumida || false,
+        estorno_aplicado: toolResult.estorno_aplicado || false,
+        message: toolResult.message || 'Agendamento cancelado com sucesso'
       };
 
     case 'adicionar_lista_espera':
@@ -1069,6 +1072,16 @@ Antes de digitar QUALQUER resposta sobre disponibilidade, pergunte-se mentalment
 🚨 GESTÃO DE CRISE (FASE 2 - Human-in-the-loop) - PRIORIDADE MÁXIMA:
 
 ⚡ OVERRIDE DE HIERARQUIA: Esta seção SEMPRE anula o "Protocolo de Retenção" quando o cliente demonstrar irritação.
+
+💰 AVISO OBRIGATÓRIO SOBRE ESTORNO DE PIX:
+Se o cliente pagou sinal via PIX e está cancelando o agendamento, você DEVE incluir este aviso na sua resposta:
+"⚠️ *Importante sobre o PIX:* O estorno do valor pago via PIX não é automático. Por favor, entre em contato diretamente com o estabelecimento para tratar do reembolso."
+
+🔄 PROTOCOLO DE CANCELAMENTO DE SÉRIE:
+Se o cliente tem múltiplos agendamentos da mesma série recorrente (toda segunda-feira, toda quinzena, etc.):
+1. Pergunte: "Você tem agendamentos recorrentes. Deseja cancelar apenas este horário ou TODOS os agendamentos futuros desta série?"
+2. Se cliente quiser cancelar toda a série: use cancelar_serie=true
+3. Se cliente quiser cancelar apenas um: use cancelar_serie=false (padrão)
 
 📍 GATILHOS EXPLÍCITOS (detecção obrigatória):
 Você DEVE acionar este protocolo IMEDIATAMENTE ao detectar qualquer um dos seguintes sinais:
@@ -2022,20 +2035,16 @@ ${motivo}
               };
             }
           } else if (toolName === 'cancelar_agendamento') {
-            // 🔧 IMPLEMENTAÇÃO: Cancelamento de agendamento
+            // 🔧 IMPLEMENTAÇÃO: Cancelamento inteligente via UseCase
             const agendamentoId = parseInt(args?.agendamento_id, 10);
             const motivo = args?.motivo || 'Cancelado pelo cliente via WhatsApp';
+            const cancelarSerie = Boolean(args?.cancelar_serie);
 
-            // 🔄 RETENÇÃO SUAVE: a oferta de reagendamento antes do cancelamento é
-            // conduzida pela IA via System Prompt; o cancelamento não é bloqueado aqui.
-            logger.debug(`[Worker] Tentando cancelar agendamento ID: ${agendamentoId}`);
+            logger.debug(`[Worker] Tentando cancelar agendamento ID: ${agendamentoId}, Série: ${cancelarSerie}`);
 
             try {
               // 🛡️ TRAVA DE PROPRIEDADE (ANTI-MISMATCH DE ID) ──────────────────
-              // O cancelamento SÓ pode atingir um agendamento que pertença ao
-              // cliente desta conversa (mesmo telefone_limpo). Isso impede que a
-              // IA cancele o agendamento errado ao confundir o ÍNDICE visual da
-              // lista (1, 2, 3...) com o ID real do banco (ex: #33).
+              // Verificar se o agendamento pertence ao cliente atual
               const hojeCancel = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
               let agendamentosClienteQuery = db('agendamentos')
@@ -2055,7 +2064,8 @@ ${motivo}
                   'agendamentos.status',
                   'agendamentos.unidade_id',
                   'agendamentos.data_agendamento',
-                  'agendamentos.hora_inicio'
+                  'agendamentos.hora_inicio',
+                  'agendamentos.recorrencia_group_id'
                 )
                 .orderBy('agendamentos.data_agendamento', 'asc')
                 .orderBy('agendamentos.hora_inicio', 'asc');
@@ -2064,50 +2074,44 @@ ${motivo}
               const agendamento = agendamentosDoCliente.find(a => a.id === agendamentoId);
 
               if (!Number.isInteger(agendamentoId) || !agendamento) {
-                // ❌ ID inválido OU não pertence ao cliente: NUNCA cancelar.
-                // Devolvemos a lista real para que a IA escolha o ID correto e
-                // jamais "adivinhe" a partir do índice da mensagem de texto.
                 logger.warn(`[Worker] Cancelamento BLOQUEADO: agendamento_id=${args?.agendamento_id} não pertence ao cliente (telefone=${telefoneLimpo}) ou é inválido.`);
                 toolResult = {
                   ok: false,
                   error: {
-                    message: 'O agendamento_id informado NÃO pertence a este cliente ou não existe. ATENÇÃO: não use o número do índice da lista (1, 2, 3). Use o campo agendamento_id retornado por listar_agendamentos_cliente. Escolha o ID correto entre os agendamentos abaixo.',
+                    message: 'O agendamento_id informado NÃO pertence a este cliente ou não existe. ATENÇÃO: não use o número do índice da lista (1, 2, 3). Use o campo agendamento_id retornado por listar_agendamentos_cliente.',
                     code: 'ID_NAO_PERTENCE_AO_CLIENTE'
                   },
                   agendamentos_do_cliente: agendamentosDoCliente.map(a => ({
                     agendamento_id: a.id,
                     data_agendamento: a.data_agendamento,
                     hora_inicio: a.hora_inicio,
-                    status: a.status
+                    status: a.status,
+                    is_recorrente: Boolean(a.recorrencia_group_id)
                   }))
                 };
-              } else if (agendamento.status === 'Cancelado') {
-                logger.debug(`[Worker] Agendamento ${agendamentoId} já está cancelado`);
-                toolResult = { 
-                  ok: false, 
-                  error: { 
-                    message: 'Este agendamento já foi cancelado anteriormente.',
-                    code: 'ALREADY_CANCELLED'
-                  } 
-                };
               } else {
-                // Cancelar agendamento
-                await db('agendamentos')
-                  .where('id', agendamentoId)
-                  .update({
-                    status: 'Cancelado',
-                    observacoes: db.raw(`COALESCE(observacoes, '') || '\n[Cancelado via WhatsApp] ' || ?`, [motivo]),
-                    updated_at: db.fn.now()
-                  });
+                // ✅ Usar o UseCase para cancelamento
+                const CancelAppointmentUseCase = require('../useCases/CancelAppointmentUseCase');
+                
+                const resultado = await CancelAppointmentUseCase.execute({
+                  agendamentoId,
+                  motivo,
+                  origem: 'CLIENTE_PUBLICO',
+                  cancelarSerie,
+                  userId: null
+                });
 
-                logger.info(`[Worker] Agendamento ${agendamentoId} cancelado com sucesso`);
+                logger.info(`[Worker] ✅ Cancelamento concluído:`, resultado);
 
                 agendamentoCancelado = true;
 
                 toolResult = { 
                   ok: true, 
                   agendamento_id: agendamentoId,
-                  message: 'Agendamento cancelado com sucesso',
+                  agendamentos_cancelados: resultado.agendamentos_cancelados,
+                  cota_consumida: resultado.cota_consumida,
+                  estorno_aplicado: resultado.estorno_aplicado,
+                  message: resultado.message,
                   data_agendamento: agendamento.data_agendamento,
                   hora_inicio: agendamento.hora_inicio
                 };
@@ -2115,17 +2119,12 @@ ${motivo}
             } catch (err) {
               logger.error(`[Worker] Erro ao cancelar agendamento ${agendamentoId}:`, err.message);
               
-              // Verificar se é erro de FK (agendamento tem dependências)
-              const isFKError = err.message?.includes('foreign key') || err.code === '23503';
-              
               toolResult = { 
                 ok: false, 
                 error: { 
-                  message: isFKError 
-                    ? 'Não foi possível cancelar este agendamento devido a restrições do sistema. Entre em contato com o suporte.'
-                    : `Erro ao cancelar agendamento: ${err.message}`,
-                  code: isFKError ? 'FK_CONSTRAINT' : 'DB_ERROR',
-                  technical: err.message
+                  message: err.message || 'Erro ao cancelar agendamento',
+                  code: err.code || 'CANCEL_ERROR',
+                  httpStatus: err.httpStatus
                 } 
               };
             }

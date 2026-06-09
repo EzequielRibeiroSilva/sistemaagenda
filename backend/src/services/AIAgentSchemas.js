@@ -132,7 +132,7 @@ const schemas = {
     type: 'function',
     function: {
       name: 'cancelar_agendamento',
-      description: 'Cancela um agendamento existente. ATENÇÃO (PROTOCOLO DE RETENÇÃO): só use esta ferramenta DEPOIS de (1) perguntar o motivo do cancelamento e (2) oferecer um reagendamento, e SOMENTE se o cliente recusar explicitamente o reagendamento. NUNCA cancele na primeira mensagem. O parâmetro motivo DEVE conter o texto real escrito pelo cliente.',
+      description: '🚫 Cancela um agendamento existente (único ou série recorrente). ⚠️ PROTOCOLO DE RETENÇÃO OBRIGATÓRIO: 1️⃣ Pergunte o motivo do cancelamento, 2️⃣ Ofereça reagendamento, 3️⃣ SOMENTE cancele se o cliente recusar explicitamente. 📅 SÉRIE RECORRENTE: Se o cliente tem múltiplos agendamentos da mesma série (ex: "toda segunda-feira"), pergunte: "Deseja cancelar apenas este horário ou todos os agendamentos futuros desta série?". Use cancelar_serie=true para cancelar toda a série futura. 💰 AVISO DE PIX: Se o cliente pagou sinal via PIX, informe que "O estorno do valor pago via PIX não é automático. Por favor, trate o reembolso diretamente com o estabelecimento."',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -143,7 +143,12 @@ const schemas = {
           },
           motivo: {
             type: 'string',
-            description: 'Motivo do cancelamento (texto livre para registro interno).'
+            description: 'Motivo do cancelamento informado pelo cliente (texto livre para registro interno). NUNCA use texto genérico, use as palavras exatas do cliente.'
+          },
+          cancelar_serie: {
+            type: 'boolean',
+            description: 'Se true, cancela TODOS os agendamentos futuros da mesma série recorrente (mesmo recorrencia_group_id). Se false ou omitido, cancela APENAS o agendamento específico. SEMPRE pergunte ao cliente antes de cancelar uma série: "Deseja cancelar apenas este horário ou todos os futuros desta sequência?"',
+            default: false
           }
         },
         required: ['agendamento_id', 'motivo']
