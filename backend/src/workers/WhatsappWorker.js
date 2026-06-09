@@ -661,6 +661,133 @@ ${clienteSaudacao}${preferenciasTexto}
 🏢 ID da Unidade: ${unidadeId}
 ${clienteId ? `👤 ID do Cliente: ${clienteId}` : ''}
 
+💳 PROTOCOLO DE PIX (SINAL DE AGENDAMENTO):
+══════════════════════════════════════════════════════════════════════════════
+
+Quando a ferramenta criar_agendamento retornar com sucesso E o campo deveCobrarSinal === true:
+
+1. O agendamento foi PRÉ-RESERVADO (NÃO está confirmado ainda)
+2. O cliente PRECISA pagar o sinal via PIX para confirmar
+3. Você DEVE enviar o código PIX Copia e Cola conforme instruções abaixo
+
+⭐ INSTRUÇÕES DE EXTRAÇÃO DO CÓDIGO PIX:
+═══════════════════════════════════════════════════════════════════════════════
+Quando a ferramenta criar_agendamento retornar os dados do agendamento e o código do PIX:
+
+1. Localize o campo pix.qr_code_copy no resultado da ferramenta
+2. Este campo contém uma string alfanumérica que começa com "00020126..."
+3. Copie EXATAMENTE esse valor (cerca de 150-200 caracteres)
+4. Cole esse código diretamente na sua mensagem ao cliente
+5. O código deve aparecer isolado entre crases triplas para facilitar cópia
+
+⛔ NUNCA escreva literalmente as palavras "pix.qr_code_copy" na mensagem
+⛔ NUNCA use sintaxe de placeholder como {variavel} ou {campo}
+⛔ NUNCA peça ao cliente para enviar comprovante de pagamento
+
+✅ O código real sempre começa com: 00020126580014br.gov.bcb.pix...
+✅ Você deve colar o valor EXATO retornado pela ferramenta
+✅ O sistema reconhece o pagamento automaticamente (100% automático)
+═══════════════════════════════════════════════════════════════════════════════
+
+📱 ESTRUTURA DA MENSAGEM COM PIX:
+
+Após receber o resultado da ferramenta, monte sua resposta assim:
+
+"✅ Perfeito! Seu agendamento foi pré-reservado com sucesso!
+
+📋 *Detalhes da Reserva:*
+• Agendamento: #[NÚMERO DO AGENDAMENTO]
+• Data: [DATA FORMATADA]
+• Horário: [HORA DE INÍCIO]
+• Profissional: [NOME DO PROFISSIONAL]
+• Serviço: [NOME DO SERVIÇO]
+• Valor Total: R$ [VALOR TOTAL]
+• *Sinal necessário: R$ [VALOR DO SINAL]*
+
+💳 *PAGAMENTO VIA PIX:*
+Para confirmar seu agendamento, efetue o pagamento do sinal através do código PIX abaixo:
+
+[AQUI VOCÊ COLA O VALOR REAL DO CAMPO pix.qr_code_copy ENTRE CRASES TRIPLAS]
+
+⏰ *ATENÇÃO - URGENTE:*
+• Este código expira em *15 minutos*
+• Após o pagamento, você receberá a confirmação automática por aqui
+• Se o código expirar, você precisará fazer um novo agendamento
+
+🤖 *IMPORTANTE - RECONHECIMENTO AUTOMÁTICO:*
+Assim que você pagar, nosso sistema reconhece automaticamente e envia a confirmação.
+*Não precisa me enviar o comprovante!* O sistema detecta tudo sozinho. 😊
+
+📱 Qualquer dúvida, estou à disposição!"
+
+🚫 PROIBIÇÕES ABSOLUTAS:
+├─ NUNCA diga que o agendamento está "confirmado" se deveCobrarSinal === true
+├─ NUNCA envie a mensagem sem o código PIX completo
+├─ NUNCA escreva texto literal como "pix.qr_code_copy" ou "{variavel}"
+├─ NUNCA peça ao cliente para enviar comprovante (o sistema é automático)
+├─ NUNCA esqueça de avisar que o código expira em 15 minutos
+├─ NUNCA omita o campo agendamento_id (cliente precisa para referência)
+└─ NUNCA encerre a conversa antes de enviar o PIX (cliente ficará sem código)
+
+✅ FLUXO CORRETO QUANDO HÁ PIX:
+1. Chama criar_agendamento
+2. Verifica se deveCobrarSinal === true
+3. Extrai o valor real de pix.qr_code_copy (a string completa começando com "00020126...")
+4. Formata a mensagem colando o código real entre crases triplas
+5. Informa que o reconhecimento do pagamento é 100% automático
+6. Desencorajao envio de comprovantes ("Não precisa me enviar o comprovante!")
+7. Envia a mensagem com o código PIX real e completo
+8. Aguarda confirmação do cliente ("Paguei", "Já fiz o PIX", etc.)
+9. Reforça que a confirmação chegará automaticamente
+
+✅ FLUXO CORRETO QUANDO NÃO HÁ PIX (deveCobrarSinal === false):
+1. Chama criar_agendamento
+2. Verifica que deveCobrarSinal === false
+3. Confirma o agendamento diretamente (já está aprovado)
+4. Usa o template padrão de confirmação
+
+💡 EXEMPLO REAL DE USO:
+
+Cliente: "Quero agendar um corte de cabelo para amanhã às 14h"
+Você: [coleta informações, valida disponibilidade]
+Você: [chama criar_agendamento]
+Sistema retorna: { ok: true, agendamento_id: 123, deveCobrarSinal: true, pix: { qr_code_copy: "00020126580014br.gov.bcb.pix0136a1b2c3d4e5f6..." } }
+
+Você: "✅ Perfeito! Seu agendamento foi pré-reservado com sucesso!
+
+📋 *Detalhes da Reserva:*
+• Agendamento: #123
+• Data: 09/06/2026
+• Horário: 14:00
+• Profissional: João Silva
+• Serviço: Corte de Cabelo
+• Valor Total: R$ 80,00
+• *Sinal necessário: R$ 20,00*
+
+💳 *PAGAMENTO VIA PIX:*
+Para confirmar seu agendamento, efetue o pagamento do sinal através do código PIX abaixo:
+
+\`\`\`
+00020126580014br.gov.bcb.pix0136a1b2c3d4e5f6...
+\`\`\`
+
+⏰ *ATENÇÃO - URGENTE:*
+• Este código expira em *15 minutos*
+• Após o pagamento, você receberá a confirmação automática por aqui
+• Se o código expirar, você precisará fazer um novo agendamento
+
+🤖 *IMPORTANTE - RECONHECIMENTO AUTOMÁTICO:*
+Assim que você pagar, nosso sistema reconhece automaticamente e envia a confirmação.
+*Não precisa me enviar o comprovante!* O sistema detecta tudo sozinho. 😊"
+
+Cliente: "Acabei de pagar!"
+Você: "Obrigado! Assim que o pagamento for confirmado pelo banco (geralmente instantâneo), você receberá a confirmação automática aqui mesmo. Aguarde alguns instantes! 😊"
+
+Cliente: [envia imagem do comprovante]
+Você: "Obrigado, mas não precisa se preocupar! Nosso sistema detecta o pagamento automaticamente assim que ele é processado pelo banco. A confirmação chegará aqui em instantes! 😊"
+
+══════════════════════════════════════════════════════════════════════════════
+
 🎭 TOM DE VOZ E PERSONALIDADE:
 ${instrucaoTom}
 ${saudacaoPersonalizada ? `\nSaudação personalizada: "${saudacaoPersonalizada}"` : ''}
@@ -790,6 +917,38 @@ Você: "Maravilha! Temos o ${agentesContexto.map(a => a.nome).join(' e o ')} aqu
 - Trate cada agendamento como uma venda: ofereça alternativas, seja proativa
 - Se não der certo com um profissional/dia, ofereça outro (vendedor experiente!)
 - Use linguagem natural: "Deixa eu ver aqui pra você", "Vou conferir", não "Executando consulta"
+
+🚨 ═══════════════════════════════════════════════════════════════════════════
+🚨 REGRA ABSOLUTA - COLETA DE SERVIÇO (OBRIGATÓRIA)
+🚨 ═══════════════════════════════════════════════════════════════════════════
+
+⛔ VOCÊ NUNCA, EM HIPÓTESE ALGUMA, DEVE CHAMAR A FUNÇÃO criar_agendamento
+   SEM TER PERGUNTADO E OBTIDO A CONFIRMAÇÃO CLARA DO CLIENTE SOBRE QUAL
+   SERVIÇO ELE DESEJA REALIZAR.
+
+⛔ FLUXO OBRIGATÓRIO ANTES DE CRIAR AGENDAMENTO:
+   1. PERGUNTAR: "Qual serviço você gostaria de fazer?"
+   2. CLIENTE RESPONDE: ex: "Corte de cabelo"
+   3. CONFIRMAR: "Perfeito! Vou agendar um [serviço] para você."
+   4. SÓ DEPOIS: Chamar criar_agendamento
+
+⛔ PROIBIÇÕES ABSOLUTAS:
+   - NUNCA chame criar_agendamento sem saber qual serviço o cliente quer
+   - NUNCA assuma o serviço baseado em contexto ou histórico
+   - NUNCA envie array vazio de servicos
+   - NUNCA envie null ou undefined no campo servicos
+
+✅ EXEMPLO CORRETO:
+   Cliente: "Quero agendar para amanhã às 14h"
+   Você: "Ótimo! Qual serviço você gostaria de fazer? Temos: [lista serviços]"
+   Cliente: "Corte de cabelo"
+   Você: [valida horário, confirma, DEPOIS chama criar_agendamento]
+
+❌ EXEMPLO ERRADO:
+   Cliente: "Quero agendar para amanhã às 14h"
+   Você: [chama criar_agendamento sem perguntar o serviço] ← PROIBIDO!
+
+🚨 ═══════════════════════════════════════════════════════════════════════════
 
 🚫 REGRA ANTIDUPLICIDADE (CRÍTICA):
 - NUNCA chame a ferramenta criar_agendamento até que o cliente tenha confirmado EXPLICITAMENTE o serviço, a data e o horário escolhidos.
@@ -1394,17 +1553,67 @@ Esta instrução sobrepõe qualquer regra anterior do System Prompt.`;
 
             const usuarioId = chatSession?.usuario_id;
 
-            const created = await CreateAppointmentUseCase.execute({
-              unidadeId: args?.unidade_id,
-              agenteId: args?.agente_id,
-              dataAgendamento: args?.data_agendamento,
-              horaInicio: args?.hora_inicio,
-              servicos: args?.servicos,
-              clienteTelefone: telefoneLimpo,
-              clienteNome: args?.cliente_nome || 'Cliente',
-              suppressNotification: true,  // ✅ CONSISTÊNCIA DE DISPARO: Worker envia a mensagem, não o UseCase
-              skipAvailabilityValidation: true  // 🔧 NOVO: Pula validação redundante (já validamos com validar_agendamento)
-            }, { usuarioId });
+            let created;
+            try {
+              created = await CreateAppointmentUseCase.execute({
+                unidadeId: args?.unidade_id,
+                agenteId: args?.agente_id,
+                dataAgendamento: args?.data_agendamento,
+                horaInicio: args?.hora_inicio,
+                servicos: args?.servicos,
+                clienteTelefone: telefoneLimpo,
+                clienteNome: args?.cliente_nome || 'Cliente',
+                suppressNotification: true,  // ✅ CONSISTÊNCIA DE DISPARO: Worker envia a mensagem, não o UseCase
+                skipAvailabilityValidation: true  // 🔧 NOVO: Pula validação redundante (já validamos com validar_agendamento)
+              }, { usuarioId });
+            } catch (createError) {
+              // 🔧 MELHORIA: Capturar erros de integração de pagamento e fornecer mensagem clara para a IA
+              logger.error('[Worker] Erro ao criar agendamento:', {
+                message: createError.message,
+                code: createError.code,
+                httpStatus: createError.httpStatus,
+                details: createError.details
+              });
+
+              // Identificar erro de integração de pagamento
+              if (createError.code === 'INTEGRATION_ERROR' || createError.code === 'MP_NOT_CONNECTED' || 
+                  (createError.details && createError.details.reason === 'MP_NOT_CONNECTED')) {
+                toolResult = {
+                  ok: false,
+                  error: 'PAYMENT_INTEGRATION_ERROR',
+                  message: 'Falha ao gerar PIX: Lojista sem Mercado Pago configurado. Por favor, entre em contato via WhatsApp para agendar sem pagamento online.',
+                  user_friendly_message: 'No momento, não consigo processar o pagamento online para este agendamento. Entre em contato conosco via WhatsApp para agendar sem pagamento antecipado.'
+                };
+                
+                followupHistory.push({
+                  role: 'tool',
+                  tool_call_id: toolCall?.id,
+                  content: JSON.stringify(toolResult),
+                });
+                continue;
+              }
+
+              // Identificar erro de token expirado
+              if (createError.code === 'MP_TOKEN_EXPIRED' || 
+                  (createError.details && createError.details.reason === 'MP_TOKEN_EXPIRED')) {
+                toolResult = {
+                  ok: false,
+                  error: 'PAYMENT_TOKEN_EXPIRED',
+                  message: 'Falha ao gerar PIX: Token do Mercado Pago expirado. Por favor, entre em contato via WhatsApp para agendar sem pagamento online.',
+                  user_friendly_message: 'No momento, não consigo processar o pagamento online para este agendamento. Entre em contato conosco via WhatsApp para agendar sem pagamento antecipado.'
+                };
+                
+                followupHistory.push({
+                  role: 'tool',
+                  tool_call_id: toolCall?.id,
+                  content: JSON.stringify(toolResult),
+                });
+                continue;
+              }
+
+              // Para outros erros, relançar
+              throw createError;
+            }
 
             // 🔧 CORREÇÃO: Extrair o ID do agendamento e incluir na resposta
             const agendamentoId = created?.agendamento?.id;

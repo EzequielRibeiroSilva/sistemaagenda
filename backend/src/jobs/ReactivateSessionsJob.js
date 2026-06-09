@@ -22,9 +22,22 @@ class ReactivateSessionsJob {
     const startTime = Date.now();
 
     try {
+      // ⏱️ Timeout de inatividade configurável via variável de ambiente
+      const timeoutMinutes = parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_MINUTES, 10);
+      
+      // 🛡️ Validação de segurança: garantir que o valor é numérico e razoável (entre 1 e 1440 minutos)
+      // Se NaN ou não definido, usar 15 como padrão
+      const defaultTimeout = 15;
+      const parsedTimeout = isNaN(timeoutMinutes) ? defaultTimeout : timeoutMinutes;
+      const safeTimeout = Math.max(1, Math.min(parsedTimeout, 1440));
+      
+      if (safeTimeout !== parsedTimeout) {
+        logger.warn(`[ReactivateSessionsJob] Timeout ajustado de ${parsedTimeout} para ${safeTimeout} minutos (limite: 1-1440)`);
+      }
+
       const updated = await db('chat_sessions')
         .where('status', 'paused_by_human')
-        .andWhere('last_interaction_at', '<', db.raw("NOW() - INTERVAL '30 minutes'"))
+        .andWhere('last_interaction_at', '<', db.raw('NOW() - INTERVAL ?? minute', [safeTimeout]))
         .update({
           status: 'active',
           updated_at: db.fn.now()
@@ -32,7 +45,7 @@ class ReactivateSessionsJob {
 
       this.lastExecution = new Date();
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      logger.log(`✅ [ReactivateSessionsJob] Execução #${this.executionCount} concluída em ${duration}s | reativadas=${updated}`);
+      logger.log(`✅ [ReactivateSessionsJob] Execução #${this.executionCount} concluída em ${duration}s | reativadas=${updated} | timeout=${safeTimeout}min`);
     } catch (error) {
       logger.error(`❌ [ReactivateSessionsJob] Erro na execução #${this.executionCount}:`, error);
     } finally {

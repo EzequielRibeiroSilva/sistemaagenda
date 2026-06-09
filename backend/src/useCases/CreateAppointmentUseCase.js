@@ -194,60 +194,85 @@ async function gerarPixSinal({
     );
   }
 
-  const accessToken = decrypt({
-    ciphertext: integracao.access_token_ciphertext,
-    iv: integracao.access_token_iv,
-    authTag: integracao.access_token_auth_tag
-  });
-
   const idempotencyKey = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   const externalReference = `agendamento_${agendamentoId}`;
 
-  const mpResp = await fetch('https://api.mercadopago.com/v1/payments', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'X-Idempotency-Key': idempotencyKey
-    },
-    body: JSON.stringify({
-      transaction_amount: amount,
-      description: `Sinal agendamento #${agendamentoId}`,
-      payment_method_id: 'pix',
-      external_reference: externalReference,
-      date_of_expiration: expiresAt.toISOString(),
-      payer: {
-        first_name: String(cliente?.primeiro_nome || '').trim() || 'Cliente',
-        last_name: String(cliente?.ultimo_nome || '').trim() || ' ',
-        email: String(cliente?.mp_customer_email || 'cliente@exemplo.com').trim().toLowerCase()
+  // 🔧 BYPASS DE DESENVOLVIMENTO: Se estivermos em ambiente dev E as credenciais forem mock,
+  // gerar PIX falso sem chamar API real nem tentar descriptografar
+  const isMockCredentials = integracao.access_token_iv === 'mock_iv_dev' || 
+                           integracao.access_token_ciphertext === 'mock_ciphertext_dev';
+  const isDevelopment = process.env.NODE_ENV === 'development';
+
+  let mpPaymentId, qrCodeBase64, qrCode;
+
+  if (isDevelopment && isMockCredentials) {
+    // ✅ MOCK DE PIX PARA DESENVOLVIMENTO
+    logger.info('🔧 [CreateAppointmentUseCase] Gerando PIX MOCK (ambiente de desenvolvimento)');
+    
+    mpPaymentId = `mock_payment_${agendamentoId}_${Date.now()}`;
+    qrCodeBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Pixel transparente 1x1
+    qrCode = `00020126580014br.gov.bcb.pix0136${crypto.randomUUID()}520400005303986540${amount.toFixed(2)}5802BR5913MOCK_DEV_PIX6009SAO_PAULO62070503***6304${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+
+    logger.warn('⚠️  [CreateAppointmentUseCase] PIX MOCK gerado - NÃO USAR EM PRODUÇÃO!', {
+      agendamento_id: agendamentoId,
+      unidade_id: unidadeId,
+      amount,
+      mp_payment_id: mpPaymentId
+    });
+  } else {
+    // ✅ FLUXO REAL: Descriptografar token e chamar API do Mercado Pago
+    const accessToken = decrypt({
+      ciphertext: integracao.access_token_ciphertext,
+      iv: integracao.access_token_iv,
+      authTag: integracao.access_token_auth_tag
+    });
+
+    const mpResp = await fetch('https://api.mercadopago.com/v1/payments', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': idempotencyKey
       },
-      metadata: {
-        unidade_id: Number(unidadeId),
-        agendamento_id: Number(agendamentoId),
-        cliente_id: Number(cliente.id)
-      }
-    })
-  });
+      body: JSON.stringify({
+        transaction_amount: amount,
+        description: `Sinal agendamento #${agendamentoId}`,
+        payment_method_id: 'pix',
+        external_reference: externalReference,
+        date_of_expiration: expiresAt.toISOString(),
+        payer: {
+          first_name: String(cliente?.primeiro_nome || '').trim() || 'Cliente',
+          last_name: String(cliente?.ultimo_nome || '').trim() || ' ',
+          email: String(cliente?.mp_customer_email || 'cliente@exemplo.com').trim().toLowerCase()
+        },
+        metadata: {
+          unidade_id: Number(unidadeId),
+          agendamento_id: Number(agendamentoId),
+          cliente_id: Number(cliente.id)
+        }
+      })
+    });
 
-  const mpJson = await mpResp.json().catch(() => null);
-  if (!mpResp.ok) {
-    const err = new Error('Falha ao gerar Pix no Mercado Pago');
-    err.code = 'MP_PIX_CREATE_FAILED';
-    err.httpStatus = mpResp.status;
-    err.mpError = mpJson;
-    throw err;
-  }
+    const mpJson = await mpResp.json().catch(() => null);
+    if (!mpResp.ok) {
+      const err = new Error('Falha ao gerar Pix no Mercado Pago');
+      err.code = 'MP_PIX_CREATE_FAILED';
+      err.httpStatus = mpResp.status;
+      err.mpError = mpJson;
+      throw err;
+    }
 
-  const mpPaymentId = mpJson?.id != null ? String(mpJson.id) : null;
-  const qrCodeBase64 = mpJson?.point_of_interaction?.transaction_data?.qr_code_base64 || null;
-  const qrCode = mpJson?.point_of_interaction?.transaction_data?.qr_code || null;
+    mpPaymentId = mpJson?.id != null ? String(mpJson.id) : null;
+    qrCodeBase64 = mpJson?.point_of_interaction?.transaction_data?.qr_code_base64 || null;
+    qrCode = mpJson?.point_of_interaction?.transaction_data?.qr_code || null;
 
-  if (!mpPaymentId || !qrCodeBase64 || !qrCode) {
-    const err = new Error('Resposta inválida do Mercado Pago (dados Pix ausentes)');
-    err.code = 'MP_PIX_INVALID_RESPONSE';
-    err.mpError = mpJson;
-    throw err;
+    if (!mpPaymentId || !qrCodeBase64 || !qrCode) {
+      const err = new Error('Resposta inválida do Mercado Pago (dados Pix ausentes)');
+      err.code = 'MP_PIX_INVALID_RESPONSE';
+      err.mpError = mpJson;
+      throw err;
+    }
   }
 
   await trx('agendamento_pagamentos').insert({
@@ -334,7 +359,11 @@ async function execute(data, context) {
     : [];
 
   if (servicoIds.length === 0) {
-    throw makeError('Serviços não informados', 'MISSING_SERVICOS', 400);
+    throw makeError(
+      '🚨 ERRO: Você tentou criar um agendamento sem especificar quais serviços o cliente deseja. AÇÃO NECESSÁRIA: Pergunte ao cliente "Qual serviço você gostaria de fazer?" e aguarde a resposta antes de chamar criar_agendamento novamente. Serviços disponíveis estão listados no System Prompt.',
+      'MISSING_SERVICOS',
+      400
+    );
   }
 
   const agendamentoModel = new Agendamento();

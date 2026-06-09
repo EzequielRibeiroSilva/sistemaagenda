@@ -88,7 +88,7 @@ const schemas = {
     type: 'function',
     function: {
       name: 'criar_agendamento',
-      description: 'Cria definitivamente um novo agendamento no sistema. ATENÇÃO: Esta ferramenta deve ser chamada APENAS UMA VEZ por agendamento. Use SOMENTE após: 1) Cliente escolher horário, 2) Você chamar validar_agendamento e confirmar disponibilidade, 3) Cliente confirmar EXPLICITAMENTE (dizer "sim", "confirmo", "pode agendar"). NUNCA chame esta ferramenta mais de uma vez para o mesmo horário. NUNCA use para pré-reservar ou validar disponibilidade (para isso use validar_agendamento).',
+      description: '🚨 REGRA CRÍTICA: NUNCA chame esta ferramenta sem ter PERGUNTADO e OBTIDO do cliente qual SERVIÇO ele deseja (ex: corte, barba, manicure). O parâmetro "servicos" é OBRIGATÓRIO e NÃO PODE ser vazio. Cria definitivamente um novo agendamento no sistema. ATENÇÃO: Esta ferramenta deve ser chamada APENAS UMA VEZ por agendamento. Use SOMENTE após: 1) Cliente INFORMAR qual serviço quer, 2) Cliente escolher horário, 3) Você chamar validar_agendamento e confirmar disponibilidade, 4) Cliente confirmar EXPLICITAMENTE (dizer "sim", "confirmo", "pode agendar"). NUNCA chame esta ferramenta mais de uma vez para o mesmo horário. NUNCA use para pré-reservar ou validar disponibilidade (para isso use validar_agendamento).',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -111,7 +111,7 @@ const schemas = {
           },
           servicos: {
             type: 'array',
-            description: 'Lista de IDs de serviços a serem executados neste agendamento.',
+            description: '🚨 OBRIGATÓRIO: Lista de IDs de serviços a serem executados neste agendamento. NUNCA envie array vazio. NUNCA envie sem perguntar ao cliente qual serviço ele quer. Exemplos válidos: [1], [2], [1, 3]. SEMPRE pergunte "Qual serviço você gostaria de fazer?" antes de chamar esta ferramenta.',
             items: {
               type: 'integer',
               description: 'ID do serviço.'

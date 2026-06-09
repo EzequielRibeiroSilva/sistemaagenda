@@ -436,16 +436,27 @@ Um abraço da equipe ${nomeNegocio}! 🤗`;
     return queuedPromise;
   }
 
-  async sendMessageForAgendamento(agendamentoData, phoneNumber, message) {
+  async sendMessageForAgendamento(agendamentoData, phoneNumber, message, options = {}) {
     if (!this.isEnabled()) {
       return { success: false, message: 'Serviço WhatsApp desabilitado' };
     }
 
     const unidadeId = agendamentoData?.unidade_id || agendamentoData?.unidade?.id;
-    const isSuppressed = await ChatSessionService.shouldSuppressOutbound(unidadeId, phoneNumber);
-    if (isSuppressed) {
-      logger.info(`[WhatsAppService] Disparo suprimido para ${phoneNumber} (sessão IA ativa)`);
-      return { success: false, skipped: true, reason: 'ai_session_active' };
+    
+    // 🔧 BYPASS: Confirmações de pagamento/agendamento SEMPRE devem ser enviadas
+    // mesmo que a sessão da IA esteja ativa, pois são mensagens críticas do sistema
+    const isPaymentConfirmation = options.isPaymentConfirmation === true;
+    const isSystemConfirmation = options.isSystemConfirmation === true;
+    const shouldBypassSuppression = isPaymentConfirmation || isSystemConfirmation;
+    
+    if (!shouldBypassSuppression) {
+      const isSuppressed = await ChatSessionService.shouldSuppressOutbound(unidadeId, phoneNumber);
+      if (isSuppressed) {
+        logger.info(`[WhatsAppService] Disparo suprimido para ${phoneNumber} (sessão IA ativa)`);
+        return { success: false, skipped: true, reason: 'ai_session_active' };
+      }
+    } else {
+      logger.info(`[WhatsAppService] 🔓 Bypass de supressão ativado (confirmação de sistema)`);
     }
 
     // Modo de teste - simula envio bem-sucedido
@@ -1004,10 +1015,19 @@ _Mensagem automática do Tally_`;
         return { success: false, error: 'Nenhum telefone disponível' };
       }
 
+      // 🔓 BYPASS: Confirmações de agendamento são mensagens de sistema
+      // e devem SEMPRE ser enviadas, mesmo que a sessão IA esteja ativa
+      const systemConfirmationOptions = { isSystemConfirmation: true };
+
       // Enviar para o cliente
       if (clienteTelefone) {
         const messageCliente = this.generateAppointmentConfirmationClient(agendamentoData);
-        results.cliente = await this.sendMessageForAgendamento(agendamentoData, clienteTelefone, messageCliente);
+        results.cliente = await this.sendMessageForAgendamento(
+          agendamentoData, 
+          clienteTelefone, 
+          messageCliente,
+          systemConfirmationOptions
+        );
 
         // ✅ Registrar notificação para o cliente
         await this.registrarNotificacao({
@@ -1034,7 +1054,12 @@ _Mensagem automática do Tally_`;
       // Enviar para o agente
       if (agenteTelefone) {
         const messageAgente = this.generateAppointmentConfirmationAgent(agendamentoData);
-        results.agente = await this.sendMessageForAgendamento(agendamentoData, agenteTelefone, messageAgente);
+        results.agente = await this.sendMessageForAgendamento(
+          agendamentoData, 
+          agenteTelefone, 
+          messageAgente,
+          systemConfirmationOptions
+        );
 
         // ✅ Registrar notificação para o agente
         await this.registrarNotificacao({

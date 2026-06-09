@@ -1,5 +1,6 @@
 const { db } = require('../config/knex');
 const ChatSession = require('../models/ChatSession');
+const logger = require('../utils/logger');
 
 class ChatSessionService {
   constructor() {
@@ -61,6 +62,47 @@ class ChatSessionService {
       return true;
     }
 
+    // ✅ Se sessão já está ativa, processar normalmente
+    if (session.status === 'active') {
+      return true;
+    }
+
+    // ⏰ REATIVAÇÃO INLINE (Fase 2): Verificar se sessão pausada já expirou
+    if (session.status === 'paused_by_human') {
+      // Capturar timeout configurável (com fallback para 15 minutos)
+      const timeoutMinutes = parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_MINUTES, 10);
+      const defaultTimeout = 15;
+      const parsedTimeout = isNaN(timeoutMinutes) ? defaultTimeout : timeoutMinutes;
+      const safeTimeout = Math.max(1, Math.min(parsedTimeout, 1440));
+
+      // Calcular minutos de inatividade
+      const lastInteractionMs = new Date(session.last_interaction_at).getTime();
+      const nowMs = Date.now();
+      const inactiveMinutes = Math.floor((nowMs - lastInteractionMs) / 60000);
+
+      // 🔄 Se inatividade >= timeout → Reativar sessão inline
+      if (inactiveMinutes >= safeTimeout) {
+        logger.info(`[ChatSessionService] 🔄 REATIVAÇÃO INLINE | unidade=${unidadeIdInt} | telefone=${telefoneStr} | inativo_por=${inactiveMinutes}min | timeout=${safeTimeout}min`);
+
+        // Atualizar status da sessão para 'active'
+        await this.chatSessionModel.db(this.chatSessionModel.tableName)
+          .where('id', session.id)
+          .update({
+            status: 'active',
+            updated_at: this.chatSessionModel.db.fn.now()
+          });
+
+        logger.info(`[ChatSessionService] ✅ Sessão reativada com sucesso | session_id=${session.id} | unidade=${unidadeIdInt} | telefone=${telefoneStr}`);
+
+        return true; // ✅ Processar mensagem
+      }
+
+      // ⏳ Ainda dentro do timeout → Manter pausado
+      logger.debug(`[ChatSessionService] ⏳ Sessão ainda pausada | unidade=${unidadeIdInt} | telefone=${telefoneStr} | inativo_por=${inactiveMinutes}min | aguardar_mais=${safeTimeout - inactiveMinutes}min`);
+      return false; // ❌ Não processar
+    }
+
+    // 🚫 Outros status (se houver no futuro)
     return session.status === 'active';
   }
 
@@ -117,7 +159,6 @@ class ChatSessionService {
       });
 
     if (updated > 0) {
-      const logger = require('../utils/logger');
       logger.info(`[ChatSessionService] 🛑 Sessão pausada | unidade=${unidadeIdInt} | telefone=${telefoneStr} | reason=${reason}`);
     }
 

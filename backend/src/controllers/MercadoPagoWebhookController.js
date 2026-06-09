@@ -98,6 +98,13 @@ class MercadoPagoWebhookController {
   }
 
   validateSignature(req) {
+    // 🔓 BYPASS DE SEGURANÇA PARA AMBIENTE DE DESENVOLVIMENTO
+    // Permite testes locais do webhook sem validação de assinatura HMAC-SHA256
+    if (process.env.NODE_ENV === 'development') {
+      logger.info('⚠️ [MercadoPagoWebhook] BYPASS DE SEGURANÇA ATIVO - Ambiente de desenvolvimento detectado');
+      return { ok: true, bypassed: true };
+    }
+
     const secret = this.getWebhookSecret();
     if (!secret) {
       return { ok: false, error: 'Webhook secret não configurado' };
