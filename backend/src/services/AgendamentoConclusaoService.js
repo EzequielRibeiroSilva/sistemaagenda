@@ -414,26 +414,18 @@ class AgendamentoConclusaoService {
     enviarEm.setDate(enviarEm.getDate() + diasMin);
     enviarEm.setHours(10, 0, 0, 0);
 
-    try {
-      await this.db('lembretes_enviados')
-        .insert({
-          agendamento_id: agendamentoIdNum,
-          unidade_id: agendamento.unidade_id,
-          tipo_lembrete: null,
-          tipo_notificacao: 'convite_retorno',
-          status: 'programado',
-          telefone_destino: cliente.telefone,
-          enviar_em: enviarEm,
-          tentativas: 0,
-          created_at: this.db.fn.now(),
-          updated_at: this.db.fn.now()
-        });
-    } catch (error) {
-      if (error && (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo_notificacao')) {
-        return;
-      }
-      throw error;
-    }
+    await this.db.raw(`
+      INSERT INTO lembretes_enviados (
+        agendamento_id, unidade_id, tipo_lembrete, tipo_notificacao,
+        status, telefone_destino, enviar_em, tentativas, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (agendamento_id, tipo_notificacao)
+      WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+      DO NOTHING
+    `, [
+      agendamentoIdNum, agendamento.unidade_id, null, 'convite_retorno',
+      'programado', cliente.telefone, enviarEm, 0
+    ]);
   }
 }
 

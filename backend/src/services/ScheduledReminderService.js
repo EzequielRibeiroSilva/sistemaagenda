@@ -118,16 +118,35 @@ class ScheduledReminderService {
 
       // Inserir lembretes no banco
       if (lembretes.length > 0) {
-        const ids = await db(this.tableName)
-          .insert(lembretes)
-          .returning('id');
+        const ids = [];
+        
+        for (const lembrete of lembretes) {
+          const result = await db.raw(`
+            INSERT INTO lembretes_enviados (
+              agendamento_id, unidade_id, tipo_lembrete, tipo_notificacao,
+              status, telefone_destino, enviar_em, tentativas, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (agendamento_id, tipo_notificacao)
+            WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+            DO NOTHING
+            RETURNING id
+          `, [
+            lembrete.agendamento_id, lembrete.unidade_id, lembrete.tipo_lembrete,
+            lembrete.tipo_notificacao, lembrete.status, lembrete.telefone_destino,
+            lembrete.enviar_em, lembrete.tentativas
+          ]);
+          
+          if (result.rows && result.rows.length > 0) {
+            ids.push(result.rows[0].id);
+          }
+        }
 
-        logger.log(`✅ [ScheduledReminderService] ${lembretes.length} lembrete(s) programado(s) criado(s) para agendamento #${agendamento_id}`);
+        logger.log(`✅ [ScheduledReminderService] ${ids.length} lembrete(s) programado(s) criado(s) para agendamento #${agendamento_id}`);
 
         return {
           success: true,
-          count: lembretes.length,
-          ids: ids.map(id => typeof id === 'object' ? id.id : id)
+          count: ids.length,
+          ids
         };
       } else {
         logger.log(`⚠️ [ScheduledReminderService] Nenhum lembrete programado (horários já passaram)`);
@@ -139,16 +158,6 @@ class ScheduledReminderService {
       }
 
     } catch (error) {
-      // Se erro de constraint única, significa que já existem lembretes
-      if (error.code === '23505') {
-        logger.log(`⚠️ [ScheduledReminderService] Lembretes já existem para agendamento #${agendamentoData.agendamento_id}`);
-        return {
-          success: false,
-          error: 'Lembretes já existem',
-          code: 'DUPLICATE'
-        };
-      }
-
       logger.error(`❌ [ScheduledReminderService] Erro ao criar lembretes programados:`, error);
       throw error;
     }

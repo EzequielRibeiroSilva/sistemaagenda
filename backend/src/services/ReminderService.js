@@ -304,36 +304,46 @@ class ReminderService {
         };
 
         // Cliente
-        try {
-          await db('lembretes_enviados')
-            .insert({
-              ...baseRow,
-              tipo_notificacao: 'assinatura_aviso_cliente',
-              telefone_destino: r.cliente_telefone,
-              mensagem_enviada: null
-            });
+        const clienteResult = await db.raw(`
+          INSERT INTO lembretes_enviados (
+            agendamento_id, unidade_id, cliente_id, assinatura_referencia,
+            tipo_notificacao, telefone_destino, mensagem_enviada,
+            status, tentativas, enviar_em, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT (agendamento_id, tipo_notificacao)
+          WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+          DO NOTHING
+          RETURNING id
+        `, [
+          baseRow.agendamento_id, baseRow.unidade_id, baseRow.cliente_id,
+          baseRow.assinatura_referencia, 'assinatura_aviso_cliente',
+          r.cliente_telefone, null, baseRow.status, baseRow.tentativas, baseRow.enviar_em
+        ]);
+        
+        if (clienteResult.rows && clienteResult.rows.length > 0) {
           scheduled++;
-        } catch (error) {
-          if (!(error && error.code === '23505')) {
-            throw error;
-          }
         }
 
         // Admin
         if (r.admin_telefone) {
-          try {
-            await db('lembretes_enviados')
-              .insert({
-                ...baseRow,
-                tipo_notificacao: 'assinatura_aviso_admin',
-                telefone_destino: r.admin_telefone,
-                mensagem_enviada: null
-              });
+          const adminResult = await db.raw(`
+            INSERT INTO lembretes_enviados (
+              agendamento_id, unidade_id, cliente_id, assinatura_referencia,
+              tipo_notificacao, telefone_destino, mensagem_enviada,
+              status, tentativas, enviar_em, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (agendamento_id, tipo_notificacao)
+            WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+            DO NOTHING
+            RETURNING id
+          `, [
+            baseRow.agendamento_id, baseRow.unidade_id, baseRow.cliente_id,
+            baseRow.assinatura_referencia, 'assinatura_aviso_admin',
+            r.admin_telefone, null, baseRow.status, baseRow.tentativas, baseRow.enviar_em
+          ]);
+          
+          if (adminResult.rows && adminResult.rows.length > 0) {
             scheduled++;
-          } catch (error) {
-            if (!(error && error.code === '23505')) {
-              throw error;
-            }
           }
         }
       }
@@ -645,60 +655,66 @@ class ReminderService {
    * Registrar lembrete na tabela lembretes_enviados
    */
   async createReminderRecord(agendamentoId, unidadeId, tipoLembrete, telefone) {
-    try {
-      const telefoneDestino = telefone ? String(telefone).trim() : '';
-      if (!telefoneDestino) {
-        logger.error('❌ [ReminderService] Telefone destino inválido. Pulando registro de lembrete.', {
-          agendamentoId,
-          unidadeId,
-          tipoLembrete,
-          telefone
-        });
-        return null;
-      }
-
-      if (telefoneDestino.length > 20) {
-        logger.error('❌ [ReminderService] Telefone destino excede limite (20). Pulando registro de lembrete.', {
-          agendamentoId,
-          unidadeId,
-          tipoLembrete,
-          telefoneLength: telefoneDestino.length
-        });
-        return null;
-      }
-
-      const tipo = tipoLembrete ? String(tipoLembrete).trim() : '';
-      if (!tipo || (tipo !== '24h' && tipo !== '2h')) {
-        logger.error('❌ [ReminderService] tipo_lembrete inválido. Pulando registro de lembrete.', {
-          agendamentoId,
-          unidadeId,
-          tipoLembrete
-        });
-        return null;
-      }
-
-      const result = await db('lembretes_enviados').insert({
-        agendamento_id: agendamentoId,
-        unidade_id: unidadeId,
-        tipo_lembrete: tipo,
-        status: 'pendente',
-        tentativas: 0,
-        telefone_destino: telefoneDestino,
-        created_at: db.fn.now(),
-        updated_at: db.fn.now()
-      }).returning('id');
-
-      // Extrair o ID numérico do resultado
-      const id = result[0]?.id || result[0];
-      return typeof id === 'object' ? id.id : id;
-    } catch (error) {
-      // Se erro de constraint única, significa que já existe registro
-      if (error.code === '23505' || error.constraint === 'uk_lembretes_agendamento_tipo') {
-        logger.log(`⚠️ [ReminderService] Lembrete ${tipoLembrete} já existe para agendamento ${agendamentoId}`);
-        return null;
-      }
-      throw error;
+    const telefoneDestino = telefone ? String(telefone).trim() : '';
+    if (!telefoneDestino) {
+      logger.error('❌ [ReminderService] Telefone destino inválido. Pulando registro de lembrete.', {
+        agendamentoId,
+        unidadeId,
+        tipoLembrete,
+        telefone
+      });
+      return null;
     }
+
+    if (telefoneDestino.length > 20) {
+      logger.error('❌ [ReminderService] Telefone destino excede limite (20). Pulando registro de lembrete.', {
+        agendamentoId,
+        unidadeId,
+        tipoLembrete,
+        telefoneLength: telefoneDestino.length
+      });
+      return null;
+    }
+
+    const tipo = tipoLembrete ? String(tipoLembrete).trim() : '';
+    if (!tipo || (tipo !== '24h' && tipo !== '2h')) {
+      logger.error('❌ [ReminderService] tipo_lembrete inválido. Pulando registro de lembrete.', {
+        agendamentoId,
+        unidadeId,
+        tipoLembrete
+      });
+      return null;
+    }
+
+    const tipoNotificacao = tipo === '24h' ? 'lembrete_24h' : 'lembrete_1h';
+
+    const result = await db.raw(`
+      INSERT INTO lembretes_enviados (
+        agendamento_id, unidade_id, tipo_lembrete, tipo_notificacao,
+        status, tentativas, telefone_destino, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (agendamento_id, tipo_notificacao)
+      WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+      DO NOTHING
+      RETURNING id
+    `, [agendamentoId, unidadeId, tipo, tipoNotificacao, 'pendente', 0, telefoneDestino]);
+
+    // Se retornou vazio (conflito ignorado), buscar o registro existente
+    if (!result.rows || result.rows.length === 0) {
+      const existing = await db('lembretes_enviados')
+        .where('agendamento_id', agendamentoId)
+        .where('tipo_notificacao', tipoNotificacao)
+        .select('id')
+        .first();
+      
+      if (existing) {
+        logger.log(`⚠️ [ReminderService] Lembrete ${tipoLembrete} já existe para agendamento ${agendamentoId}`);
+        return existing.id;
+      }
+      return null;
+    }
+
+    return result.rows[0].id;
   }
 
   /**
