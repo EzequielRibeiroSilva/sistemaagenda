@@ -199,13 +199,17 @@ class WhatsAppController {
         });
       }
 
+      const createPayload = {
+        instanceName,
+        token,
+        qrcode: true,
+        integration: this.integration
+      };
+      
+      console.log('🔍 [AUDITORIA] Payload de Criação:', JSON.stringify(createPayload, null, 2));
+      
       try {
-        await this.client.post('/instance/create', {
-          instanceName,
-          token,
-          qrcode: true,
-          integration: this.integration
-        });
+        await this.client.post('/instance/create', createPayload);
       } catch (error) {
         const status = error?.response?.status;
         const data = error?.response?.data;
@@ -232,12 +236,17 @@ class WhatsAppController {
         logger.warn(`⚠️ [WhatsAppController] Falha ao criar instância (pode já existir): status=${status} data=${msg}`);
       }
 
+      // ================================================================
+      // CONFIGURAÇÃO DE WEBHOOK COM ANTI-RACE CONDITION + FALLBACK
+      // ================================================================
       try {
         const rawBase = process.env.WEBHOOK_BASE_URL;
         const base = rawBase ? String(rawBase).replace(/\/+$/g, '') : null;
+        console.log('🔍 [AUDITORIA] WEBHOOK_BASE_URL:', rawBase);
+        
         if (base) {
           const webhookUrl = `${base}/api/webhooks/whatsapp`;
-          await this.client.post(`/settings/set/${encodeURIComponent(instanceName)}`, {
+          const webhookPayload = {
             webhook: {
               url: webhookUrl,
               enabled: true,
@@ -249,13 +258,169 @@ class WhatsAppController {
             readMessages: true,
             readStatus: true,
             syncFullHistory: false
-          });
-          logger.info(`[WhatsAppController] Webhook configurado com sucesso para ${webhookUrl}`);
+          };
+          
+          console.log('🔍 [AUDITORIA] Payload de Webhook:', JSON.stringify(webhookPayload, null, 2));
+          
+          // ── DELAY DE SEGURANÇA (ANTI-RACE CONDITION) ──────────────────
+          logger.info(`⏳ [WhatsAppController] Aguardando 2s para garantir inicialização completa da instância...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // ═══════════════════════════════════════════════════════════════
+          // TESTE 1: ENDPOINT /settings/set/ (MÉTODO ATUAL)
+          // ═══════════════════════════════════════════════════════════════
+          let webhookPersisted = false;
+          
+          try {
+            console.log('🔄 [TESTE 1] Tentando configurar via /settings/set/');
+            const setResponse = await this.client.post(
+              `/settings/set/${encodeURIComponent(instanceName)}`, 
+              webhookPayload
+            );
+            console.log('🔍 [AUDITORIA] Resposta do settings/set:', JSON.stringify(setResponse?.data, null, 2));
+            console.log('🔍 [AUDITORIA] Status HTTP:', setResponse?.status);
+            console.log('🔍 [AUDITORIA] Headers da Resposta:', JSON.stringify(setResponse?.headers, null, 2));
+            logger.info(`✅ [WhatsAppController] Webhook configurado com sucesso para ${webhookUrl}`);
+            
+            // ── VERIFICAÇÃO DE PERSISTÊNCIA ────────────────────────────
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            logger.info(`🔍 [WhatsAppController] Verificando se configuração foi persistida...`);
+            const getResponse = await this.client.get(`/settings/find/${encodeURIComponent(instanceName)}`);
+            const savedSettings = getResponse?.data;
+            
+            console.log('🔍 [AUDITORIA] Configurações Salvas (settings/find):', JSON.stringify(savedSettings, null, 2));
+            
+            const webhookEnabled = savedSettings?.webhook?.enabled;
+            const webhookUrlSaved = savedSettings?.webhook?.url;
+            
+            if (webhookEnabled && webhookUrlSaved === webhookUrl) {
+              webhookPersisted = true;
+              logger.info(`✅ [TESTE 1] SUCESSO: Webhook está ativo via /settings/set/`);
+              console.log('🎯 [AUDITORIA] WEBHOOK CONFIRMADO ATIVO:', {
+                method: 'settings/set',
+                enabled: webhookEnabled,
+                url: webhookUrlSaved,
+                events: savedSettings?.webhook?.events
+              });
+            } else {
+              logger.warn(`⚠️ [TESTE 1] FALHOU: Webhook NÃO foi persistido via /settings/set/`);
+              console.log('⚠️ [AUDITORIA] WEBHOOK NÃO PERSISTIDO:', {
+                method: 'settings/set',
+                esperado: { enabled: true, url: webhookUrl },
+                recebido: { enabled: webhookEnabled, url: webhookUrlSaved }
+              });
+            }
+          } catch (error) {
+            logger.warn(`⚠️ [TESTE 1] ERRO ao usar /settings/set/:`, error?.message);
+            console.log('⚠️ [AUDITORIA] Erro no TESTE 1:', {
+              method: 'settings/set',
+              status: error?.response?.status,
+              statusText: error?.response?.statusText,
+              data: error?.response?.data,
+              message: error?.message
+            });
+          }
+          
+          // ═══════════════════════════════════════════════════════════════
+          // TESTE 2: ENDPOINT /webhook/update/ (FALLBACK)
+          // ═══════════════════════════════════════════════════════════════
+          if (!webhookPersisted) {
+            try {
+              console.log('🔄 [TESTE 2] Tentando configurar via /webhook/update/ (endpoint alternativo)');
+              
+              // Payload alternativo para /webhook/update/
+              const webhookUpdatePayload = {
+                url: webhookUrl,
+                enabled: true,
+                webhookByEvents: true,
+                events: ['messages.upsert', 'connection.update']
+              };
+              
+              console.log('🔍 [AUDITORIA] Payload de Webhook (método alternativo):', JSON.stringify(webhookUpdatePayload, null, 2));
+              
+              const updateResponse = await this.client.post(
+                `/webhook/update/${encodeURIComponent(instanceName)}`,
+                webhookUpdatePayload
+              );
+              
+              console.log('🔍 [AUDITORIA] Resposta do webhook/update:', JSON.stringify(updateResponse?.data, null, 2));
+              console.log('🔍 [AUDITORIA] Status HTTP:', updateResponse?.status);
+              
+              // Verificar persistência do método alternativo
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              const verifyResponse = await this.client.get(`/settings/find/${encodeURIComponent(instanceName)}`);
+              const verifiedSettings = verifyResponse?.data;
+              
+              console.log('🔍 [AUDITORIA] Configurações Salvas após webhook/update:', JSON.stringify(verifiedSettings, null, 2));
+              
+              const webhookEnabledAlt = verifiedSettings?.webhook?.enabled;
+              const webhookUrlSavedAlt = verifiedSettings?.webhook?.url;
+              
+              if (webhookEnabledAlt && webhookUrlSavedAlt === webhookUrl) {
+                webhookPersisted = true;
+                logger.info(`✅ [TESTE 2] SUCESSO: Webhook está ativo via /webhook/update/`);
+                console.log('🎯 [AUDITORIA] WEBHOOK CONFIRMADO ATIVO (método alternativo):', {
+                  method: 'webhook/update',
+                  enabled: webhookEnabledAlt,
+                  url: webhookUrlSavedAlt,
+                  events: verifiedSettings?.webhook?.events
+                });
+              } else {
+                logger.error(`❌ [TESTE 2] FALHOU: Webhook NÃO foi persistido via /webhook/update/`);
+                console.log('⚠️ [AUDITORIA] WEBHOOK NÃO PERSISTIDO (método alternativo):', {
+                  method: 'webhook/update',
+                  esperado: { enabled: true, url: webhookUrl },
+                  recebido: { enabled: webhookEnabledAlt, url: webhookUrlSavedAlt }
+                });
+              }
+              
+            } catch (error) {
+              logger.error(`❌ [TESTE 2] ERRO ao usar /webhook/update/:`, error?.message);
+              console.log('❌ [AUDITORIA] Erro no TESTE 2:', {
+                method: 'webhook/update',
+                status: error?.response?.status,
+                statusText: error?.response?.statusText,
+                data: error?.response?.data,
+                message: error?.message,
+                code: error?.code
+              });
+            }
+          }
+          
+          // ═══════════════════════════════════════════════════════════════
+          // DIAGNÓSTICO FINAL
+          // ═══════════════════════════════════════════════════════════════
+          if (!webhookPersisted) {
+            logger.error(`❌ [WhatsAppController] DIAGNÓSTICO: Webhook NÃO foi configurado em nenhum dos métodos testados`);
+            console.log('🔴 [DIAGNÓSTICO FINAL]', {
+              message: 'Ambos os endpoints falharam em persistir o webhook',
+              testados: ['/settings/set/', '/webhook/update/'],
+              possiveisCausas: [
+                'API bloqueando URLs externas (SSRF)',
+                'Token sem privilégios suficientes',
+                'Bug na Evolution API 2.3.7',
+                'Configuração global sobrescrevendo',
+                'Instância não completamente inicializada'
+              ],
+              recomendacao: 'Configurar webhook manualmente via interface da Evolution API'
+            });
+          }
+          
         } else {
           logger.warn('[WhatsAppController] WEBHOOK_BASE_URL ausente; pulando configuração automática de webhook');
         }
       } catch (error) {
-        logger.error('[WhatsAppController] Falha crítica:', JSON.stringify(error?.response?.data, null, 2));
+        logger.error('[WhatsAppController] Falha crítica ao configurar webhook:', JSON.stringify(error?.response?.data, null, 2));
+        console.log('❌ [AUDITORIA] Erro crítico na configuração de webhook:', {
+          status: error?.response?.status,
+          statusText: error?.response?.statusText,
+          headers: error?.response?.headers,
+          data: error?.response?.data,
+          message: error?.message,
+          code: error?.code
+        });
       }
 
       const connectResponse = await this.client.get(`/instance/connect/${encodeURIComponent(instanceName)}`);

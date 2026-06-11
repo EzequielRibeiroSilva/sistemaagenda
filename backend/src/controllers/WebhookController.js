@@ -25,7 +25,15 @@ function isAllowedOrigin(req) {
   try {
     const allowedHost = new URL(webhookBaseUrl).hostname;
     const requestHost = (req.headers['x-forwarded-host'] || req.headers['host'] || '').split(':')[0];
-    return requestHost === allowedHost;
+    
+    // ✅ CORREÇÃO: Aceitar tanto o hostname configurado quanto domínios ngrok-free.dev
+    const isAllowed = requestHost === allowedHost || requestHost.endsWith('.ngrok-free.dev');
+    
+    if (!isAllowed) {
+      logger.warn(`⚠️ [Webhook] Host rejeitado: ${requestHost} (esperado: ${allowedHost} ou *.ngrok-free.dev)`);
+    }
+    
+    return isAllowed;
   } catch {
     // URL malformada no .env — não bloqueia, apenas loga
     logger.warn('[Webhook] WEBHOOK_BASE_URL inválida no .env, validação de origem ignorada');

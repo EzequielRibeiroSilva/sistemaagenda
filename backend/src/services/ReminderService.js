@@ -303,6 +303,17 @@ class ReminderService {
           updated_at: new Date()
         };
 
+        // ═══════════════════════════════════════════════════════════════
+        // LOGS DE AUDITORIA ANTI-DUPLICIDADE
+        // ═══════════════════════════════════════════════════════════════
+        console.log('🔍 [AUDITORIA-DUPLICIDADE] Tentando inserir aviso de assinatura:', {
+          agendamento_id: baseRow.agendamento_id,
+          unidade_id: baseRow.unidade_id,
+          cliente_id: baseRow.cliente_id,
+          assinatura_referencia: baseRow.assinatura_referencia,
+          tipo_notificacao: 'assinatura_aviso_cliente'
+        });
+
         // Cliente
         const clienteResult = await db.raw(`
           INSERT INTO lembretes_enviados (
@@ -310,8 +321,9 @@ class ReminderService {
             tipo_notificacao, telefone_destino, mensagem_enviada,
             status, tentativas, enviar_em, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          ON CONFLICT (agendamento_id, tipo_notificacao)
-          WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+          ON CONFLICT (cliente_id, tipo_notificacao, assinatura_referencia)
+          WHERE agendamento_id IS NULL AND cliente_id IS NOT NULL 
+            AND tipo_notificacao IS NOT NULL AND assinatura_referencia IS NOT NULL
           DO NOTHING
           RETURNING id
         `, [
@@ -322,18 +334,30 @@ class ReminderService {
         
         if (clienteResult.rows && clienteResult.rows.length > 0) {
           scheduled++;
+          console.log('✅ [AUDITORIA-DUPLICIDADE] Aviso cliente inserido:', clienteResult.rows[0].id);
+        } else {
+          console.log('⚠️ [AUDITORIA-DUPLICIDADE] Aviso cliente já existe (ON CONFLICT ignorado)');
         }
 
         // Admin
         if (r.admin_telefone) {
+          console.log('🔍 [AUDITORIA-DUPLICIDADE] Tentando inserir aviso admin:', {
+            agendamento_id: baseRow.agendamento_id,
+            unidade_id: baseRow.unidade_id,
+            cliente_id: baseRow.cliente_id,
+            assinatura_referencia: baseRow.assinatura_referencia,
+            tipo_notificacao: 'assinatura_aviso_admin'
+          });
+
           const adminResult = await db.raw(`
             INSERT INTO lembretes_enviados (
               agendamento_id, unidade_id, cliente_id, assinatura_referencia,
               tipo_notificacao, telefone_destino, mensagem_enviada,
               status, tentativas, enviar_em, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT (agendamento_id, tipo_notificacao)
-            WHERE agendamento_id IS NOT NULL AND tipo_notificacao IS NOT NULL
+            ON CONFLICT (cliente_id, tipo_notificacao, assinatura_referencia)
+            WHERE agendamento_id IS NULL AND cliente_id IS NOT NULL 
+              AND tipo_notificacao IS NOT NULL AND assinatura_referencia IS NOT NULL
             DO NOTHING
             RETURNING id
           `, [
@@ -344,6 +368,9 @@ class ReminderService {
           
           if (adminResult.rows && adminResult.rows.length > 0) {
             scheduled++;
+            console.log('✅ [AUDITORIA-DUPLICIDADE] Aviso admin inserido:', adminResult.rows[0].id);
+          } else {
+            console.log('⚠️ [AUDITORIA-DUPLICIDADE] Aviso admin já existe (ON CONFLICT ignorado)');
           }
         }
       }
