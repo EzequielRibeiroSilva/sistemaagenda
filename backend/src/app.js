@@ -13,6 +13,8 @@ const webhooksRoutes = require('./routes/webhooks');
 const reminderJob = require('./jobs/reminderJob');
 const pendingPaymentCleanupJob = require('./jobs/pendingPaymentCleanupJob');
 const waitingListJob = require('./jobs/waitingListJob');
+const reactivateSessionsJob = require('./jobs/ReactivateSessionsJob');
+const tokenCleanupJob = require('./jobs/TokenCleanupJob');
 const whatsappWorker = require('./workers/WhatsappWorker');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
@@ -316,6 +318,14 @@ async function startServer() {
       logger.log('\n⏳ Inicializando sistema de lista de espera inteligente...');
       waitingListJob.start();
 
+      // Iniciar job de higiene de sessões (Sprint 3 - Visibilidade)
+      logger.log('\n🧹 Inicializando job de higiene de sessões (reativação automática)...');
+      reactivateSessionsJob.start();
+
+      // Iniciar job de limpeza de tokens (Task 3.3 - Fase 2)
+      logger.log('\n🧹 Inicializando job de limpeza de tokens (janela móvel 30 dias)...');
+      tokenCleanupJob.start();
+
       whatsappWorker.start();
     });
     
@@ -325,6 +335,8 @@ async function startServer() {
       reminderJob.stop();
       pendingPaymentCleanupJob.stop();
       waitingListJob.stop();
+      reactivateSessionsJob.stop();
+      tokenCleanupJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -336,6 +348,8 @@ async function startServer() {
       reminderJob.stop();
       pendingPaymentCleanupJob.stop();
       waitingListJob.stop();
+      reactivateSessionsJob.stop();
+      tokenCleanupJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);

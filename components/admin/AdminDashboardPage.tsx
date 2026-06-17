@@ -19,6 +19,8 @@ interface AdminUser {
   activeUnits?: number;
   units: Array<{ id: number; name: string; status: 'Ativo' | 'Bloqueado' }>;
   clientCount: number;
+  tokens_30d?: number; // 🎯 TASK 3.3 - Tokens dos últimos 30 dias
+  custo_est_usd?: number; // 🎯 TASK 3.3 - Custo estimado em USD
 }
 
 interface AdminDashboardPageProps {
@@ -64,6 +66,22 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     getUserUnits,
     updateUnitStatus
 }) => {
+    // 🔍 DEBUG CRÍTICO: Verificar se os dados já chegam "mortos" nas props
+    console.log('🔍 [DEBUG PROPS] Total users recebidos:', users.length);
+    console.log('🔍 [DEBUG PROPS] Primeiro usuário completo:', users[0]);
+    
+    const user468 = users.find(u => u.id === 468);
+    if (user468) {
+        console.log('🔍 [DEBUG PROPS] Usuário 468 nas PROPS:', user468);
+        console.log('🔍 [DEBUG PROPS] user468.tokens_30d:', user468.tokens_30d, 'tipo:', typeof user468.tokens_30d);
+        console.log('🔍 [DEBUG PROPS] user468.custo_est_usd:', user468.custo_est_usd, 'tipo:', typeof user468.custo_est_usd);
+        console.log('🔍 [DEBUG PROPS] Campos existem?', {
+            has_tokens: user468.hasOwnProperty('tokens_30d'),
+            has_custo: user468.hasOwnProperty('custo_est_usd')
+        });
+    } else {
+        console.log('⚠️ [DEBUG PROPS] Usuário 468 NÃO encontrado nas props!');
+    }
 
     const [isUserModalOpen, setUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
@@ -208,6 +226,12 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     }, [users, currentPage]);
 
     const tableColumns: TableColumn<AdminUser>[] = useMemo(() => {
+        // 🔍 DEBUG: Log dos usuários paginados para verificar dados
+        if (paginatedUsers.length > 0) {
+            console.log('🔍 [DEBUG AdminDashboard] Primeiro usuário da página:', paginatedUsers[0]);
+            console.log('🔍 [DEBUG AdminDashboard] Usuário 468:', paginatedUsers.find(u => u.id === 468));
+        }
+
         return [
             {
                 key: 'id',
@@ -340,6 +364,71 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 )
             },
             {
+                key: 'tokens_30d',
+                label: 'TOKENS (30d)',
+                width: 'w-36',
+                align: 'center',
+                render: (user) => {
+                    // 🔍 DEBUG AGRESSIVO: Verificar o que está chegando na renderização
+                    console.log('🔍 [RENDER DEBUG tokens_30d] Usuário ID:', user.id, 'Nome:', user.name, 'Valor:', user.tokens_30d, 'Tipo:', typeof user.tokens_30d);
+                    
+                    const tokens = user.tokens_30d || 0;
+                    
+                    // Debug adicional do valor final
+                    if (user.id === 468) {
+                        console.log('🎯 [USUÁRIO 468] tokens_30d RAW:', user.tokens_30d);
+                        console.log('🎯 [USUÁRIO 468] tokens após || 0:', tokens);
+                        console.log('🎯 [USUÁRIO 468] tokens formatado:', tokens.toLocaleString('pt-BR'));
+                    }
+                    
+                    return (
+                        <div className="text-gray-700">
+                            <span className="font-medium" title={`${tokens} tokens consumidos nos últimos 30 dias`}>
+                                {tokens.toLocaleString('pt-BR')}
+                            </span>
+                            {tokens > 0 && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                    tokens
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+            },
+            {
+                key: 'custo_est_usd',
+                label: 'CUSTO EST.',
+                width: 'w-32',
+                align: 'center',
+                render: (user) => {
+                    // 🔍 DEBUG AGRESSIVO: Verificar o que está chegando na renderização
+                    console.log('🔍 [RENDER DEBUG custo_est_usd] Usuário ID:', user.id, 'Valor:', user.custo_est_usd, 'Tipo:', typeof user.custo_est_usd);
+                    
+                    const custo = user.custo_est_usd || 0;
+                    // Converter USD para BRL (estimativa de 5.5 para melhor UX brasileira)
+                    const custoBRL = custo * 5.5;
+                    
+                    // Debug adicional do usuário 468
+                    if (user.id === 468) {
+                        console.log('🎯 [USUÁRIO 468] custo_est_usd RAW:', user.custo_est_usd);
+                        console.log('🎯 [USUÁRIO 468] custo após || 0:', custo);
+                        console.log('🎯 [USUÁRIO 468] custoBRL:', custoBRL);
+                        console.log('🎯 [USUÁRIO 468] custoBRL < 0.01:', custoBRL < 0.01);
+                    }
+                    
+                    return (
+                        <div className="text-gray-700">
+                            <div className="font-medium text-green-600" title={`Custo estimado: $${custo.toFixed(4)} USD`}>
+                                {custoBRL < 0.01 ? 'R$ < 0,01' : `R$ ${custoBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                                ${custo.toFixed(4)} USD
+                            </div>
+                        </div>
+                    );
+                }
+            },
+            {
                 key: 'acoes',
                 label: 'AÇÕES',
                 width: 'w-32',
@@ -409,7 +498,7 @@ const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     itemsPerPage,
                     onPageChange: handlePageChange,
                 }}
-                minWidth="min-w-[900px]"
+                minWidth="min-w-[1200px]"
                 enableRowHover={true}
             />
             <NewUserModal 

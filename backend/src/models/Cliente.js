@@ -506,6 +506,124 @@ class Cliente extends BaseModel {
   }
 
   /**
+   * ✅ NOVO: Versão com transação para evitar pool starvation
+   * Criar cliente rápido para agendamento (se não existir) - VERSÃO TRANSACIONAL
+   * @param {any} trx - Transação Knex (obrigatória)
+   * @param {string} telefone - Telefone do cliente
+   * @param {string} nome - Nome do cliente
+   * @param {number} unidadeId - ID da unidade
+   * @returns {Promise<Object>} Cliente existente ou criado
+   */
+  async findOrCreateForAgendamentoWithTrx(trx, telefone, nome, unidadeId) {
+    const telefoneLimpo = this.limparTelefone(telefone);
+
+    console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] 🔍 [Auditoria Telefone] Original: ${telefone} | Limpo para Busca: ${telefoneLimpo}`);
+
+    const hasAssinaturaStatus = await this.hasAssinaturaStatusColumn();
+
+    const columns = [
+      `${this.tableName}.id`,
+      `${this.tableName}.primeiro_nome`,
+      `${this.tableName}.ultimo_nome`,
+      `${this.tableName}.telefone`,
+      `${this.tableName}.telefone_limpo`,
+      `${this.tableName}.mp_customer_email`,
+      `${this.tableName}.data_nascimento`,
+      `${this.tableName}.is_assinante`,
+      `${this.tableName}.exige_sinal_excecao`,
+      ...(hasAssinaturaStatus
+        ? [`${this.tableName}.assinatura_status`]
+        : [trx.raw('NULL as assinatura_status')]),
+      `${this.tableName}.data_inicio_assinatura`,
+      `${this.tableName}.assinatura_plano_id`,
+      `${this.tableName}.status`,
+      `${this.tableName}.whatsapp_id`,
+      `${this.tableName}.created_at`,
+      `${this.tableName}.updated_at`
+    ];
+
+    // ✅ USAR TRX: Buscar cliente usando a transação existente
+    let cliente = await trx(this.tableName)
+      .where(`${this.tableName}.telefone_limpo`, telefoneLimpo)
+      .where(`${this.tableName}.unidade_id`, unidadeId)
+      .whereNull(`${this.tableName}.deleted_at`)
+      .select(columns)
+      .first();
+
+    if (!cliente) {
+      const nomePartes = nome.trim().split(' ');
+      const primeiroNome = nomePartes[0] || '';
+      const ultimoNome = nomePartes.slice(1).join(' ') || '';
+      
+      console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] 🔧 Cliente não encontrado. Criando novo com nome="${nome}"`);
+
+      const dadosParaInserir = {
+        unidade_id: unidadeId,
+        primeiro_nome: primeiroNome,
+        ultimo_nome: ultimoNome,
+        telefone: telefone,
+        telefone_limpo: telefoneLimpo,
+        mp_customer_email: null,
+        data_nascimento: null,
+        is_assinante: false,
+        exige_sinal_excecao: false,
+        ...(hasAssinaturaStatus ? { assinatura_status: null } : {}),
+        data_inicio_assinatura: null,
+        assinatura_plano_id: null,
+        status: 'Ativo',
+        whatsapp_id: null
+      };
+
+      // ✅ USAR TRX: Inserir cliente usando a transação existente
+      const [clienteId] = await trx(this.tableName).insert(dadosParaInserir).returning('id');
+      const id = clienteId.id || clienteId;
+
+      // ✅ USAR TRX: Recarregar cliente usando a transação existente
+      cliente = await trx(this.tableName)
+        .where(`${this.tableName}.id`, id)
+        .where(`${this.tableName}.unidade_id`, unidadeId)
+        .whereNull(`${this.tableName}.deleted_at`)
+        .select(columns)
+        .first();
+      
+      console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] ✅ Cliente criado: ID=${cliente.id}`);
+    } else {
+      console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] ✅ Cliente existente encontrado: ID=${cliente.id}`);
+      
+      // ✅ ATUALIZAÇÃO DE NOME GENÉRICO
+      if (cliente.primeiro_nome === 'Cliente' && nome && nome !== 'Cliente') {
+        const nomePartes = nome.trim().split(' ');
+        const primeiroNome = nomePartes[0] || '';
+        const ultimoNome = nomePartes.slice(1).join(' ') || '';
+        
+        console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] 🔄 Atualizando nome genérico`);
+        
+        // ✅ USAR TRX: Atualizar usando a transação existente
+        await trx(this.tableName)
+          .where('id', cliente.id)
+          .where('unidade_id', unidadeId)
+          .update({
+            primeiro_nome: primeiroNome,
+            ultimo_nome: ultimoNome,
+            updated_at: trx.fn.now()
+          });
+        
+        // ✅ USAR TRX: Recarregar cliente atualizado usando a transação existente
+        cliente = await trx(this.tableName)
+          .where(`${this.tableName}.id`, cliente.id)
+          .where(`${this.tableName}.unidade_id`, unidadeId)
+          .whereNull(`${this.tableName}.deleted_at`)
+          .select(columns)
+          .first();
+        
+        console.log(`[Cliente.findOrCreateForAgendamentoWithTrx] ✅ Cliente atualizado`);
+      }
+    }
+
+    return cliente;
+  }
+
+  /**
    * Buscar clientes por nome ou telefone (para modal de agendamento)
    * @param {number} unidadeId - ID da unidade (Multi-Tenant)
    * @param {string} searchQuery - Termo de busca (nome ou telefone)

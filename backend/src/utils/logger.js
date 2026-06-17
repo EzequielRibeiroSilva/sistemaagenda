@@ -39,6 +39,15 @@ const SENSITIVE_PATTERNS = [
   
   // Cartão de crédito: 0000 0000 0000 0000
   { pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/, replacement: '**** **** **** ****' },
+
+  // PIX Copia e Cola (payload EMV) - geralmente começa com 000201 e é bem longo
+  { pattern: /\b000201[0-9A-Za-z]{40,}\b/g, replacement: '[***REDACTED***]' },
+
+  // Authorization: Bearer <token>
+  { pattern: /(Bearer\s+)[A-Za-z0-9\-._~+/]+=*/gi, replacement: '$1[***REDACTED***]' },
+
+  // Tokens / API Keys em strings (apikey=..., token: ..., authorization: ...)
+  { pattern: /\b(apikey|api_key|apiKey|access_token|refresh_token|token|authorization)\b\s*[:=]\s*(["']?)[A-Za-z0-9\-._~+/]+=*\2/gi, replacement: '$1: [***REDACTED***]' },
   
   // Email parcial (manter domínio)
   { pattern: /([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/, replacement: '***@$2' },

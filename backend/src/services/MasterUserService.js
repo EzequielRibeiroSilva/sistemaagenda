@@ -21,6 +21,15 @@ class MasterUserService {
    */
   async getAllUsers(search = '', status = null) {
     try {
+      // 🎯 TASK 3.3 - FASE 3.1: JOIN OTIMIZADO COM TOKENS DOS ÚLTIMOS 30 DIAS
+      // Subquery para agregar tokens dos últimos 30 dias por usuário
+      const tokensSubquery = knex('uso_tokens_diario')
+        .select('usuario_id')
+        .sum('total_tokens as tokens_sum')
+        .where('data', '>=', knex.raw('CURRENT_DATE - INTERVAL \'30 days\''))
+        .groupBy('usuario_id')
+        .as('tokens_30d');
+
       let query = knex('usuarios')
         .select(
           'usuarios.id',
@@ -32,8 +41,13 @@ class MasterUserService {
           'usuarios.limite_unidades as unitLimit',
           'usuarios.ia_enabled as iaEnabled',
           'usuarios.created_at',
-          'usuarios.updated_at'
+          'usuarios.updated_at',
+          // 🎯 CAMPOS DE TOKENS: LEFT JOIN para não excluir usuários sem consumo
+          knex.raw('COALESCE(tokens_30d.tokens_sum, 0) as tokens_30d'),
+          // 💰 CÁLCULO DE CUSTO ESTIMADO: $0.05 por milhão de tokens (GPT-4o-mini)
+          knex.raw('ROUND((COALESCE(tokens_30d.tokens_sum, 0) / 1000000.0) * 0.05, 4) as custo_est_usd')
         )
+        .leftJoin(tokensSubquery, 'usuarios.id', 'tokens_30d.usuario_id')
         .where('usuarios.role', 'ADMIN');
 
       // Aplicar filtro de busca se fornecido
@@ -52,7 +66,7 @@ class MasterUserService {
 
       const users = await query;
 
-      // Para cada usuário, calcular dados adicionais
+      // Para cada usuário, calcular dados adicionais (mantém compatibilidade)
       const usersWithCalculatedData = await Promise.all(
         users.map(async (user) => {
           // Contar unidades ativas
@@ -72,7 +86,10 @@ class MasterUserService {
           return {
             ...user,
             activeUnits: parseInt(unidadesAtivas.count) || 0,
-            clientCount: parseInt(totalClientes.count) || 0
+            clientCount: parseInt(totalClientes.count) || 0,
+            // 🎯 CONVERSÃO DE TIPOS PARA GARANTIR CONSISTÊNCIA
+            tokens_30d: parseInt(user.tokens_30d) || 0,
+            custo_est_usd: parseFloat(user.custo_est_usd) || 0.0
           };
         })
       );
@@ -164,7 +181,10 @@ class MasterUserService {
       return createdUser;
 
     } catch (error) {
-      await trx.rollback();
+      // ✅ CORREÇÃO: Garantir rollback antes de propagar erro
+      if (trx && !trx.isCompleted()) {
+        await trx.rollback();
+      }
       logger.error('Erro ao criar usuário:', error);
       throw error;
     }
@@ -291,21 +311,34 @@ class MasterUserService {
    */
   async getUserById(id) {
     try {
+      // 🎯 TASK 3.3: Incluir JOIN com tokens igual ao getAllUsers
+      const tokensSubquery = knex('uso_tokens_diario')
+        .select('usuario_id')
+        .sum('total_tokens as tokens_sum')
+        .where('data', '>=', knex.raw('CURRENT_DATE - INTERVAL \'30 days\''))
+        .groupBy('usuario_id')
+        .as('tokens_30d');
+
       const user = await knex('usuarios')
         .select(
-          'id',
-          'nome as name',
-          'email',
-          'telefone as contact',
-          'status',
-          'plano as plan',
-          'limite_unidades as unitLimit',
-          'ia_enabled as iaEnabled',
-          'created_at',
-          'updated_at'
+          'usuarios.id',
+          'usuarios.nome as name',
+          'usuarios.email',
+          'usuarios.telefone as contact',
+          'usuarios.status',
+          'usuarios.plano as plan',
+          'usuarios.limite_unidades as unitLimit',
+          'usuarios.ia_enabled as iaEnabled',
+          'usuarios.created_at',
+          'usuarios.updated_at',
+          // 🎯 CAMPOS DE TOKENS: LEFT JOIN para não excluir usuários sem consumo
+          knex.raw('COALESCE(tokens_30d.tokens_sum, 0) as tokens_30d'),
+          // 💰 CÁLCULO DE CUSTO ESTIMADO: $0.05 por milhão de tokens
+          knex.raw('ROUND((COALESCE(tokens_30d.tokens_sum, 0) / 1000000.0) * 0.05, 4) as custo_est_usd')
         )
-        .where('id', id)
-        .where('role', 'ADMIN')
+        .leftJoin(tokensSubquery, 'usuarios.id', 'tokens_30d.usuario_id')
+        .where('usuarios.id', id)
+        .where('usuarios.role', 'ADMIN')
         .first();
 
       if (!user) {
@@ -328,7 +361,10 @@ class MasterUserService {
       return {
         ...user,
         activeUnits: parseInt(unidadesAtivas.count) || 0,
-        clientCount: parseInt(totalClientes.count) || 0
+        clientCount: parseInt(totalClientes.count) || 0,
+        // 🎯 CONVERSÃO DE TIPOS PARA GARANTIR CONSISTÊNCIA
+        tokens_30d: parseInt(user.tokens_30d) || 0,
+        custo_est_usd: parseFloat(user.custo_est_usd) || 0.0
       };
 
     } catch (error) {

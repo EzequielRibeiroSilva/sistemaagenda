@@ -39,15 +39,20 @@ class BookingAvailabilityService {
 
     const query = this.getQuery(trx);
 
-    if (trx) {
-      await trx.raw(`
-        SELECT pg_advisory_xact_lock(
-          hashtext(?::text || ?::text)
-        )
-      `, [agente_id.toString(), data_agendamento]);
-    }
+    // ✅ CORREÇÃO CRÍTICA: Remover advisory lock que causa deadlock em concorrência
+    // O Postgres já garante isolamento transacional com SELECT FOR UPDATE na query de conflito (linha 123+)
+    // Advisory locks são desnecessários e causam timeout de 30s em race conditions
+    
+    // ❌ REMOVIDO: pg_advisory_xact_lock que causava statement timeout
+    // if (trx) {
+    //   await trx.raw(`
+    //     SELECT pg_advisory_xact_lock(
+    //       hashtext(?::text || ?::text)
+    //     )
+    //   `, [agente_id.toString(), data_agendamento]);
+    // }
 
-    const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(agente_id, data_agendamento);
+    const excecaoAgenteDiaInteiro = await AgenteExcecaoCalendario.isDataBloqueada(agente_id, data_agendamento, trx);
     if (excecaoAgenteDiaInteiro) {
       const err = new Error(`Não é possível agendar neste dia (Agente indisponível: ${excecaoAgenteDiaInteiro.tipo}${excecaoAgenteDiaInteiro.descricao ? ` - ${excecaoAgenteDiaInteiro.descricao}` : ''}).`);
       err.code = 'AGENT_DAY_BLOCKED';
@@ -56,7 +61,7 @@ class BookingAvailabilityService {
       throw err;
     }
 
-    const excecaoUnidadeDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidade_id, data_agendamento);
+    const excecaoUnidadeDiaInteiro = await ExcecaoCalendario.isDataBloqueada(unidade_id, data_agendamento, trx);
     if (excecaoUnidadeDiaInteiro) {
       const err = new Error(`Não é possível agendar nesta data (${excecaoUnidadeDiaInteiro.tipo}${excecaoUnidadeDiaInteiro.descricao ? ` - ${excecaoUnidadeDiaInteiro.descricao}` : ''}).`);
       err.code = 'UNIT_DAY_BLOCKED';

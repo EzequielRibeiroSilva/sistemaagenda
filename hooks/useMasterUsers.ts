@@ -13,6 +13,8 @@ interface MasterUser {
   iaEnabled: boolean; // ✅ Feature Flag IA
   activeUnits: number;
   clientCount: number;
+  tokens_30d?: number; // 🎯 TASK 3.3 - Tokens dos últimos 30 dias
+  custo_est_usd?: number; // 🎯 TASK 3.3 - Custo estimado em USD
   created_at?: string;
   updated_at?: string;
 }
@@ -110,6 +112,17 @@ export const useMasterUsers = (): UseMasterUsersReturn => {
       const data = await authenticatedFetch(`/usuarios${queryString}`);
 
       if (data.success) {
+        // 🔍 DEBUG: Log dos dados recebidos da API
+        console.log('🔍 [DEBUG useMasterUsers] Total usuários recebidos:', data.data.length);
+        if (data.data.length > 0) {
+          console.log('🔍 [DEBUG useMasterUsers] Primeiro usuário:', data.data[0]);
+          const user468 = data.data.find((u: any) => u.id === 468);
+          if (user468) {
+            console.log('🔍 [DEBUG useMasterUsers] Usuário 468:', user468);
+            console.log('🔍 [DEBUG useMasterUsers] tokens_30d:', user468.tokens_30d, 'tipo:', typeof user468.tokens_30d);
+            console.log('🔍 [DEBUG useMasterUsers] custo_est_usd:', user468.custo_est_usd, 'tipo:', typeof user468.custo_est_usd);
+          }
+        }
         setUsers(data.data);
       } else {
         throw new Error(data.message || 'Erro ao buscar usuários');

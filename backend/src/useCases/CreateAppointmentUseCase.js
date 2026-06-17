@@ -475,7 +475,11 @@ async function execute(data, context) {
     return result;
   }
 
-  const result = await db.transaction(async (trx) => {
+  // ✅ CORREÇÃO: Usar try-finally para garantir que transação sempre seja liberada
+  let trx;
+  try {
+    trx = await db.transaction();
+
     const unidade = await trx('unidades')
       .where('id', unidadeIdInt)
       .where('usuario_id', usuarioIdInt)
@@ -526,7 +530,8 @@ async function execute(data, context) {
     if (!clienteRecord) {
       const nome = String(clienteNome || 'Cliente').trim();
       console.log(`[CreateAppointmentUseCase] 🔍 AUDITORIA CADASTRO: clienteNome recebido="${clienteNome}", nome final="${nome}"`);
-      clienteRecord = await clienteModel.findOrCreateForAgendamento(telefoneLimpo, nome, unidadeIdInt);
+      // ✅ CORREÇÃO CRÍTICA: Passar trx para evitar pool starvation
+      clienteRecord = await clienteModel.findOrCreateForAgendamentoWithTrx(trx, telefoneLimpo, nome, unidadeIdInt);
 
       if (dataNascimento && !clienteRecord.data_nascimento) {
         await trx('clientes')
@@ -595,6 +600,7 @@ async function execute(data, context) {
               console.warn(`[CreateAppointmentUseCase] 🔄 DUPLICATA DETECTADA: Agendamento #${agendamentoRecente.id} já existe. Retornando existente em vez de criar novo.`);
               
               // Retorna o agendamento existente em vez de criar novo
+              await trx.rollback();
               return {
                 agendamento: { id: agendamentoRecente.id, numero_agendamento: agendamentoRecente.numero_agendamento },
                 pix: null,
@@ -727,8 +733,18 @@ async function execute(data, context) {
       });
     }
 
+    // ✅ COMMIT EXPLÍCITO: Finalizar transação antes de retornar
+    await trx.commit();
     return { agendamento, pix, deveCobrarSinal };
-  });
+  } catch (error) {
+    // ✅ ROLLBACK EXPLÍCITO: Em caso de erro, desfazer alterações
+    if (trx) {
+      await trx.rollback();
+    }
+    throw error;
+  }
+
+
 
   if (!suppressNotification) {
     setImmediate(async () => {

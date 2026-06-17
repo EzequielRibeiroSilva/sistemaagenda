@@ -45,13 +45,15 @@ class AgenteExcecaoCalendario extends BaseModel {
     }
   }
 
-  static async isDataBloqueada(agenteId, data) {
+  static async isDataBloqueada(agenteId, data, trx = null) {
+    const connection = trx || db;
+
     try {
       const dataStr = typeof data === 'string'
         ? data
         : data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
-      const excecao = await db('agente_excecoes_calendario')
+      const excecao = await connection('agente_excecoes_calendario')
         .where('agente_id', agenteId)
         .where('data_inicio', '<=', dataStr)
         .where('data_fim', '>=', dataStr)

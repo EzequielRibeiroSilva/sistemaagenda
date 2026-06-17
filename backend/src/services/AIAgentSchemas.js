@@ -3,14 +3,14 @@ const schemas = {
     type: 'function',
     function: {
       name: 'listar_agendamentos_cliente',
-      description: 'Lista os agendamentos futuros (status Aprovado) do cliente. Use esta ferramenta SEMPRE que o cliente perguntar sobre os agendamentos dele (ex: "quais meus horários?", "tenho algo marcado?", "quando é meu próximo atendimento?"). NUNCA diga que não tem acesso a essa informação — ela está no banco de dados e esta ferramenta a consulta.',
+      description: 'List client approved future bookings. Trigger when client asks about their appointments/schedule.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           telefone_limpo: {
             type: 'string',
-            description: 'Telefone do cliente apenas com dígitos (sem formatação). Se não souber, deixe vazio que o sistema usa o telefone da conversa atual.'
+            description: 'Client phone digits only. Optional; omit to use current chat phone.'
           }
         },
         required: []
@@ -22,30 +22,30 @@ const schemas = {
     type: 'function',
     function: {
       name: 'validar_agendamento',
-      description: 'Valida se um horário específico ainda está disponível ANTES de criar o agendamento. Use esta ferramenta SEMPRE que o cliente escolher um horário, para confirmar que ele ainda está livre. NÃO cria o agendamento, apenas verifica disponibilidade.',
+      description: 'Check if a specific slot is still free BEFORE booking. No booking side effects.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           unidade_id: {
             type: 'integer',
-            description: 'ID da unidade (local) onde o agendamento será realizado.'
+            description: 'Unit/location id.'
           },
           agente_id: {
             type: 'integer',
-            description: 'ID do agente/profissional que atenderá o cliente.'
+            description: 'Agent/professional id.'
           },
           data_agendamento: {
             type: 'string',
-            description: 'Data do agendamento no formato YYYY-MM-DD (ex: 2026-06-01).'
+            description: 'Date YYYY-MM-DD.'
           },
           hora_inicio: {
             type: 'string',
-            description: 'Hora de início do agendamento no formato HH:MM (ex: 14:30).'
+            description: 'Start time HH:MM.'
           },
           duracao_minutos: {
             type: 'integer',
-            description: 'Duração do atendimento em minutos (ex: 30, 45, 60).'
+            description: 'Duration in minutes.'
           }
         },
         required: ['unidade_id', 'agente_id', 'data_agendamento', 'hora_inicio', 'duracao_minutos']
@@ -57,26 +57,26 @@ const schemas = {
     type: 'function',
     function: {
       name: 'consultar_disponibilidade',
-      description: 'Consulta horários livres de um profissional em uma data específica. Esta é sua ÚNICA fonte confiável de informação sobre agenda. 🚨 GATILHOS OBRIGATÓRIOS - Use esta ferramenta IMEDIATAMENTE quando: 1) Cliente perguntar se profissional trabalha em um dia, 2) Cliente perguntar que dias profissional trabalha, 3) Cliente perguntar horários disponíveis, 4) Cliente mencionar data + profissional, 5) Cliente quiser agendar. ⛔ NUNCA responda perguntas sobre agenda sem chamar esta ferramenta primeiro. ⛔ NUNCA presuma que um profissional trabalha em determinado dia. ⛔ A lista de "Profissionais disponíveis" NÃO significa que trabalham hoje. ✅ Use APÓS o cliente escolher o profissional (não antes). ✅ Se o cliente perguntar exploratoriamente ("trabalha sexta?"), consulte de qualquer forma.',
+      description: 'Get free slots for an agent on a date. Use for ANY availability/day-of-week questions. Never guess schedule.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           unidade_id: {
             type: 'integer',
-            description: 'ID da unidade (local) onde o agendamento será realizado.'
+            description: 'Unit/location id.'
           },
           agente_id: {
             type: 'integer',
-            description: 'ID do agente/profissional que atenderá o cliente. OBRIGATÓRIO: Deve ser fornecido SOMENTE após o cliente escolher o profissional.'
+            description: 'Agent/professional id (after client chooses the agent).'
           },
           data: {
             type: 'string',
-            description: 'Data desejada para consulta no formato YYYY-MM-DD (ex: 2026-06-01).'
+            description: 'Date YYYY-MM-DD.'
           },
           duracao_minutos: {
             type: 'integer',
-            description: 'Duração do atendimento em minutos (ex: 30, 45, 60). Usado para calcular o tamanho dos slots.'
+            description: 'Service duration (minutes).'
           }
         },
         required: ['unidade_id', 'agente_id', 'data', 'duracao_minutos']
@@ -88,39 +88,39 @@ const schemas = {
     type: 'function',
     function: {
       name: 'criar_agendamento',
-      description: '🚨 REGRA CRÍTICA: NUNCA chame esta ferramenta sem ter PERGUNTADO e OBTIDO do cliente qual SERVIÇO ele deseja (ex: corte, barba, manicure). O parâmetro "servicos" é OBRIGATÓRIO e NÃO PODE ser vazio. Cria definitivamente um novo agendamento no sistema. ATENÇÃO: Esta ferramenta deve ser chamada APENAS UMA VEZ por agendamento. Use SOMENTE após: 1) Cliente INFORMAR qual serviço quer, 2) Cliente escolher horário, 3) Você chamar validar_agendamento e confirmar disponibilidade, 4) Cliente confirmar EXPLICITAMENTE (dizer "sim", "confirmo", "pode agendar"). NUNCA chame esta ferramenta mais de uma vez para o mesmo horário. NUNCA use para pré-reservar ou validar disponibilidade (para isso use validar_agendamento).',
+      description: 'Create booking (final). Preconditions: client chose service(s) and slot; run validar_agendamento; get explicit confirmation. Call once per booking. servicos must be non-empty.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           unidade_id: {
             type: 'integer',
-            description: 'ID da unidade (local) onde o agendamento será criado.'
+            description: 'Unit/location id.'
           },
           agente_id: {
             type: 'integer',
-            description: 'ID do agente/profissional responsável pelo atendimento.'
+            description: 'Agent/professional id.'
           },
           data_agendamento: {
             type: 'string',
-            description: 'Data do agendamento no formato YYYY-MM-DD (ex: 2026-06-01).'
+            description: 'Date YYYY-MM-DD.'
           },
           hora_inicio: {
             type: 'string',
-            description: 'Hora de início do agendamento no formato HH:MM (ex: 14:30).'
+            description: 'Start time HH:MM.'
           },
           servicos: {
             type: 'array',
-            description: '🚨 OBRIGATÓRIO: Lista de IDs de serviços a serem executados neste agendamento. NUNCA envie array vazio. NUNCA envie sem perguntar ao cliente qual serviço ele quer. Exemplos válidos: [1], [2], [1, 3]. SEMPRE pergunte "Qual serviço você gostaria de fazer?" antes de chamar esta ferramenta.',
+            description: 'Required. Array of service ids. Must have >=1 item (never empty).',
             items: {
               type: 'integer',
-              description: 'ID do serviço.'
+              description: 'Service id.'
             },
             minItems: 1
           },
           cliente_nome: {
             type: 'string',
-            description: 'Nome completo do cliente (obrigatório para clientes novos que ainda não estão cadastrados).'
+            description: 'Full name for new client registration (only if needed).'
           }
         },
         required: ['unidade_id', 'agente_id', 'data_agendamento', 'hora_inicio', 'servicos']
@@ -132,22 +132,22 @@ const schemas = {
     type: 'function',
     function: {
       name: 'cancelar_agendamento',
-      description: '🚫 Cancela um agendamento existente (único ou série recorrente). ⚠️ PROTOCOLO DE RETENÇÃO OBRIGATÓRIO: 1️⃣ Pergunte o motivo do cancelamento, 2️⃣ Ofereça reagendamento, 3️⃣ SOMENTE cancele se o cliente recusar explicitamente. 📅 SÉRIE RECORRENTE: Se o cliente tem múltiplos agendamentos da mesma série (ex: "toda segunda-feira"), pergunte: "Deseja cancelar apenas este horário ou todos os agendamentos futuros desta série?". Use cancelar_serie=true para cancelar toda a série futura. 💰 AVISO DE PIX: Se o cliente pagou sinal via PIX, informe que "O estorno do valor pago via PIX não é automático. Por favor, trate o reembolso diretamente com o estabelecimento."',
+      description: 'Cancel booking. Retention: ask reason, offer reschedule, cancel only if client insists. Recurrence: ask single vs all future (cancelar_serie). If PIX deposit was paid: warn refund not automatic; handled by business.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           agendamento_id: {
             type: 'integer',
-            description: 'O ID numérico único do agendamento que deseja cancelar. Obtenha este ID através da ferramenta listar_agendamentos_cliente, que retorna o campo "agendamento_id" para cada agendamento do cliente.'
+            description: 'Booking id (use listar_agendamentos_cliente to fetch).'
           },
           motivo: {
             type: 'string',
-            description: 'Motivo do cancelamento informado pelo cliente (texto livre para registro interno). NUNCA use texto genérico, use as palavras exatas do cliente.'
+            description: 'Client provided reason. Use their exact words (no generic text).'
           },
           cancelar_serie: {
             type: 'boolean',
-            description: 'Se true, cancela TODOS os agendamentos futuros da mesma série recorrente (mesmo recorrencia_group_id). Se false ou omitido, cancela APENAS o agendamento específico. SEMPRE pergunte ao cliente antes de cancelar uma série: "Deseja cancelar apenas este horário ou todos os futuros desta sequência?"',
+            description: 'If true: cancel all future in same recurrence group. If false/omit: cancel only this booking. Ask client which one.',
             default: false
           }
         },
@@ -160,23 +160,23 @@ const schemas = {
     type: 'function',
     function: {
       name: 'notificar_humano',
-      description: 'Notifica o administrador da unidade quando o cliente demonstra frustração, raiva ou quando a conversa atinge 3 turnos sem resolução de um problema. Use esta ferramenta como último recurso antes de finalizar a conversa. IMPORTANTE: Após chamar esta ferramenta, finalize a conversa com uma mensagem empática e profissional.',
+      description: 'Escalate to human admin (anger/frustration or stuck). After calling, reply briefly with empathy and end.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           motivo: {
             type: 'string',
-            description: 'Motivo da notificação (ex: "Cliente frustrado com falta de horários", "Problema técnico não resolvido", "Cliente insatisfeito com atendimento").'
+            description: 'Reason summary.'
           },
           mensagem_cliente: {
             type: 'string',
-            description: 'Última mensagem do cliente que gerou a notificação (para contexto do administrador).'
+            description: 'Client last message (verbatim) for context.'
           },
           nivel_urgencia: {
             type: 'string',
             enum: ['baixa', 'media', 'alta'],
-            description: 'Nível de urgência da notificação. Use "alta" para casos de cliente muito frustrado ou problema crítico.'
+            description: 'Urgency level.'
           }
         },
         required: ['motivo', 'nivel_urgencia']
@@ -188,22 +188,22 @@ const schemas = {
     type: 'function',
     function: {
       name: 'atualizar_preferencias',
-      description: 'Atualiza ou registra preferências do cliente quando ele menciona algo relevante durante a conversa (ex: "Sempre quero agendar com o João", "Não gosto mais de café", "Prefiro horários pela manhã"). Use esta ferramenta para criar memória de longo prazo sobre o cliente. IMPORTANTE: Só use quando o cliente mencionar EXPLICITAMENTE uma preferência nova ou mudança de preferência.',
+      description: 'Save/update client preferences when client explicitly states a preference (new/change).',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           cliente_id: {
             type: 'integer',
-            description: 'ID do cliente (obtido do contexto da conversa).'
+            description: 'Client id.'
           },
           profissional_preferido_id: {
             type: 'integer',
-            description: 'ID do profissional preferido (se o cliente mencionar preferência por um profissional específico). Deixe null se não houver preferência ou se o cliente não mencionou.'
+            description: 'Preferred agent id if mentioned; null otherwise.'
           },
           observacoes: {
             type: 'string',
-            description: 'Observações sobre as preferências do cliente em texto livre. Seja específico e use as palavras do cliente. Exemplos: "Sempre pede café sem açúcar", "Prefere horários pela manhã", "Gosta de corte social", "Não gosta de conversar durante o atendimento".'
+            description: 'Free-text preference notes. Be specific; use client wording.'
           }
         },
         required: ['cliente_id', 'observacoes']
@@ -215,33 +215,33 @@ const schemas = {
     type: 'function',
     function: {
       name: 'adicionar_lista_espera',
-      description: '⚠️ PRÉ-REQUISITO OBRIGATÓRIO: Esta ferramenta SÓ pode ser usada quando agente_trabalha_neste_dia === true (profissional TRABALHA no dia mas está LOTADO). ⛔ BLOQUEIO ABSOLUTO: NUNCA use esta ferramenta quando agente_trabalha_neste_dia === false (profissional de FOLGA). Adiciona cliente à lista de espera quando NÃO HÁ horários disponíveis E profissional TRABALHA neste dia. O sistema notificará automaticamente o cliente caso surja vaga por cancelamento. HIERARQUIA: 1) Se profissional não trabalha (false) → Ofereça alternativas, NUNCA lista de espera. 2) Se profissional trabalha E tem slots → Venda os horários, NUNCA lista de espera. 3) Se profissional trabalha E zero slots → AÍ SIM use esta ferramenta.',
+      description: 'Add client to waitlist ONLY when agent_trabalha_neste_dia=true AND slots==0. Never use when agent_trabalha_neste_dia=false.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           unidade_id: {
             type: 'integer',
-            description: 'ID da unidade onde o cliente deseja agendar.'
+            description: 'Unit/location id.'
           },
           agente_id: {
             type: 'integer',
-            description: 'ID do profissional desejado. Se o cliente aceitar qualquer profissional, deixe null.'
+            description: 'Desired agent id. Null if any agent is ok.'
           },
           data_desejada: {
             type: 'string',
-            description: 'Data desejada para o agendamento no formato YYYY-MM-DD (ex: 2026-06-02).'
+            description: 'Desired date YYYY-MM-DD.'
           },
           hora_inicio: {
             type: 'string',
-            description: 'Horário específico desejado no formato HH:MM (ex: 14:30). Se o cliente aceitar qualquer horário do dia, deixe null.'
+            description: 'Desired start time HH:MM. Null if any time is ok.'
           },
           servicos: {
             type: 'array',
-            description: 'Lista de IDs de serviços desejados.',
+            description: 'Service ids.',
             items: {
               type: 'integer',
-              description: 'ID do serviço.'
+              description: 'Service id.'
             },
             minItems: 1
           }

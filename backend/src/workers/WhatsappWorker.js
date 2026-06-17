@@ -6,12 +6,20 @@ const aiAgentService = require('../services/AiAgentService');
 const ChatCompletionService = require('../services/ChatCompletionService');
 const AIAgentSchemas = require('../services/AIAgentSchemas');
 const AIAvailabilityService = require('../services/AIAvailabilityService');
+const CircuitBreakerService = require('../services/CircuitBreakerService');
+const ContextPurgeService = require('../services/ContextPurgeService');
 const CreateAppointmentUseCase = require('../useCases/CreateAppointmentUseCase');
 const WhatsAppService = require('../services/WhatsAppService');
+const AiSanitizer = require('../services/AiSanitizer');
+const ToolAuthorizationValidator = require('../services/ToolAuthorizationValidator');
+const RateLimitService = require('../services/RateLimitService');
 const logger = require('../utils/logger');
 
 let chatMessagesTableChecked = false;
 let chatMessagesTableExists = false;
+
+const DEBOUNCE_DELAY_MS = 500;
+const debounceState = new Map();
 
 function extrairJson(texto) {
   if (texto === null || texto === undefined) return null;
@@ -339,6 +347,61 @@ class WhatsappWorker {
   async processPayload(payload, job = null) {
     logger.info(`[Worker] Processando job ${job?.id || 'manual'} - instância: ${payload?.instance}`);
 
+    // ── Capturar instanceName e telefone o mais cedo possível ───────────────
+    // (Task 1.3) Rate limit deve ocorrer ANTES de qualquer processamento pesado (DB, LLM).
+    const instanceName = payload?.instance || payload?.data?.instance || null;
+
+    const rawPhone = payload?.data?.key?.remoteJid
+      || payload?.data?.sender
+      || payload?.sender
+      || payload?.data?.number
+      || payload?.data?.phone
+      || payload?.data?.phoneNumber;
+
+    const telefoneLimpo = rawPhone
+      ? String(rawPhone).replace(/@s\.whatsapp\.net$/i, '').replace(/\D/g, '')
+      : null;
+
+    logger.debug('[Worker] Telefone extraído', { original: rawPhone, limpo: telefoneLimpo });
+
+    if (!telefoneLimpo) {
+      logger.info('[Worker] Ignorando payload sem telefone (provável status/system message).');
+      return { ok: true, skipped: 'invalid_payload_no_phone' };
+    }
+
+    // ── 🚦 RATE LIMITING (TASK 1.3) ─────────────────────────────────────────
+    // Regra: no máximo 5 mensagens / 10s por telefone. 6ª envia aviso; 7ª+ drop silencioso.
+    try {
+      const redis = getRedisClient();
+      const rate = await RateLimitService.checkWhatsappRateLimit(redis, telefoneLimpo);
+
+      if (!rate.allowed) {
+        if (rate.count === 6) {
+          try {
+            const whatsAppServiceRate = new WhatsAppService();
+            await whatsAppServiceRate.sendMessage(
+              instanceName,
+              telefoneLimpo,
+              'Você está enviando mensagens muito rápido. Aguarde alguns segundos.'
+            );
+          } catch (warnErr) {
+            logger.error('[Worker] Falha ao enviar aviso de rate limit:', warnErr?.message);
+          }
+        }
+
+        logger.warn('[Worker] Rate limit excedido - dropando mensagem', {
+          telefone: telefoneLimpo,
+          count: rate.count,
+          windowSeconds: rate.windowSeconds,
+        });
+
+        return { ok: true, skipped: 'rate_limited', count: rate.count };
+      }
+    } catch (err) {
+      // fail-open: não bloquear o cliente por instabilidade do Redis
+      logger.error('[Worker] Erro no rate limiting (fail-open):', err?.message);
+    }
+
     // Resolução de unidade por usuário (fluxo atual: usuario_id fixo).
     // TODO: substituir por resolução via instanceName quando disponível.
     const HARDCODED_USUARIO_ID = 468;
@@ -374,31 +437,11 @@ class WhatsappWorker {
       return { ok: true, skipped: 'ia_disabled' };
     }
 
-    // ── Capturar instanceName para uso posterior ────────────────────────────
-    const instanceName = payload?.instance || payload?.data?.instance || null;
-
-    // ── Extrair número do cliente (remoteJid) ────────────────────────────────
-    // O campo correto é payload.data.key.remoteJid (número do cliente que enviou a mensagem)
-    const rawPhone = payload?.data?.key?.remoteJid
-      || payload?.data?.sender
-      || payload?.sender
-      || payload?.data?.number
-      || payload?.data?.phone
-      || payload?.data?.phoneNumber;
-
-    const telefoneLimpo = rawPhone
-      ? String(rawPhone).replace(/@s\.whatsapp\.net$/i, '').replace(/\D/g, '')
-      : null;
-
-    logger.debug('[Worker] Telefone extraído', { original: rawPhone, limpo: telefoneLimpo });
-
     // ── 🛡️ GUARDA DE MENSAGEM (GUARD CLAUSE) ────────────────────────────────
-    // Ignora payloads sem telefone ou sem unidade (ex.: status@broadcast,
-    // mensagens de sistema). Sem isso, o worker quebra ao tentar processar
-    // tipos de mensagem inválidos (causa do Job 295).
-    if (!telefoneLimpo || !unidadeId) {
-      logger.info('[Worker] Ignorando payload sem telefone ou unidade (provável status/system message).');
-      return { ok: true, skipped: 'invalid_payload' };
+    // A partir daqui unidadeId precisa estar resolvida.
+    if (!unidadeId) {
+      logger.info('[Worker] Ignorando payload sem unidade (provável status/system message).');
+      return { ok: true, skipped: 'invalid_payload_no_unit' };
     }
 
     // ── 🚨 KILL SWITCH DEFINITIVO (FASE 3) ──────────────────────────────────
@@ -462,6 +505,16 @@ class WhatsappWorker {
       || payload?.message
       || payload?.text;
 
+    const isDirectTextMessage = Boolean(
+      payload?.data?.message?.conversation
+      || payload?.data?.message?.text
+      || payload?.data?.message?.extendedTextMessage?.text
+      || payload?.data?.text
+      || payload?.data?.body
+      || payload?.message
+      || payload?.text
+    );
+
     // ── Detectar mensagens de mídia sem texto ─────────────────────────────────
     const isMediaOnly =
       !messageText &&
@@ -479,8 +532,67 @@ class WhatsappWorker {
       return { ok: true, skipped: 'media_only' };
     }
 
+    if (isDirectTextMessage && messageText) {
+      const debounceKey = `${unidadeId}:${telefoneLimpo}`;
+      const currentJobId = String(job?.id || `manual:${Date.now()}:${Math.random()}`);
+      const existing = debounceState.get(debounceKey);
+
+      if (!existing) {
+        const entry = {
+          parts: [String(messageText)],
+          leaderJobId: currentJobId,
+          resolve: null,
+          promise: null,
+          timer: null,
+        };
+
+        entry.promise = new Promise((resolve) => {
+          entry.resolve = resolve;
+        });
+
+        entry.timer = setTimeout(() => {
+          try {
+            const aggregated = entry.parts.join('\n');
+            debounceState.delete(debounceKey);
+            entry.resolve(aggregated);
+          } catch (err) {
+            debounceState.delete(debounceKey);
+            entry.resolve(String(messageText));
+          }
+        }, DEBOUNCE_DELAY_MS);
+
+        debounceState.set(debounceKey, entry);
+
+        const aggregatedText = await entry.promise;
+        payload = {
+          ...payload,
+          __debounced: true,
+          __debouncedText: aggregatedText,
+        };
+      } else {
+        existing.parts.push(String(messageText));
+        try {
+          clearTimeout(existing.timer);
+        } catch {}
+        existing.timer = setTimeout(() => {
+          try {
+            const aggregated = existing.parts.join('\n');
+            debounceState.delete(debounceKey);
+            existing.resolve(aggregated);
+          } catch (err) {
+            debounceState.delete(debounceKey);
+            existing.resolve(existing.parts.join('\n'));
+          }
+        }, DEBOUNCE_DELAY_MS);
+
+        return { ok: true, skipped: 'debounced', debounceMs: DEBOUNCE_DELAY_MS };
+      }
+    }
+
+    const finalMessageText = payload?.__debouncedText || messageText;
+
     try {
-      const content = messageText ? String(messageText).trim() : '';
+      const content = finalMessageText ? String(finalMessageText).trim() : '';
       if (content && chatSession?.id) {
         await db('chat_messages').insert(
           buildChatMessageRow(chatSession.id, { role: 'user', content })
@@ -607,9 +719,9 @@ class WhatsappWorker {
 
     // 🎯 IDENTIDADE DINÂMICA (Fase 1 - White-Label)
     // Extrai configurações do perfil ou usa valores padrão
-    const nomeAssistente = configPerfil?.nome_assistente || 'assistente virtual';
-    const tomDeVoz = configPerfil?.tom_de_voz || 'Profissional';
-    const saudacaoPersonalizada = configPerfil?.saudacao_personalizada || null;
+    const nomeAssistenteRaw = configPerfil?.nome_assistente || 'assistente virtual';
+    const tomDeVozRaw = configPerfil?.tom_de_voz || 'Profissional';
+    const saudacaoPersonalizadaRaw = configPerfil?.saudacao_personalizada || null;
 
     // Mapeamento de tom de voz para instruções de comportamento
     const tomsDeVoz = {
@@ -620,17 +732,48 @@ class WhatsappWorker {
       'Caloroso': 'Seja extremamente acolhedor e empático. Demonstre genuíno interesse pelo cliente.'
     };
 
-    const instrucaoTom = tomsDeVoz[tomDeVoz] || tomsDeVoz['Profissional'];
+    // 🔒 SANITIZAÇÃO DE SEGURANÇA (Sprint 1 - Task 1.1)
+    // Aplica sanitização em todas as variáveis dinâmicas antes da injeção no prompt
+    const promptContext = {
+      nomeAssistente: nomeAssistenteRaw,
+      nomeUnidade: nomeUnidade,
+      tomDeVoz: tomDeVozRaw,
+      saudacaoPersonalizada: saudacaoPersonalizadaRaw,
+      unidadeId: unidadeId,
+      clienteId: clienteId,
+      clienteNome: clienteNome,
+      dataAtual: dataAtual
+    };
+
+    // Aplica sanitização robusta contra prompt injection
+    const sanitizedContext = AiSanitizer.sanitizePromptContext(promptContext);
+
+    // Usa variáveis sanitizadas a partir daqui
+    const nomeAssistente = sanitizedContext.nomeAssistente;
+    const tomDeVoz = AiSanitizer.sanitizeTone(tomDeVozRaw);
+    const saudacaoPersonalizada = sanitizedContext.saudacaoPersonalizada;
+    const instrucaoTom = AiSanitizer.sanitizeGenericText(
+      tomsDeVoz[tomDeVoz] || tomsDeVoz['Profissional'], 
+      300
+    );
 
     const servicosTexto = servicosContexto.length > 0
-      ? servicosContexto.map(s => `- ${s.nome} (ID: ${s.id}, ${s.duracao_minutos} min, R$ ${parseFloat(s.preco).toFixed(2)})`).join('\n')
+      ? AiSanitizer.sanitizeGenericText(
+          servicosContexto.map(s => `- ${s.nome} (ID: ${s.id}, ${s.duracao_minutos} min, R$ ${parseFloat(s.preco).toFixed(2)})`).join('\n'),
+          2000
+        )
       : 'Aguarde enquanto verifico os serviços disponíveis';
 
     const agentesTexto = agentesContexto.length > 0
-      ? agentesContexto.map(a => `- ${a.nome} (ID: ${a.id})`).join('\n')
+      ? AiSanitizer.sanitizeGenericText(
+          agentesContexto.map(a => `- ${a.nome} (ID: ${a.id})`).join('\n'),
+          2000
+        )
       : 'Aguarde enquanto verifico os profissionais disponíveis';
 
-    const clienteSaudacao = clienteNome ? `O cliente se chama ${clienteNome}.` : '';
+    const clienteSaudacao = sanitizedContext.clienteNome 
+      ? AiSanitizer.sanitizeGreeting(`O cliente se chama ${sanitizedContext.clienteNome}.`) 
+      : '';
 
     // 🧠 FASE 3: FORMATAÇÃO DE PREFERÊNCIAS PARA O PROMPT
     // ✅ Acesso seguro (preferenciasCliente é sempre objeto, nunca undefined)
@@ -642,11 +785,14 @@ class WhatsappWorker {
       const partes = [];
 
       if (preferenciasCliente?.profissional_nome) {
-        partes.push(`Profissional preferido: ${preferenciasCliente.profissional_nome} (ID: ${preferenciasCliente.profissional_preferido_id})`);
+        const profissionalNomeSanitizado = AiSanitizer.sanitizeGenericText(preferenciasCliente.profissional_nome, 100);
+        const profissionalIdSanitizado = AiSanitizer.sanitizeId(preferenciasCliente.profissional_preferido_id);
+        partes.push(`Profissional preferido: ${profissionalNomeSanitizado} (ID: ${profissionalIdSanitizado})`);
       }
 
       if (preferenciasCliente?.observacoes) {
-        partes.push(`Observações: ${preferenciasCliente.observacoes}`);
+        const observacoesSanitizadas = AiSanitizer.sanitizePreferences(preferenciasCliente.observacoes);
+        partes.push(`Observações: ${observacoesSanitizadas}`);
       }
 
       if (partes.length > 0) {
@@ -655,459 +801,59 @@ class WhatsappWorker {
     }
 
     // 🎯 SYSTEM PROMPT DINÂMICO E WHITE-LABEL
-    const systemPrompt = `Você é ${nomeAssistente} de ${nomeUnidade}.
+    const systemPrompt = `Você é ${nomeAssistente} de ${AiSanitizer.sanitizeUnitName(nomeUnidade)}.
 
-📅 Data de hoje: ${dataAtual}
+📅 Data de hoje: ${AiSanitizer.sanitizeGenericText(dataAtual, 50)}
 
 ${clienteSaudacao}${preferenciasTexto}
 
-🏢 ID da Unidade: ${unidadeId}
-${clienteId ? `👤 ID do Cliente: ${clienteId}` : ''}
+🏢 ID da Unidade: ${AiSanitizer.sanitizeId(unidadeId)}
+${sanitizedContext.clienteId ? `👤 ID do Cliente: ${sanitizedContext.clienteId}` : ''}
 
-💳 PROTOCOLO DE PIX (SINAL DE AGENDAMENTO):
-══════════════════════════════════════════════════════════════════════════════
+[SCOPE] ONLY agendamentos + info da unidade (serviços, profissionais, horários) + lista de espera + preferências. OFFTOPIC -> 1 frase curta + redirecionar para agendar.
+[STYLE] ${instrucaoTom}${saudacaoPersonalizada ? ` | Saudação: "${saudacaoPersonalizada}"` : ''}
 
-Quando a ferramenta criar_agendamento retornar com sucesso E o campo deveCobrarSinal === true:
+[TOOLS] Use ferramentas para saber fatos. NUNCA presuma agenda/horários. Para qualquer pergunta de agenda/disponibilidade -> chamar consultar_disponibilidade.
+Sempre use unidade_id=${sanitizedContext.unidadeId}. Nunca use IDs fixos.
 
-1. O agendamento foi PRÉ-RESERVADO (NÃO está confirmado ainda)
-2. O cliente PRECISA pagar o sinal via PIX para confirmar
-3. Você DEVE enviar o código PIX Copia e Cola conforme instruções abaixo
+[PIX_RULE] Se criar_agendamento retornar ok=true e deveCobrarSinal=true:
+- Status = PRÉ-RESERVADO (NÃO confirmar).
+- Extrair pix.qr_code_copy (string exata começando "00020126...").
+- Enviar o código entre crases triplas. Dizer: "Sinal necessário. PIX expira em 15m. Reconhecimento automático; NÃO envie comprovante.".
+- Proibido: escrever "pix.qr_code_copy" literalmente, placeholders ({campo}), pedir comprovante, omitir agendamento_id.
+Se deveCobrarSinal=false: confirmar normalmente.
 
-⭐ INSTRUÇÕES DE EXTRAÇÃO DO CÓDIGO PIX:
-═══════════════════════════════════════════════════════════════════════════════
-Quando a ferramenta criar_agendamento retornar os dados do agendamento e o código do PIX:
+[BOOK_FLOW] Para criar agendamento:
+1) Perguntar serviço (obrigatório). 2) Cliente escolhe profissional. 3) Consultar disponibilidade. 4) Cliente escolhe horário. 5) Validar_agendamento. 6) Pedir confirmação final. 7) criar_agendamento 1x.
+Proibido: criar_agendamento sem serviço, com servicos=[], ou mais de 1 vez. Se já tem agendamento_id -> não chamar novamente.
+Cliente novo: só pedir nome se não existir no contexto; usar cliente_nome.
 
-1. Localize o campo pix.qr_code_copy no resultado da ferramenta
-2. Este campo contém uma string alfanumérica que começa com "00020126..."
-3. Copie EXATAMENTE esse valor (cerca de 150-200 caracteres)
-4. Cole esse código diretamente na sua mensagem ao cliente
-5. O código deve aparecer isolado entre crases triplas para facilitar cópia
-
-⛔ NUNCA escreva literalmente as palavras "pix.qr_code_copy" na mensagem
-⛔ NUNCA use sintaxe de placeholder como {variavel} ou {campo}
-⛔ NUNCA peça ao cliente para enviar comprovante de pagamento
-
-✅ O código real sempre começa com: 00020126580014br.gov.bcb.pix...
-✅ Você deve colar o valor EXATO retornado pela ferramenta
-✅ O sistema reconhece o pagamento automaticamente (100% automático)
-═══════════════════════════════════════════════════════════════════════════════
-
-📱 ESTRUTURA DA MENSAGEM COM PIX:
-
-Após receber o resultado da ferramenta, monte sua resposta assim:
-
-"✅ Perfeito! Seu agendamento foi pré-reservado com sucesso!
-
-📋 *Detalhes da Reserva:*
-• Agendamento: #[NÚMERO DO AGENDAMENTO]
-• Data: [DATA FORMATADA]
-• Horário: [HORA DE INÍCIO]
-• Profissional: [NOME DO PROFISSIONAL]
-• Serviço: [NOME DO SERVIÇO]
-• Valor Total: R$ [VALOR TOTAL]
-• *Sinal necessário: R$ [VALOR DO SINAL]*
-
-💳 *PAGAMENTO VIA PIX:*
-Para confirmar seu agendamento, efetue o pagamento do sinal através do código PIX abaixo:
-
-[AQUI VOCÊ COLA O VALOR REAL DO CAMPO pix.qr_code_copy ENTRE CRASES TRIPLAS]
-
-⏰ *ATENÇÃO - URGENTE:*
-• Este código expira em *15 minutos*
-• Após o pagamento, você receberá a confirmação automática por aqui
-• Se o código expirar, você precisará fazer um novo agendamento
-
-🤖 *IMPORTANTE - RECONHECIMENTO AUTOMÁTICO:*
-Assim que você pagar, nosso sistema reconhece automaticamente e envia a confirmação.
-*Não precisa me enviar o comprovante!* O sistema detecta tudo sozinho. 😊
-
-📱 Qualquer dúvida, estou à disposição!"
-
-🚫 PROIBIÇÕES ABSOLUTAS:
-├─ NUNCA diga que o agendamento está "confirmado" se deveCobrarSinal === true
-├─ NUNCA envie a mensagem sem o código PIX completo
-├─ NUNCA escreva texto literal como "pix.qr_code_copy" ou "{variavel}"
-├─ NUNCA peça ao cliente para enviar comprovante (o sistema é automático)
-├─ NUNCA esqueça de avisar que o código expira em 15 minutos
-├─ NUNCA omita o campo agendamento_id (cliente precisa para referência)
-└─ NUNCA encerre a conversa antes de enviar o PIX (cliente ficará sem código)
-
-✅ FLUXO CORRETO QUANDO HÁ PIX:
-1. Chama criar_agendamento
-2. Verifica se deveCobrarSinal === true
-3. Extrai o valor real de pix.qr_code_copy (a string completa começando com "00020126...")
-4. Formata a mensagem colando o código real entre crases triplas
-5. Informa que o reconhecimento do pagamento é 100% automático
-6. Desencorajao envio de comprovantes ("Não precisa me enviar o comprovante!")
-7. Envia a mensagem com o código PIX real e completo
-8. Aguarda confirmação do cliente ("Paguei", "Já fiz o PIX", etc.)
-9. Reforça que a confirmação chegará automaticamente
-
-✅ FLUXO CORRETO QUANDO NÃO HÁ PIX (deveCobrarSinal === false):
-1. Chama criar_agendamento
-2. Verifica que deveCobrarSinal === false
-3. Confirma o agendamento diretamente (já está aprovado)
-4. Usa o template padrão de confirmação
-
-💡 EXEMPLO REAL DE USO:
-
-Cliente: "Quero agendar um corte de cabelo para amanhã às 14h"
-Você: [coleta informações, valida disponibilidade]
-Você: [chama criar_agendamento]
-Sistema retorna: { ok: true, agendamento_id: 123, deveCobrarSinal: true, pix: { qr_code_copy: "00020126580014br.gov.bcb.pix0136a1b2c3d4e5f6..." } }
-
-Você: "✅ Perfeito! Seu agendamento foi pré-reservado com sucesso!
-
-📋 *Detalhes da Reserva:*
-• Agendamento: #123
-• Data: 09/06/2026
-• Horário: 14:00
-• Profissional: João Silva
-• Serviço: Corte de Cabelo
-• Valor Total: R$ 80,00
-• *Sinal necessário: R$ 20,00*
-
-💳 *PAGAMENTO VIA PIX:*
-Para confirmar seu agendamento, efetue o pagamento do sinal através do código PIX abaixo:
-
-\`\`\`
-00020126580014br.gov.bcb.pix0136a1b2c3d4e5f6...
-\`\`\`
-
-⏰ *ATENÇÃO - URGENTE:*
-• Este código expira em *15 minutos*
-• Após o pagamento, você receberá a confirmação automática por aqui
-• Se o código expirar, você precisará fazer um novo agendamento
-
-🤖 *IMPORTANTE - RECONHECIMENTO AUTOMÁTICO:*
-Assim que você pagar, nosso sistema reconhece automaticamente e envia a confirmação.
-*Não precisa me enviar o comprovante!* O sistema detecta tudo sozinho. 😊"
-
-Cliente: "Acabei de pagar!"
-Você: "Obrigado! Assim que o pagamento for confirmado pelo banco (geralmente instantâneo), você receberá a confirmação automática aqui mesmo. Aguarde alguns instantes! 😊"
-
-Cliente: [envia imagem do comprovante]
-Você: "Obrigado, mas não precisa se preocupar! Nosso sistema detecta o pagamento automaticamente assim que ele é processado pelo banco. A confirmação chegará aqui em instantes! 😊"
-
-══════════════════════════════════════════════════════════════════════════════
-
-🎭 TOM DE VOZ E PERSONALIDADE:
-${instrucaoTom}
-${saudacaoPersonalizada ? `\nSaudação personalizada: "${saudacaoPersonalizada}"` : ''}
-
-🎯 BLINDAGEM DE ESCOPO (ANTI-ALUCINAÇÃO):
-Você é uma recepcionista profissional focada EXCLUSIVAMENTE em:
-- Agendamentos (criar, consultar, cancelar, remarcar)
-- Informações sobre a unidade (serviços, profissionais, horários)
-- Lista de espera
-- Preferências do cliente
-
-⛔ PROIBIÇÕES ABSOLUTAS:
-Você é ESTRITAMENTE PROIBIDA de elaborar respostas sobre assuntos fora do escopo:
-- Filosofia, religião, política, esportes
-- Matemática, física, química, ciências em geral
-- Receitas culinárias, dicas de saúde, conselhos pessoais
-- Piadas complexas, histórias longas, conversas casuais
-- Qualquer assunto que não seja relacionado a agendamentos ou à unidade
-
-📐 REGRA DE OURO DO REDIRECIONAMENTO:
-Se o cliente fizer uma pergunta fora do escopo:
-1. Responda com NO MÁXIMO UMA FRASE curta, bem-humorada e educada
-2. Use jogo de cintura para desviar o assunto SEM ser rude
-3. Redirecione IMEDIATAMENTE para o agendamento com uma pergunta
-
-✅ EXEMPLOS CORRETOS:
-- Pergunta: "Qual é o sentido da vida?"
-  Resposta: "Haha, de filosofia eu não entendo muito, minha especialidade é cuidar do seu agendamento! 😅 Como posso te ajudar com os seus horários hoje?"
-
-- Pergunta: "Quanto é 2+2?"
-  Resposta: "Matemática não é meu forte, mas agendamentos eu domino! 😄 Quer marcar um horário?"
-
-- Pergunta: "Me conta uma piada"
-  Resposta: "Ah, piadas eu deixo pros profissionais! 😆 Mas posso te ajudar a agendar um horário. Topa?"
-
-❌ EXEMPLO ERRADO (NUNCA FAÇA):
-- Pergunta: "Qual é o sentido da vida?"
-  Resposta: "Essa é uma pergunta profunda que muitas pessoas refletem ao longo de suas vidas. O sentido da vida pode variar de pessoa para pessoa..." [TEXTO LONGO - PROIBIDO]
+[PREF] Se cliente mencionar preferência NOVA/MUDANÇA -> atualizar_preferencias (cliente_id: ${sanitizedContext.clienteId}).
+${temPreferencias ? `Cliente tem preferência; se fizer sentido, ofereça: "Quer marcar com ${AiSanitizer.sanitizeGenericText(prefNome, 50)} como de costume?" (ID ${AiSanitizer.sanitizeId(preferenciasCliente?.profissional_preferido_id)}).` : 'Cliente sem preferências; registre apenas se ele declarar explicitamente.'}
 
 👥 EQUIPE DA UNIDADE (Profissionais Cadastrados):
 ${agentesTexto}
 
-⚠️ ATENÇÃO - LEIA COM CUIDADO:
-Esses são os profissionais CADASTRADOS na unidade.
-Cada um tem sua própria agenda e dias de folga.
-
-🚫 VOCÊ NÃO SABE:
-- Quais dias cada um trabalha
-- Quais horários estão livres
-- Se estão trabalhando hoje
-
-✅ PARA SABER ISSO:
-Use a ferramenta consultar_disponibilidade SEMPRE que o cliente perguntar.
-
-💬 NUNCA diga: "O João trabalha na quinta" sem consultar antes!
-💬 SEMPRE diga: "Deixa eu conferir a agenda do João pra você!" [e consulte]
-
 🎯 Serviços disponíveis:
 ${servicosTexto}
 
-⚠️ IMPORTANTE - Ao usar ferramentas:
-- SEMPRE use unidade_id: ${unidadeId}
-- NUNCA use IDs fixos como 1 ou 2
-- Use a data de hoje (${dataAtual}) como referência
+[LISTAR] Se cliente perguntar "tenho horário?" -> listar_agendamentos_cliente.
+[ID] Para cancelar/alterar, usar agendamento_id real (se não tiver -> listar_agendamentos_cliente).
 
-🧠 PROTOCOLO DE USO DE PREFERÊNCIAS (FASE 3 - MEMÓRIA):
-${temPreferencias ? `
-- O cliente TEM preferências cadastradas (veja acima em "PREFERÊNCIAS DO CLIENTE")
-- Ao cumprimentar, seja proativo e mencione a preferência: "Olá ${clienteNome || ''}! Tudo bem? ${preferenciasCliente?.profissional_nome ? `Quer marcar com ${prefNome} como de costume?` : 'Como posso ajudar você hoje?'}"
-- Se o cliente confirmar que quer o profissional preferido, use o ID ${preferenciasCliente?.profissional_preferido_id} diretamente
-- Se o cliente mencionar uma NOVA preferência ou MUDANÇA de preferência (ex: "Agora prefiro o João", "Não gosto mais de café"), chame a ferramenta atualizar_preferencias com cliente_id: ${clienteId}
-` : `
-- O cliente NÃO tem preferências cadastradas ainda
-- Se durante a conversa o cliente mencionar EXPLICITAMENTE uma preferência (ex: "Sempre quero agendar com o João", "Prefiro horários pela manhã"), chame a ferramenta atualizar_preferencias com cliente_id: ${clienteId} para registrar
-- NÃO invente preferências - só registre o que o cliente DISSE
-`}
+[CANCEL_RETENCAO] Só para cancelamento pacífico: perguntar motivo -> oferecer reagendar -> se insistir, cancelar_agendamento.
+Motivo: usar texto real do cliente. Ao cancelar, mencionar agendamento_id.
+Série: perguntar "este" vs "todos futuros"; cancelar_serie=true/false.
 
-🗓️ REGRA DE OURO DA AGENDA (ANTI-ALUCINAÇÃO - PRIORIDADE MÁXIMA):
-Você é uma recepcionista que acabou de começar hoje. Você NÃO conhece a agenda de nenhum profissional de cor.
-Para QUALQUER pergunta sobre agenda, você é OBRIGADA a consultar o sistema primeiro.
+[WAITLIST_TREE] Após consultar_disponibilidade:
+IF agente_trabalha_neste_dia=false -> PROIBIDO lista de espera; oferecer alternativas.
+IF true AND slots>0 -> vender horários disponíveis; PROIBIDO lista de espera.
+IF true AND slots==0 -> pode oferecer lista de espera; se aceitar -> adicionar_lista_espera.
 
-⛔ PROIBIDO RESPONDER SEM CONSULTAR:
-- "O [profissional] trabalha na [dia]?"
-- "Que dias o [profissional] trabalha?"
-- "Tem horário na [dia] com [profissional]?"
-- "Qual o primeiro horário disponível com [profissional]?"
-- Qualquer variação dessas perguntas
-
-✅ FLUXO CORRETO:
-1. Cliente pergunta sobre agenda → "Deixa eu conferir a agenda dele pra você!"
-2. Você chama consultar_disponibilidade
-3. Você apresenta o resultado baseado no que o sistema retornou
-
-❌ FLUXO PROIBIDO (ALUCINAÇÃO):
-1. Cliente: "O Damião trabalha sexta?"
-2. Você: "Sim, trabalha!" [SEM CONSULTAR]
-❌ Isso é ALUCINAÇÃO. NUNCA faça isso.
-
-🎯 GATILHOS OBRIGATÓRIOS para consultar_disponibilidade:
-- Cliente menciona dia da semana + profissional
-- Cliente pergunta sobre disponibilidade
-- Cliente quer saber se profissional trabalha em determinado dia
-- Cliente quer ver horários
-- Cliente pergunta "que dias" ou "quais horários" de profissional
-
-💡 REGRA SIMPLES: Na dúvida, consulte. É melhor consultar demais do que alucinar.
-
-🎯 COMO INICIAR UM AGENDAMENTO (TOM DE VENDEDOR):
-Quando o cliente manifesta interesse em agendar, seja proativa e entusiasmada!
-
-✅ EXEMPLO CORRETO:
-Cliente: "Quero marcar um horário"
-Você: "Maravilha! Temos o ${agentesContexto.map(a => a.nome).join(' e o ')} aqui. Com qual dos dois você prefere se atender?"
-
-📌 IMPORTANTE:
-- NÃO consulte disponibilidade antes de saber qual profissional o cliente quer
-- A escolha do profissional vem PRIMEIRO
-- DEPOIS você consulta a agenda dele com consultar_disponibilidade
-
-⚠️ NUNCA pré-selecione automaticamente. Sempre pergunte com qual profissional o cliente quer ser atendido!
-
-🎭 COMO VOCÊ DEVE SE COMPORTAR:
-- Seja calorosa, entusiasmada e consultiva (recepcionista de salão, não robô de suporte técnico)
-- SEMPRE consulte a agenda antes de responder perguntas sobre disponibilidade
-- NUNCA presuma que um profissional trabalha em determinado dia sem consultar
-- NUNCA invente horários ou informações sobre agenda
-- Trate cada agendamento como uma venda: ofereça alternativas, seja proativa
-- Se não der certo com um profissional/dia, ofereça outro (vendedor experiente!)
-- Use linguagem natural: "Deixa eu ver aqui pra você", "Vou conferir", não "Executando consulta"
-
-🚨 ═══════════════════════════════════════════════════════════════════════════
-🚨 REGRA ABSOLUTA - COLETA DE SERVIÇO (OBRIGATÓRIA)
-🚨 ═══════════════════════════════════════════════════════════════════════════
-
-⛔ VOCÊ NUNCA, EM HIPÓTESE ALGUMA, DEVE CHAMAR A FUNÇÃO criar_agendamento
-   SEM TER PERGUNTADO E OBTIDO A CONFIRMAÇÃO CLARA DO CLIENTE SOBRE QUAL
-   SERVIÇO ELE DESEJA REALIZAR.
-
-⛔ FLUXO OBRIGATÓRIO ANTES DE CRIAR AGENDAMENTO:
-   1. PERGUNTAR: "Qual serviço você gostaria de fazer?"
-   2. CLIENTE RESPONDE: ex: "Corte de cabelo"
-   3. CONFIRMAR: "Perfeito! Vou agendar um [serviço] para você."
-   4. SÓ DEPOIS: Chamar criar_agendamento
-
-⛔ PROIBIÇÕES ABSOLUTAS:
-   - NUNCA chame criar_agendamento sem saber qual serviço o cliente quer
-   - NUNCA assuma o serviço baseado em contexto ou histórico
-   - NUNCA envie array vazio de servicos
-   - NUNCA envie null ou undefined no campo servicos
-
-✅ EXEMPLO CORRETO:
-   Cliente: "Quero agendar para amanhã às 14h"
-   Você: "Ótimo! Qual serviço você gostaria de fazer? Temos: [lista serviços]"
-   Cliente: "Corte de cabelo"
-   Você: [valida horário, confirma, DEPOIS chama criar_agendamento]
-
-❌ EXEMPLO ERRADO:
-   Cliente: "Quero agendar para amanhã às 14h"
-   Você: [chama criar_agendamento sem perguntar o serviço] ← PROIBIDO!
-
-🚨 ═══════════════════════════════════════════════════════════════════════════
-
-🚫 REGRA ANTIDUPLICIDADE (CRÍTICA):
-- NUNCA chame a ferramenta criar_agendamento até que o cliente tenha confirmado EXPLICITAMENTE o serviço, a data e o horário escolhidos.
-- A ferramenta consultar_disponibilidade serve APENAS para listar horários. Ela NUNCA agenda.
-- A ferramenta criar_agendamento só pode ser chamada UMA ÚNICA VEZ, exatamente quando o cliente confirmar.
-- Se o cliente apenas informar um horário (sem confirmar), responda confirmando os detalhes (serviço, data e hora) e AGUARDE o cliente dizer "sim", "pode agendar", "confirmo" ou equivalente antes de chamar criar_agendamento.
-- Não chame criar_agendamento para "garantir" ou "pré-reservar" o horário. Isso causa agendamentos duplicados.
-
-🎯 PROTOCOLO DE RESERVA EM DUAS ETAPAS (OBRIGATÓRIO):
-1. Cliente escolhe um horário da lista
-2. Você DEVE chamar validar_agendamento para verificar se o horário ainda está livre
-3. Se disponível, você responde: "Perfeito! O horário [hora] está livre. Posso confirmar para você?"
-4. Cliente confirma: "Sim", "Pode agendar", "Confirmo", etc.
-5. SOMENTE AGORA você chama criar_agendamento UMA ÚNICA VEZ
-
-⚠️ PROIBIDO - Gatilho Imediato:
-- NUNCA chame criar_agendamento na mesma mensagem em que o cliente escolhe o horário
-- SEMPRE use validar_agendamento primeiro
-- SEMPRE peça confirmação final antes de criar
-- Se validar_agendamento retornar indisponível, informe o cliente e ofereça outros horários
-
-🚫 PROIBIÇÃO ABSOLUTA - Re-chamada de Ferramentas:
-- NUNCA chame criar_agendamento mais de uma vez na mesma conversa para o mesmo horário
-- Se você já chamou criar_agendamento e recebeu um agendamento_id, NUNCA chame novamente
-- Se o cliente confirmar após você já ter criado, apenas responda com a mensagem de confirmação
-- NÃO tente "re-agendar", "re-confirmar" ou "garantir" o horário chamando a ferramenta novamente
-- Uma vez criado o agendamento, sua única função é informar o cliente com o ID recebido
-
-⚠️ OBRIGATÓRIO - Ao criar agendamento para cliente novo:
-- Se você já possui o nome do cliente no contexto da conversa ou ele foi recuperado do banco de dados, NÃO peça o nome novamente. Apenas peça o nome se for um cliente novo e o campo nome estiver vazio.
-- Antes de perguntar o nome, verifique se você já tem essa informação no histórico da sessão
-- Se não tiver o nome e for um cliente novo, pergunte: "Para que eu possa realizar o cadastro, poderia me informar seu nome completo?"
-- Use o nome fornecido no parâmetro 'cliente_nome' da ferramenta criar_agendamento
-
-⚠️ OBRIGATÓRIO - Ao confirmar agendamento:
-- SEMPRE mencione o ID do agendamento na sua resposta (ex: "Agendamento #123 confirmado!")
-- O ID está em 'agendamento_id' no retorno da ferramenta criar_agendamento
-- Exemplo: "Pronto! Seu agendamento #123 está confirmado para [data] às [hora]"
-
-📋 CONSULTA DE AGENDAMENTOS (RECEPCIONISTA COMPLETA):
-- Você é uma recepcionista COMPLETA e tem acesso ao banco de dados.
-- Se o cliente perguntar sobre os agendamentos dele (ex: "tenho algo marcado?", "quais meus horários?", "quando é meu próximo atendimento?"), use a ferramenta listar_agendamentos_cliente para buscar os registros.
-- NUNCA diga que não tem acesso a informações que estão no banco de dados. Você TEM acesso — basta usar a ferramenta.
-- Apresente os agendamentos de forma natural e amigável ao cliente (ex: "Você tem um agendamento no dia 2 de junho às 14h com o João").
-
-🆔 PROTOCOLO DE INTEGRIDADE DE ID:
-- Para cancelar ou alterar um agendamento, você deve usar o ID numérico real do campo "agendamento_id" retornado pela ferramenta listar_agendamentos_cliente.
-- Se não tiver o ID no contexto atual da conversa, chame listar_agendamentos_cliente primeiro para obter os IDs corretos antes de cancelar ou alterar.
-
-🔄 PROTOCOLO DE RETENÇÃO (Ao receber pedido de cancelamento):
-⚠️ ATENÇÃO - EXCEÇÃO CRÍTICA: Este protocolo SÓ deve ser aplicado para cancelamentos COMUNS e PACÍFICOS. Se o cliente estiver irritado, demonstrando raiva ou usando linguagem agressiva, PULE COMPLETAMENTE este protocolo e vá direto para a 🚨 GESTÃO DE CRISE (abaixo).
-
-Você é uma especialista em retenção, mas NUNCA prende o cliente. Fluxo (apenas para cancelamentos pacíficos):
-1. Pergunte gentilmente o MOTIVO do cancelamento (ex: "Sinto muito que precise cancelar! Posso saber o motivo?").
-2. Se fizer sentido, ofereça um reagendamento como alternativa (ex: "Quer que eu veja outro horário para você?").
-3. Se o cliente insistir em cancelar ou recusar o reagendamento, NÃO insista mais: PRIMEIRO garanta que você tem o agendamento_id REAL (via listar_agendamentos_cliente), depois chame cancelar_agendamento e envie uma mensagem curta e educada de despedida (ex: "Tudo bem! Seu agendamento #123 foi cancelado. Quando quiser, é só chamar. 💙").
-
-📝 CAPTURA DE MOTIVO (OBRIGATÓRIO):
-- Ao chamar cancelar_agendamento, preencha o parâmetro 'motivo' com o TEXTO REAL que o cliente escreveu (não invente um motivo genérico).
-
-⚠️ Ao confirmar o cancelamento:
-- SEMPRE mencione o ID do agendamento cancelado (ex: "Agendamento #123 cancelado")
-- O ID está em 'agendamento_id' no retorno da ferramenta cancelar_agendamento
-
-⏳ ÁRVORE DE DECISÃO DE DISPONIBILIDADE (HIERARQUIA OBRIGATÓRIA):
-Após chamar consultar_disponibilidade, você DEVE seguir EXATAMENTE esta ordem de análise:
-
-🔴 REGRA 1 - PROFISSIONAL DE FOLGA (Bloqueio Absoluto de Lista de Espera):
-Se agente_trabalha_neste_dia === false:
-- ⛔ PROIBIDO mencionar "lista de espera" em qualquer circunstância
-- ⛔ PROIBIDO oferecer aguardar vaga
-- ⛔ PROIBIDO usar palavras: "espera", "avisar quando surgir vaga", "desistência"
-- ✅ OBRIGATÓRIO: Oferecer alternativas imediatamente
-  
-  Resposta OBRIGATÓRIA (escolha uma das duas):
-  a) "O [Nome] não atende na [dia da semana]. Gostaria de verificar outro dia com ele ou agendar com [outro profissional disponível]?"
-  b) "Infelizmente o [Nome] não trabalha na [dia da semana]. Posso ver outros dias que ele atende ou mostrar outros profissionais disponíveis nesse dia. Qual você prefere?"
-  
-  🎯 AÇÃO SEGUINTE: Seja consultiva - pergunte qual alternativa cliente prefere e execute
-
-🟡 REGRA 2 - VENDA ATIVA (Profissional Trabalha, Tem Vagas, Mas Não no Horário Pedido):
-Se agente_trabalha_neste_dia === true E slots.length > 0 (mas cliente pediu horário específico ocupado):
-- ⛔ PROIBIDO mencionar "lista de espera" 
-- ✅ OBRIGATÓRIO: Vender os horários disponíveis ativamente
-  
-  Resposta OBRIGATÓRIA:
-  "Infelizmente o horário das [X] está ocupado, mas tenho esses outros horários disponíveis com [Nome]: [lista os horários]. Qual desses funciona melhor pra você?"
-  
-  🎯 AÇÃO SEGUINTE: Aguarde escolha do cliente e prossiga com agendamento
-
-🟢 REGRA 3 - AGENDA LOTADA (Única Situação para Lista de Espera):
-Se agente_trabalha_neste_dia === true E slots.length === 0 (ZERO horários livres):
-- ✅ AUTORIZADO: Oferecer lista de espera
-  
-  Resposta OBRIGATÓRIA:
-  "Infelizmente todos os horários com [Nome] na [dia] estão ocupados, mas posso te colocar na lista de espera! Se surgir uma desistência, eu te aviso imediatamente via WhatsApp. Quer entrar na lista?"
-  
-  🎯 AÇÃO SEGUINTE: Se cliente aceitar, chame adicionar_lista_espera
-
-⚠️ CHECKPOINT DE VALIDAÇÃO (ANTES DE RESPONDER):
-Antes de digitar QUALQUER resposta sobre disponibilidade, pergunte-se mentalmente:
-1. ✅ Eu consultei o sistema? (Se não, PARE e consulte)
-2. ✅ O profissional trabalha neste dia? (agente_trabalha_neste_dia)
-3. ✅ Se NÃO trabalha → Segui REGRA 1? (ofereci alternativas SEM mencionar lista de espera)
-4. ✅ Se trabalha e TEM slots → Segui REGRA 2? (vendi os horários disponíveis)
-5. ✅ Se trabalha e ZERO slots → Segui REGRA 3? (oferecer lista de espera)
-
-🚨 VIOLAÇÃO CRÍTICA - NUNCA FAÇA ISSO:
-❌ "O profissional não trabalha hoje, mas posso colocar você na lista de espera" [ERRADO - REGRA 1 VIOLADA]
-❌ "Tem horário às 14h, mas prefere lista de espera?" [ERRADO - REGRA 2 VIOLADA]
-❌ Oferecer lista de espera quando agente_trabalha_neste_dia === false [BLOQUEIO ABSOLUTO]
-
-✅ SEMPRE CORRETO:
-✅ "O profissional não trabalha hoje. Quer ver outro dia com ele ou outro profissional?" [REGRA 1]
-✅ "Esse horário está ocupado, mas tenho 14h e 15h livres. Qual prefere?" [REGRA 2]
-✅ "Todos os horários estão ocupados. Quer lista de espera?" [REGRA 3]
-
-🚨 GESTÃO DE CRISE (FASE 2 - Human-in-the-loop) - PRIORIDADE MÁXIMA:
-
-⚡ OVERRIDE DE HIERARQUIA: Esta seção SEMPRE anula o "Protocolo de Retenção" quando o cliente demonstrar irritação.
-
-💰 AVISO OBRIGATÓRIO SOBRE ESTORNO DE PIX:
-Se o cliente pagou sinal via PIX e está cancelando o agendamento, você DEVE incluir este aviso na sua resposta:
-"⚠️ *Importante sobre o PIX:* O estorno do valor pago via PIX não é automático. Por favor, entre em contato diretamente com o estabelecimento para tratar do reembolso."
-
-🔄 PROTOCOLO DE CANCELAMENTO DE SÉRIE:
-Se o cliente tem múltiplos agendamentos da mesma série recorrente (toda segunda-feira, toda quinzena, etc.):
-1. Pergunte: "Você tem agendamentos recorrentes. Deseja cancelar apenas este horário ou TODOS os agendamentos futuros desta série?"
-2. Se cliente quiser cancelar toda a série: use cancelar_serie=true
-3. Se cliente quiser cancelar apenas um: use cancelar_serie=false (padrão)
-
-📍 GATILHOS EXPLÍCITOS (detecção obrigatória):
-Você DEVE acionar este protocolo IMEDIATAMENTE ao detectar qualquer um dos seguintes sinais:
-1. Palavras-chave de insatisfação severa: "horrível", "péssimo", "ruim", "ridículo", "não funciona", "não resolve nada", "cancela tudo"
-2. Xingamentos ou linguagem agressiva (ex: "que merda", "atendimento de bosta")
-3. Uso de CAPS LOCK indicando raiva (ex: "CANCELA ISSO AGORA")
-4. Múltiplas reclamações na mesma mensagem (ex: "que sistema horrível, atendimento péssimo")
-5. Cliente expressa desistência com raiva (ex: "quer saber? esquece", "não quero mais", "desisto")
-6. Conversa atingir 3 turnos sem conseguir resolver o problema do cliente
-
-🎯 ORDEM OBRIGATÓRIA DE AÇÃO (NUNCA INVERTA):
-1. PRIMEIRO: Chame IMEDIATAMENTE a ferramenta notificar_humano com:
-   - motivo: transcreva literalmente a mensagem do cliente
-   - nivel_urgencia: "alta" (se houver xingamentos) ou "media" (se houver insatisfação clara)
-   - mensagem_cliente: a mensagem completa do cliente
-
-2. DEPOIS: Responda ao cliente com empatia e finalize:
-   "Entendo sua frustração. Já notifiquei nossa equipe e alguém entrará em contato com você em breve para resolver isso da melhor forma. Desculpe pelo transtorno."
-
-⛔ PROIBIÇÕES ABSOLUTAS EM CRISE:
-- NUNCA tente reter ou argumentar com um cliente irritado
-- NUNCA pergunte o motivo da insatisfação (ele já deixou claro que está insatisfeito)
-- NUNCA ofereça alternativas ou soluções (escale para humano)
-- NUNCA ignore os gatilhos acima tentando "salvar" a situação sozinho
-
-⚠️ EXCEÇÃO (NÃO ACIONE A CRISE APÓS SUCESSO): Se o objetivo do cliente (agendamento) foi concluído com sucesso e você já confirmou o agendamento ao cliente com o ID, NÃO acione este protocolo de crise, mesmo que atinja o limite de interações. Apenas finalize a conversa educadamente.`;
+[CRISE] Se irritação/raiva/xingamento/CAPS/"horrível" etc OU 3 turnos sem resolver:
+1) notificar_humano (motivo=mensagem literal, nivel_urgencia=alta/media, mensagem_cliente).
+2) Responder empático e finalizar.
+Em cancelamento com PIX pago: avisar que estorno PIX não é automático (tratar com estabelecimento).
+Exceção: se já concluiu com sucesso (agendamento criado e confirmado com ID), não acionar crise por limite.`;
 
     const whatsAppService = new WhatsAppService();
 
@@ -1132,14 +878,195 @@ Você DEVE acionar este protocolo IMEDIATAMENTE ao detectar qualquer um dos segu
     let historyCleaned = false;
 
     let aiResult;
+
+    const redis = getRedisClient();
+    const circuit = await CircuitBreakerService.isOpen(redis, unidadeId);
+    if (circuit.open) {
+      try {
+        await ChatSessionService.pauseSession(unidadeId, telefoneLimpo, 'circuit_breaker_open');
+      } catch (pauseErr) {
+        logger.error('[Worker] Erro ao pausar sessão (circuit breaker):', pauseErr?.message);
+      }
+
+      try {
+        const notifyKey = `circuit_breaker:ia_notified:${unidadeId}`;
+        const setNotify = await redis.set(notifyKey, '1', 'EX', Math.max(60, circuit.ttlSeconds || 900), 'NX');
+        const shouldNotify = setNotify === 'OK';
+
+        if (shouldNotify) {
+          const motivo = 'IA indisponível (circuit breaker)';
+          const mensagemCliente = finalMessageText || messageText || 'Não especificado';
+          const nivelUrgencia = 'alta';
+
+          let telefonesGerentes = [];
+          if (unidadeId) {
+            const gerentes = await db('agentes')
+              .where('unidade_id', unidadeId)
+              .where('status', 'Ativo')
+              .where('notifica_crise', true)
+              .whereNull('deleted_at')
+              .select('id', 'nome', 'telefone');
+
+            if (gerentes && gerentes.length > 0) {
+              telefonesGerentes = gerentes
+                .filter(g => g.telefone)
+                .map(g => ({
+                  id: g.id,
+                  nome: g.nome,
+                  telefone: String(g.telefone).replace(/\D/g, '')
+                }))
+                .filter(g => g.telefone.length >= 10);
+            }
+          }
+
+          if (telefonesGerentes.length > 0) {
+            const mensagemNotificacao = `🔴 *ALERTA CRÍTICO: A Recepcionista IA está temporariamente inativa. Por favor, assuma os atendimentos no WhatsApp.*
+
+*Unidade:* ${nomeUnidade}
+*Cliente:* ${telefoneLimpo}
+${clienteNome ? `*Nome:* ${clienteNome}` : ''}
+*Nível de Urgência:* ${nivelUrgencia.toUpperCase()}
+
+*Motivo:*
+${motivo}
+
+*Última mensagem do cliente:*
+"${mensagemCliente}"`;
+
+            await Promise.all(
+              telefonesGerentes.map(gerente =>
+                whatsAppService.sendMessage(instanceName, gerente.telefone, mensagemNotificacao)
+                  .then(() => {
+                    logger.info(`[Worker] Alerta de circuito enviado para gerente ${gerente.nome} (${gerente.telefone})`);
+                    return true;
+                  })
+                  .catch(err => {
+                    logger.error(`[Worker] Erro ao enviar alerta de circuito para ${gerente.nome}:`, err?.message);
+                    return false;
+                  })
+              )
+            );
+          }
+        }
+      } catch (notifyErr) {
+        logger.error('[Worker] Erro ao notificar gerentes (circuit breaker):', notifyErr?.message);
+      }
+
+      try {
+        await whatsAppService.sendMessage(
+          instanceName,
+          telefoneLimpo,
+          'No momento estou com lentidão no sistema, mas um humano da nossa equipe te atenderá em breve.'
+        );
+      } catch (fallbackErr) {
+        logger.error('[Worker] Erro ao enviar fallback ao cliente (circuit breaker):', fallbackErr?.message);
+      }
+
+      return { ok: true, skipped: 'circuit_breaker_open', ttlSeconds: circuit.ttlSeconds || null };
+    }
+
     try {
       aiResult = await aiAgentService.processMessage({
-        message: messageText,
+        message: finalMessageText,
         history: currentHistory,
         tools,
         systemPrompt,
+        unidadeId,
+        redis,
       });
     } catch (err) {
+      if (err?.circuitBreaker?.openedNow) {
+        try {
+          await ChatSessionService.pauseSession(unidadeId, telefoneLimpo, 'circuit_breaker_opened_now');
+        } catch (pauseErr) {
+          logger.error('[Worker] Erro ao pausar sessão (circuit breaker open):', pauseErr?.message);
+        }
+
+        try {
+          const notifyKey = `circuit_breaker:ia_notified:${unidadeId}`;
+          const setNotify = await redis.set(notifyKey, '1', 'EX', Math.max(60, err?.circuitBreaker?.openTtlSeconds || 900), 'NX');
+          const shouldNotify = setNotify === 'OK';
+
+          if (!shouldNotify) {
+            throw new Error('Circuit breaker openedNow: notificação já enviada nesta janela');
+          }
+
+          const motivo = 'IA indisponível (circuit breaker - 3 falhas consecutivas)';
+          const mensagemCliente = finalMessageText || messageText || 'Não especificado';
+          const nivelUrgencia = 'alta';
+
+          logger.warn('[Worker] Circuit breaker abriu - notificando equipe', {
+            unidade_id: unidadeId,
+            telefone: telefoneLimpo,
+            motivo,
+            nivelUrgencia,
+          });
+
+          let telefonesGerentes = [];
+
+          if (unidadeId) {
+            const gerentes = await db('agentes')
+              .where('unidade_id', unidadeId)
+              .where('status', 'Ativo')
+              .where('notifica_crise', true)
+              .whereNull('deleted_at')
+              .select('id', 'nome', 'telefone');
+
+            if (gerentes && gerentes.length > 0) {
+              telefonesGerentes = gerentes
+                .filter(g => g.telefone)
+                .map(g => ({
+                  id: g.id,
+                  nome: g.nome,
+                  telefone: String(g.telefone).replace(/\D/g, '')
+                }))
+                .filter(g => g.telefone.length >= 10);
+            }
+          }
+
+          if (telefonesGerentes.length > 0) {
+            const mensagemNotificacao = `🔴 *ALERTA CRÍTICO: A Recepcionista IA está temporariamente inativa.*
+
+*Unidade:* ${nomeUnidade}
+*Cliente:* ${telefoneLimpo}
+${clienteNome ? `*Nome:* ${clienteNome}` : ''}
+
+*Última mensagem do cliente:*
+"${mensagemCliente}"
+
+*Ação necessária:* Por favor, assuma os atendimentos no WhatsApp.`;
+
+            await Promise.all(
+              telefonesGerentes.map(gerente =>
+                whatsAppService.sendMessage(instanceName, gerente.telefone, mensagemNotificacao)
+                  .then(() => {
+                    logger.info(`[Worker] Alerta enviado para gerente ${gerente.nome} (${gerente.telefone})`);
+                    return true;
+                  })
+                  .catch(sendErr => {
+                    logger.error(`[Worker] Erro ao enviar alerta para ${gerente.nome}:`, sendErr?.message);
+                    return false;
+                  })
+              )
+            );
+          }
+        } catch (notifyErr) {
+          logger.error('[Worker] Erro ao notificar gerentes (circuit breaker openedNow):', notifyErr?.message);
+        }
+
+        try {
+          await whatsAppService.sendMessage(
+            instanceName,
+            telefoneLimpo,
+            'No momento estou com lentidão no sistema, mas um humano da nossa equipe te atenderá em breve.'
+          );
+        } catch (fallbackErr) {
+          logger.error('[Worker] Erro ao enviar fallback ao cliente (circuit breaker openedNow):', fallbackErr?.message);
+        }
+
+        return { ok: true, skipped: 'circuit_breaker_opened_now' };
+      }
+
       const is429 =
         err?.status === 429 ||
         err?.statusCode === 429 ||
@@ -1222,6 +1149,8 @@ Chame a ferramenta AGORA.`
           history: retryHistory,
           tools,
           systemPrompt,
+          unidadeId,
+          redis,
         });
         
         // Verificar se a IA obedeceu na segunda tentativa
@@ -1298,7 +1227,17 @@ Chame a ferramenta AGORA.`
 
         let toolResult;
         try {
-          if (toolName === 'listar_agendamentos_cliente') {
+          const authorization = await ToolAuthorizationValidator.authorize({
+            toolName,
+            args,
+            senderPhone: telefoneLimpo,
+            unidadeId,
+            clienteId,
+          }, { knex: db });
+
+          if (!authorization?.ok) {
+            toolResult = authorization;
+          } else if (toolName === 'listar_agendamentos_cliente') {
             // 📋 CONSULTA: Lista os agendamentos futuros (Aprovado) do cliente
             const telefoneParaBusca = String(args?.telefone_limpo || '').replace(/\D/g, '') || telefoneLimpo;
             logger.debug(`[Worker] Listando agendamentos futuros do cliente (telefone_limpo=${telefoneParaBusca})`);
@@ -2204,6 +2143,8 @@ ${motivo}
           history: currentHistory,
           tools: toolsParaProximaChamada,
           systemPrompt,
+          unidadeId,
+          redis,
         });
       } catch (err) {
         const is429 =
@@ -2256,6 +2197,8 @@ ${motivo}
           history: currentHistory,
           tools: null,
           systemPrompt,
+          unidadeId,
+          redis,
         });
       } catch (err) {
         const is429 =
@@ -2373,6 +2316,10 @@ Qualquer dúvida, estamos à disposição!`;
         telefone: telefoneLimpo,
       });
     }
+
+    try {
+      ContextPurgeService.schedule(redis, chatSession?.id);
+    } catch {}
 
     return {
       ok: true,

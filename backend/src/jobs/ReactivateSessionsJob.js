@@ -4,7 +4,7 @@ const logger = require('./../utils/logger');
 
 class ReactivateSessionsJob {
   constructor() {
-    this.cronExpression = '*/10 * * * *';
+    this.cronExpression = '0 * * * *';
     this.isRunning = false;
     this.lastExecution = null;
     this.executionCount = 0;
@@ -22,12 +22,10 @@ class ReactivateSessionsJob {
     const startTime = Date.now();
 
     try {
-      // ⏱️ Timeout de inatividade configurável via variável de ambiente
-      const timeoutMinutes = parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_MINUTES, 10);
-      
-      // 🛡️ Validação de segurança: garantir que o valor é numérico e razoável (entre 1 e 1440 minutos)
-      // Se NaN ou não definido, usar 15 como padrão
-      const defaultTimeout = 15;
+      // ⏱️ Higiene de sessões: reativar após 60min sem interação.
+      // Permite override via env.
+      const timeoutMinutes = parseInt(process.env.SESSION_HYGIENE_TIMEOUT_MINUTES, 10);
+      const defaultTimeout = 60;
       const parsedTimeout = isNaN(timeoutMinutes) ? defaultTimeout : timeoutMinutes;
       const safeTimeout = Math.max(1, Math.min(parsedTimeout, 1440));
       
@@ -45,9 +43,9 @@ class ReactivateSessionsJob {
 
       this.lastExecution = new Date();
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      logger.log(`✅ [ReactivateSessionsJob] Execução #${this.executionCount} concluída em ${duration}s | reativadas=${updated} | timeout=${safeTimeout}min`);
+      logger.info(`✅ [Higiene] Execução #${this.executionCount} concluída em ${duration}s | sessoes_reativadas=${updated} | timeout=${safeTimeout}min`);
     } catch (error) {
-      logger.error(`❌ [ReactivateSessionsJob] Erro na execução #${this.executionCount}:`, error);
+      logger.error(`❌ [Higiene] Erro na execução #${this.executionCount}:`, error);
     } finally {
       this.isRunning = false;
     }
@@ -55,7 +53,7 @@ class ReactivateSessionsJob {
 
   start() {
     logger.log('\n' + '='.repeat(80));
-    logger.log('🚀 [ReactivateSessionsJob] INICIANDO JOB DE REATIVAÇÃO DE SESSÕES');
+    logger.log('🧹 [Higiene] INICIANDO JOB DE HIGIENE DE SESSÕES');
     logger.log(`📅 Expressão Cron: ${this.cronExpression}`);
     logger.log('='.repeat(80) + '\n');
 
@@ -66,13 +64,13 @@ class ReactivateSessionsJob {
       timezone: 'America/Sao_Paulo'
     });
 
-    logger.log('✅ [ReactivateSessionsJob] Job iniciado com sucesso!\n');
+    logger.log('✅ [Higiene] Job iniciado com sucesso!\n');
   }
 
   stop() {
     if (this.job) {
       this.job.stop();
-      logger.log('🛑 [ReactivateSessionsJob] Job parado.');
+      logger.log('🛑 [Higiene] Job parado.');
     }
   }
 }

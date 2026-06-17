@@ -351,7 +351,9 @@ const App: React.FC = () => {
                   iaEnabled: u.iaEnabled ?? true, // ✅ Feature Flag IA
                   activeUnits: u.activeUnits,
                   units: [],
-                  clientCount: u.clientCount
+                  clientCount: u.clientCount,
+                  tokens_30d: u.tokens_30d, // 🎯 TASK 3.3 - Incluir tokens
+                  custo_est_usd: u.custo_est_usd // 🎯 TASK 3.3 - Incluir custo
                 }))}
                 loading={masterUsersHook.loading}
                 error={masterUsersHook.error}
@@ -397,7 +399,9 @@ const App: React.FC = () => {
               iaEnabled: u.iaEnabled ?? true, // ✅ Feature Flag IA
               activeUnits: u.activeUnits,
               units: [],
-              clientCount: u.clientCount
+              clientCount: u.clientCount,
+              tokens_30d: u.tokens_30d, // 🎯 TASK 3.3 - Incluir tokens
+              custo_est_usd: u.custo_est_usd // 🎯 TASK 3.3 - Incluir custo
             }))}
             loading={masterUsersHook.loading}
             error={masterUsersHook.error}

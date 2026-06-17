@@ -20,9 +20,9 @@ async function createTestUserInDB(userData) {
       nome: userData.nome || 'Test User',
       senha_hash: senhaHash,
       role: userData.role || 'ADMIN',
-      tipo_usuario: userData.tipo_usuario || 'Admin',
+      tipo_usuario: userData.tipo_usuario || 'admin',
       status: userData.status || 'Ativo',
-      plano: userData.plano || 'basico',
+      plano: userData.plano || 'Single',
       limite_unidades: userData.limite_unidades || 1,
       unidade_id: userData.unidade_id || null,
       created_at: new Date(),
@@ -61,7 +61,7 @@ async function createTestAgent(usuarioId, unidadeId, agentData = {}) {
     email: agentData.email || `agente_${Date.now()}@test.com`,
     nome: agentData.nome || 'Agente Teste',
     role: 'AGENTE',
-    tipo_usuario: 'Agente',
+    tipo_usuario: 'agent',
     unidade_id: unidadeId
   });
   
@@ -86,8 +86,7 @@ async function createTestAgent(usuarioId, unidadeId, agentData = {}) {
       agente_id: agent.id,
       unidade_id: unidadeId
     })
-    .onConflict(['agente_id', 'unidade_id'])
-    .ignore();
+    .catch(() => {});
   
   return { agent, user: agenteUser };
 }

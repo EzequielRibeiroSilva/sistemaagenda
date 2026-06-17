@@ -17,6 +17,33 @@ class MasterUserController {
       
       const users = await this.masterUserService.getAllUsers(search, status);
       
+      // 🔍 DEBUG: Log do primeiro usuário com tokens
+      if (users.length > 0) {
+        const userWithTokens = users.find(u => u.tokens_30d > 0);
+        if (userWithTokens) {
+          logger.log('[MasterUserController] 🔍 DEBUG - Usuário com tokens:', {
+            id: userWithTokens.id,
+            name: userWithTokens.name,
+            tokens_30d: userWithTokens.tokens_30d,
+            custo_est_usd: userWithTokens.custo_est_usd,
+            tokens_type: typeof userWithTokens.tokens_30d,
+            custo_type: typeof userWithTokens.custo_est_usd
+          });
+        }
+        
+        const user468 = users.find(u => u.id === 468);
+        if (user468) {
+          logger.log('[MasterUserController] 🔍 DEBUG - Usuário 468:', {
+            id: user468.id,
+            name: user468.name,
+            tokens_30d: user468.tokens_30d,
+            custo_est_usd: user468.custo_est_usd,
+            has_tokens_field: user468.hasOwnProperty('tokens_30d'),
+            has_custo_field: user468.hasOwnProperty('custo_est_usd')
+          });
+        }
+      }
+      
       logger.log(`[MasterUserController] Encontrados ${users.length} usuários`);
       
       res.status(200).json({

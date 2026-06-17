@@ -79,15 +79,18 @@ class ExcecaoCalendario extends BaseModel {
    * Verificar se uma data específica está bloqueada por exceção
    * @param {number} unidadeId - ID da unidade
    * @param {Date|string} data - Data a verificar (formato YYYY-MM-DD)
+   * @param {Object} trx - Transação Knex (opcional)
    * @returns {Promise<Object|null>} Exceção que bloqueia a data ou null
    */
-  static async isDataBloqueada(unidadeId, data) {
+  static async isDataBloqueada(unidadeId, data, trx = null) {
+    const connection = trx || db;
+
     try {
       const dataStr = typeof data === 'string'
         ? data
         : data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
-      const excecao = await db('unidade_excecoes_calendario')
+      const excecao = await connection('unidade_excecoes_calendario')
         .where('unidade_id', unidadeId)
         .where('data_inicio', '<=', dataStr)
         .where('data_fim', '>=', dataStr)

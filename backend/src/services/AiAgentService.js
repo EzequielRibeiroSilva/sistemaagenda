@@ -1,5 +1,7 @@
 const OpenAI = require('openai');
 const logger = require('../utils/logger');
+const CircuitBreakerService = require('./CircuitBreakerService');
+const TokenUsageService = require('./TokenUsageService');
 
 // ⚠️ SYSTEM_PROMPT REMOVIDO - Agora é 100% dinâmico e injetado pelo WhatsappWorker
 // Cada unidade terá seu próprio prompt personalizado baseado em config_perfil
@@ -18,7 +20,7 @@ class AiAgentService {
     this.model = process.env.OPENROUTER_MODEL || process.env.OPENROUTER_MODEL_DEV;
   }
 
-  async processMessage({ message, history = [], tools = null, systemPrompt = '' }) {
+  async processMessage({ message, history = [], tools = null, systemPrompt = '', unidadeId = null, redis = null }) {
     if (!this.model) {
       throw new Error('OPENROUTER_MODEL (ou OPENROUTER_MODEL_DEV) não configurado');
     }
@@ -51,7 +53,24 @@ class AiAgentService {
       payload.tool_choice = 'auto';
     }
 
-    const completion = await this.openai.chat.completions.create(payload);
+    let completion;
+    try {
+      completion = await this.openai.chat.completions.create(payload);
+      if (redis && unidadeId) {
+        await CircuitBreakerService.recordSuccess(redis, unidadeId);
+      }
+    } catch (err) {
+      let circuit = null;
+      if (redis && unidadeId) {
+        const result = await CircuitBreakerService.recordFailure(redis, unidadeId);
+        circuit = result;
+      }
+
+      if (circuit) {
+        err.circuitBreaker = circuit;
+      }
+      throw err;
+    }
 
     try {
       if (process.env.NODE_ENV === 'development') {
@@ -64,6 +83,18 @@ class AiAgentService {
             total_tokens: usage.total_tokens,
           });
         }
+      }
+      
+      // 🎯 TASK 3.3 - FASE 1: CAPTURA DE TOKENS PARA DASHBOARD
+      // Registra o consumo de tokens na tabela uso_tokens_diario
+      // Operação assíncrona não-bloqueante (fire-and-forget)
+      if (completion?.usage?.total_tokens && unidadeId) {
+        // Não usar await: execução paralela para não atrasar resposta ao cliente
+        TokenUsageService.registrarConsumo(
+          unidadeId, 
+          completion.usage.total_tokens, 
+          this.model
+        );
       }
     } catch {
       // não bloquear fluxo por falha de log

@@ -225,7 +225,10 @@ class UnidadeService {
           }
         };
       } catch (transactionError) {
-        await trx.rollback();
+        // ✅ CORREÇÃO: Verificar se transação ainda não foi finalizada
+        if (trx && !trx.isCompleted()) {
+          await trx.rollback();
+        }
         throw transactionError;
       }
     } catch (error) {
@@ -515,7 +518,10 @@ class UnidadeService {
         const unidadeCompleta = await this.getUnidadeWithHorarios(unidadeId);
         return unidadeCompleta;
       } catch (transactionError) {
-        await trx.rollback();
+        // ✅ CORREÇÃO: Verificar se transação ainda não foi finalizada
+        if (trx && !trx.isCompleted()) {
+          await trx.rollback();
+        }
         logger.error('❌ [UnidadeService] Rollback executado. Erro:', {
           message: transactionError?.message,
           stack: transactionError?.stack
