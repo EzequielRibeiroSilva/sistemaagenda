@@ -1,5 +1,6 @@
 const BaseController = require('./BaseController');
 const Servico = require('../models/Servico');
+const { getInstance: getKnowledgeBaseService } = require('../services/KnowledgeBaseService');
 const logger = require('../utils/logger');
 
 class ServicoController extends BaseController {
@@ -665,6 +666,22 @@ class ServicoController extends BaseController {
       // Buscar serviço criado para retorno
       const servicoCriado = await this.model.findById(servicoId);
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Invalidar cache de todas as unidades do usuário (serviços são globais por usuário)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = unidades.map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       return res.status(201).json({
         success: true,
         data: servicoCriado,
@@ -939,6 +956,21 @@ class ServicoController extends BaseController {
       // Buscar serviço atualizado para retorno
       const servicoAtualizado = await this.model.findByIdComplete(id);
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = unidades.map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       return res.status(200).json({
         success: true,
         data: servicoAtualizado,
@@ -980,6 +1012,22 @@ class ServicoController extends BaseController {
       await this.model.db('servicos')
         .where({ id: parseInt(id, 10), usuario_id: usuarioId })
         .update({ deleted_at: new Date() });
+
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Serviços são globais por usuário: invalidar todas as unidades ativas
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = (unidades || []).map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
 
       return res.json({
         message: 'Serviço deletado com sucesso'

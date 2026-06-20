@@ -40,6 +40,7 @@ class MasterUserService {
           'usuarios.plano as plan',
           'usuarios.limite_unidades as unitLimit',
           'usuarios.ia_enabled as iaEnabled',
+          'usuarios.max_tokens_daily as maxTokensDaily',
           'usuarios.created_at',
           'usuarios.updated_at',
           // 🎯 CAMPOS DE TOKENS: LEFT JOIN para não excluir usuários sem consumo
@@ -156,6 +157,7 @@ class MasterUserService {
         plano,
         limite_unidades: finalLimiteUnidades,
         ia_enabled: userData.ia_enabled !== undefined ? Boolean(userData.ia_enabled) : true, // ✅ Feature Flag IA
+        max_tokens_daily: userData.max_tokens_daily !== undefined ? parseInt(userData.max_tokens_daily, 10) : 100000, // ✅ Token Budget
         created_at: knex.fn.now(),
         updated_at: knex.fn.now()
       }).returning('id');
@@ -241,6 +243,15 @@ class MasterUserService {
       // ✅ FEATURE FLAG IA: Permitir atualização de ia_enabled via payload
       if (userData.ia_enabled !== undefined) {
         updateData.ia_enabled = Boolean(userData.ia_enabled);
+      }
+
+      // ✅ TOKEN BUDGET: Permitir atualização de max_tokens_daily via payload
+      if (userData.max_tokens_daily !== undefined) {
+        const maxTokens = parseInt(userData.max_tokens_daily, 10);
+        if (!Number.isInteger(maxTokens) || maxTokens < 0) {
+          throw new Error('max_tokens_daily deve ser um número inteiro não-negativo');
+        }
+        updateData.max_tokens_daily = maxTokens;
       }
 
       // Atualizar senha apenas se fornecida
@@ -329,6 +340,7 @@ class MasterUserService {
           'usuarios.plano as plan',
           'usuarios.limite_unidades as unitLimit',
           'usuarios.ia_enabled as iaEnabled',
+          'usuarios.max_tokens_daily as maxTokensDaily',
           'usuarios.created_at',
           'usuarios.updated_at',
           // 🎯 CAMPOS DE TOKENS: LEFT JOIN para não excluir usuários sem consumo

@@ -186,6 +186,16 @@ class SettingsController {
         dadosConfiguracao
       );
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          await invalidateKnowledgeCache(userId, unidade_id);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       logger.info('[SettingsController] Configuração atualizada retornada:', JSON.stringify(configuracaoAtualizada));
 
       res.json({
@@ -243,6 +253,16 @@ class SettingsController {
       
       // Atualiza configuração com nova URL do logo (sem validação de outros campos)
       await this.settingsService.updateLogoOnly(unidade_id, logoUrl);
+
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          await invalidateKnowledgeCache(req.user?.id, unidade_id);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
       
 
       

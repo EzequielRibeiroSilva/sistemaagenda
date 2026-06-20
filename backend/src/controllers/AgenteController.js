@@ -793,6 +793,16 @@ class AgenteController {
 
 
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          await invalidateKnowledgeCache(usuarioId, unidadeId);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       res.status(201).json({
         success: true,
         data: { id: agenteId, ...agenteData },
@@ -1074,7 +1084,15 @@ class AgenteController {
         agendasMultiUnidade.length > 0 ? agendasMultiUnidade : horariosData
       );
 
-
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          await invalidateKnowledgeCache(usuarioId, unidadeId);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
 
       res.status(200).json({
         success: true,

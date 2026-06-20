@@ -249,6 +249,96 @@ const schemas = {
         required: ['unidade_id', 'data_desejada', 'servicos']
       }
     }
+  },
+
+  atualizar_contexto: {
+    type: 'function',
+    function: {
+      name: 'atualizar_contexto',
+      description: `Update conversation structured context (JSON memory). This is your PERSISTENT MEMORY that survives history purge.
+
+MANDATORY CALLS (você DEVE chamar após estas ações):
+1. Após criar_agendamento retornar sucesso → atualizar com agendamento_id + status:"concluida" + etapa_atual:"confirmacao"
+2. Cliente confirma serviço(s) → atualizar servicos_selecionados com array [{id, nome}]
+3. Cliente confirma data → atualizar data_agendamento (formato YYYY-MM-DD)
+4. Cliente confirma horário → atualizar hora_inicio (formato HH:MM)
+5. Cliente escolhe profissional → atualizar agente_id
+6. Cliente muda de ideia sobre qualquer dado → atualizar o campo correspondente
+
+OPTIONAL CALLS (use quando fizer sentido):
+- Mudar etapa do fluxo → etapa_atual (identificacao, selecao_servico, escolha_data, escolha_horario, confirmacao, pagamento)
+- Mudar status → status (iniciada, em_agendamento, aguardando_pagamento, concluida, pausada)
+- PIX gerado → pix_gerado:true, pagamento_pendente:true
+
+IMPORTANTE: Só envie os campos que estão MUDANDO, não precisa enviar tudo.`,
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          unidade_id: {
+            type: 'integer',
+            description: 'Unit/location id. Update when confirmed.'
+          },
+          agente_id: {
+            type: 'integer',
+            description: 'Selected agent/professional id. Update when client chooses.'
+          },
+          cliente_id: {
+            type: 'integer',
+            description: 'Client database id. Update after registration.'
+          },
+          servicos_selecionados: {
+            type: 'array',
+            description: 'Selected services. Update when client confirms service(s).',
+            items: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'integer',
+                  description: 'Service id.'
+                },
+                nome: {
+                  type: 'string',
+                  description: 'Service name.'
+                }
+              },
+              required: ['id', 'nome']
+            }
+          },
+          data_agendamento: {
+            type: 'string',
+            description: 'Booking date YYYY-MM-DD. Update when confirmed.'
+          },
+          hora_inicio: {
+            type: 'string',
+            description: 'Start time HH:MM. Update when confirmed.'
+          },
+          status: {
+            type: 'string',
+            enum: ['iniciada', 'em_agendamento', 'aguardando_pagamento', 'concluida', 'pausada'],
+            description: 'Conversation status. Update as flow progresses.'
+          },
+          etapa_atual: {
+            type: 'string',
+            enum: ['identificacao', 'selecao_servico', 'escolha_data', 'escolha_horario', 'confirmacao', 'pagamento'],
+            description: 'Current conversation step. Update as client moves through flow.'
+          },
+          pagamento_pendente: {
+            type: 'boolean',
+            description: 'Whether deposit payment is pending.'
+          },
+          pix_gerado: {
+            type: 'boolean',
+            description: 'Whether PIX QR code was generated.'
+          },
+          agendamento_id: {
+            type: 'integer',
+            description: 'Created booking id. MANDATORY: Update after criar_agendamento succeeds.'
+          }
+        },
+        required: []
+      }
+    }
   }
 };
 

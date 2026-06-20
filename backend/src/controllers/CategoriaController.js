@@ -76,6 +76,22 @@ class CategoriaController extends BaseController {
 
       const row = Array.isArray(created) ? created[0] : created;
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Categorias são globais por usuário: invalidar todas as unidades ativas
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = (unidades || []).map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       return res.status(201).json({
         success: true,
         data: row,

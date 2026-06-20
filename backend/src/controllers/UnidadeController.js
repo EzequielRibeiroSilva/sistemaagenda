@@ -2,6 +2,7 @@ const BaseController = require('./BaseController');
 const Unidade = require('../models/Unidade');
 const UnidadeService = require('../services/UnidadeService');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
+const { getInstance: getKnowledgeBaseService } = require('../services/KnowledgeBaseService');
 const logger = require('./../utils/logger');
 
 class UnidadeController extends BaseController {
@@ -313,7 +314,16 @@ class UnidadeController extends BaseController {
         userRole
       );
 
-
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Após atualizar unidade, invalidar cache de conhecimento
+      try {
+        const kbService = getKnowledgeBaseService();
+        await kbService.invalidateCache(usuarioId, parseInt(id));
+        logger.log(`🗑️ [Cache] FAQ cache invalidado - unidade_id: ${id}`);
+      } catch (cacheErr) {
+        // Não-crítico: erro no cache não deve impedir a operação
+        logger.warn('[Cache] Erro ao invalidar cache (não-crítico):', cacheErr?.message);
+      }
 
       return res.json({
         success: true,

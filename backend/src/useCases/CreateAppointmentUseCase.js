@@ -8,6 +8,7 @@ const WhatsAppService = require('../services/WhatsAppService');
 const ScheduledReminderService = require('../services/ScheduledReminderService');
 const logger = require('../utils/logger');
 const { decrypt } = require('../utils/encryption');
+const { getInstance: getRedisService } = require('../services/RedisService');
 
 function makeError(message, code, httpStatus, details) {
   const err = new Error(message);
@@ -15,6 +16,93 @@ function makeError(message, code, httpStatus, details) {
   if (httpStatus) err.httpStatus = httpStatus;
   if (details !== undefined) err.details = details;
   return err;
+}
+
+class ConflictError extends Error {
+  constructor(message, details) {
+    super(message);
+    this.name = 'ConflictError';
+    this.code = 'RACE_CONDITION_DETECTED';
+    this.httpStatus = 409;
+    this.details = details;
+  }
+}
+
+/**
+ * Adquirir lock distribuído para prevenir race conditions
+ * @param {Object} params - Parâmetros do lock
+ * @param {number} params.unidadeId - ID da unidade
+ * @param {number} params.agenteId - ID do agente
+ * @param {string} params.dataAgendamento - Data do agendamento (YYYY-MM-DD)
+ * @param {string} params.horaInicio - Hora de início (HH:MM)
+ * @returns {Promise<{lockKey: string, acquired: boolean}>}
+ */
+async function acquireBookingLock({ unidadeId, agenteId, dataAgendamento, horaInicio }) {
+  const redisService = getRedisService();
+  const lockKey = `booking_lock:${unidadeId}:${agenteId}:${dataAgendamento}:${horaInicio}`;
+  const lockTTL = 10; // 10 segundos - tempo máximo para processar o agendamento
+
+  logger.log(`🔒 [CreateAppointmentUseCase] Tentando adquirir lock: ${lockKey}`);
+
+  try {
+    if (redisService.isRedisAvailable && redisService.redis) {
+      // Redis disponível: usar SET NX EX para lock atômico
+      const result = await redisService.redis.set(lockKey, 'locked', {
+        NX: true,  // Only set if key doesn't exist
+        EX: lockTTL // Expiration in seconds
+      });
+
+      if (result === 'OK') {
+        logger.log(`✅ [CreateAppointmentUseCase] Lock adquirido: ${lockKey}`);
+        return { lockKey, acquired: true };
+      } else {
+        logger.warn(`⚠️  [CreateAppointmentUseCase] Lock já existe (outra transação em andamento): ${lockKey}`);
+        return { lockKey, acquired: false };
+      }
+    } else {
+      // Redis indisponível: FAIL-CLOSED para garantir consistência
+      logger.error(`🔴 [CreateAppointmentUseCase] Redis indisponível - bloqueando agendamento por segurança`);
+      
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Sistema de lock indisponível. Tente novamente em instantes.');
+      }
+      
+      // Em desenvolvimento, permitir prosseguir com warning
+      logger.warn(`⚠️  [CreateAppointmentUseCase] DESENVOLVIMENTO: Prosseguindo sem lock (NÃO USAR EM PRODUÇÃO)`);
+      return { lockKey, acquired: true };
+    }
+  } catch (error) {
+    logger.error(`❌ [CreateAppointmentUseCase] Erro ao adquirir lock: ${error.message}`);
+    
+    // CONSISTÊNCIA PRIORITÁRIA: Em caso de erro, bloqueamos o agendamento
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Sistema de proteção de agendamentos temporariamente indisponível. Tente novamente.');
+    }
+    
+    // Em desenvolvimento, permitir prosseguir com warning
+    logger.warn(`⚠️  [CreateAppointmentUseCase] DESENVOLVIMENTO: Prosseguindo apesar do erro no lock`);
+    return { lockKey, acquired: true };
+  }
+}
+
+/**
+ * Liberar lock distribuído
+ * @param {string} lockKey - Chave do lock a ser liberado
+ */
+async function releaseBookingLock(lockKey) {
+  if (!lockKey) return;
+
+  const redisService = getRedisService();
+  
+  try {
+    if (redisService.isRedisAvailable && redisService.redis) {
+      await redisService.redis.del(lockKey);
+      logger.log(`🔓 [CreateAppointmentUseCase] Lock liberado: ${lockKey}`);
+    }
+  } catch (error) {
+    // Erro ao liberar lock não é crítico (TTL vai expirar automaticamente)
+    logger.warn(`⚠️  [CreateAppointmentUseCase] Erro ao liberar lock (TTL vai expirar automaticamente): ${error.message}`);
+  }
 }
 
 function normalizeTelefoneLimpo(value) {
@@ -477,7 +565,29 @@ async function execute(data, context) {
 
   // ✅ CORREÇÃO: Usar try-finally para garantir que transação sempre seja liberada
   let trx;
+  let lockInfo = null;
+
   try {
+    // 🔒 LOCK DISTRIBUÍDO: Adquirir lock antes de iniciar transação
+    lockInfo = await acquireBookingLock({
+      unidadeId: unidadeIdInt,
+      agenteId: agenteIdInt,
+      dataAgendamento,
+      horaInicio
+    });
+
+    if (!lockInfo.acquired) {
+      throw new ConflictError(
+        'Desculpe, este horário acabou de ser reservado por outro cliente. Por favor, escolha outro horário disponível.',
+        {
+          unidade_id: unidadeIdInt,
+          agente_id: agenteIdInt,
+          data_agendamento: dataAgendamento,
+          hora_inicio: horaInicio
+        }
+      );
+    }
+
     trx = await db.transaction();
 
     const unidade = await trx('unidades')
@@ -601,6 +711,12 @@ async function execute(data, context) {
               
               // Retorna o agendamento existente em vez de criar novo
               await trx.rollback();
+              
+              // 🔓 Liberar lock antes de retornar duplicata
+              if (lockInfo?.lockKey) {
+                await releaseBookingLock(lockInfo.lockKey);
+              }
+              
               return {
                 agendamento: { id: agendamentoRecente.id, numero_agendamento: agendamentoRecente.numero_agendamento },
                 pix: null,
@@ -735,12 +851,24 @@ async function execute(data, context) {
 
     // ✅ COMMIT EXPLÍCITO: Finalizar transação antes de retornar
     await trx.commit();
+    
+    // 🔓 Liberar lock após commit bem-sucedido
+    if (lockInfo?.lockKey) {
+      await releaseBookingLock(lockInfo.lockKey);
+    }
+    
     return { agendamento, pix, deveCobrarSinal };
   } catch (error) {
     // ✅ ROLLBACK EXPLÍCITO: Em caso de erro, desfazer alterações
     if (trx) {
       await trx.rollback();
     }
+    
+    // 🔓 Liberar lock em caso de erro
+    if (lockInfo?.lockKey) {
+      await releaseBookingLock(lockInfo.lockKey);
+    }
+    
     throw error;
   }
 

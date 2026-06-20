@@ -280,6 +280,169 @@ class AiSanitizer {
       servicosTexto: this.sanitizeGenericText(contexto.servicosTexto, 2000)
     };
   }
+
+  /**
+   * 🚨 TASK 2.2: JAILBREAK DETECTION (FILTRO SEMÂNTICO)
+   * 
+   * Detecta tentativas de Prompt Injection antes de enviar para a LLM.
+   * 
+   * CATEGORIAS DE ATAQUE DETECTADAS:
+   * 1. Comandos de sobreposição de instruções
+   * 2. Tentativas de role-play abusivo
+   * 3. Comandos de acesso administrativo
+   * 4. Tentativas de exfiltração de dados
+   * 5. Manipulação de contexto de sistema
+   * 
+   * PERFORMANCE: Usa RegEx com flag 'i' (case-insensitive) para velocidade.
+   * Não faz chamadas de rede ou processamento pesado.
+   * 
+   * @param {string|null|undefined} text - Texto da mensagem do usuário
+   * @returns {Object} - { detected: boolean, reason: string|null, matchedPattern: string|null }
+   */
+  static detectPromptInjection(text) {
+    if (!text || typeof text !== 'string') {
+      return { detected: false, reason: null, matchedPattern: null };
+    }
+
+    // Normalizar texto: lowercase + remover acentos para melhor detecção
+    const normalized = text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remove diacríticos
+
+    // 🔴 CATEGORIA 1: COMANDOS DE SOBREPOSIÇÃO DE INSTRUÇÕES
+    const overridePatterns = [
+      /\bignore\s+(as\s+)?instru[cç][oõ]es\s+(anteriores|passadas|do\s+sistema)/i,
+      /\bdesconsidere\s+(as\s+)?(regras|instru[cç][oõ]es|diretrizes)/i,
+      /\besqueca\s+(as\s+)?(regras|instru[cç][oõ]es|o\s+que\s+foi\s+dito)/i,
+      /\bvoc[eê]\s+agora\s+[eé]\b/i,
+      /\bnovo\s+sistema\s+de\s+regras/i,
+      /\batualizar\s+(o\s+)?sistema\s+de\s+regras/i,
+      /\bsobrescrever\s+(as\s+)?instru[cç][oõ]es/i,
+      /\bignore\s+previous\s+instructions/i,
+      /\bdisregard\s+all\s+rules/i,
+      /\bforget\s+(the|all)\s+(rules|instructions)/i,
+      /\byou\s+are\s+now\b/i,
+      /\bnew\s+system\s+(rules|prompt)/i,
+      /\boverride\s+(system|instructions)/i
+    ];
+
+    for (const pattern of overridePatterns) {
+      if (pattern.test(normalized)) {
+        return {
+          detected: true,
+          reason: 'Tentativa de sobreposição de instruções do sistema',
+          matchedPattern: pattern.toString()
+        };
+      }
+    }
+
+    // 🔴 CATEGORIA 2: ROLE-PLAY ABUSIVO (tentativa de mudar comportamento)
+    const rolePlayPatterns = [
+      /\baja\s+como\s+(se\s+fosse\s+)?(um|uma)\s+(admin|root|desenvolvedor|hacker)/i,
+      /\bsimule\s+(um\s+)?(cen[aá]rio|modo)\s+(admin|desenvolvedor|debug)/i,
+      /\bsimule\s+(um\s+)?cen[aá]rio\s+de\s+modo\s+(admin|desenvolvedor|debug)/i,
+      /\bmodo\s+desenvolvedor\b/i,
+      /\bfinja\s+que\s+(voc[eê]\s+[eé]|sou)/i,
+      /\bpretend\s+(you\s+are|to\s+be)\b/i,
+      /\bact\s+as\s+(if|an?)\s+(admin|root|developer)/i,
+      /\bsimulate\s+(admin|developer|debug)\s+mode/i,
+      /\brole[\s-]?play\s+(as|como)\b/i,
+      /\bvoc[eê]\s+[eé]\s+(o\s+)?(admin|root|desenvolvedor)/i,
+      /\benter\s+(admin|developer|god)\s+mode/i
+    ];
+
+    for (const pattern of rolePlayPatterns) {
+      if (pattern.test(normalized)) {
+        return {
+          detected: true,
+          reason: 'Tentativa de role-play abusivo ou mudança de comportamento',
+          matchedPattern: pattern.toString()
+        };
+      }
+    }
+
+    // 🔴 CATEGORIA 3: COMANDOS DE ACESSO ADMINISTRATIVO
+    const adminAccessPatterns = [
+      /\bliberar\s+acesso\s+(admin|root|total)/i,
+      /\bacesso\s+ao\s+painel\s+(admin|administrativo)/i,
+      /\bme\s+d[eê]\s+(acesso|permiss[aã]o)\s+(admin|root|total)/i,
+      /\bexecutar\s+como\s+(admin|root)/i,
+      /\belevate\s+(to\s+)?(admin|root)\s+(privileges|access)/i,
+      /\bgrant\s+me\s+(admin|root|full)\s+access/i,
+      /\bsudo\s+(mode|access|command)/i,
+      /\benable\s+(admin|root|developer)\s+mode/i,
+      /\bbypass\s+(authentication|security|validation)/i,
+      /\bdesabilite\s+(a\s+)?(seguran[cç]a|valida[cç][aã]o|autentica[cç][aã]o)/i,
+      /\bdesabilitar\s+(seguran[cç]a|valida[cç][aã]o|autentica[cç][aã]o)/i,
+      /\bremover\s+(restri[cç][oõ]es|limita[cç][oõ]es|filtros)/i
+    ];
+
+    for (const pattern of adminAccessPatterns) {
+      if (pattern.test(normalized)) {
+        return {
+          detected: true,
+          reason: 'Tentativa de obter acesso administrativo ou bypass de segurança',
+          matchedPattern: pattern.toString()
+        };
+      }
+    }
+
+    // 🔴 CATEGORIA 4: EXFILTRAÇÃO DE DADOS SENSÍVEIS
+    const dataExfiltrationPatterns = [
+      /\bmostre\s+(o\s+)?(seu\s+)?(c[oó]digo|prompt|instru[cç][oõ]es|sistema)/i,
+      /\bexibir\s+(o\s+)?(prompt|sistema|configura[cç][aã]o)/i,
+      /\brevele\s+(suas|as)\s+(instru[cç][oõ]es|regras|diretrizes)/i,
+      /\bqual\s+[eé]\s+(o\s+seu\s+)?(prompt|sistema|instru[cç][oõ]es)/i,
+      /\bshow\s+me\s+(your\s+)?(code|prompt|instructions|system)/i,
+      /\bexpose\s+(your\s+)?(prompt|instructions|rules)/i,
+      /\breveal\s+(your\s+)?(system|configuration|rules)/i,
+      /\bprint\s+(system|prompt|instructions)/i,
+      /\bdump\s+(configuration|system|database)/i,
+      /\blistar\s+(todas\s+as\s+)?(senhas|tokens|chaves|credenciais)/i,
+      /\bexport\s+(database|credentials|keys)/i
+    ];
+
+    for (const pattern of dataExfiltrationPatterns) {
+      if (pattern.test(normalized)) {
+        return {
+          detected: true,
+          reason: 'Tentativa de exfiltração de dados ou configurações do sistema',
+          matchedPattern: pattern.toString()
+        };
+      }
+    }
+
+    // 🔴 CATEGORIA 5: MANIPULAÇÃO DE CONTEXTO E ENCODING
+    const contextManipulationPatterns = [
+      /\bbase64\s+decode/i,
+      /\bhex\s+decode/i,
+      /\brot13\s+decode/i,
+      /\b(execute|eval|exec)\s*\(/i,
+      /\bscript\s*>/i,
+      /\b<\s*iframe/i,
+      /\bjavascript\s*:/i,
+      /\bon(load|error|click)\s*=/i,
+      /\b<\s*svg\s+on/i,
+      /\bdata\s*:\s*text\s*\/\s*html/i,
+      /\binject\s+(code|sql|command)/i,
+      /\b(union|select|drop|insert|update|delete)\s+(all\s+)?(from|table|database)/i
+    ];
+
+    for (const pattern of contextManipulationPatterns) {
+      if (pattern.test(normalized)) {
+        return {
+          detected: true,
+          reason: 'Tentativa de injeção de código ou manipulação de contexto',
+          matchedPattern: pattern.toString()
+        };
+      }
+    }
+
+    // 🟢 NENHUMA AMEAÇA DETECTADA
+    return { detected: false, reason: null, matchedPattern: null };
+  }
 }
 
 module.exports = AiSanitizer;
+

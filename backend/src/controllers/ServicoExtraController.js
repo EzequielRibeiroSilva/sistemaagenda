@@ -226,6 +226,22 @@ class ServicoExtraController extends BaseController {
       // Buscar serviço extra criado para retorno
       const servicoExtraCriado = await this.model.findById(servicoExtraId);
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Serviços extras são globais por usuário: invalidar todas as unidades ativas
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = (unidades || []).map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       return res.status(201).json({ 
         success: true,
         data: servicoExtraCriado,
@@ -303,6 +319,22 @@ class ServicoExtraController extends BaseController {
       // Buscar serviço extra atualizado para retorno
       const servicoExtraAtualizado = await this.model.findById(id);
 
+      // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+      // Serviços extras são globais por usuário: invalidar todas as unidades ativas
+      setImmediate(async () => {
+        try {
+          const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+          const unidades = await this.model.db('unidades')
+            .where('usuario_id', usuarioId)
+            .where('status', 'Ativo')
+            .select('id');
+          const unidadeIds = (unidades || []).map(u => u.id);
+          await invalidateKnowledgeCache(usuarioId, unidadeIds);
+        } catch (err) {
+          logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+        }
+      });
+
       return res.json({ 
         success: true,
         data: servicoExtraAtualizado,
@@ -347,6 +379,22 @@ class ServicoExtraController extends BaseController {
       const deleted = await this.model.delete(id);
       
       if (deleted) {
+        // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
+        // Serviços extras são globais por usuário: invalidar todas as unidades ativas
+        setImmediate(async () => {
+          try {
+            const { invalidateKnowledgeCache } = require('../middleware/cacheInvalidation');
+            const unidades = await this.model.db('unidades')
+              .where('usuario_id', usuarioId)
+              .where('status', 'Ativo')
+              .select('id');
+            const unidadeIds = (unidades || []).map(u => u.id);
+            await invalidateKnowledgeCache(usuarioId, unidadeIds);
+          } catch (err) {
+            logger.warn('[Cache] Erro ao invalidar (não-crítico):', err?.message);
+          }
+        });
+
         return res.json({ 
           success: true,
           message: 'Serviço extra deletado com sucesso' 

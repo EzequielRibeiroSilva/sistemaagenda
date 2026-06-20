@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 const logger = require('../utils/logger');
 const CircuitBreakerService = require('./CircuitBreakerService');
 const TokenUsageService = require('./TokenUsageService');
+const TokenBudgetService = require('./TokenBudgetService');
 
 // ⚠️ SYSTEM_PROMPT REMOVIDO - Agora é 100% dinâmico e injetado pelo WhatsappWorker
 // Cada unidade terá seu próprio prompt personalizado baseado em config_perfil
@@ -20,7 +21,7 @@ class AiAgentService {
     this.model = process.env.OPENROUTER_MODEL || process.env.OPENROUTER_MODEL_DEV;
   }
 
-  async processMessage({ message, history = [], tools = null, systemPrompt = '', unidadeId = null, redis = null }) {
+  async processMessage({ message, history = [], tools = null, systemPrompt = '', unidadeId = null, redis = null, usuarioId = null }) {
     if (!this.model) {
       throw new Error('OPENROUTER_MODEL (ou OPENROUTER_MODEL_DEV) não configurado');
     }
@@ -95,6 +96,19 @@ class AiAgentService {
           completion.usage.total_tokens, 
           this.model
         );
+
+        // 💰 TOKEN BUDGET - FASE 2: Incrementar cache Redis para refletir consumo imediato
+        // Permite que próxima verificação de budget seja precisa sem esperar persistência no banco
+        if (redis && usuarioId) {
+          TokenBudgetService.incrementCache(
+            redis,
+            usuarioId,
+            completion.usage.total_tokens
+          ).catch(err => {
+            // Erro no cache é não-crítico, apenas loga
+            logger.error('[AI] Erro ao incrementar cache de budget (operação não-crítica):', err?.message);
+          });
+        }
       }
     } catch {
       // não bloquear fluxo por falha de log

@@ -48,6 +48,11 @@ class Usuario extends BaseModel {
       data.ia_enabled = true;
     }
 
+    // ✅ TOKEN BUDGET: Garantir limite padrão se não fornecido (100.000 tokens/dia)
+    if (data.max_tokens_daily === undefined) {
+      data.max_tokens_daily = 100000;
+    }
+
     return await this.db('usuarios').insert(data).returning('*');
   }
 
@@ -84,6 +89,9 @@ class Usuario extends BaseModel {
 
     // ✅ FEATURE FLAG IA: Permitir atualização explícita de ia_enabled
     // (se o campo foi enviado como false, boolean ou undefined, o knex lida corretamente)
+
+    // ✅ TOKEN BUDGET: Permitir atualização explícita de max_tokens_daily
+    // (permite ajuste dinâmico do limite por painel admin)
 
     return await this.db('usuarios').where({ id }).update(data).returning('*');
   }
