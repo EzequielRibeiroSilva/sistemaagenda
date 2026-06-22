@@ -62,8 +62,7 @@ export const sidebarNavigation: SidebarCategory[] = [
         view: 'services',
         children: [
           { label: 'Lista de Serviços', view: 'services-list' },
-          { label: 'Serviços Extras', view: 'services-extra' },
-          { label: 'Clube', view: 'subscriptions-list' }
+          { label: 'Serviços Extras', view: 'services-extra' }
         ]
       },
       { label: 'UNIDADE', icon: MapPin, view: 'locations-list', roles: ['ADMIN'] },
