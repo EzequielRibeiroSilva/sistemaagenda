@@ -20,7 +20,9 @@ const TextInput: React.FC<{
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   type?: string;
   className?: string;
-}> = ({ label, placeholder, value, onChange, type = "text", className = "" }) => (
+  step?: string;
+  onWheel?: (e: React.WheelEvent<HTMLInputElement>) => void;
+}> = ({ label, placeholder, value, onChange, type = "text", className = "", step, onWheel }) => (
     <div className={className}>
         <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
         <input
@@ -28,6 +30,8 @@ const TextInput: React.FC<{
           placeholder={placeholder}
           value={value}
           onChange={onChange}
+          step={step}
+          onWheel={onWheel}
           className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
         />
     </div>
@@ -92,6 +96,23 @@ const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () 
     </label>
 );
 
+// Utility functions for currency formatting (Brazilian Real)
+const formatMoneyBR = (value: number | null | undefined) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0,00';
+    return n.toFixed(2).replace('.', ',');
+};
+
+const maskMoneyBRInput = (raw: string) => {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) {
+        return { display: '', value: 0 };
+    }
+    const cents = parseInt(digits, 10);
+    const value = cents / 100;
+    return { display: value.toFixed(2).replace('.', ','), value };
+};
+
 interface CreateExtraServicePageProps {
   setActiveView: (view: string) => void;
 }
@@ -111,6 +132,7 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
     const [descricao, setDescricao] = useState('');
     const [duracaoMinutos, setDuracaoMinutos] = useState(0);
     const [preco, setPreco] = useState(0);
+    const [precoText, setPrecoText] = useState(formatMoneyBR(0));
     const [quantidadeMaxima, setQuantidadeMaxima] = useState(1);
     const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
     const [submitting, setSubmitting] = useState(false);
@@ -227,56 +249,66 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
             )}
 
             <form onSubmit={handleSubmit}>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                    <div className="lg:col-span-2 space-y-6">
-                        <FormCard title="Informações básicas">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                               <TextInput
-                                 label="Nome do serviço extra"
-                                 className="md:col-span-2"
-                                 value={nome}
-                                 onChange={(e) => setNome(e.target.value)}
-                                 placeholder="Ex: Sobrancelha"
-                               />
-                               <TextInput
-                                 label="Duração (minutos)"
-                                 type="number"
-                                 value={String(duracaoMinutos)}
-                                 onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
-                               />
-                               <TextInput
-                                 label="Valor de cobrança (R$)"
-                                 type="number"
-                                 step="0.01"
-                                 value={String(preco)}
-                                 onChange={(e) => setPreco(Number(e.target.value))}
-                               />
-                               <TextInput
-                                 label="Quantidade Máxima"
-                                 type="number"
-                                 value={String(quantidadeMaxima)}
-                                 onChange={(e) => setQuantidadeMaxima(Number(e.target.value))}
-                               />
-                               <SelectInput
-                                 label="Status"
-                                 value={status}
-                                 onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
-                               >
-                                    <option value="Ativo">Ativo</option>
-                                    <option value="Inativo">Inativo</option>
-                               </SelectInput>
-                            </div>
-                            <TextArea
-                              label="Descrição curta"
-                              value={descricao}
-                              onChange={(e) => setDescricao(e.target.value)}
-                              placeholder="Descreva brevemente o serviço extra..."
-                            />
-                        </FormCard>
-                    </div>
-                </div>
+                <div className="space-y-6">
+                    <FormCard title="Informações básicas">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                           <TextInput
+                             label="Nome do serviço extra"
+                             className="md:col-span-2"
+                             value={nome}
+                             onChange={(e) => setNome(e.target.value)}
+                             placeholder="Ex: Sobrancelha"
+                           />
+                           <TextInput
+                             label="Duração (minutos)"
+                             type="number"
+                             step="1"
+                             value={String(duracaoMinutos)}
+                             onChange={(e) => {
+                                 const val = parseInt(e.target.value, 10);
+                                 setDuracaoMinutos(Number.isFinite(val) && val >= 0 ? val : 0);
+                             }}
+                             onWheel={(e) => e.currentTarget.blur()}
+                           />
+                           <TextInput
+                             label="Valor de cobrança (R$)"
+                             type="text"
+                             value={precoText}
+                             onChange={(e) => {
+                                 const masked = maskMoneyBRInput(e.target.value);
+                                 setPrecoText(masked.display);
+                                 setPreco(masked.value);
+                             }}
+                           />
+                           <TextInput
+                             label="Quantidade Máxima"
+                             type="number"
+                             step="1"
+                             value={String(quantidadeMaxima)}
+                             onChange={(e) => {
+                                 const val = parseInt(e.target.value, 10);
+                                 setQuantidadeMaxima(Number.isFinite(val) && val >= 1 ? val : 1);
+                             }}
+                             onWheel={(e) => e.currentTarget.blur()}
+                           />
+                           <SelectInput
+                             label="Status"
+                             value={status}
+                             onChange={(e) => setStatus(e.target.value as 'Ativo' | 'Inativo')}
+                           >
+                                <option value="Ativo">Ativo</option>
+                                <option value="Inativo">Inativo</option>
+                           </SelectInput>
+                        </div>
+                        <TextArea
+                          label="Descrição curta"
+                          value={descricao}
+                          onChange={(e) => setDescricao(e.target.value)}
+                          placeholder="Descreva brevemente o serviço extra..."
+                        />
+                    </FormCard>
 
-                <FormCard
+                    <FormCard
                     title="Serviços Conectados"
                     rightContent={
                         <label className="flex items-center cursor-pointer">
@@ -312,6 +344,7 @@ const CreateExtraServicePage: React.FC<CreateExtraServicePageProps> = ({ setActi
                         </div>
                     )}
                 </FormCard>
+            </div>
 
                 <div className="pt-2">
                     <button

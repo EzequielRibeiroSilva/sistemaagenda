@@ -33,7 +33,8 @@ const TextInput: React.FC<{
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   type?: string;
   step?: string;
-}> = ({ label, value, onChange, type = 'text', step }) => (
+  onWheel?: (e: React.WheelEvent<HTMLInputElement>) => void;
+}> = ({ label, value, onChange, type = 'text', step, onWheel }) => (
     <div>
         <label className="text-sm font-medium text-gray-600 mb-2 block">{label}</label>
         <input
@@ -41,6 +42,7 @@ const TextInput: React.FC<{
           value={value}
           onChange={onChange}
           step={step}
+          onWheel={onWheel}
           className="w-full bg-gray-50 border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500"
         />
     </div>
@@ -74,6 +76,23 @@ const ServiceCheckbox: React.FC<{ label: string, checked: boolean, onChange: () 
     </label>
 );
 
+// Utility functions for currency formatting (Brazilian Real)
+const formatMoneyBR = (value: number | null | undefined) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0,00';
+    return n.toFixed(2).replace('.', ',');
+};
+
+const maskMoneyBRInput = (raw: string) => {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) {
+        return { display: '', value: 0 };
+    }
+    const cents = parseInt(digits, 10);
+    const value = cents / 100;
+    return { display: value.toFixed(2).replace('.', ','), value };
+};
+
 
 interface EditExtraServicePageProps {
   setActiveView: (view: string) => void;
@@ -96,6 +115,7 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
     const [descricao, setDescricao] = useState('');
     const [duracaoMinutos, setDuracaoMinutos] = useState(0);
     const [preco, setPreco] = useState(0);
+    const [precoText, setPrecoText] = useState(formatMoneyBR(0));
     const [quantidadeMaxima, setQuantidadeMaxima] = useState(1);
     const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
     const [submitting, setSubmitting] = useState(false);
@@ -130,6 +150,7 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                     setDescricao(extraService.descricao || '');
                     setDuracaoMinutos(extraService.duracao_minutos);
                     setPreco(typeof extraService.preco === 'string' ? parseFloat(extraService.preco) : extraService.preco);
+                    setPrecoText(formatMoneyBR(typeof extraService.preco === 'string' ? parseFloat(extraService.preco) : extraService.preco));
                     setQuantidadeMaxima(extraService.quantidade_maxima);
                     setStatus(extraService.status);
 
@@ -274,7 +295,8 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
             )}
 
             <form onSubmit={handleSubmit}>
-                <FormCard title="Informações básicas">
+                <div className="space-y-6">
+                    <FormCard title="Informações básicas">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                        <TextInput
                          label="Nome do serviço extra"
@@ -284,21 +306,34 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                        <TextInput
                          label="Duração (minutos)"
                          type="number"
+                         step="1"
                          value={String(duracaoMinutos)}
-                         onChange={e => setDuracaoMinutos(Number(e.target.value))}
+                         onChange={e => {
+                             const val = parseInt(e.target.value, 10);
+                             setDuracaoMinutos(Number.isFinite(val) && val >= 0 ? val : 0);
+                         }}
+                         onWheel={(e) => e.currentTarget.blur()}
                        />
                        <TextInput
                          label="Valor de cobrança (R$)"
-                         type="number"
-                         step="0.01"
-                         value={String(preco)}
-                         onChange={e => setPreco(Number(e.target.value))}
+                         type="text"
+                         value={precoText}
+                         onChange={e => {
+                             const masked = maskMoneyBRInput(e.target.value);
+                             setPrecoText(masked.display);
+                             setPreco(masked.value);
+                         }}
                        />
                        <TextInput
                          label="Quantidade Máxima"
                          type="number"
+                         step="1"
                          value={String(quantidadeMaxima)}
-                         onChange={e => setQuantidadeMaxima(Number(e.target.value))}
+                         onChange={e => {
+                             const val = parseInt(e.target.value, 10);
+                             setQuantidadeMaxima(Number.isFinite(val) && val >= 1 ? val : 1);
+                         }}
+                         onWheel={(e) => e.currentTarget.blur()}
                        />
                        <SelectInput
                          label="Status"
@@ -352,6 +387,7 @@ const EditExtraServicePage: React.FC<EditExtraServicePageProps> = ({ setActiveVi
                         </div>
                     )}
                 </FormCard>
+            </div>
             
                 <div className="pt-2 flex items-center gap-4">
                     <button
