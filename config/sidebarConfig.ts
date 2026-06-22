@@ -13,7 +13,8 @@ import {
   Bell,
   Cog,
   MapPin,
-  Box
+  Box,
+  Award
 } from '../components/Icons';
 
 export type Role = 'ADMIN' | 'AGENTE' | 'MASTER';
@@ -79,7 +80,8 @@ export const sidebarNavigation: SidebarCategory[] = [
     roles: ['ADMIN'],
     items: [
       { label: 'CLUBE', icon: Gift, view: 'subscriptions-list' },
-      { label: 'CUPONS', icon: Ticket, view: 'cupons-list' }
+      { label: 'CUPONS', icon: Ticket, view: 'cupons-list' },
+      { label: 'PONTOS', icon: Award, view: 'pontos' }
     ]
   },
   {

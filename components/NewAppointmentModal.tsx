@@ -2228,7 +2228,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                             <div className={`${podeUsarPontos ? 'bg-[#F0F6FF] border-blue-200' : 'bg-gray-50 border-gray-300'} border rounded-lg p-4 space-y-3`}>
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-sm font-medium text-gray-700">Saldo de Pontos:</span>
-                                                    <span className={`text-lg font-bold ${podeUsarPontos ? 'text-blue-600' : 'text-gray-500'}`}>{pontosDisponiveis} pts</span>
+                                                    <span className={`text-lg font-bold ${podeUsarPontos ? 'text-blue-600' : 'text-gray-500'}`}>{Math.floor(pontosDisponiveis)} pts</span>
                                                 </div>
                                                 {pontosDisponiveis > 0 && (
                                                     <div className="text-xs text-gray-500">
@@ -2252,10 +2252,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                             value={pontosUsados}
                                                             onChange={(e) => {
                                                                 const valor = parseInt(e.target.value) || 0;
-                                                                if (valor <= pontosDisponiveis) {
+                                                                const pontoMax = Math.floor(pontosDisponiveis);
+                                                                if (valor <= pontoMax) {
                                                                     setPontosUsados(valor);
                                                                 } else {
-                                                                    alert(`Você só tem ${pontosDisponiveis} pontos disponíveis.`);
+                                                                    alert(`Você só tem ${pontoMax} pontos disponíveis.`);
                                                                 }
                                                             }}
                                                             placeholder="0"
@@ -2264,7 +2265,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                         />
                                                         <button
                                                             type="button"
-                                                            onClick={() => setPontosUsados(pontosDisponiveis)}
+                                                            onClick={() => setPontosUsados(Math.floor(pontosDisponiveis))}
                                                             className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 whitespace-nowrap disabled:bg-gray-400 disabled:cursor-not-allowed"
                                                             disabled={!podeUsarPontos}
                                                         >

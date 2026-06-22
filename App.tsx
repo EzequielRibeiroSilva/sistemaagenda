@@ -31,6 +31,7 @@ import DespesasPage from './components/DespesasPage';
 import NotificationsPage from './components/NotificationsPage';
 import SettingsPage from './components/SettingsPage';
 import LoginPage from './components/LoginPage';
+import PontosPage from './components/PontosPage';
 import AdminSidebar from './components/admin/AdminSidebar';
 import AdminDashboardPage from './components/admin/AdminDashboardPage';
 import AdminHeader from './components/admin/AdminHeader';
@@ -469,6 +470,7 @@ const App: React.FC = () => {
       case 'cupons-create': return <CreateCupomPage setActiveView={setActiveView} />;
       case 'cupons-edit': return <EditCupomPage setActiveView={setActiveView} cupomId={editingCupomId} />;
       case 'lembretes': return <NotificationsPage />;
+      case 'pontos': return <PontosPage />;
       case 'settings': return <SettingsPage onShowPreview={() => setIsPreviewingBookingPage(true)} />;
       default: return <DashboardPage loggedInAgentId={user.agentId} userRole={user.role as 'ADMIN' | 'AGENTE'} />;
     }

@@ -11,7 +11,8 @@ import {
   UserPlus,
   Gift,
   Package,
-  LineChart
+  LineChart,
+  Award
 } from './Icons';
 
 import { sidebarNavigation, type Role } from '../config/sidebarConfig';
@@ -156,6 +157,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Ticket className="h-5 w-5" />
                 ) : item.view === 'lembretes' ? (
                   <Bell className="h-5 w-5" />
+                ) : item.view === 'pontos' ? (
+                  <Award className="h-5 w-5" />
                 ) : item.view === 'settings' || item.view === 'agents-edit' ? (
                   <Cog className="h-5 w-5" />
                 ) : item.view === 'locations-list' ? (

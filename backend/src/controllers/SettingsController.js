@@ -92,9 +92,17 @@ class SettingsController {
       
       const configuracoes = await this.settingsService.getConfiguracoes(unidade_id);
       
+      // ✅ AÇÃO 2.2: Remover campos de pontos da resposta
+      // Sistema de Pontos possui API dedicada (/api/pontos/configuracoes)
+      const responseSemPontos = { ...configuracoes };
+      delete responseSemPontos.pontos_ativo;
+      delete responseSemPontos.pontos_por_real;
+      delete responseSemPontos.reais_por_pontos;
+      delete responseSemPontos.pontos_validade_meses;
+      
       res.json({
         success: true,
-        data: configuracoes,
+        data: responseSemPontos,
         message: 'Configurações carregadas com sucesso'
       });
     } catch (error) {
@@ -141,19 +149,13 @@ class SettingsController {
       if (dadosConfiguracao.permitir_cancelamento !== undefined) {
         dadosConfiguracao.permitir_cancelamento = dadosConfiguracao.permitir_cancelamento === 'true' || dadosConfiguracao.permitir_cancelamento === true;
       }
-      // Conversão de campos de pontos
-      if (dadosConfiguracao.pontos_ativo !== undefined) {
-        dadosConfiguracao.pontos_ativo = dadosConfiguracao.pontos_ativo === 'true' || dadosConfiguracao.pontos_ativo === true;
-      }
-      if (dadosConfiguracao.pontos_por_real !== undefined) {
-        dadosConfiguracao.pontos_por_real = parseFloat(dadosConfiguracao.pontos_por_real);
-      }
-      if (dadosConfiguracao.reais_por_pontos !== undefined) {
-        dadosConfiguracao.reais_por_pontos = parseFloat(dadosConfiguracao.reais_por_pontos);
-      }
-      if (dadosConfiguracao.pontos_validade_meses !== undefined) {
-        dadosConfiguracao.pontos_validade_meses = parseInt(dadosConfiguracao.pontos_validade_meses, 10);
-      }
+      
+      // ✅ AÇÃO 2.2: Remover campos de pontos do payload
+      // Sistema de Pontos agora possui API dedicada (/api/pontos/configuracoes)
+      delete dadosConfiguracao.pontos_ativo;
+      delete dadosConfiguracao.pontos_por_real;
+      delete dadosConfiguracao.reais_por_pontos;
+      delete dadosConfiguracao.pontos_validade_meses;
 
       // 1. Processar upload de logo (se houver)
       if (req.file) {
@@ -196,11 +198,19 @@ class SettingsController {
         }
       });
 
-      logger.info('[SettingsController] Configuração atualizada retornada:', JSON.stringify(configuracaoAtualizada));
+      // ✅ AÇÃO 2.2: Remover campos de pontos da resposta também
+      // Garante isolamento completo - cliente não recebe dados de pontos via /api/settings
+      const responseSemPontos = { ...configuracaoAtualizada };
+      delete responseSemPontos.pontos_ativo;
+      delete responseSemPontos.pontos_por_real;
+      delete responseSemPontos.reais_por_pontos;
+      delete responseSemPontos.pontos_validade_meses;
+
+      logger.info('[SettingsController] Configuração atualizada retornada:', JSON.stringify(responseSemPontos));
 
       res.json({
         success: true,
-        data: configuracaoAtualizada,
+        data: responseSemPontos,
         message: 'Configurações atualizadas com sucesso'
       });
     } catch (error) {

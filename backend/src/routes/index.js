@@ -29,6 +29,7 @@ const categoriasRoutes = require('./categorias');
 const vendasRoutes = require('./vendas');
 const financeiroDespesasRoutes = require('./financeiroDespesas');
 const comissoesRoutes = require('./comissoes');
+const pontosRoutes = require('./pontos');
 const MercadoPagoOAuthController = require('../controllers/MercadoPagoOAuthController');
 
 // Importar middleware de autenticação real
@@ -86,6 +87,7 @@ router.use('/categorias', categoriasRoutes);
 router.use('/vendas', vendasRoutes);
 router.use('/financeiro', financeiroDespesasRoutes);
 router.use('/comissoes', comissoesRoutes);
+router.use('/pontos', authenticate(), pontosRoutes);
 
 // Rotas públicas (sem autenticação)
 router.use('/public', publicRoutes);
