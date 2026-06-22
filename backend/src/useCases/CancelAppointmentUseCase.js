@@ -159,7 +159,7 @@ class CancelAppointmentUseCase {
         const agendRow = await trx('agendamentos')
           .where('id', idParaCancelar)
           .forUpdate()
-          .select('id', 'venda_id', 'unidade_id', 'usuario_id')
+          .select('id', 'venda_id', 'unidade_id', 'usuario_id', 'cliente_id')
           .first();
 
         if (!agendRow) continue;
@@ -244,6 +244,41 @@ class CancelAppointmentUseCase {
           deveEstornar: deveEstornarCota,
           dbConn: trx
         });
+
+        // ✅ ESTORNO DE PONTOS: Reverter pontos creditados ao cliente
+        try {
+          const pontoCreditado = await trx('pontos_historico')
+            .where('agendamento_id', idParaCancelar)
+            .where('tipo', 'CREDITO')
+            .select('pontos', 'valor_real', 'taxa_conversao_snapshot', 'cliente_id')
+            .first();
+
+          if (pontoCreditado) {
+            logger.info(`[CancelAppointmentUseCase] ⚠️ Estornando ${pontoCreditado.pontos} pontos do agendamento #${idParaCancelar}`);
+
+            // Criar registro de DEBITO para estornar os pontos
+            // Manter o mesmo snapshot da taxa de conversão para consistência do ledger
+            await trx('pontos_historico').insert({
+              cliente_id: agendRow.cliente_id || pontoCreditado.cliente_id,
+              unidade_id: agendRow.unidade_id,
+              agendamento_id: idParaCancelar,
+              tipo: 'DEBITO',
+              pontos: pontoCreditado.pontos,
+              valor_real: pontoCreditado.valor_real,
+              descricao: `Estorno - Cancelamento agendamento #${idParaCancelar}`,
+              data_validade: null,
+              expirado: false,
+              taxa_conversao_snapshot: pontoCreditado.taxa_conversao_snapshot,
+              created_at: trx.fn.now()
+            });
+
+            logger.info(`[CancelAppointmentUseCase] ✅ Estorno de pontos concluído: ${pontoCreditado.pontos} pontos debitados (taxa: ${pontoCreditado.taxa_conversao_snapshot || 'N/A'})`);
+          }
+        } catch (pontoError) {
+          logger.error(`[CancelAppointmentUseCase] ❌ Erro ao estornar pontos do agendamento #${idParaCancelar}:`, pontoError);
+          // Propagar erro para causar rollback da transação inteira
+          throw new Error(`Falha crítica no estorno de pontos: ${pontoError.message}`);
+        }
 
         // Atualizar status do agendamento
         const observacaoCompleta = motivo 

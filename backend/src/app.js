@@ -15,6 +15,7 @@ const pendingPaymentCleanupJob = require('./jobs/pendingPaymentCleanupJob');
 const waitingListJob = require('./jobs/waitingListJob');
 const reactivateSessionsJob = require('./jobs/ReactivateSessionsJob');
 const tokenCleanupJob = require('./jobs/TokenCleanupJob');
+const pointsExpirationJob = require('./jobs/PointsExpirationJob');
 const whatsappWorker = require('./workers/WhatsappWorker');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
@@ -326,6 +327,10 @@ async function startServer() {
       logger.log('\n🧹 Inicializando job de limpeza de tokens (janela móvel 30 dias)...');
       tokenCleanupJob.start();
 
+      // Iniciar job de expiração de pontos (Ação 1.3 - Sistema de Pontos)
+      logger.log('\n⏰ Inicializando job de expiração automática de pontos...');
+      pointsExpirationJob.start();
+
       whatsappWorker.start();
     });
     
@@ -337,6 +342,7 @@ async function startServer() {
       waitingListJob.stop();
       reactivateSessionsJob.stop();
       tokenCleanupJob.stop();
+      pointsExpirationJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -350,6 +356,7 @@ async function startServer() {
       waitingListJob.stop();
       reactivateSessionsJob.stop();
       tokenCleanupJob.stop();
+      pointsExpirationJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);

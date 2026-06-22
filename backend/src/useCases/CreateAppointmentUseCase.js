@@ -783,17 +783,22 @@ async function execute(data, context) {
 
     const configuracoes = await trx('configuracoes_sistema')
       .where('unidade_id', unidadeIdInt)
-      .select('pontos_ativo', 'pontos_por_real', 'pontos_validade_meses')
+      .select('pontos_ativo', 'pontos_por_real', 'reais_por_pontos', 'pontos_validade_meses')
       .first();
 
     if (configuracoes?.pontos_ativo && valorTotal > 0) {
       const pontosPorReal = parseFloat(configuracoes.pontos_por_real) || 1.00;
+      const reaisPorPontos = parseFloat(configuracoes.reais_por_pontos) || 10.00;
       const pontosValidade = configuracoes.pontos_validade_meses || 12;
       const pontosGerados = Math.floor(valorTotal * pontosPorReal);
 
       if (pontosGerados > 0) {
-        const dataValidade = new Date();
-        dataValidade.setMonth(dataValidade.getMonth() + pontosValidade);
+        // ✅ CORREÇÃO BUG AÇÃO 1.3: Uso de date-fns para manipulação segura de datas
+        // setMonth() nativo do JS é frágil e falha com edge cases (ex: 31 de janeiro + 1 mês = 3 de março)
+        const { addMonths, format } = require('date-fns');
+        const hoje = new Date();
+        const dataValidade = addMonths(hoje, pontosValidade);
+        const dataValidadeFormatada = format(dataValidade, 'yyyy-MM-dd');
 
         await trx('pontos_historico').insert({
           cliente_id: clienteRecord.id,
@@ -803,8 +808,9 @@ async function execute(data, context) {
           pontos: pontosGerados,
           valor_real: valorTotal,
           descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
-          data_validade: dataValidade.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
+          data_validade: dataValidadeFormatada,
           expirado: false,
+          taxa_conversao_snapshot: reaisPorPontos,
           created_at: new Date()
         });
       }
