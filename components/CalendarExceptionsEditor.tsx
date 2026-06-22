@@ -355,7 +355,6 @@ const CalendarExceptionsEditor: React.FC<CalendarExceptionsEditorProps> = ({
                 </div>
             ) : (
                 <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-600 font-medium">Nenhuma exceção cadastrada</p>
                     <p className="text-xs text-gray-500 mt-1">
                         Adicione feriados, férias ou outros períodos de fechamento
