@@ -21,7 +21,7 @@ class AgendamentoConclusaoService {
     return n / 100;
   }
 
-  async reconcileEstoque({ agendamentoId, triggeredByUserId, pagamentos, trx: trxExternal }) {
+  async reconcileEstoque({ agendamentoId, triggeredByUserId, pagamentos, pontosUsados = 0, trx: trxExternal }) {
     const agendamentoIdNum = parseInt(agendamentoId, 10);
     if (!Number.isFinite(agendamentoIdNum)) {
       const err = new Error('agendamentoId inválido');
@@ -29,7 +29,42 @@ class AgendamentoConclusaoService {
       throw err;
     }
 
+    logger.info('🧨 [AgendamentoConclusaoService][AUDIT] reconcileEstoque() entrada:', {
+      agendamentoId,
+      agendamentoIdNum,
+      triggeredByUserId,
+      pontosUsados,
+      pagamentos_raw: pagamentos,
+      pagamentos_type: Array.isArray(pagamentos) ? 'array' : typeof pagamentos,
+      pagamentos_len: Array.isArray(pagamentos) ? pagamentos.length : null,
+      hasExternalTrx: Boolean(trxExternal)
+    });
+
     const run = async (trx) => {
+      try {
+        // 🔍 AUDITORIA SQL: imprimir cada query executada dentro desta transação
+        // (fica restrito ao escopo do trx deste request)
+        trx.on('query', (q) => {
+          logger.info('🧨 [AgendamentoConclusaoService][SQL]', {
+            sql: q?.sql,
+            bindings: q?.bindings
+          });
+        });
+
+        trx.on('query-error', (err, q) => {
+          logger.error('🧨 [AgendamentoConclusaoService][SQL][FALHA]', {
+            error: err?.message,
+            code: err?.code,
+            sql: q?.sql,
+            bindings: q?.bindings
+          });
+        });
+      } catch (e) {
+        logger.error('🧨 [AgendamentoConclusaoService][AUDIT] Falha ao anexar listeners de SQL no trx (não fatal):', {
+          error: e?.message
+        });
+      }
+
       await trx('agendamentos')
         .where('id', agendamentoIdNum)
         .forUpdate()
@@ -42,6 +77,8 @@ class AgendamentoConclusaoService {
         .select('id', 'unidade_id', 'cliente_id', 'status', 'metodo_pagamento', 'valor_total', 'venda_id')
         .first();
 
+      logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Agendamento carregado:', agendamento);
+
       if (!agendamento) {
         const err = new Error('Agendamento não encontrado');
         err.code = 'AGENDAMENTO_NOT_FOUND';
@@ -53,6 +90,8 @@ class AgendamentoConclusaoService {
         .select('id', 'usuario_id')
         .first();
 
+      logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Unidade carregada:', unidade);
+
       if (!unidade?.usuario_id) {
         const err = new Error('Unidade inválida');
         err.code = 'UNIDADE_INVALID';
@@ -63,6 +102,11 @@ class AgendamentoConclusaoService {
         try {
           let vendaId = agendamento.venda_id ? Number(agendamento.venda_id) : null;
 
+          logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Venda inicial (venda_id do agendamento):', {
+            venda_id_from_agendamento: agendamento.venda_id,
+            vendaId_normalized: vendaId
+          });
+
           if (!vendaId) {
             const vendaExistente = await trx('vendas')
               .where('agendamento_id', agendamentoIdNum)
@@ -71,6 +115,11 @@ class AgendamentoConclusaoService {
               .first();
 
             vendaId = vendaExistente?.id ? Number(vendaExistente.id) : null;
+
+            logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Venda existente buscada (PAID):', {
+              vendaExistente,
+              vendaId
+            });
           }
 
           if (!vendaId) {
@@ -82,6 +131,8 @@ class AgendamentoConclusaoService {
                 's.nome as servico_nome',
                 'ags.preco_aplicado as preco_aplicado'
               );
+
+            logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Serviços para compor venda:', servicosRows);
 
             let produtosRows = [];
             try {
@@ -104,6 +155,8 @@ class AgendamentoConclusaoService {
               }
               produtosRows = [];
             }
+
+            logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Produtos para compor venda:', produtosRows);
 
             const itens = [];
             for (const s of servicosRows || []) {
@@ -147,6 +200,11 @@ class AgendamentoConclusaoService {
 
             const subtotalCents = itens.reduce((sum, i) => sum + this.toCents(i.total_snapshot), 0);
 
+            logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Itens montados para venda:', {
+              itens_count: itens.length,
+              subtotalCents
+            });
+
             // Sprint 4 (Passo 3): Abater sinal Pix aprovado do total da venda no PDV
             let sinalCents = 0;
             try {
@@ -165,37 +223,145 @@ class AgendamentoConclusaoService {
 
             if (Number.isFinite(sinalCents) && sinalCents > 0) {
               const sinalBRL = this.centsToDecimal(sinalCents);
-              console.log(`💰 [PDV-Checkout] Sinal de R$ ${sinalBRL} localizado para o agendamento ${agendamentoIdNum}. Abatendo do total da venda.`);
             }
 
-            const totalCents = Math.max(0, subtotalCents - (Number.isFinite(sinalCents) ? sinalCents : 0));
+            // Resgate de pontos: executa quando status = Concluído E pontos_usados > 0
+            let descontoPontosCents = 0;
+            const pontosUsadosInt = Number(pontosUsados);
+            
+            if (agendamento.status === 'Concluído' && Number.isFinite(pontosUsadosInt) && pontosUsadosInt > 0) {
+              try {
+                logger.info('🎯 [AgendamentoConclusaoService] Iniciando resgate de pontos', {
+                  agendamento_id: agendamentoIdNum,
+                  cliente_id: agendamento.cliente_id,
+                  unidade_id: agendamento.unidade_id,
+                  pontos_usados: pontosUsadosInt
+                });
+
+                const configuracoes = await trx('configuracoes_sistema')
+                  .where('unidade_id', agendamento.unidade_id)
+                  .select('pontos_ativo', 'reais_por_pontos')
+                  .first();
+
+                if (!configuracoes?.pontos_ativo) {
+                  const err = new Error('Sistema de pontos inativo para esta unidade');
+                  err.code = 'PONTOS_INATIVO';
+                  throw err;
+                }
+
+                const reaisPorPontos = parseFloat(configuracoes.reais_por_pontos) || 10.00;
+                const valorDescontoPontos = Number((pontosUsadosInt / reaisPorPontos).toFixed(2));
+                descontoPontosCents = this.toCents(valorDescontoPontos);
+
+                const PontosService = require('./PontosService');
+                const pontosService = new PontosService();
+
+                await pontosService.resgatarPontos({
+                  cliente_id: agendamento.cliente_id,
+                  unidade_id: agendamento.unidade_id,
+                  usuario_id: triggeredByUserId,
+                  pontos_a_resgatar: pontosUsadosInt,
+                  agendamento_id: agendamentoIdNum,
+                  valor_desconto_real: valorDescontoPontos,
+                  taxa_conversao_snapshot: reaisPorPontos,
+                  descricao: `Desconto de pontos no fechamento do agendamento #${agendamentoIdNum}`
+                }, trx);
+
+                logger.info('✅ [AgendamentoConclusaoService] Resgate de pontos concluído', {
+                  agendamento_id: agendamentoIdNum,
+                  pontos_debitados: pontosUsadosInt,
+                  valor_desconto: valorDescontoPontos
+                });
+              } catch (pontosError) {
+                logger.error('❌ [AgendamentoConclusaoService] ERRO CRÍTICO no resgate de pontos', {
+                  error: pontosError.message,
+                  code: pontosError.code,
+                  stack: pontosError.stack,
+                  agendamento_id: agendamentoIdNum,
+                  cliente_id: agendamento.cliente_id,
+                  pontos_usados: pontosUsadosInt
+                });
+                throw pontosError;
+              }
+            }
+
+            const totalCents = Math.max(0, subtotalCents - (Number.isFinite(sinalCents) ? sinalCents : 0) - (Number.isFinite(descontoPontosCents) ? descontoPontosCents : 0));
 
             const subtotal = this.centsToDecimal(subtotalCents);
+            const descontoPontos = this.centsToDecimal(descontoPontosCents);
             const total = this.centsToDecimal(totalCents);
 
-            const [vendaRow] = await trx('vendas')
-              .insert({
-                usuario_id: unidade.usuario_id,
-                unidade_id: agendamento.unidade_id,
-                cliente_id: agendamento.cliente_id || null,
+            logger.info('🧨 [AgendamentoConclusaoService][AUDIT] Totais calculados:', {
+              subtotalCents,
+              sinalCents,
+              descontoPontosCents,
+              totalCents,
+              subtotal,
+              descontoPontos,
+              total
+            });
+
+            // ✅ IDEMPOTÊNCIA: Verificar se venda já existe antes de INSERT
+            const vendaExistenteParaUpdate = await trx('vendas')
+              .where('agendamento_id', agendamentoIdNum)
+              .select('id')
+              .first();
+
+            if (vendaExistenteParaUpdate?.id) {
+              // Venda já existe, fazer UPDATE
+              vendaId = Number(vendaExistenteParaUpdate.id);
+              
+              logger.info('🔄 [AgendamentoConclusaoService] Venda já existe, executando UPDATE', {
+                venda_id: vendaId,
                 agendamento_id: agendamentoIdNum,
-                status: 'PAID',
                 subtotal,
-                desconto_total: 0,
-                total,
-                created_by: triggeredByUserId || null,
-                paid_at: trx.fn.now(),
-                created_at: trx.fn.now(),
-                updated_at: trx.fn.now()
-              })
-              .returning('*');
+                desconto_total: descontoPontos,
+                total
+              });
 
-            vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+              await trx('vendas')
+                .where('id', vendaId)
+                .update({
+                  subtotal,
+                  desconto_total: descontoPontos,
+                  total,
+                  updated_at: trx.fn.now()
+                });
+            } else {
+              // Venda não existe, fazer INSERT
+              logger.info('➕ [AgendamentoConclusaoService] Criando nova venda', {
+                agendamento_id: agendamentoIdNum,
+                subtotal,
+                desconto_total: descontoPontos,
+                total
+              });
 
-            if (!vendaId) {
-              const err = new Error('Falha ao criar venda');
-              err.code = 'VENDA_CREATE_FAILED';
-              throw err;
+              const [vendaRow] = await trx('vendas')
+                .insert({
+                  usuario_id: unidade.usuario_id,
+                  unidade_id: agendamento.unidade_id,
+                  cliente_id: agendamento.cliente_id || null,
+                  agendamento_id: agendamentoIdNum,
+                  status: 'PAID',
+                  subtotal,
+                  desconto_total: descontoPontos,
+                  total,
+                  created_by: triggeredByUserId || null,
+                  paid_at: trx.fn.now(),
+                  created_at: trx.fn.now(),
+                  updated_at: trx.fn.now()
+                })
+                .returning('*');
+
+              logger.info('🧨 [AgendamentoConclusaoService][AUDIT] vendaRow retornada do INSERT:', vendaRow);
+
+              vendaId = vendaRow?.id ? Number(vendaRow.id) : null;
+
+              if (!vendaId) {
+                const err = new Error('Falha ao criar venda');
+                err.code = 'VENDA_CREATE_FAILED';
+                throw err;
+              }
             }
 
             if (itens.length > 0) {
@@ -277,25 +443,184 @@ class AgendamentoConclusaoService {
                 status_pagamento: 'Pago',
                 updated_at: trx.fn.now()
               });
+
+            // ✅ FASE 17: GERAÇÃO DE PONTOS (CASHBACK) NO FECHAMENTO DE COMANDA
+            // 🔒 BLINDAGEM: Geração idempotente - verifica se pontos já foram gerados para este agendamento
+            // 🎯 MOMENTO CORRETO: Pontos são gerados apenas após conclusão financeira (venda PAID)
+            try {
+              logger.info('🎁 [AgendamentoConclusaoService] Verificando geração de pontos', {
+                agendamento_id: agendamentoIdNum,
+                venda_id: vendaId,
+                cliente_id: agendamento.cliente_id
+              });
+
+              // IDEMPOTÊNCIA: Verificar se já existe crédito de pontos para este agendamento
+              const pontoJaGerado = await trx('pontos_historico')
+                .where('agendamento_id', agendamentoIdNum)
+                .where('tipo', 'CREDITO')
+                .select('id')
+                .first();
+
+              if (pontoJaGerado?.id) {
+                logger.info('ℹ️ [AgendamentoConclusaoService] Pontos já gerados anteriormente - operação ignorada (idempotência)', {
+                  agendamento_id: agendamentoIdNum,
+                  ponto_historico_id: pontoJaGerado.id
+                });
+              } else {
+                // Buscar configurações de pontos
+                const configuracoes = await trx('configuracoes_sistema')
+                  .where('unidade_id', agendamento.unidade_id)
+                  .select('pontos_ativo', 'pontos_por_real', 'reais_por_pontos', 'pontos_validade_meses')
+                  .first();
+
+                // ✅ CORREÇÃO FASE 22: total precisa vir da venda (não existe variável solta neste escopo)
+                const vendaSnapshot = await trx('vendas')
+                  .where('id', vendaId)
+                  .select('total')
+                  .first();
+
+                const vendaTotal = parseFloat(vendaSnapshot?.total) || 0;
+
+                if (configuracoes?.pontos_ativo && vendaTotal > 0) {
+                  const pontosPorReal = parseFloat(configuracoes.pontos_por_real) || 1.0;
+                  const reaisPorPontos = parseFloat(configuracoes.reais_por_pontos) || 10.00;
+                  const pontosValidade = parseInt(configuracoes.pontos_validade_meses, 10) || 12;
+
+                  // 🔒 REGRA DE NEGÓCIO: Verificar se o agendamento usou assinatura (Clube)
+                  // Cliente NÃO pode ganhar pontos em serviços pagos pelo Clube de Assinatura
+                  let usosAssinatura = null;
+                  try {
+                    // ⚠️ Blindagem forte: no PostgreSQL, um erro de tabela inexistente pode "envenenar" a transação
+                    // mesmo se capturado em try/catch. Portanto, só executamos a query se a tabela existir.
+                    const tabelaExiste = await trx('information_schema.tables')
+                      .where({ table_schema: 'public', table_name: 'plano_assinatura_usos' })
+                      .select('table_name')
+                      .first();
+
+                    if (tabelaExiste?.table_name) {
+                      usosAssinatura = await trx('plano_assinatura_usos')
+                        .where('agendamento_id', agendamentoIdNum)
+                        .select('id')
+                        .first();
+                    } else {
+                      usosAssinatura = null;
+                    }
+                  } catch (err) {
+                    logger.warn('Tabela plano_assinatura_usos não existe ou falhou. Assumindo sem assinatura.', {
+                      agendamento_id: agendamentoIdNum,
+                      error: err?.message,
+                      code: err?.code
+                    });
+                    usosAssinatura = null;
+                  }
+
+                  let valorElegivelParaPontos = vendaTotal;
+
+                  if (usosAssinatura?.id) {
+                    // Cliente usou cota do clube → ZERO pontos
+                    valorElegivelParaPontos = 0;
+                    logger.info('🚫 [AgendamentoConclusaoService] BLOQUEIO CLUBE: Cliente usou assinatura. Pontos NÃO serão gerados.', {
+                      agendamento_id: agendamentoIdNum,
+                      cliente_id: agendamento.cliente_id,
+                      total: vendaTotal,
+                      venda_id: vendaId
+                    });
+                  }
+
+                  const pontosGerados = Number(valorElegivelParaPontos) * Number(pontosPorReal);
+
+                  if (pontosGerados > 0) {
+                    const dataValidade = new Date();
+                    dataValidade.setMonth(dataValidade.getMonth() + pontosValidade);
+
+                    const PontosService = require('./PontosService');
+                    const pontosService = new PontosService();
+
+                    await pontosService.creditarPontos({
+                      cliente_id: agendamento.cliente_id,
+                      unidade_id: agendamento.unidade_id,
+                      usuario_id: triggeredByUserId,
+                      agendamento_id: agendamentoIdNum,
+                      pontos: pontosGerados,
+                      valor_real: valorElegivelParaPontos,
+                      descricao: `Pontos ganhos no agendamento #${agendamentoIdNum}`,
+                      data_validade: dataValidade.toISOString().slice(0, 10),
+                      taxa_conversao_snapshot: reaisPorPontos
+                    }, trx);
+
+                    logger.info('✅ [AgendamentoConclusaoService] Pontos gerados com sucesso', {
+                      agendamento_id: agendamentoIdNum,
+                      pontos_gerados: pontosGerados,
+                      valor_elegivel: valorElegivelParaPontos,
+                      cliente_id: agendamento.cliente_id
+                    });
+                  } else {
+                    logger.info('ℹ️ [AgendamentoConclusaoService] Pontos NÃO gerados (cálculo resultou 0)', {
+                      agendamento_id: agendamentoIdNum,
+                      total: vendaTotal,
+                      valorElegivelParaPontos,
+                      pontosPorReal,
+                      usouAssinatura: Boolean(usosAssinatura?.id)
+                    });
+                  }
+                } else {
+                  logger.info('ℹ️ [AgendamentoConclusaoService] Sistema de pontos inativo ou total inválido', {
+                    pontos_ativo: configuracoes?.pontos_ativo,
+                    total: vendaTotal,
+                    unidade_id: agendamento.unidade_id
+                  });
+                }
+              }
+            } catch (pontosError) {
+              logger.error('❌ [AgendamentoConclusaoService] ERRO CRÍTICO ao gerar pontos', {
+                error: pontosError.message,
+                code: pontosError.code,
+                stack: pontosError.stack,
+                agendamento_id: agendamentoIdNum,
+                venda_id: vendaId
+              });
+              // Fail-fast: propagar erro para causar rollback da transação
+              throw pontosError;
+            }
           }
         } catch (err) {
-          if (!(err && (err.code === '42P01' || String(err.message || '').includes('vendas')))) {
-            throw err;
-          }
+          logger.error('❌ [AgendamentoConclusaoService] Erro ao processar venda', {
+            error: err.message,
+            code: err.code,
+            agendamento_id: agendamentoIdNum,
+            stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+          });
+
+          throw err;
         }
       }
 
       // Desejado: se não estiver concluído => consumo desejado = 0
-      const desiredRows = agendamento.status === 'Concluído'
-        ? await trx('agendamento_servicos as ags')
-          .join('servico_insumos as si', 'ags.servico_id', 'si.servico_id')
-          .join('produtos as p', 'si.produto_id', 'p.id')
-          .where('ags.agendamento_id', agendamentoIdNum)
-          .where('p.usuario_id', unidade.usuario_id)
-          .groupBy('si.produto_id')
-          .select('si.produto_id')
-          .sum({ quantidade_total: 'si.quantidade' })
-        : [];
+      let desiredRows = [];
+      try {
+        desiredRows = agendamento.status === 'Concluído'
+          ? await trx('agendamento_servicos as ags')
+            .join('servico_insumos as si', 'ags.servico_id', 'si.servico_id')
+            .join('produtos as p', 'si.produto_id', 'p.id')
+            .where('ags.agendamento_id', agendamentoIdNum)
+            .where('p.usuario_id', unidade.usuario_id)
+            .groupBy('si.produto_id')
+            .select('si.produto_id')
+            .sum({ quantidade_total: 'si.quantidade' })
+          : [];
+      } catch (err) {
+        if (err && (err.code === '42P01' || String(err.message || '').includes('servico_insumos'))) {
+          logger.info('ℹ️  [AgendamentoConclusaoService] Tabela servico_insumos não existe, pulando reconciliação de insumos');
+          desiredRows = [];
+        } else {
+          logger.error('❌ [AgendamentoConclusaoService] Erro ao buscar insumos desejados', {
+            error: err.message,
+            code: err.code,
+            agendamento_id: agendamentoIdNum
+          });
+          throw err;
+        }
+      }
 
       const desiredByProduto = new Map();
       for (const row of desiredRows) {

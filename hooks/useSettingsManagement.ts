@@ -23,6 +23,7 @@ export interface SystemSettings {
   pontos_por_real?: number;
   reais_por_pontos?: number;
   pontos_validade_meses?: number;
+  limite_desconto_percentual?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -130,6 +131,7 @@ export const useSettingsManagement = () => {
       const response: ApiResponse<SystemSettings> = await authenticatedFetch('/settings');
       
       if (response.success && response.data) {
+        console.log('⚙️ [useSettingsManagement] Settings carregado:', response.data);
         setSettings(response.data);
       } else {
         throw new Error(response.message || 'Erro ao carregar configurações');

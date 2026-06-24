@@ -23,16 +23,18 @@ const Input: React.FC<{
   type?: string; 
   value?: string; 
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+  onWheel?: (e: React.WheelEvent<HTMLInputElement>) => void;
   placeholder?: string; 
   step?: string;
   min?: string;
   max?: string;
-}> = ({ defaultValue, type = "text", value, onChange, placeholder, step, min, max }) => (
+}> = ({ defaultValue, type = "text", value, onChange, onWheel, placeholder, step, min, max }) => (
     <input 
       type={type} 
       defaultValue={defaultValue} 
       value={value} 
       onChange={onChange} 
+      onWheel={onWheel}
       placeholder={placeholder}
       step={step}
       min={min}
@@ -57,6 +59,7 @@ const PontosPage: React.FC = () => {
     const [pontosPorReal, setPontosPorReal] = useState(1.0);
     const [reaisPorPontos, setReaisPorPontos] = useState(10.0);
     const [pontosValidadeMeses, setPontosValidadeMeses] = useState(12);
+    const [limiteDescontoPercentual, setLimiteDescontoPercentual] = useState(0);
 
     // Estado de loading específico
     const [savingSettings, setSavingSettings] = useState(false);
@@ -73,6 +76,8 @@ const PontosPage: React.FC = () => {
             setPontosPorReal(config.pontos_por_real || 1.0);
             setReaisPorPontos(config.reais_por_pontos || 10.0);
             setPontosValidadeMeses(config.pontos_validade_meses || 12);
+            const parsedLimite = Number((config as any).limite_desconto_percentual);
+            setLimiteDescontoPercentual(Number.isFinite(parsedLimite) ? Math.floor(parsedLimite) : 0);
         }
     }, [config]);
 
@@ -113,6 +118,18 @@ const PontosPage: React.FC = () => {
         }
     };
 
+    const handleLimiteDescontoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        if (value === '') {
+            setLimiteDescontoPercentual(0);
+            return;
+        }
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+            setLimiteDescontoPercentual(Math.floor(numValue));
+        }
+    };
+
     // ✅ AÇÃO 2.3: Função de formatação de pontos (SEMPRE inteiro)
     const formatarPontos = (valor: number): string => {
         return Math.floor(valor).toString();
@@ -124,11 +141,16 @@ const PontosPage: React.FC = () => {
         clearError();
 
         try {
+            console.log('💾 [DEBUG] Salvando limite:', {
+                limite_desconto_percentual: limiteDescontoPercentual,
+                tipo: typeof limiteDescontoPercentual
+            });
             await updateConfig({
                 pontos_ativo: pontosAtivo,
                 pontos_por_real: pontosPorReal,
                 reais_por_pontos: reaisPorPontos,
-                pontos_validade_meses: pontosValidadeMeses
+                pontos_validade_meses: pontosValidadeMeses,
+                limite_desconto_percentual: Number(limiteDescontoPercentual)
             });
 
             toast.success('Pontos Salvos!', 'Configurações do Sistema de Pontos foram atualizadas com sucesso.');
@@ -205,10 +227,11 @@ const PontosPage: React.FC = () => {
                                             value={pontosPorReal.toString()}
                                             onChange={handlePontosPorRealChange}
                                             type="number"
+                                            onWheel={(e) => e.currentTarget.blur()}
                                             step="0.01"
                                             min="0.01"
                                             max="100"
-                                            placeholder="1.00"
+                                            placeholder="1"
                                         />
                                         <span className="text-sm text-gray-600 whitespace-nowrap">ponto(s)</span>
                                     </div>
@@ -230,6 +253,7 @@ const PontosPage: React.FC = () => {
                                             value={reaisPorPontos.toString()}
                                             onChange={handleReaisPorPontosChange}
                                             type="number"
+                                            onWheel={(e) => e.currentTarget.blur()}
                                             step="1"
                                             min="1"
                                             max="1000"
@@ -250,12 +274,34 @@ const PontosPage: React.FC = () => {
                                     value={pontosValidadeMeses.toString()}
                                     onChange={handleValidadeMesesChange}
                                     type="number"
+                                    onWheel={(e) => e.currentTarget.blur()}
                                     min="1"
                                     max="60"
                                     placeholder="12"
                                 />
                                 <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
                                     Pontos expiram após {pontosValidadeMeses} {pontosValidadeMeses === 1 ? 'mês' : 'meses'} da data de ganho
+                                </p>
+                            </div>
+                        </FormRow>
+
+                        <FormRow label="Limite Máximo de Desconto (%)">
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        value={String(Math.floor(Number(limiteDescontoPercentual) || 0))}
+                                        onChange={handleLimiteDescontoChange}
+                                        type="number"
+                                        onWheel={(e) => e.currentTarget.blur()}
+                                        step="1"
+                                        min="0"
+                                        max="100"
+                                        placeholder="0"
+                                    />
+                                    <span className="text-sm text-gray-600 whitespace-nowrap">% do valor pode ser pago com pontos</span>
+                                </div>
+                                <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                                    Cliente pode usar pontos para pagar no máximo {limiteDescontoPercentual}% do valor do serviço
                                 </p>
                             </div>
                         </FormRow>
@@ -277,6 +323,10 @@ const PontosPage: React.FC = () => {
                                     <li className="flex items-start">
                                         <span className="mr-2">•</span>
                                         <span>{formatarPontos(100 * pontosPorReal)} pontos = <strong>R$ {((100 * pontosPorReal) / reaisPorPontos).toFixed(2)} de desconto</strong></span>
+                                    </li>
+                                    <li className="flex items-start">
+                                        <span className="mr-2">•</span>
+                                        <span>Com teto de {limiteDescontoPercentual}%, desconto máximo de <strong>R$ {Number.isInteger(limiteDescontoPercentual) ? String((100 * limiteDescontoPercentual) / 100) : ((100 * limiteDescontoPercentual) / 100).toFixed(2)} por serviço de R$ 100,00</strong></span>
                                     </li>
                                 </ul>
                             </div>

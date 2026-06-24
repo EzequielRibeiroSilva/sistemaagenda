@@ -53,7 +53,8 @@ class PontosController {
           'pontos_ativo',
           'pontos_por_real',
           'reais_por_pontos',
-          'pontos_validade_meses'
+          'pontos_validade_meses',
+          'limite_desconto_percentual'
         )
         .first();
 
@@ -65,7 +66,8 @@ class PontosController {
             pontos_ativo: false,
             pontos_por_real: 1.0,
             reais_por_pontos: 10.0,
-            pontos_validade_meses: 12
+            pontos_validade_meses: 12,
+            limite_desconto_percentual: 100.0
           },
           message: 'Configurações padrão retornadas'
         });
@@ -92,7 +94,6 @@ class PontosController {
    */
   async updateConfiguracoes(req, res) {
     try {
-      const { id: userId } = req.user;
       const unidade_id = await this.resolveUnidadeId(req);
 
       if (!unidade_id) {
@@ -108,7 +109,8 @@ class PontosController {
         pontos_ativo,
         pontos_por_real,
         reais_por_pontos,
-        pontos_validade_meses
+        pontos_validade_meses,
+        limite_desconto_percentual
       } = req.body;
 
       // Validações
@@ -122,22 +124,24 @@ class PontosController {
 
       if (pontos_por_real !== undefined) {
         const valor = parseFloat(pontos_por_real);
-        if (isNaN(valor) || valor <= 0 || valor > 100) {
+        // Guardrail: regra_ganho (pontos_por_real) entre 0.01 e 10.00
+        if (isNaN(valor) || valor < 0.01 || valor > 10.0) {
           return res.status(400).json({
             success: false,
             error: 'Validação falhou',
-            message: 'pontos_por_real deve estar entre 0.01 e 100'
+            message: 'Configuração inválida: valor fora dos limites de segurança do Tally'
           });
         }
       }
 
       if (reais_por_pontos !== undefined) {
         const valor = parseFloat(reais_por_pontos);
-        if (isNaN(valor) || valor < 1 || valor > 1000) {
+        // Guardrail: regra_conversao (reais_por_pontos) entre 5.00 e 500.00
+        if (isNaN(valor) || valor < 5.0 || valor > 500.0) {
           return res.status(400).json({
             success: false,
             error: 'Validação falhou',
-            message: 'reais_por_pontos deve estar entre 1 e 1000'
+            message: 'Configuração inválida: valor fora dos limites de segurança do Tally'
           });
         }
       }
@@ -149,6 +153,17 @@ class PontosController {
             success: false,
             error: 'Validação falhou',
             message: 'pontos_validade_meses deve estar entre 1 e 60'
+          });
+        }
+      }
+
+      if (limite_desconto_percentual !== undefined) {
+        const valor = parseFloat(limite_desconto_percentual);
+        if (isNaN(valor) || valor < 0 || valor > 100) {
+          return res.status(400).json({
+            success: false,
+            error: 'Validação falhou',
+            message: 'Configuração inválida: valor fora dos limites de segurança do Tally'
           });
         }
       }
@@ -170,6 +185,10 @@ class PontosController {
       
       if (pontos_validade_meses !== undefined) {
         dadosAtualizacao.pontos_validade_meses = parseInt(pontos_validade_meses, 10);
+      }
+
+      if (limite_desconto_percentual !== undefined) {
+        dadosAtualizacao.limite_desconto_percentual = parseFloat(limite_desconto_percentual);
       }
 
       // Verificar se há pelo menos um campo para atualizar
@@ -203,7 +222,8 @@ class PontosController {
             'pontos_ativo',
             'pontos_por_real',
             'reais_por_pontos',
-            'pontos_validade_meses'
+            'pontos_validade_meses',
+            'limite_desconto_percentual'
           )
           .first();
       } else {
@@ -214,6 +234,7 @@ class PontosController {
           pontos_por_real: dadosAtualizacao.pontos_por_real ?? 1.0,
           reais_por_pontos: dadosAtualizacao.reais_por_pontos ?? 10.0,
           pontos_validade_meses: dadosAtualizacao.pontos_validade_meses ?? 12,
+          limite_desconto_percentual: dadosAtualizacao.limite_desconto_percentual ?? 100.0,
           // Valores padrão para outros campos obrigatórios
           nome_negocio: 'Meu Negócio',
           duracao_servico_horas: 1.0,
@@ -231,7 +252,8 @@ class PontosController {
           pontos_ativo: novaConfig.pontos_ativo,
           pontos_por_real: novaConfig.pontos_por_real,
           reais_por_pontos: novaConfig.reais_por_pontos,
-          pontos_validade_meses: novaConfig.pontos_validade_meses
+          pontos_validade_meses: novaConfig.pontos_validade_meses,
+          limite_desconto_percentual: novaConfig.limite_desconto_percentual
         };
       }
 

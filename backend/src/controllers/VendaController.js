@@ -410,6 +410,50 @@ class VendaController {
           throw err;
         }
 
+        // Estorno automático de pontos: se a venda gerou pontos via agendamento, reverter no ledger
+        if (venda?.agendamento_id && venda?.cliente_id) {
+          const agendamentoId = Number(venda.agendamento_id);
+          const clienteId = Number(venda.cliente_id);
+
+          if (Number.isFinite(agendamentoId) && Number.isFinite(clienteId)) {
+            const pontosCreditoAgg = await trx('pontos_historico')
+              .where('agendamento_id', agendamentoId)
+              .where('tipo', 'CREDITO')
+              .sum({ total: 'pontos' })
+              .first();
+
+            const pontosCreditos = Number(pontosCreditoAgg?.total || 0) || 0;
+
+            if (pontosCreditos > 0) {
+              const creditoSnapshot = await trx('pontos_historico')
+                .where('agendamento_id', agendamentoId)
+                .where('tipo', 'CREDITO')
+                .select('valor_real', 'taxa_conversao_snapshot')
+                .orderBy('id', 'asc')
+                .first();
+
+              await trx('pontos_historico').insert({
+                cliente_id: clienteId,
+                unidade_id: Number(venda.unidade_id) || null,
+                usuario_id: usuarioId,
+                agendamento_id: agendamentoId,
+                tipo: 'ESTORNO_VENDAS',
+                pontos: pontosCreditos,
+                valor_real: creditoSnapshot?.valor_real ?? null,
+                descricao: `Estorno automático referente ao cancelamento da venda/agendamento #${agendamentoId}`,
+                data_validade: null,
+                expirado: false,
+                taxa_conversao_snapshot: creditoSnapshot?.taxa_conversao_snapshot ?? null,
+                created_at: trx.fn.now()
+              });
+
+              await trx('clientes')
+                .where('id', clienteId)
+                .decrement('saldo_pontos', pontosCreditos);
+            }
+          }
+        }
+
         const itens = await trx('venda_itens')
           .where('venda_id', vendaId)
           .select('item_type', 'reference_id', 'quantidade');

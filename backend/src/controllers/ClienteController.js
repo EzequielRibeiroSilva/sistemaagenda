@@ -170,15 +170,7 @@ class ClienteController {
         this.clienteModel.countByUnidade(unidadeId, filtros)
       ]);
 
-      // Calcular pontos disponíveis para cada cliente (em paralelo)
-      const clientesComPontos = await Promise.all(
-        clientes.map(async (cliente) => {
-          const pontosDisponiveis = await this.clienteModel.calcularPontosDisponiveis(cliente.id, unidadeId);
-          return { ...cliente, pontos_disponiveis: pontosDisponiveis };
-        })
-      );
-
-      const clienteIds = clientesComPontos.map(c => c.id).filter(Boolean);
+      const clienteIds = clientes.map(c => c.id).filter(Boolean);
       const renovacoesRows = clienteIds.length > 0
         ? await db('assinatura_renovacoes')
           .whereIn('cliente_id', clienteIds)
@@ -187,7 +179,8 @@ class ClienteController {
       const clientesComRenovacao = new Set((renovacoesRows || []).map(r => r.cliente_id));
 
       // Formatar dados para o frontend
-      const clientesFormatados = clientesComPontos.map(cliente => ({
+
+      const clientesFormatados = clientes.map(cliente => ({
         id: cliente.id,
         name: `${cliente.primeiro_nome} ${cliente.ultimo_nome}`.trim(),
         firstName: cliente.primeiro_nome,
@@ -205,7 +198,8 @@ class ClienteController {
         whatsappId: cliente.whatsapp_id,
         createdAt: cliente.created_at,
         updatedAt: cliente.updated_at,
-        pontosDisponiveis: cliente.pontos_disponiveis || 0, // Pontos disponíveis do cliente
+        saldoPontos: Number(cliente.saldo_pontos || 0),
+        pontosDisponiveis: Number(cliente.saldo_pontos || 0),
         // Campos calculados para compatibilidade com frontend existente
         totalApps: 0, // TODO: Implementar contagem de agendamentos
         nextAppStatus: 'n/a',

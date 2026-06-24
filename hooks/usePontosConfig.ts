@@ -13,6 +13,7 @@ interface PontosConfig {
   pontos_por_real: number;
   reais_por_pontos: number;
   pontos_validade_meses: number;
+  limite_desconto_percentual: number;
 }
 
 interface UsePontosConfigReturn {

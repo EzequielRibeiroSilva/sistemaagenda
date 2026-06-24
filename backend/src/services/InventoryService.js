@@ -446,24 +446,84 @@ class InventoryService {
       }
 
       // 5) Registrar no ledger (imutável)
-      const [movRow] = await trx('estoque_movimentacoes')
-        .insert({
+      // ✅ IDEMPOTÊNCIA: Verificar se movimentação já existe
+      const movExistente = await trx('estoque_movimentacoes')
+        .where({
           usuario_id,
           unidade_id,
           produto_id,
           tipo,
-          quantidade: qty,
-          motivo: motivo || null,
-          origem_id: origem_id || null,
-          preco_unitario_entrada: tipo === 'ENTRADA' && Number.isFinite(Number(preco_custo_entrada)) ? Number(preco_custo_entrada) : null,
-          created_by: created_by || null,
-          created_at: new Date()
+          origem_id: origem_id || null
         })
-        .returning('*');
+        .select('id', 'quantidade')
+        .first();
 
-      const movimentacao = movRow || null;
+      let movimentacao = null;
 
-      logger.log(`📦 [InventoryService] Movimentação registrada: produto_id=${produto_id}, unidade_id=${unidade_id}, tipo=${tipo}, qty=${qty}`);
+      if (movExistente?.id) {
+        // Movimentação já existe, verificar se quantidade mudou
+        const qtyExistente = Number(movExistente.quantidade);
+        
+        if (Math.abs(qtyExistente - qty) > 0.001) {
+          // Quantidade mudou, fazer UPDATE
+          logger.info('🔄 [InventoryService] Movimentação já existe, atualizando quantidade', {
+            movimentacao_id: movExistente.id,
+            produto_id,
+            tipo,
+            origem_id,
+            quantidade_anterior: qtyExistente,
+            quantidade_nova: qty
+          });
+
+          await trx('estoque_movimentacoes')
+            .where('id', movExistente.id)
+            .update({
+              quantidade: qty,
+              motivo: motivo || null,
+              created_by: created_by || null
+            });
+
+          movimentacao = { id: movExistente.id, quantidade: qty };
+        } else {
+          // Quantidade idêntica, apenas retornar registro existente
+          logger.info('ℹ️  [InventoryService] Movimentação já existe com mesma quantidade, ignorando', {
+            movimentacao_id: movExistente.id,
+            produto_id,
+            tipo,
+            origem_id,
+            quantidade: qty
+          });
+
+          movimentacao = { id: movExistente.id, quantidade: qtyExistente };
+        }
+      } else {
+        // Movimentação não existe, fazer INSERT
+        logger.info('➕ [InventoryService] Criando nova movimentação', {
+          produto_id,
+          tipo,
+          origem_id,
+          quantidade: qty
+        });
+
+        const [movRow] = await trx('estoque_movimentacoes')
+          .insert({
+            usuario_id,
+            unidade_id,
+            produto_id,
+            tipo,
+            quantidade: qty,
+            motivo: motivo || null,
+            origem_id: origem_id || null,
+            preco_unitario_entrada: tipo === 'ENTRADA' && Number.isFinite(Number(preco_custo_entrada)) ? Number(preco_custo_entrada) : null,
+            created_by: created_by || null,
+            created_at: new Date()
+          })
+          .returning('*');
+
+        movimentacao = movRow || null;
+      }
+
+      logger.log(`📦 [InventoryService] Movimentação processada: produto_id=${produto_id}, unidade_id=${unidade_id}, tipo=${tipo}, qty=${qty}`);
 
       return {
         movimentacao,

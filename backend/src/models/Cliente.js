@@ -90,6 +90,7 @@ class Cliente extends BaseModel {
       `${this.tableName}.telefone_limpo`,
       `${this.tableName}.data_nascimento`,
       `${this.tableName}.is_assinante`,
+      `${this.tableName}.saldo_pontos`,
       `${this.tableName}.exige_sinal_excecao`,
       ...(hasAssinaturaStatus
         ? [`${this.tableName}.assinatura_status`]
@@ -661,43 +662,27 @@ class Cliente extends BaseModel {
   }
 
   /**
-   * Calcular pontos disponíveis de um cliente
-   * Soma todos os créditos não expirados e subtrai os débitos
+   * ✅ AÇÃO 3.1: MATERIALIZAÇÃO DE SALDO
+   * Calcular pontos disponíveis de um cliente (REFATORADO)
+   * 
+   * ANTES: Executava SUM() em pontos_historico (gargalo de performance)
+   * DEPOIS: Lê diretamente da coluna saldo_pontos materializada
+   * 
    * @param {number} clienteId - ID do cliente
    * @param {number} unidadeId - ID da unidade
    * @returns {Promise<number>} Total de pontos disponíveis
    */
   async calcularPontosDisponiveis(clienteId, unidadeId) {
     try {
-      const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-
-      // Buscar todos os créditos não expirados
-      const creditos = await this.db('pontos_historico')
-        .where('cliente_id', clienteId)
+      const cliente = await this.db('clientes')
+        .where('id', clienteId)
         .where('unidade_id', unidadeId)
-        .where('tipo', 'CREDITO')
-        .where('expirado', false)
-        .where(function() {
-          this.whereNull('data_validade')
-              .orWhere('data_validade', '>=', hoje);
-        })
-        .sum('pontos as total')
+        .select('saldo_pontos')
         .first();
 
-      // Buscar todos os débitos
-      const debitos = await this.db('pontos_historico')
-        .where('cliente_id', clienteId)
-        .where('unidade_id', unidadeId)
-        .where('tipo', 'DEBITO')
-        .sum('pontos as total')
-        .first();
-
-      const totalCreditos = parseFloat(creditos?.total || 0);
-      const totalDebitos = parseFloat(debitos?.total || 0);
-
-      return totalCreditos - totalDebitos;
+      return Number(cliente?.saldo_pontos || 0) || 0;
     } catch (error) {
-      logger.error('[Cliente] Erro ao calcular pontos disponíveis:', error);
+      logger.error('[Cliente] Erro ao buscar saldo de pontos:', error);
       return 0;
     }
   }

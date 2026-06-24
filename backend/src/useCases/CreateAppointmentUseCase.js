@@ -175,6 +175,32 @@ async function runSideEffects({ agendamentoId, sendConfirmation = true }) {
     const nomeCliente = `${cliente.primeiro_nome || ''} ${cliente.ultimo_nome || ''}`.trim() || 'Cliente';
     const nomeAgente = `${agente.nome || ''} ${agente.sobrenome || ''}`.trim() || 'Agente';
 
+    let pontosGanhos = 0;
+    let saldoAtualizado = 0;
+    try {
+      const pontosRow = await db('pontos_historico')
+        .where('agendamento_id', agendamentoId)
+        .where('tipo', 'CREDITO')
+        .sum('pontos as total')
+        .first();
+
+      pontosGanhos = Number(pontosRow?.total || 0) || 0;
+
+      const saldoRow = await db('clientes')
+        .where('id', cliente.id)
+        .select('saldo_pontos')
+        .first();
+
+      saldoAtualizado = Number(saldoRow?.saldo_pontos || 0) || 0;
+    } catch (err) {
+      logger.error('❌ [CreateAppointmentUseCase.runSideEffects] Erro ao calcular pontosGanhos/saldoAtualizado:', {
+        message: err?.message,
+        code: err?.code,
+        stack: process.env.NODE_ENV !== 'production' ? err?.stack : undefined,
+        agendamentoId
+      });
+    }
+
     const payload = {
       cliente: { nome: nomeCliente },
       cliente_telefone: cliente.telefone,
@@ -194,7 +220,9 @@ async function runSideEffects({ agendamentoId, sendConfirmation = true }) {
       hora_inicio: agendamento.hora_inicio,
       hora_fim: agendamento.hora_fim,
       valor_total: agendamento.valor_total,
-      servicos: (servicos || []).map(s => ({ nome: s.nome, preco: s.preco }))
+      servicos: (servicos || []).map(s => ({ nome: s.nome, preco: s.preco })),
+      pontosGanhos,
+      saldoAtualizado
     };
 
     if (sendConfirmation) {
@@ -786,35 +814,9 @@ async function execute(data, context) {
       .select('pontos_ativo', 'pontos_por_real', 'reais_por_pontos', 'pontos_validade_meses')
       .first();
 
-    if (configuracoes?.pontos_ativo && valorTotal > 0) {
-      const pontosPorReal = parseFloat(configuracoes.pontos_por_real) || 1.00;
-      const reaisPorPontos = parseFloat(configuracoes.reais_por_pontos) || 10.00;
-      const pontosValidade = configuracoes.pontos_validade_meses || 12;
-      const pontosGerados = Math.floor(valorTotal * pontosPorReal);
-
-      if (pontosGerados > 0) {
-        // ✅ CORREÇÃO BUG AÇÃO 1.3: Uso de date-fns para manipulação segura de datas
-        // setMonth() nativo do JS é frágil e falha com edge cases (ex: 31 de janeiro + 1 mês = 3 de março)
-        const { addMonths, format } = require('date-fns');
-        const hoje = new Date();
-        const dataValidade = addMonths(hoje, pontosValidade);
-        const dataValidadeFormatada = format(dataValidade, 'yyyy-MM-dd');
-
-        await trx('pontos_historico').insert({
-          cliente_id: clienteRecord.id,
-          unidade_id: unidadeIdInt,
-          agendamento_id: agendamento.id,
-          tipo: 'CREDITO',
-          pontos: pontosGerados,
-          valor_real: valorTotal,
-          descricao: `Pontos ganhos no agendamento #${agendamento.id}`,
-          data_validade: dataValidadeFormatada,
-          expirado: false,
-          taxa_conversao_snapshot: reaisPorPontos,
-          created_at: new Date()
-        });
-      }
-    }
+    // ✅ FASE 16: CASHBACK REMOVIDO
+    // Pontos serão creditados APENAS quando agendamento for concluído (status "Concluído")
+    // Isso previne a vulnerabilidade de "pontos infinitos por cancelamento"
 
     const clienteExigeSinalExcecao = normalizeBoolean(clienteRecord?.exige_sinal_excecao);
     const algumServicoExigeSinal = (servicosRows || []).some(s => normalizeBoolean(s?.exige_sinal));

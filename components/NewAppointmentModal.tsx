@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Search, Plus, RotateCw, ChevronDown, Check, Tag } from './Icons';
 import type { ScheduleSlot, Agent, AppointmentStatus } from '../types';
@@ -289,6 +289,11 @@ interface NewAppointmentModalProps {
 // Dados mock removidos - agora usando dados reais do useInternalBooking
 
 const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, appointmentData: externalAppointmentData, newSlotData, selectedLocationId, onSuccess, appointmentId: propAppointmentId }) => {
+    
+    useEffect(() => {
+        // Modal opened - initialization complete
+    }, [isOpen]);
+    
     const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
 
     // Hook para dados reais
@@ -411,9 +416,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [clienteId, setClienteId] = useState<number | null>(null);
     const [pontosDisponiveis, setPontosDisponiveis] = useState<number>(0);
     const [pontosUsados, setPontosUsados] = useState<number>(0);
+    const [pontosUsadosDraft, setPontosUsadosDraft] = useState<string>('0');
     const [descontoCalculado, setDescontoCalculado] = useState<number>(0);
     const [valorFinal, setValorFinal] = useState<number>(0);
     const [podeUsarPontos, setPodeUsarPontos] = useState<boolean>(false);
+    const [isLoadingPontos, setIsLoadingPontos] = useState<boolean>(false);
 
     // ✅ NOVO: Estados para cupom de desconto
     const [cupomCodigo, setCupomCodigo] = useState('');
@@ -428,8 +435,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     const [isValidatingCupom, setIsValidatingCupom] = useState(false);
 
     // ✅ NOVO: Configurações de pontos
-    const pontosAtivo = settings?.pontos_ativo || false;
-    const reaisPorPontos = settings?.reais_por_pontos || 10;
+    const pontosAtivo = Boolean(settings?.pontos_ativo && String(settings.pontos_ativo) !== 'false' && String(settings.pontos_ativo) !== '0');
+    const taxaConversao = Number(settings?.reais_por_pontos) || 15;
+    const reaisPorPontos = taxaConversao;
 
     const isConcluido = status === 'Concluído';
 
@@ -563,7 +571,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     fetchAgentes()
                 ]);
 
-
                 setAllServices(servicos);
                 setAllExtras(extras);
                 setAllAgents(agentes);
@@ -578,6 +585,12 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             loadInitialData();
         }
     }, [isOpen, fetchServicos, fetchServicosExtras, fetchAgentes, loadSettings]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (settings) return;
+        loadSettings();
+    }, [isOpen, settings, loadSettings]);
 
     // ✅ FILTRAR AGENTES POR UNIDADE SELECIONADA
     useEffect(() => {
@@ -896,46 +909,93 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         return timeSlots.sort();
     };
 
-    const handleRecalculate = () => {
-        // USAR ESTADOS DIRETAMENTE - sem parâmetros
-
+    const handleRecalculate = useCallback(() => {
         let currentTotal = 0;
 
         selectedServices.forEach(serviceId => {
             const service = allServices.find(s => s.id === serviceId);
             if (service) {
-                currentTotal += parseFloat(service.preco.toString());
-            } else {
+                const preco = parseFloat(service.preco.toString());
+                currentTotal += preco;
             }
         });
 
         selectedExtras.forEach(extraId => {
             const extra = allExtras.find(e => e.id === extraId);
             if (extra) {
-                currentTotal += parseFloat(extra.preco.toString());
-            } else {
+                const preco = parseFloat(extra.preco.toString());
+                currentTotal += preco;
             }
         });
 
         setTotalPrice(currentTotal);
-    };
+    }, [selectedServices, selectedExtras, allServices, allExtras]);
 
     // ✅ CORREÇÃO CRÍTICA: Resetar formulário ANTES de carregar dados (APENAS para novos agendamentos)
     useEffect(() => {
-        // ✅ NOVO: Limpar dados carregados quando modal fecha
+        // ✅ FASE 2 + FASE 14: Limpeza COMPLETA de estados ao fechar modal
         if (!isOpen) {
             setLoadedAppointmentData(null);
-            // ✅ CORREÇÃO: Limpar estados de pontos ao fechar modal
+            
+            // ✅ RESET FINANCEIRO: Limpar estados de pontos
             setClienteId(null);
             setPontosDisponiveis(0);
             setPontosUsados(0);
+            setPontosUsadosDraft('0');
             setPodeUsarPontos(false);
             setDescontoCalculado(0);
             setValorFinal(0);
-            // ✅ NOVO: Limpar estados de cupom ao fechar modal
+            
+            // ✅ RESET FINANCEIRO: Limpar estados de cupom
             setCupomCodigo('');
             setCupomAplicado(null);
             setCupomErro(null);
+            
+            // ✅ RESET FINANCEIRO: Limpar método de pagamento
+            setPaymentMethod('');
+            
+            // ✅ RESET FINANCEIRO: Resetar pagamentos para estado inicial
+            setPagamentos([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
+            
+            // ✅ FASE 14: Limpar campos de texto/metadados para prevenir vazamento de estado
+            setObservacoes('');
+            setClientFirstName('');
+            setClientLastName('');
+            setClientPhone('');
+            setClientSearchQuery('');
+            
+            // ✅ FASE 14: Limpar carrinho de produtos e seleções
+            setProdutosCarrinho([]);
+            setProdutoSelecionadoId('');
+            
+            // ✅ FASE 14: Limpar estados de agendamento (data, hora, agente, status)
+            setDate('');
+            setStartTime('');
+            setEndTime('');
+            setSelectedAgentId(null);
+            setStatus('Aprovado');
+            setAppointmentId(null);
+            
+            // ✅ FASE 14: Limpar seleções de serviços e cliente
+            setSelectedServices([]);
+            setSelectedExtras([]);
+            setSelectedClient(null);
+            setFilteredClients([]);
+            setIsSearchingClient(false);
+            
+            // ✅ FASE 14: Limpar estados de assinatura/clube
+            setAssinaturaInfo(null);
+            setUsarCotaAssinatura(false);
+            
+            // ✅ FASE 14: Limpar preço
+            setTotalPrice(0);
+            
+            // ✅ FASE 14: Limpar estados de UI/modais
+            setAvailabilityModalOpen(false);
+            setIsSubmitting(false);
+            setAvailableTimeSlots([]);
+            setManualSelectedLocationId(null);
+            
             return;
         }
 
@@ -976,6 +1036,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setSelectedClient(null);
             setStatus('Aprovado');
             setObservacoes('');
+            setProdutosCarrinho([]);
+            setProdutoSelecionadoId('');
         }
         // Se não é edição nem novo slot, resetar tudo
         else {
@@ -992,6 +1054,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             setStatus('Aprovado');
             setAppointmentId(null);
             setObservacoes('');
+            setProdutosCarrinho([]);
+            setProdutoSelecionadoId('');
         }
     }, [isOpen, isEditing, newSlotData, allAgents]);
 
@@ -1009,7 +1073,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             }
 
 
-            
             setIsLoadingAppointment(true);
             try {
                 // ✅ SOLUÇÃO: Usar dados passados pelo CalendarPage ao invés de buscar no backend
@@ -1057,9 +1120,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     setClientPhone((appointmentData.clientPhone || '').replace('+55', '').trim());
                 }
                 
-                // ✅ Preencher observações (se existirem)
+                // ✅ FASE 14: Preencher observações (se existirem, ou forçar vazio)
                 if (appointmentData.observacoes) {
                     setObservacoes(appointmentData.observacoes);
+                } else {
+                    setObservacoes(''); // Forçar vazio se não houver observações
                 }
                 
                 // ⚠️ TEMPORÁRIO: NÃO usar serviceId passado se não existir nos serviços disponíveis
@@ -1114,20 +1179,25 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
                             setTotalPrice(calculatedTotal);
                             
-                            // ✅ Preencher observações do backend (sobrescreve se houver)
+                            // ✅ FASE 14: Preencher observações do backend (ou forçar vazio se não houver)
                             if (details.observacoes) {
                                 setObservacoes(details.observacoes);
+                            } else {
+                                setObservacoes(''); // Forçar vazio se não houver observações
                             }
                             
-                            // ✅ CORREÇÃO: Preencher telefone do cliente do backend
+                            // ✅ FASE 14: Preencher telefone do cliente do backend (ou forçar vazio se não houver)
                             if (details.cliente && details.cliente.telefone) {
                                 setClientPhone(details.cliente.telefone.replace('+55', '').trim());
+                            } else {
+                                setClientPhone(''); // Forçar vazio se não houver telefone
                             }
                             
                             // ✅ CORREÇÃO: Apenas armazenar ID do cliente e unidade_id
                             // A busca de pontos agora é feita em um useEffect separado que depende de settings
-                            if (details.cliente && details.cliente.id) {
-                                setClienteId(details.cliente.id);
+                            const clienteIdFromDetails = Number((details as any).cliente_id) || Number((details as any)?.cliente?.id);
+                            if (Number.isFinite(clienteIdFromDetails) && clienteIdFromDetails > 0) {
+                                setClienteId(clienteIdFromDetails);
                             }
 
                             // ✅ REGRA DE NEGÓCIO (FINANCEIRO): preencher pagamento apenas se Concluído
@@ -1204,12 +1274,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     useEffect(() => {
         if (!isEditing) return;
 
+        // ✅ FASE 2: Limpar campos financeiros quando status deixa de ser Concluído
         if (!isConcluido) {
             setPaymentMethod('');
-            setPontosUsados(0);
             setCupomAplicado(null);
             setCupomCodigo('');
             setCupomErro(null);
+            setPagamentos([{ uid: `pay-${Date.now()}-${Math.random()}`, metodo: 'PIX', valor: '' }]);
         }
     }, [isEditing, isConcluido]);
 
@@ -1239,51 +1310,59 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         // Só calcular se as listas de serviços/extras JÁ estiverem carregadas
         if (allServices.length > 0 || allExtras.length > 0) {
             handleRecalculate();
-        } else {
         }
         // Depender de TUDO que afeta o preço
-    }, [selectedServices, selectedExtras, allServices, allExtras]);
+    }, [selectedServices, selectedExtras, allServices, allExtras, handleRecalculate]);
+
+    const clienteIdForPontos = useMemo(() => {
+        const direct = Number(clienteId);
+        if (Number.isFinite(direct) && direct > 0) return direct;
+        const fallback = Number((selectedClient as any)?.id);
+        if (Number.isFinite(fallback) && fallback > 0) return fallback;
+        return null;
+    }, [clienteId, selectedClient]);
+
+    const fetchSaldoPontos = useCallback(async () => {
+        if (!isOpen || !clienteIdForPontos || !settings) {
+            return;
+        }
+
+        const unidadeId = appointmentData?.locationId || selectedLocationId || effectiveLocationId;
+        if (!unidadeId) {
+            return;
+        }
+
+        try {
+            setIsLoadingPontos(true);
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(
+                `${API_BASE_URL}/clientes/${clienteIdForPontos}/pontos?unidade_id=${unidadeId}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                setPontosDisponiveis(data.pontos_disponiveis || 0);
+                setPodeUsarPontos(data.pode_usar_pontos || false);
+                return data;
+            }
+        } catch (error) {
+            // Erro ao buscar pontos do cliente
+        } finally {
+            setIsLoadingPontos(false);
+        }
+    }, [isOpen, clienteIdForPontos, settings, appointmentData?.locationId, selectedLocationId, effectiveLocationId]);
 
     // ✅ CORREÇÃO CRÍTICA: Buscar pontos do cliente DEPOIS que settings estiver carregado
     // Este useEffect separado garante que pontosAtivo esteja correto antes de fazer a busca
     useEffect(() => {
-        const buscarPontosDoCliente = async () => {
-            // ✅ Precisa de: modal aberto, cliente identificado, settings carregado, pontos ativo
-            if (!isOpen || !clienteId || !settings || !pontosAtivo) {
-                return;
-            }
-
-            // ✅ Usar locationId do appointmentData (vem do agendamento) ou selectedLocationId
-            const unidadeId = appointmentData?.locationId || selectedLocationId;
-
-            if (!unidadeId) {
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch(
-                    `${API_BASE_URL}/clientes/${clienteId}/pontos?unidade_id=${unidadeId}`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setPontosDisponiveis(data.pontos_disponiveis || 0);
-                    setPodeUsarPontos(data.pode_usar_pontos || false);
-                }
-            } catch (error) {
-                // Erro ao buscar pontos do cliente
-            }
-        };
-
-        buscarPontosDoCliente();
-    }, [isOpen, clienteId, settings, pontosAtivo, appointmentData?.locationId, selectedLocationId]);
+        fetchSaldoPontos();
+    }, [fetchSaldoPontos, pontosAtivo]);
 
     useEffect(() => {
         let cancelled = false;
@@ -1370,25 +1449,69 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
     // Total bruto (antes de pontos/cupom): Serviços + Extras + Produtos do carrinho
     const totalBruto = useMemo(() => {
-        return (Number(totalPrice) || 0) + (Number(totalProdutosCarrinho) || 0);
+        const total = (Number(totalPrice) || 0) + (Number(totalProdutosCarrinho) || 0);
+        return total;
     }, [totalPrice, totalProdutosCarrinho]);
 
+    const tetoDescontoReais = (Number(totalBruto) || 0) * (Number(settings?.limite_desconto_percentual || 100) / 100);
+    const limiteMaximoPontos = useMemo(() => {
+        const saldo = Math.floor(Number(pontosDisponiveis) || 0);
+        if (!pontosAtivo) return 0;
+        if (!Number.isFinite(saldo) || saldo <= 0) return 0;
+        const maxPorTeto = Math.floor((Number(tetoDescontoReais) || 0) * (Number(taxaConversao) || 0));
+        return Math.max(0, Math.min(saldo, maxPorTeto));
+    }, [pontosDisponiveis, pontosAtivo, tetoDescontoReais, taxaConversao]);
+
+    const saldoEstimado = Math.max(0, Math.floor(Number(pontosDisponiveis) || 0) - Math.floor(Number(pontosUsados) || 0));
+
+    // ✅ FASE 5: Sincronizar valorFinal com totalBruto automaticamente
     useEffect(() => {
-        // Total a pagar deve sempre refletir Serviços + Extras + Produtos em tempo real.
-        // Descontos (pontos/cupom) só se aplicam quando ADMIN/MASTER estiver concluindo.
-        if (!(isAdminFinanceRole && isConcluido)) {
-            setDescontoCalculado(0);
-            setValorFinal(Number((totalBruto || 0).toFixed(2)));
-            return;
-        }
-
-        const descontoPontos = pontosAtivo ? (pontosUsados * reaisPorPontos) : 0;
         const descontoCupom = cupomAplicado?.desconto_calculado || 0;
-        const valorComDesconto = Math.max(0, totalBruto - descontoPontos - descontoCupom);
+        const descontoPontos = descontoCalculado || 0;
+        const valorCalculado = Math.max(0, totalBruto - descontoPontos - descontoCupom);
+        setValorFinal(valorCalculado);
+    }, [totalBruto, descontoCalculado, cupomAplicado]);
 
-        setDescontoCalculado(descontoPontos);
-        setValorFinal(Number(valorComDesconto.toFixed(2)));
-    }, [totalBruto, isAdminFinanceRole, isConcluido, pontosAtivo, pontosUsados, reaisPorPontos, cupomAplicado]);
+    const handleAplicarPontos = async (quantidadeDesejada?: number) => {
+
+        const valorParaAplicar = quantidadeDesejada ?? (parseInt(String(pontosUsadosDraft || '0'), 10) || 0);
+
+        const totalBrutoLocal = (Number(totalPrice) || 0) + (Number(totalProdutosCarrinho) || 0);
+        const tetoDescontoReaisLocal = totalBrutoLocal * (Number(settings?.limite_desconto_percentual || 100) / 100);
+        const limiteMaximoPontosLocal = Math.min(
+            Math.floor(Number(pontosDisponiveis) || 0),
+            Math.floor(tetoDescontoReaisLocal * (Number(taxaConversao) || 0))
+        );
+
+        const pontosFinais = Math.max(0, Math.min(valorParaAplicar, limiteMaximoPontosLocal));
+
+        const deltaPontos = pontosFinais - (Number(pontosUsados) || 0);
+
+        setPontosUsados(pontosFinais);
+        setPontosUsadosDraft(String(pontosFinais));
+
+        setPontosDisponiveis((prev) => {
+            const next = (Number(prev) || 0) - deltaPontos;
+            const clamped = Math.max(0, next);
+            return clamped;
+        });
+
+        const descontoAplicado = pontosFinais / taxaConversao;
+        setDescontoCalculado(descontoAplicado);
+
+        const descontoCupom = cupomAplicado?.desconto_calculado || 0;
+        setValorFinal(Math.max(0, totalBrutoLocal - descontoAplicado - descontoCupom));
+
+
+        try {
+            const response = await fetchSaldoPontos();
+            if (response && typeof (response as any).pontos_disponiveis !== 'undefined') {
+                setPontosDisponiveis((response as any).pontos_disponiveis || 0);
+                setPodeUsarPontos((response as any).pode_usar_pontos || false);
+            }
+        } catch (err) {
+        }
+    };
 
     const totalPago = useMemo(() => {
         return pagamentos.reduce((sum, p) => {
@@ -1542,6 +1665,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         
         // ✅ NOVO: Armazenar ID do cliente e buscar pontos
         setClienteId(client.id);
+        setPontosUsadosDraft('0');
         
         if (pontosAtivo && selectedLocationId) {
             try {
@@ -1580,6 +1704,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
         setIsSearchingClient(false);
         setClientSearchQuery('');
         setSelectedClient(null); // Indica que é um novo cliente
+
+        setPontosUsadosDraft('0');
     }
 
     const handleSubmit = async () => {
@@ -1637,6 +1763,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     toast.warning('Pagamento incompleto', 'A soma dos pagamentos precisa ser igual ao total para concluir.');
                     return;
                 }
+
+                // ✅ FASE 3: Blindagem final de pontos antes do fechamento da comanda
+                // Se o atendente digitar acima do permitido, forçar o teto antes do payload.
+                if (pontosUsados > limiteMaximoPontos) {
+                    setPontosUsados(limiteMaximoPontos);
+                    setPontosUsadosDraft(String(limiteMaximoPontos));
+                }
             }
 
             const agendamentoData = {
@@ -1672,6 +1805,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
                 const formaPagamentoFinal = pagamentos.length > 1 ? 'Split' : (pagamentos?.[0]?.metodo || paymentMethod);
 
+                const pontosUsadosParaPayload = Math.max(0, Math.min(pontosUsados, limiteMaximoPontos));
+
                 const updateData = {
                     agente_id: selectedAgentId,
                     servico_ids: selectedServices,
@@ -1679,33 +1814,29 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                     data_agendamento: derivedSelectedDateISO,
                     hora_inicio: startTime,
                     hora_fim: endTime,
-                    // Segurança de UI: AGENTE não conclui nem lança pagamento via Drawer
                     status: isAgentRole ? 'Aprovado' : status,
-                    ...(isAdminFinanceRole && isConcluido ? { forma_pagamento: formaPagamentoFinal } : {}),
-                    ...(isAdminFinanceRole && isConcluido ? { pagamentos: pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) } : {}),
+                    pontos_usados: isConcluido ? (Number(pontosUsados) || 0) : 0,
+                    forma_pagamento: (isAdminFinanceRole && isConcluido) ? formaPagamentoFinal : undefined,
+                    pagamentos: (isAdminFinanceRole && isConcluido) ? pagamentos.map(p => ({ metodo: p.metodo, valor: parseFloat(String(p.valor || '0').replace(',', '.')) || 0 })).filter(p => p.metodo && p.valor > 0) : undefined,
                     produtos_vendidos: produtosCarrinho.map(p => ({ produto_id: p.produto_id, quantidade: parseFloat(String(p.quantidade || '0').replace(',', '.')) || 0, preco_aplicado: parseFloat(String(p.preco_aplicado || '0').replace(',', '.')) || 0, agente_id: p.agente_id ? parseInt(p.agente_id) : null })),
                     observacoes: observacoes.trim() || '',
-                    ...(usarCotaAssinatura && hasCoberturaDisponivel && isAssinaturaLiberada
-                        ? { usar_assinatura_itens: { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } }
-                        : {}),
-                    // ✅ NOVO: Incluir pontos usados se houver
-                    ...(isAdminFinanceRole && isConcluido && pontosUsados > 0 && clienteId ? { pontos_usados: pontosUsados, cliente_id: clienteId } : {}),
-                    // ✅ NOVO: Incluir cupom_id se houver cupom aplicado
-                    ...(isAdminFinanceRole && isConcluido && cupomAplicado ? { cupom_id: cupomAplicado.cupom_id, desconto_cupom: cupomAplicado.desconto_calculado } : {}),
-                    ...(selectedClient
-                        ? { cliente_id: selectedClient.id }
-                        : {
-                            cliente_nome: `${clientFirstName.trim()} ${clientLastName.trim()}`.trim(),
-                            cliente_telefone: `+55${clientPhone.replace(/\D/g, '')}`
-                        }
-                    )
+                    usar_assinatura_itens: (usarCotaAssinatura && hasCoberturaDisponivel && isAssinaturaLiberada) ? { servico_ids: coberturaSugerida.servico_ids, servico_extra_ids: coberturaSugerida.servico_extra_ids } : undefined,
+                    cupom_id: (isAdminFinanceRole && isConcluido && cupomAplicado) ? cupomAplicado.cupom_id : undefined,
+                    desconto_cupom: (isAdminFinanceRole && isConcluido && cupomAplicado) ? cupomAplicado.desconto_calculado : undefined,
+                    cliente_id: selectedClient?.id || clienteId || undefined,
+                    cliente_nome: !selectedClient ? `${clientFirstName.trim()} ${clientLastName.trim()}`.trim() : undefined,
+                    cliente_telefone: !selectedClient ? ('+55' + clientPhone.replace(/\D/g, '')) : undefined
                 };
 
+                console.log('📦 [PAYLOAD FINAL]:', updateData);
                 
                 try {
                     const resultado = await updateAgendamento(appointmentId, updateData);
 
                     if (resultado) {
+                        if (isAdminFinanceRole && isConcluido) {
+                            await fetchSaldoPontos();
+                        }
                         toast.success('Agendamento Atualizado!', 'As alterações foram salvas com sucesso.');
                         onClose();
                         // ✅ NOVO: Chamar callback de sucesso para atualizar dados
@@ -2100,7 +2231,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         </div>
                                         <div className="pt-2 border-t border-gray-200 flex justify-between items-center font-bold text-gray-900 text-lg">
                                             <p>Total</p>
-                                            <p>R$ {valorFinal.toFixed(2).replace('.', ',')}</p>
+                                            <p>R$ {totalBruto.toFixed(2).replace('.', ',')}</p>
                                         </div>
                                     </div>
 
@@ -2220,73 +2351,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                         </div>
                                     </div>
                                      
-                                    {/* ✅ NOVO: Sistema de Pontos */}
-                                    {isAdminFinanceRole && isConcluido && pontosAtivo && clienteId && (
-                                        <>
-                                            <div className="border-t border-gray-200 my-3"></div>
-                                            
-                                            <div className={`${podeUsarPontos ? 'bg-[#F0F6FF] border-blue-200' : 'bg-gray-50 border-gray-300'} border rounded-lg p-4 space-y-3`}>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm font-medium text-gray-700">Saldo de Pontos:</span>
-                                                    <span className={`text-lg font-bold ${podeUsarPontos ? 'text-blue-600' : 'text-gray-500'}`}>{Math.floor(pontosDisponiveis)} pts</span>
-                                                </div>
-                                                {pontosDisponiveis > 0 && (
-                                                    <div className="text-xs text-gray-500">
-                                                        Equivalente a R$ {((pontosDisponiveis / reaisPorPontos) * 1).toFixed(2).replace('.', ',')} de desconto
-                                                    </div>
-                                                )}
-                                                
-                                                {!podeUsarPontos && (
-                                                    <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-700">
-                                                        Pontos só podem ser usados a partir do segundo agendamento. Continue acumulando!
-                                                    </div>
-                                                )}
-                                                
-                                                {podeUsarPontos && pontosDisponiveis > 0 && (
-                                                <FormField label="Quantos pontos deseja usar?">
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            type="number"
-                                                            min="0"
-                                                            max={pontosDisponiveis}
-                                                            value={pontosUsados}
-                                                            onChange={(e) => {
-                                                                const valor = parseInt(e.target.value) || 0;
-                                                                const pontoMax = Math.floor(pontosDisponiveis);
-                                                                if (valor <= pontoMax) {
-                                                                    setPontosUsados(valor);
-                                                                } else {
-                                                                    alert(`Você só tem ${pontoMax} pontos disponíveis.`);
-                                                                }
-                                                            }}
-                                                            placeholder="0"
-                                                            className="flex-1"
-                                                            disabled={!podeUsarPontos}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setPontosUsados(Math.floor(pontosDisponiveis))}
-                                                            className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 whitespace-nowrap disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                                            disabled={!podeUsarPontos}
-                                                        >
-                                                            Usar Tudo
-                                                        </button>
-                                                    </div>
-                                                </FormField>
-                                                )}
-                                                
-                                                {pontosUsados > 0 && (
-                                                    <div className="space-y-2 pt-2 border-t border-blue-300">
-                                                        <div className="flex justify-between text-sm">
-                                                            <span className="text-gray-600">Desconto de pontos:</span>
-                                                            <span className="font-bold text-green-600">- R$ {descontoCalculado.toFixed(2).replace('.', ',')}</span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
-
                                     {isAdminFinanceRole && isConcluido && (
                                         <>
                                             {/* ✅ NOVO: Cupom de Desconto */}
@@ -2358,6 +2422,95 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                 )}
                                             </div>
 
+                                            {/* ✅ NOVO: Clube de Pontos */}
+                                            {(
+                                                <>
+                                                    <div className="border-t border-gray-200 my-3"></div>
+                                                    <div className={`${pontosAtivo && podeUsarPontos ? 'bg-[#F0F6FF] border-blue-200' : 'bg-gray-50 border-gray-300'} border rounded-lg p-4 space-y-3`}>
+                                                        <h4 className="text-sm font-semibold text-gray-700">Clube de Pontos</h4>
+
+                                                        {(!settings || isLoadingPontos) && (
+                                                            <div className="text-xs text-gray-500">
+                                                                Carregando pontos...
+                                                            </div>
+                                                        )}
+
+                                                        {!!settings && settings?.pontos_ativo === false && (
+                                                            <div className="text-xs text-gray-500">
+                                                                Sistema de pontos inativo nesta unidade.
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm font-medium text-gray-700">Saldo do cliente</span>
+                                                            <div className="text-right">
+                                                                <span className={`text-lg font-bold ${pontosAtivo && podeUsarPontos ? 'text-blue-600' : 'text-gray-500'}`}>{Math.floor(pontosDisponiveis)} pts</span>
+                                                                {pontosUsados > 0 && (
+                                                                    <span className="text-xs text-blue-600 block">
+                                                                        (Saldo após uso: {saldoEstimado} pts)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {pontosAtivo && pontosDisponiveis > 0 && (
+                                                            <div className="text-xs text-gray-500">
+                                                                Equivale a R$ {(Math.floor(pontosDisponiveis) / (Number(reaisPorPontos) || 1)).toFixed(2).replace('.', ',')} de desconto
+                                                            </div>
+                                                        )}
+
+                                                        {pontosAtivo && !podeUsarPontos && (
+                                                            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-700">
+                                                                Pontos só podem ser usados a partir do segundo agendamento. Continue acumulando!
+                                                            </div>
+                                                        )}
+
+                                                        {pontosDisponiveis > 0 && (
+                                                            <FormField label="Quantos pontos deseja usar?">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max={limiteMaximoPontos}
+                                                                        value={pontosUsadosDraft}
+                                                                        onChange={(e) => setPontosUsadosDraft(e.target.value)}
+                                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                        placeholder="0"
+                                                                        className="flex-1"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleAplicarPontos();
+                                                                        }}
+                                                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                                                                    >
+                                                                        Aplicar
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleAplicarPontos(Math.floor(Number(pontosDisponiveis) || 0));
+                                                                        }}
+                                                                        className="px-3 py-2 bg-blue-50 text-blue-700 text-sm font-semibold rounded-lg hover:bg-blue-100 whitespace-nowrap"
+                                                                    >
+                                                                        Usar Tudo
+                                                                    </button>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 mt-1">
+                                                                    {pontosUsados} pontos = R$ {((pontosUsados || 0) / taxaConversao).toFixed(2).replace('.', ',')} de desconto
+                                                                </div>
+                                                                {(parseInt(String(pontosUsadosDraft || '0'), 10) || 0) > limiteMaximoPontos && Number(settings?.limite_desconto_percentual ?? 100) < 100 && (
+                                                                    <span className="text-blue-600 text-xs">
+                                                                        Desconto limitado a {settings?.limite_desconto_percentual}% da comanda.
+                                                                    </span>
+                                                                )}
+                                                            </FormField>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+
                                             {/* ✅ NOVO: Resumo de Descontos e Valor Final */}
                                             {(pontosUsados > 0 || cupomAplicado) && (
                                                 <>
@@ -2365,7 +2518,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
                                                         <div className="flex justify-between text-sm">
                                                             <span className="text-gray-600">Valor Original:</span>
-                                                            <span className="text-gray-800">R$ {totalPrice.toFixed(2).replace('.', ',')}</span>
+                                                            <span className="text-gray-800">R$ {totalBruto.toFixed(2).replace('.', ',')}</span>
                                                         </div>
                                                         {pontosUsados > 0 && (
                                                             <div className="flex justify-between text-sm">

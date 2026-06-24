@@ -396,24 +396,19 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
             },
         ];
 
-        // ✅ Adicionar coluna PONTOS se sistema de pontos estiver ativo
-        if (pontosAtivo) {
-            columns.push({
-                key: 'pontos',
-                label: 'PONTOS',
-                width: 'w-24',
-                align: 'center',
-                filterType: 'none',
-                render: (client: any) => (
-                    <div className="flex items-center justify-center gap-1">
-                        <span className="text-lg font-bold" style={{ color: '#2663EB' }}>
-                            {client.pontosDisponiveis || 0}
-                        </span>
-                        <span className="text-xs text-gray-500">pts</span>
-                    </div>
-                ),
-            });
-        }
+        // ✅ Adicionar coluna PONTOS (sempre visível)
+        columns.push({
+            key: 'pontos',
+            label: 'PONTOS',
+            width: 'w-24',
+            align: 'center',
+            filterType: 'none',
+            render: (client: any) => (
+                <span className="text-lg font-bold" style={{ color: '#2663EB' }}>
+                    {Math.floor(Number(client?.saldoPontos ?? client?.pontosDisponiveis ?? 0))}
+                </span>
+            ),
+        });
 
         // ✅ Adicionar coluna ASSINANTES
         columns.push({
@@ -449,7 +444,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ setActiveView, onEditClient }
         });
 
         return columns;
-    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, assinaturaSaldoByClientId, assinaturaSaldoLoadingByClientId, statusSavingByClientId, updateClient, renderAssinaturaStatusBadge]);
+    }, [pontosAtivo, subscriberCount, onEditClient, formatBirthDate, getWhatsAppWebLink, buildAssinaturaResumo, statusSavingByClientId, updateClient, renderAssinaturaStatusBadge]);
 
     return (
         <div className="space-y-6">

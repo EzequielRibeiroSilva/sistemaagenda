@@ -752,13 +752,44 @@ class AgendamentoController extends BaseController {
         servico_ids,
         servico_extra_ids,
         status,
-        forma_pagamento, // Frontend envia forma_pagamento
+        forma_pagamento,
         pagamentos,
         produtos_vendidos,
+        pontos_usados,
         observacoes,
         cliente_id,
         unidade_id
       } = req.body;
+
+      logger.info('🧾 [AgendamentoController][AUDIT] Payload bruto (req.body):', req.body);
+      logger.info('🧾 [AgendamentoController][AUDIT] Contrato payload -> campos extraídos:', {
+        id_param: id,
+        hora_inicio,
+        hora_fim,
+        agente_id,
+        data_agendamento,
+        servico_ids_type: Array.isArray(servico_ids) ? 'array' : typeof servico_ids,
+        servico_ids_len: Array.isArray(servico_ids) ? servico_ids.length : null,
+        servico_extra_ids_type: Array.isArray(servico_extra_ids) ? 'array' : typeof servico_extra_ids,
+        servico_extra_ids_len: Array.isArray(servico_extra_ids) ? servico_extra_ids.length : null,
+        status,
+        forma_pagamento,
+        pagamentos_type: Array.isArray(pagamentos) ? 'array' : typeof pagamentos,
+        pagamentos_len: Array.isArray(pagamentos) ? pagamentos.length : null,
+        produtos_vendidos_type: Array.isArray(produtos_vendidos) ? 'array' : typeof produtos_vendidos,
+        produtos_vendidos_len: Array.isArray(produtos_vendidos) ? produtos_vendidos.length : null,
+        pontos_usados,
+        observacoes,
+        cliente_id,
+        unidade_id
+      });
+
+      logger.info('🚀 [AgendamentoController] Payload Recebido', {
+        agendamento_id: id,
+        pontos_usados: pontos_usados || 0,
+        status: status || agendamento.status,
+        cliente_id: cliente_id || agendamento.cliente_id
+      });
 
       // REGRA DE NEGÓCIO (FINANCEIRO):
       // - Concluído: exige método de pagamento e força status_pagamento = 'Pago'
@@ -1166,18 +1197,28 @@ class AgendamentoController extends BaseController {
           }
         }
 
-// ...
-        // ✅ PATCH ESTOQUE (Sprint 3+): Reconciliação atômica e síncrona quando envolver Concluído ou troca de serviços
+        const pontosUsadosInt = pontos_usados != null ? Number(pontos_usados) : 0;
+        const temPontosParaResgatar = pontosUsadosInt > 0 && statusFinal === 'Concluído';
+
         const envolveConcluido = (
           (statusMudou && (statusAnterior === 'Concluído' || status === 'Concluído')) ||
-          ((shouldUpdateServicos || shouldUpdateExtras) && statusFinal === 'Concluído')
+          ((shouldUpdateServicos || shouldUpdateExtras) && statusFinal === 'Concluído') ||
+          temPontosParaResgatar
         );
 
         if (envolveConcluido) {
+          logger.info('🚀 [AgendamentoController] Invocando Service de Conclusão', {
+            agendamento_id: parseInt(id, 10),
+            status_final: statusFinal,
+            pontos_usados: pontosUsadosInt,
+            tem_pontos_para_resgatar: temPontosParaResgatar
+          });
+
           await this.agendamentoConclusaoService.reconcileEstoque({
             agendamentoId: parseInt(id, 10),
             triggeredByUserId: req.user?.id,
             pagamentos: Array.isArray(pagamentos) ? pagamentos : [],
+            pontosUsados: pontosUsadosInt,
             trx
           });
         }
@@ -1545,7 +1586,7 @@ class AgendamentoController extends BaseController {
           .sum('pontos as total')
           .first();
         
-        const ganhos = parseInt(pontosGanhos?.total || 0);
+        const ganhos = Number(pontosGanhos?.total || 0) || 0;
         
         pontosInfo = {
           saldo: saldoPontos,

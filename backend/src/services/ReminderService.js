@@ -827,7 +827,7 @@ class ReminderService {
           .sum('pontos as total')
           .first();
         
-        const ganhos = parseInt(pontosGanhos?.total || 0);
+        const ganhos = Number(pontosGanhos?.total || 0) || 0;
         
         pontosInfo = {
           saldo: saldoPontos,

@@ -981,7 +981,7 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
    * 1. CONFIRMAÇÃO DE AGENDAMENTO - CLIENTE
    */
   generateAppointmentConfirmationClient(agendamentoData) {
-    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, numero_agendamento, agente_telefone, unidade_telefone, pontos, assinatura_saldo } = agendamentoData;
+    const { cliente, agente, unidade, data_agendamento, hora_inicio, servicos, agendamento_id, numero_agendamento, agente_telefone, unidade_telefone, pontos, assinatura_saldo, pontosGanhos, saldoAtualizado } = agendamentoData;
     
     const dataHora = this.formatDateTime(data_agendamento, hora_inicio);
     const servicoTexto = this.formatServicos(servicos);
@@ -990,6 +990,9 @@ Passando para avisar que já completou o ciclo do seu serviço de ${servicoNome}
     const wppAgente = this.generateWhatsAppLink(agente_telefone);
     const pontosMensagem = this.formatPontosMessage(pontos);
     const assinaturaMensagem = this.formatAssinaturaSaldoMessage(assinatura_saldo);
+    const recompensaPontosMensagem = (pontosGanhos && pontosGanhos > 0)
+      ? `\n\n🎁 *Clube de Pontos*\nVocê acabou de ganhar *${pontosGanhos} pontos* com este agendamento!\nSeu saldo atual é de *${saldoAtualizado ?? 0} pontos*.`
+      : '';
     const idRaw = numero_agendamento || agendamento_id;
     const idExibicao = idRaw != null ? String(idRaw).padStart(2, '0') : '';
 
@@ -999,7 +1002,7 @@ Seu horário está confirmadíssimo:
 ✂️ ${servicoTexto} com *${agente.nome}*
 🗓 ${dataHora}
 
-🎫 ID do Agendamento: *#${idExibicao}*${pontosMensagem}${assinaturaMensagem}
+🎫 ID do Agendamento: *#${idExibicao}*${pontosMensagem}${assinaturaMensagem}${recompensaPontosMensagem}
 
 Precisa alterar algo? Gerencie seu horário através deste link:
 
