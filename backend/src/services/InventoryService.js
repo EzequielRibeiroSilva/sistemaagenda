@@ -248,6 +248,16 @@ class InventoryService {
             }
 
             const novoCustoFinalRounded = Number(novoCustoFinal.toFixed(6));
+
+            // 🛡️ Guard Clause: Proteção Financeira Elite
+            // Impedir que produtos fiquem com custo zero ou negativo
+            if (!Number.isFinite(novoCustoFinalRounded) || novoCustoFinalRounded <= 0) {
+              const err = new Error('Custo Médio Ponderado inválido: o cálculo resultou em valor zero ou negativo.');
+              err.code = 'INVALID_CMP';
+              err.statusCode = 422;
+              throw err;
+            }
+
             await trx('produtos')
               .where({ id: produto_id, usuario_id })
               .update({
@@ -445,7 +455,7 @@ class InventoryService {
         }
       }
 
-      // 5) Registrar no ledger (imutável)
+      // 5) Registrar no ledger (APPEND-ONLY - Nível Bancário)
       // ✅ IDEMPOTÊNCIA: Verificar se movimentação já existe
       const movExistente = await trx('estoque_movimentacoes')
         .where({
@@ -461,43 +471,103 @@ class InventoryService {
       let movimentacao = null;
 
       if (movExistente?.id) {
-        // Movimentação já existe, verificar se quantidade mudou
         const qtyExistente = Number(movExistente.quantidade);
+        const diffQty = this.round3(qty - qtyExistente);
         
-        if (Math.abs(qtyExistente - qty) > 0.001) {
-          // Quantidade mudou, fazer UPDATE
-          logger.info('🔄 [InventoryService] Movimentação já existe, atualizando quantidade', {
+        if (Math.abs(diffQty) > 0.001) {
+          // 🏦 APPEND-ONLY: Em vez de UPDATE, criar movimentação de AJUSTE compensatória
+          logger.info('🔄 [InventoryService] Movimentação já existe com quantidade diferente - criando AJUSTE compensatório', {
             movimentacao_id: movExistente.id,
             produto_id,
-            tipo,
+            tipo_original: tipo,
             origem_id,
             quantidade_anterior: qtyExistente,
-            quantidade_nova: qty
+            quantidade_nova: qty,
+            diferenca: diffQty
           });
 
-          await trx('estoque_movimentacoes')
-            .where('id', movExistente.id)
-            .update({
-              quantidade: qty,
-              motivo: motivo || null,
-              created_by: created_by || null
+          // Idempotência do AJUSTE: verificar se já foi criado anteriormente
+          const origemAjuste = `AJUSTE:${movExistente.id}:${tipo}`;
+          const ajusteExistente = await trx('estoque_movimentacoes')
+            .where({
+              usuario_id,
+              unidade_id,
+              produto_id,
+              tipo: 'AJUSTE',
+              origem_id: origemAjuste
+            })
+            .select('id')
+            .first();
+
+          if (!ajusteExistente?.id) {
+            // Criar movimentação de AJUSTE para compensar a diferença
+            const [ajusteRow] = await trx('estoque_movimentacoes')
+              .insert({
+                usuario_id,
+                unidade_id,
+                produto_id,
+                tipo: 'AJUSTE',
+                quantidade: Math.abs(diffQty),
+                motivo: `AJUSTE COMPENSATÓRIO - Diferença detectada na movimentação #${movExistente.id} (${tipo}). Delta: ${diffQty > 0 ? '+' : ''}${diffQty}`,
+                origem_id: origemAjuste,
+                preco_unitario_entrada: null,
+                created_by: created_by || null,
+                created_at: new Date()
+              })
+              .returning('*');
+
+            // Aplicar o ajuste no snapshot de saldo
+            const deltaAjuste = diffQty;
+            const isDebitAjuste = deltaAjuste < 0;
+            const qtyAbsAjuste = Math.abs(deltaAjuste);
+
+            const updatePayloadAjuste = {
+              saldo_atual: this.round3(saldoDepoisLegacy + deltaAjuste)
+            };
+
+            if (bucket === 'VENDA') {
+              updatePayloadAjuste.saldo_venda = isDebitAjuste 
+                ? saldoVendaDepois - qtyAbsAjuste 
+                : saldoVendaDepois + qtyAbsAjuste;
+            } else {
+              updatePayloadAjuste.saldo_consumo = this.round3(
+                isDebitAjuste 
+                  ? saldoConsumoDepois - qtyAbsAjuste 
+                  : saldoConsumoDepois + qtyAbsAjuste
+              );
+            }
+
+            await trx('estoque_unidades')
+              .where({ produto_id, unidade_id })
+              .update(updatePayloadAjuste);
+
+            logger.info('✅ [InventoryService] AJUSTE compensatório criado', {
+              ajuste_id: ajusteRow?.id,
+              diferenca: diffQty
             });
 
-          movimentacao = { id: movExistente.id, quantidade: qty };
+            movimentacao = ajusteRow || null;
+          } else {
+            logger.info('ℹ️  [InventoryService] AJUSTE compensatório já existe, ignorando', {
+              ajuste_id: ajusteExistente.id
+            });
+
+            movimentacao = { id: movExistente.id, quantidade: qtyExistente };
+          }
         } else {
-          // Quantidade idêntica, apenas retornar registro existente
+          // Quantidade idêntica, apenas retornar registro existente (idempotência estrita)
           logger.info('ℹ️  [InventoryService] Movimentação já existe com mesma quantidade, ignorando', {
             movimentacao_id: movExistente.id,
             produto_id,
             tipo,
             origem_id,
-            quantidade: qty
+            quantidade: qtyExistente
           });
 
           movimentacao = { id: movExistente.id, quantidade: qtyExistente };
         }
       } else {
-        // Movimentação não existe, fazer INSERT
+        // Movimentação não existe, fazer INSERT normal
         logger.info('➕ [InventoryService] Criando nova movimentação', {
           produto_id,
           tipo,

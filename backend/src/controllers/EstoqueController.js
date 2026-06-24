@@ -2,11 +2,25 @@ const { db } = require('../config/knex');
 const InventoryService = require('../services/InventoryService');
 
 class EstoqueController {
-  // GET /api/estoque/snapshot?unidade_id=1
+  // GET /api/estoque/snapshot?unidade_id=1&page=1&page_size=100
   async snapshot(req, res) {
     try {
       const usuarioId = req.user?.id;
       const unidadeId = req.query?.unidade_id ? Number(req.query.unidade_id) : null;
+
+      // 🚀 Paginação: Sanitização e Hard Limits
+      const pageRaw = Number(req.query?.page);
+      const pageSizeRaw = Number(req.query?.page_size);
+
+      // Padrões: page=1, page_size=100
+      const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+      const pageSizeRequested = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.floor(pageSizeRaw) : 100;
+
+      // Hard Limit: page_size máximo = 500
+      const pageSize = Math.min(pageSizeRequested, 500);
+
+      // Cálculo de offset para query SQL
+      const offset = (page - 1) * pageSize;
 
       if (!usuarioId) {
         return res.status(401).json({
@@ -30,6 +44,7 @@ class EstoqueController {
         });
       }
 
+      // Query paginada: evita OOM em catálogos com milhares de produtos
       const rows = await db('produtos as p')
         .leftJoin('categorias as c', 'c.id', 'p.categoria_id')
         .leftJoin('estoque_unidades as eu', function () {
@@ -53,11 +68,27 @@ class EstoqueController {
           'eu.estoque_minimo',
           'eu.estoque_maximo'
         )
-        .orderBy('p.nome', 'asc');
+        .orderBy('p.nome', 'asc')
+        .limit(pageSize)
+        .offset(offset);
+
+      // Total de registros (para cálculo de páginas no frontend)
+      const [{ count: totalRecords }] = await db('produtos as p')
+        .where('p.usuario_id', usuarioId)
+        .whereNull('p.deleted_at')
+        .count('p.id as count');
+
+      const totalPages = Math.ceil(Number(totalRecords) / pageSize);
 
       return res.status(200).json({
         success: true,
-        data: rows
+        data: rows,
+        pagination: {
+          page,
+          page_size: pageSize,
+          total_records: Number(totalRecords),
+          total_pages: totalPages
+        }
       });
     } catch (error) {
       return res.status(500).json({
@@ -141,7 +172,9 @@ class EstoqueController {
         ? 400
         : error?.code === 'PRODUTO_NOT_FOUND' || error?.code === 'UNIDADE_NOT_FOUND'
           ? 404
-          : 500;
+          : error?.code === 'INVALID_CMP'
+            ? 422
+            : 500;
 
       return res.status(status).json({
         success: false,

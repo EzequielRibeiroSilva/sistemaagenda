@@ -461,6 +461,15 @@ class VendaController {
         const inventoryService = new InventoryService(trx);
         const origemId = `ESTORNO:VENDA:${vendaId}`;
 
+        // 🛡️ Guard Clause: Validação de Rastreabilidade (Auditoria Elite)
+        // Garantir que TODOS os estornos tenham origem_id válido para rastreabilidade total
+        if (!origemId || String(origemId).trim() === '' || !vendaId) {
+          const err = new Error('Estorno não pode ser processado: origem_id é obrigatório para manter a integridade da auditoria.');
+          err.code = 'MISSING_ORIGEM_ID';
+          err.statusCode = 422;
+          throw err;
+        }
+
         for (const it of itens || []) {
           if (String(it.item_type) !== 'PRODUTO') continue;
           const produtoId = Number(it.reference_id);
@@ -527,7 +536,14 @@ class VendaController {
       }
 
       const code = error?.code;
-      const status = code === 'VENDA_NOT_FOUND' ? 404 : code === 'VENDA_NOT_PAID' ? 409 : 500;
+      const status = code === 'VENDA_NOT_FOUND' 
+        ? 404 
+        : code === 'VENDA_NOT_PAID' 
+          ? 409 
+          : code === 'MISSING_ORIGEM_ID'
+            ? 422
+            : 500;
+
       return res.status(status).json({
         success: false,
         error: status === 500 ? 'Erro interno do servidor' : error.message,
