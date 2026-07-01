@@ -73,7 +73,7 @@ export const sidebarNavigation: SidebarCategory[] = [
   {
     title: 'FINANCEIRO',
     roles: ['ADMIN'],
-    items: [{ label: 'VISÃO GERAL / CAIXAS', icon: LineChart, view: 'despesas' }]
+    items: [{ label: 'CAIXA', icon: LineChart, view: 'despesas' }]
   },
   {
     title: 'MARKETING / VENDAS',

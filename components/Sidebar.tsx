@@ -17,6 +17,8 @@ import {
 
 import { sidebarNavigation, type Role } from '../config/sidebarConfig';
 import { NavAccordionItem } from './sidebar/NavAccordionItem';
+import { useDespesasVencidasCount } from '../hooks/useDespesasVencidasCount';
+import { useCalendarData } from '../hooks/useCalendarData';
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -24,9 +26,10 @@ interface NavItemProps {
   isCollapsed: boolean;
   isActive?: boolean;
   onClick?: () => void;
+  badge?: number; // ✨ Novo: suporte para badge de alerta
 }
 
-const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = false, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = false, onClick, badge }) => (
   <a
     href="#"
     onClick={(e) => {
@@ -39,6 +42,12 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, isCollapsed, isActive = 
   >
     <div>{icon}</div>
     <span className={`ml-3 font-medium flex-1 whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''}`}>{label}</span>
+    {/* 🔔 Badge de Alerta (Red Standard) - Apenas se count > 0 */}
+    {badge !== undefined && badge > 0 && (
+      <span className={`inline-flex items-center justify-center ml-2 px-2 py-0.5 text-xs font-semibold text-white bg-[#991B1B] rounded-full ${isCollapsed ? 'lg:hidden' : ''}`}>
+        {badge > 99 ? '99+' : badge}
+      </span>
+    )}
   </a>
 );
 
@@ -67,6 +76,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   setOpenOnMobile
 }) => {
   const hasAccess = (allowedRoles?: Role[]) => !allowedRoles || allowedRoles.includes(userRole);
+
+  // 🔔 Hook de contagem de despesas vencidas (Red Standard)
+  const { locations } = useCalendarData();
+  const selectedLocation = locations && locations.length > 0 ? locations[0] : null;
+  const { count: despesasVencidasCount } = useDespesasVencidasCount({
+    unidadeId: selectedLocation ? String(selectedLocation.id) : ''
+  });
 
   const isLegacyGroupActive = (view: string, current: string) => {
     if (current === view) return true;
@@ -173,6 +189,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     isCollapsed={isCollapsed}
                     isActive={isLegacyGroupActive(item.view, activeView)}
                     onClick={() => handleNavItemClick(item.view)}
+                    badge={item.view === 'despesas' ? despesasVencidasCount : undefined}
                   />
                 );
               })}

@@ -15,8 +15,13 @@ export type DespesaRow = {
   data_pagamento: string | null;
   status: DespesaStatus;
   forma_pagamento: string | null;
+  criado_por: number;
+  atualizado_por: number | null;
   created_at: string;
   updated_at: string;
+  // ✅ Campos de auditoria enriquecidos (retornados via JOIN na API)
+  criado_por_email?: string | null;
+  atualizado_por_email?: string | null;
 };
 
 type FetchState = {

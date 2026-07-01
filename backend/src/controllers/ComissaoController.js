@@ -1,4 +1,5 @@
 const { db } = require('../config/knex');
+const { startOfDay, endOfDay } = require('../utils/timezone');
 const { assertPeriodoAberto, parseYmdToLocalDate } = require('../utils/periodLock');
 
 const toCents = (value) => {
@@ -100,8 +101,8 @@ class ComissaoController {
         .where('v.unidade_id', unidadeId)
         .where('v.status', 'PAID')
         .where('vi.item_type', 'PRODUTO')
-        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
-        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .where('v.created_at', '>=', startOfDay(data_inicio))
+        .where('v.created_at', '<=', endOfDay(data_fim))
         .whereNotNull('vi.agente_id')
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
         .groupBy('vi.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao', 'ag.deleted_at')
@@ -309,8 +310,8 @@ class ComissaoController {
         .where('v.status', 'PAID')
         .where('vi.item_type', 'PRODUTO')
         .where('vi.agente_id', agenteId)
-        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
-        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .where('v.created_at', '>=', startOfDay(data_inicio))
+        .where('v.created_at', '<=', endOfDay(data_fim))
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
         .where('vi.comissao_paga', statusComissao === 'pago')
         .select(
@@ -432,8 +433,8 @@ class ComissaoController {
         .where('v.status', 'PAID')
         .where('vi.item_type', 'PRODUTO')
         .where('vi.agente_id', agenteId)
-        .where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
-        .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+        .where('v.created_at', '>=', startOfDay(data_inicio))
+        .where('v.created_at', '<=', endOfDay(data_fim))
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
         .where('vi.comissao_paga', statusComissao === 'pago')
         .sum({ total: db.raw('COALESCE(vi.comissao_valor_snapshot, 0)') })
@@ -665,8 +666,8 @@ class ComissaoController {
             const idsParsed = (ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0);
             qb.whereIn('vi.id', idsParsed);
           } else {
-            qb.where('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
-              .where('v.created_at', '<=', `${data_fim}T23:59:59-03:00`);
+            qb.where('v.created_at', '>=', startOfDay(data_inicio))
+              .where('v.created_at', '<=', endOfDay(data_fim));
           }
         })
         .where(db.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'))
@@ -744,8 +745,8 @@ class ComissaoController {
                 .andWhere('vi.item_type', 'PRODUTO')
                 .andWhere('vi.agente_id', agenteId)
                 .andWhere('vi.comissao_paga', false)
-                .andWhere('v.created_at', '>=', `${data_inicio}T00:00:00-03:00`)
-                .andWhere('v.created_at', '<=', `${data_fim}T23:59:59-03:00`)
+                .andWhere('v.created_at', '>=', startOfDay(data_inicio))
+                .andWhere('v.created_at', '<=', endOfDay(data_fim))
                 .andWhere(trx.raw('COALESCE(vi.comissao_percentual_snapshot, 0) > 0'));
             })
             .update({

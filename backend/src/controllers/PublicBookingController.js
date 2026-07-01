@@ -20,6 +20,7 @@ const { getInstance: getPublicSessionService } = require('../services/PublicSess
 const AssinaturaSaldoService = require('../services/AssinaturaSaldoService');
 const AssinaturaEstornoService = require('../services/AssinaturaEstornoService');
 const { db } = require('../config/knex');
+const { startOfDay, endOfDay } = require('../utils/timezone');
 const logger = require('./../utils/logger');
 const PlanoAssinatura = require('../models/PlanoAssinatura');
 const crypto = require('crypto');
@@ -1860,8 +1861,8 @@ class PublicBookingController {
                 referenceDateStr: referencia
               });
 
-              const cycleStartTs = new Date(`${cycleStart}T00:00:00-03:00`);
-              const cycleEndExclusiveTs = new Date(`${cycleEndExclusive}T00:00:00-03:00`);
+              const cycleStartTs = startOfDay(cycleStart);
+              const cycleEndExclusiveTs = startOfDay(cycleEndExclusive);
 
               const itens = await this.planoAssinaturaModel.findItens(plano.id);
               const itensById = new Map((itens || []).map(i => [String(i.id), i]));
@@ -2238,8 +2239,8 @@ class PublicBookingController {
               referenceDateStr: referencia
             });
 
-            const cycleStartTs = new Date(`${cycleStart}T00:00:00-03:00`);
-            const cycleEndExclusiveTs = new Date(`${cycleEndExclusive}T00:00:00-03:00`);
+            const cycleStartTs = startOfDay(cycleStart);
+            const cycleEndExclusiveTs = startOfDay(cycleEndExclusive);
 
             const planItemsToConsume = await trx('planos_assinatura_itens')
               .whereIn('id', planItemIdsToConsume)

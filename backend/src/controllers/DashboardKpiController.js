@@ -1,4 +1,5 @@
 const { db } = require('../config/knex');
+const { startOfDay, endOfDay } = require('../utils/timezone');
 
 class DashboardKpiController {
   // GET /api/dashboard/kpis?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD&unidade_id=123&agente_id=1&servico_id=2
@@ -73,8 +74,8 @@ class DashboardKpiController {
         });
       }
 
-      const startTs = new Date(`${data_inicio}T00:00:00-03:00`);
-      const endTs = new Date(`${data_fim}T23:59:59-03:00`);
+      const startTs = startOfDay(data_inicio);
+      const endTs = endOfDay(data_fim);
 
       // KPIs baseados em agendamentos (sempre escopado por unidade)
       const baseAg = db('agendamentos')

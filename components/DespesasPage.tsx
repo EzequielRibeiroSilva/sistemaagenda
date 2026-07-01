@@ -3,9 +3,12 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Trash, X } from './Icons';
 import { useCalendarData } from '../hooks/useCalendarData';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useDespesas, type DespesaRow, type DespesaStatus } from '../hooks/useDespesas';
 import { useFluxoCaixa } from '../hooks/useFluxoCaixa';
+import { useDespesasVencidasCount } from '../hooks/useDespesasVencidasCount';
 import { formatMoneyBR, toMoneyFixedString } from '../utils/money';
+import { API_BASE_URL } from '../utils/api';
 
 type DespesasTab = 'A Pagar' | 'Vencidas' | 'Pagas';
 
@@ -46,6 +49,7 @@ const HeaderDropdown: React.FC<{
 const DespesasPage: React.FC = () => {
   const { locations: backendLocations } = useCalendarData();
   const toast = useToast();
+  const { token, isAuthenticated } = useAuth();
 
   const [financeiroTab, setFinanceiroTab] = useState<FinanceiroTab>('Fluxo de Caixa');
 
@@ -97,19 +101,14 @@ const DespesasPage: React.FC = () => {
     deleteDespesa
   } = useDespesas({ unidadeId: selectedLocationId, status: statusFilter });
 
-  const {
-    transacoes,
-    resumo,
-    loading: fluxoLoading,
-    error: fluxoError
-  } = useFluxoCaixa({
-    unidadeId: selectedLocationId,
-    dataInicio: fluxoInicio,
-    dataFim: fluxoFim
+  // 🔔 Hook de contagem de despesas vencidas (Orange Standard - Badge nas Tabs)
+  const { count: despesasVencidasCount, refetch: refetchCount } = useDespesasVencidasCount({
+    unidadeId: selectedLocationId
   });
 
   const [fluxoOrigem, setFluxoOrigem] = useState<'ALL' | 'COMANDAS' | 'BALCAO'>('ALL');
 
+  // 🚀 PAGINAÇÃO SERVER-SIDE: Estado gerenciado pelo backend
   const [fluxoCurrentPage, setFluxoCurrentPage] = useState(1);
   const fluxoItemsPerPage = 12;
 
@@ -117,26 +116,26 @@ const DespesasPage: React.FC = () => {
     setFluxoCurrentPage(1);
   }, [selectedLocationId, fluxoInicio, fluxoFim, fluxoOrigem]);
 
-  const filteredTransacoes = useMemo(() => {
-    const origem = String(fluxoOrigem || 'ALL').toUpperCase();
-    if (origem === 'COMANDAS') {
-      return transacoes.filter((t) => String(t.descricao || '').includes('Comanda'));
-    }
-    if (origem === 'BALCAO') {
-      return transacoes.filter((t) => String(t.descricao || '').includes('Venda Balcão'));
-    }
-    return transacoes;
-  }, [fluxoOrigem, transacoes]);
+  const {
+    transacoes,
+    resumo,
+    meta,
+    loading: fluxoLoading,
+    error: fluxoError,
+    refetch: refetchFluxo
+  } = useFluxoCaixa({
+    unidadeId: selectedLocationId,
+    dataInicio: fluxoInicio,
+    dataFim: fluxoFim,
+    page: fluxoCurrentPage,
+    pageSize: fluxoItemsPerPage,
+    origem: fluxoOrigem  // 🎯 FILTRO SERVER-SIDE: Enviado ao backend
+  });
 
-  const fluxoTotalItems = filteredTransacoes.length;
-  const fluxoTotalPages = Math.max(1, Math.ceil(fluxoTotalItems / fluxoItemsPerPage));
-  const fluxoStart = fluxoTotalItems === 0 ? 0 : ((fluxoCurrentPage - 1) * fluxoItemsPerPage) + 1;
-  const fluxoEnd = fluxoTotalItems === 0 ? 0 : Math.min(fluxoCurrentPage * fluxoItemsPerPage, fluxoTotalItems);
-
-  const pagedTransacoes = useMemo(() => {
-    const startIndex = (fluxoCurrentPage - 1) * fluxoItemsPerPage;
-    return filteredTransacoes.slice(startIndex, startIndex + fluxoItemsPerPage);
-  }, [filteredTransacoes, fluxoCurrentPage]);
+  // 📊 METADADOS DE PAGINAÇÃO: Vindos do backend (já filtrados)
+  const fluxoTotalPages = meta.totalPages || 1;
+  const fluxoStart = meta.total === 0 ? 0 : ((meta.page - 1) * meta.pageSize) + 1;
+  const fluxoEnd = meta.total === 0 ? 0 : Math.min(meta.page * meta.pageSize, meta.total);
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
@@ -161,17 +160,21 @@ const DespesasPage: React.FC = () => {
       normalized === 'PAID'
         ? 'bg-green-100 text-green-800'
         : normalized === 'OVERDUE'
-          ? 'bg-red-100 text-red-800'
+          ? 'bg-orange-100 text-orange-800'
           : 'bg-yellow-100 text-yellow-800';
 
     const label = normalized === 'PAID' ? 'Pago' : normalized === 'OVERDUE' ? 'Vencida' : 'A pagar';
 
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${className}`}>
+      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${className}`}>
         {label}
       </span>
     );
   };
+
+  const EstornoLabel: React.FC = () => (
+    <span className="text-[#991B1B] font-semibold text-xs">Estorno</span>
+  );
 
   const formatDateBR = (isoOrDate: string | null | undefined) => {
     if (!isoOrDate) return '—';
@@ -211,11 +214,22 @@ const DespesasPage: React.FC = () => {
     forma_pagamento: 'PIX'
   });
 
+  const [estornoDespesa, setEstornoDespesa] = useState<DespesaRow | null>(null);
+  const [estornoSaving, setEstornoSaving] = useState(false);
+  const [estornoError, setEstornoError] = useState<string | null>(null);
+  const [estornoJustificativa, setEstornoJustificativa] = useState('');
+
   useEffect(() => {
     if (!payDespesa) return;
     setPayForm({ data_pagamento: toInputDate(new Date()), forma_pagamento: 'PIX' });
     setPayError(null);
   }, [payDespesa]);
+
+  useEffect(() => {
+    if (!estornoDespesa) return;
+    setEstornoJustificativa('');
+    setEstornoError(null);
+  }, [estornoDespesa]);
 
   return (
     <div className="space-y-6">
@@ -235,7 +249,7 @@ const DespesasPage: React.FC = () => {
 
           {financeiroTab === 'Despesas' && (
             <button
-              className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-full hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
               type="button"
               disabled={(!selectedLocationId && shouldShowUnitSelector) || createSaving}
               onClick={() => {
@@ -317,19 +331,19 @@ const DespesasPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
               <div className="text-sm font-semibold text-gray-600">Entradas</div>
-              <div className="text-2xl font-bold text-green-700 mt-2">{formatMoneyBR(resumo.total_entradas)}</div>
+              <div className="text-2xl font-bold text-blue-600 mt-2">{formatMoneyBR(resumo.total_entradas)}</div>
               <div className="text-xs text-gray-500 mt-1">No período</div>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
               <div className="text-sm font-semibold text-gray-600">Saídas</div>
-              <div className="text-2xl font-bold text-red-700 mt-2">{formatMoneyBR(resumo.total_saidas)}</div>
+              <div className="text-2xl font-bold text-[#991B1B] mt-2">{formatMoneyBR(resumo.total_saidas)}</div>
               <div className="text-xs text-gray-500 mt-1">Pagas no período</div>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
               <div className="text-sm font-semibold text-gray-600">Saldo do Período</div>
-              <div className={`text-2xl font-bold mt-2 ${resumo.saldo_periodo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              <div className={`text-2xl font-bold mt-2 ${resumo.saldo_periodo >= 0 ? 'text-blue-600' : 'text-[#991B1B]'}`}>
                 {formatMoneyBR(resumo.saldo_periodo)}
               </div>
               <div className="text-xs text-gray-500 mt-1">Entradas - Saídas</div>
@@ -338,52 +352,86 @@ const DespesasPage: React.FC = () => {
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
             <div className="overflow-x-auto max-w-full">
-              <table className="w-full min-w-[1100px] text-sm table-fixed">
+              <table className="w-full min-w-[1100px] text-sm">
+                <colgroup>
+                  <col className="w-32" />
+                  <col className="min-w-[280px] max-w-[400px]" />
+                  <col className="w-44" />
+                  <col className="w-32" />
+                  <col className="w-40" />
+                </colgroup>
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">DATA</th>
-                    <th className="p-3 w-[520px] text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
-                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO</th>
-                    <th className="p-3 w-48 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">DATA</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">RESPONSÁVEL</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">MÉTODO</th>
+                    <th className="p-4 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fluxoLoading ? (
-                    <tr>
-                      <td colSpan={4} className="p-8 text-center text-gray-500">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
-                          Carregando...
-                        </div>
-                      </td>
-                    </tr>
+                    <>
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <tr key={`skeleton-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-64"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-28"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24 ml-auto"></div></td>
+                        </tr>
+                      ))}
+                    </>
                   ) : fluxoError ? (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-gray-500">{fluxoError}</td>
+                      <td colSpan={5} className="p-8 text-center text-gray-500">{fluxoError}</td>
                     </tr>
-                  ) : filteredTransacoes.length === 0 ? (
+                  ) : transacoes.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-gray-500">Nenhuma transação encontrada</td>
+                      <td colSpan={5} className="p-8 text-center text-gray-500">Nenhuma transação encontrada</td>
                     </tr>
                   ) : (
-                    pagedTransacoes.map((t, idx) => {
+                    transacoes.map((t, idx) => {
                       const valorNum = Number(toMoneyFixedString(t.valor));
-                      const isEntrada = String(t.tipo).toUpperCase() === 'ENTRADA';
-                      const valueClass = isEntrada ? 'text-green-700' : 'text-red-700';
+                      const tipoNorm = String(t.tipo).toUpperCase();
+                      const isEntrada = tipoNorm === 'ENTRADA';
+                      
+                      // ✅ Identifica estornos pela descrição
+                      const descricao = String(t.descricao || '');
+                      const isEstorno = descricao.toLowerCase().startsWith('estorno');
 
-                      const displayValue =
-                        Number.isFinite(valorNum)
-                          ? `${isEntrada ? '+' : '-'} ${formatMoneyBR(Math.abs(valorNum))}`
-                          : formatExtratoValue(t.valor);
+                      // ✅ Valor sem sinal negativo (será exibido neutro com tag)
+                      const valorAbsoluto = Math.abs(valorNum);
+                      const valueClass = isEstorno ? 'text-[#991B1B]' : (isEntrada ? 'text-blue-600' : 'text-[#991B1B]');
+                      
+                      const displayValue = Number.isFinite(valorAbsoluto)
+                        ? `${isEntrada && !isEstorno ? '+' : isEstorno ? '' : '-'} ${formatMoneyBR(valorAbsoluto)}`
+                        : formatExtratoValue(t.valor);
+
+                      // ✅ Renderiza e-mail do responsável com fallback resiliente
+                      const responsavelEmail = t.criado_por_email ? String(t.criado_por_email).trim() : null;
+                      const responsavelDisplay = responsavelEmail || '-';
 
                       return (
                         <tr key={`${t.data}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
-                          <td className="p-3 text-gray-600 whitespace-nowrap">{formatDateBR(t.data)}</td>
-                          <td className="p-3 text-gray-700 truncate" title={t.descricao}>
-                            {t.descricao || '—'}
+                          <td className="p-4 text-gray-600 whitespace-nowrap">{formatDateBR(t.data)}</td>
+                          <td className="p-4 text-gray-700">
+                            <div className="overflow-hidden text-ellipsis max-w-full" title={t.descricao}>
+                              {t.descricao || '—'}
+                            </div>
                           </td>
-                          <td className="p-3 text-gray-600 whitespace-nowrap">{t.metodo || '—'}</td>
-                          <td className={`p-3 text-right font-semibold whitespace-nowrap ${valueClass}`}>{displayValue}</td>
+                          <td className="p-4 text-gray-600 whitespace-nowrap">
+                            <div className="overflow-hidden text-ellipsis cursor-help" title={responsavelEmail || 'Responsável não identificado'}>
+                              {responsavelDisplay}
+                            </div>
+                          </td>
+                          <td className="p-4 text-gray-600 whitespace-nowrap">{t.metodo || '—'}</td>
+                          <td className="p-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className={`font-semibold ${valueClass}`}>{displayValue}</span>
+                              {isEstorno && <EstornoLabel />}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -395,28 +443,28 @@ const DespesasPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t border-gray-200">
               <div className="text-sm text-gray-600">
                 Mostrando <span className="font-medium">{fluxoStart}</span> a <span className="font-medium">{fluxoEnd}</span> de{' '}
-                <span className="font-medium">{fluxoTotalItems}</span> registros
+                <span className="font-medium">{meta.total}</span> registros
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setFluxoCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={fluxoCurrentPage === 1}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  disabled={fluxoCurrentPage === 1 || fluxoLoading}
+                  className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   type="button"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
 
                 <span className="text-sm text-gray-700">
-                  Página <span className="font-medium">{fluxoCurrentPage}</span> de{' '}
+                  Página <span className="font-medium">{meta.page}</span> de{' '}
                   <span className="font-medium">{fluxoTotalPages}</span>
                 </span>
 
                 <button
                   onClick={() => setFluxoCurrentPage((p) => Math.min(fluxoTotalPages, p + 1))}
-                  disabled={fluxoCurrentPage === fluxoTotalPages}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  disabled={fluxoCurrentPage === fluxoTotalPages || fluxoLoading}
+                  className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   type="button"
                 >
                   <ChevronRight className="w-5 h-5" />
@@ -434,12 +482,18 @@ const DespesasPage: React.FC = () => {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-1 py-4 text-lg font-semibold mr-8 transition-colors duration-200 relative focus:outline-none ${
+                className={`px-1 py-4 text-lg font-semibold mr-8 transition-colors duration-200 relative focus:outline-none flex items-center gap-2 ${
                   activeTab === tab ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
                 }`}
                 type="button"
               >
-                {tab}
+                <span>{tab}</span>
+                {/* 🔔 Badge de Alerta (Red Standard) - Apenas se count > 0 */}
+                {tab === 'Vencidas' && despesasVencidasCount !== undefined && despesasVencidasCount > 0 && (
+                  <span className="inline-flex items-center justify-center ml-2 px-3 py-1 text-xs font-semibold text-white bg-[#991B1B] rounded-full">
+                    {despesasVencidasCount > 99 ? '99+' : despesasVencidasCount}
+                  </span>
+                )}
                 {activeTab === tab && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"></div>
                 )}
@@ -449,56 +503,98 @@ const DespesasPage: React.FC = () => {
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 min-w-0 max-w-full">
             <div className="overflow-x-auto max-w-full">
-              <table className="w-full min-w-[1200px] text-sm table-fixed">
+              <table className="w-full min-w-[1200px] text-sm">
+                <colgroup>
+                  <col className="w-32" />
+                  <col className="min-w-[280px] max-w-[400px]" />
+                  <col className="w-44" />
+                  <col className="w-44" />
+                  <col className="w-36" />
+                  <col className="w-32" />
+                  <col className="w-28" />
+                </colgroup>
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">VENCIMENTO</th>
-                    <th className="p-3 w-[520px] text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
-                    <th className="p-3 w-56 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
-                    <th className="p-3 w-48 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
-                    <th className="p-3 w-40 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS</th>
-                    <th className="p-3 w-32 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">VENCIMENTO</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">DESCRIÇÃO</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">CATEGORIA</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">RESPONSÁVEL</th>
+                    <th className="p-4 text-right font-semibold text-gray-600 whitespace-nowrap">VALOR</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">STATUS</th>
+                    <th className="p-4 text-left font-semibold text-gray-600 whitespace-nowrap">AÇÕES</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-gray-500">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
-                          Carregando...
-                        </div>
-                      </td>
-                    </tr>
+                    <>
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <tr key={`skeleton-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-64"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-28"></div></td>
+                          <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24 ml-auto"></div></td>
+                          <td className="p-4"><div className="h-5 bg-gray-200 rounded-full animate-pulse w-20"></div></td>
+                          <td className="p-4"><div className="flex items-center gap-2"><div className="h-7 bg-gray-200 rounded animate-pulse w-14"></div><div className="h-9 bg-gray-200 rounded animate-pulse w-9"></div></div></td>
+                        </tr>
+                      ))}
+                    </>
                   ) : error ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-gray-500">{error}</td>
+                      <td colSpan={7} className="p-8 text-center text-gray-500">{error}</td>
                     </tr>
                   ) : pagedDespesas.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-gray-500">Nenhuma despesa encontrada</td>
+                      <td colSpan={7} className="p-8 text-center text-gray-500">Nenhuma despesa encontrada</td>
                     </tr>
                   ) : (
                     pagedDespesas.map((d) => {
                       const normalizedStatus = String(d.status || '').toUpperCase();
                       const isPaid = normalizedStatus === 'PAID';
+                      
+                      // 🚀 RUNTIME VISUAL: Calcular status de exibição baseado na data de vencimento
+                      // Se a despesa está PENDING e vencida, exibir como OVERDUE visualmente
+                      const dataVencimento = d.data_vencimento ? new Date(d.data_vencimento) : null;
+                      const hoje = new Date();
+                      hoje.setHours(0, 0, 0, 0); // Zera horas para comparação apenas de datas
+                      
+                      const isVencida = normalizedStatus === 'PENDING' && dataVencimento && dataVencimento < hoje;
+                      const statusDisplay = isVencida ? 'OVERDUE' : d.status;
+                      
+                      // ✅ Renderiza e-mail do responsável com fallback resiliente
+                      const responsavelEmail = d.criado_por_email ? String(d.criado_por_email).trim() : null;
+                      const responsavelDisplay = responsavelEmail || '-';
+
                       return (
-                        <tr key={d.id}>
-                          <td className="p-3 text-gray-600 whitespace-nowrap">{formatDateBR(d.data_vencimento)}</td>
-                          <td className="p-3 text-gray-700 truncate" title={d.descricao}>{d.descricao}</td>
-                          <td className="p-3 text-gray-600 whitespace-nowrap">{d.categoria}</td>
-                          <td className="p-3 text-right font-semibold text-gray-900 whitespace-nowrap">
+                        <tr key={d.id} className={d.id % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                          <td className="p-4 text-gray-600 whitespace-nowrap">{formatDateBR(d.data_vencimento)}</td>
+                          <td className="p-4 text-gray-700">
+                            <div className="overflow-hidden text-ellipsis max-w-full" title={d.descricao}>
+                              {d.descricao}
+                            </div>
+                          </td>
+                          <td className="p-4 text-gray-600 whitespace-nowrap">
+                            <div className="overflow-hidden text-ellipsis" title={d.categoria}>
+                              {d.categoria}
+                            </div>
+                          </td>
+                          <td className="p-4 text-gray-600 whitespace-nowrap">
+                            <div className="overflow-hidden text-ellipsis cursor-help" title={responsavelEmail || 'Responsável não identificado'}>
+                              {responsavelDisplay}
+                            </div>
+                          </td>
+                          <td className="p-4 text-right font-semibold text-gray-900 whitespace-nowrap">
                             {formatMoneyBR(Number(d.valor) || 0)}
                           </td>
-                          <td className="p-3 whitespace-nowrap">
-                            <StatusBadge status={d.status} />
+                          <td className="p-4 whitespace-nowrap">
+                            <StatusBadge status={statusDisplay} />
                           </td>
-                          <td className="p-3 whitespace-nowrap">
+                          <td className="p-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {!isPaid && (
                                 <button
                                   type="button"
-                                  className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                                  className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 rounded-full hover:bg-blue-100"
                                   onClick={() => {
                                     setPayDespesa(d);
                                   }}
@@ -506,13 +602,41 @@ const DespesasPage: React.FC = () => {
                                   Pagar
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100"
-                                onClick={() => setConfirmDeleteId(d.id)}
-                              >
-                                <Trash className="w-4 h-4 text-gray-400" />
-                              </button>
+                              {/* 
+                                🔒 PROTEÇÃO DE INTEGRIDADE FINANCEIRA:
+                                Despesas PAGAS não podem ser excluídas fisicamente.
+                                
+                                Motivo: Registros liquidados são documentos históricos imutáveis.
+                                Exclusão física apaga trilha de auditoria e impede conciliação bancária.
+                                
+                                Correções devem ser feitas via ESTORNO (operação compensatória),
+                                não via exclusão do registro original.
+                              */}
+                              {!isPaid && (
+                                <button
+                                  type="button"
+                                  className="p-2 rounded-full hover:bg-gray-100"
+                                  onClick={() => setConfirmDeleteId(d.id)}
+                                  title="Excluir despesa"
+                                >
+                                  <Trash className="w-4 h-4 text-gray-400" />
+                                </button>
+                              )}
+                              {/* 
+                                ✅ ESTORNO: Operação compensatória para despesas pagas
+                                Cria lançamento negativo que reverte o pagamento original,
+                                mantendo histórico completo para auditoria
+                              */}
+                              {isPaid && (
+                                <button
+                                  type="button"
+                                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 rounded-full hover:bg-gray-100"
+                                  onClick={() => setEstornoDespesa(d)}
+                                  title="Estornar pagamento"
+                                >
+                                  Estornar
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -533,7 +657,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   type="button"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -547,7 +671,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   type="button"
                 >
                   <ChevronRight className="w-5 h-5" />
@@ -607,6 +731,10 @@ const DespesasPage: React.FC = () => {
             toast.success('Despesa criada', 'A despesa foi criada com sucesso.');
             setIsCreateOpen(false);
             await refetch();
+            // ✅ CORREÇÃO: Atualiza também o Fluxo de Caixa (caso a despesa seja criada já paga)
+            await refetchFluxo();
+            // 🔔 Atualiza contagem de despesas vencidas (Orange Standard)
+            await refetchCount();
           } catch (e) {
             const msg = e instanceof Error ? e.message : 'Erro ao criar despesa';
             setCreateError(msg);
@@ -712,7 +840,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 disabled:opacity-50"
                   disabled={createSaving}
                 >
                   Cancelar
@@ -720,7 +848,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-full hover:bg-blue-700 disabled:opacity-50"
                   disabled={createSaving}
                 >
                   {createSaving ? 'Salvando...' : 'Salvar'}
@@ -757,9 +885,20 @@ const DespesasPage: React.FC = () => {
             toast.success('Despesa excluída', 'A despesa foi removida com sucesso.');
             setConfirmDeleteId(null);
             await refetch();
+            // ✅ CORREÇÃO: Atualiza também o Fluxo de Caixa
+            await refetchFluxo();
+            // 🔔 Atualiza contagem de despesas vencidas (Orange Standard)
+            await refetchCount();
           } catch (e) {
             const msg = e instanceof Error ? e.message : 'Erro ao excluir despesa';
-            setDeleteError(msg);
+            
+            // 🔒 Tratamento específico para bloqueio de despesa paga
+            if (msg.includes('PAID_EXPENSE_DELETE_FORBIDDEN') || msg.includes('não é permitido excluir despesas pagas')) {
+              setDeleteError('Esta despesa já foi paga e não pode ser excluída. Registros financeiros liquidados são imutáveis por segurança. Para correções, utilize o recurso de estorno.');
+            } else {
+              setDeleteError(msg);
+            }
+            
             toast.error('Erro ao excluir despesa', msg);
           } finally {
             setDeleteSaving(false);
@@ -791,7 +930,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 disabled:opacity-50"
                   disabled={deleteSaving}
                 >
                   Cancelar
@@ -799,7 +938,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-full hover:bg-blue-700 disabled:opacity-50"
                   disabled={deleteSaving}
                 >
                   {deleteSaving ? 'Excluindo...' : 'Excluir'}
@@ -845,6 +984,10 @@ const DespesasPage: React.FC = () => {
             toast.success('Despesa paga', 'A despesa foi marcada como paga.');
             setPayDespesa(null);
             await refetch();
+            // ✅ CORREÇÃO: Atualiza também o Fluxo de Caixa após pagamento
+            await refetchFluxo();
+            // 🔔 Atualiza contagem de despesas vencidas (Orange Standard)
+            await refetchCount();
           } catch (e) {
             const msg = e instanceof Error ? e.message : 'Erro ao marcar como paga';
             setPayError(msg);
@@ -933,7 +1076,7 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 disabled:opacity-50"
                   disabled={paySaving}
                 >
                   Cancelar
@@ -941,10 +1084,218 @@ const DespesasPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-blue-600 rounded-full hover:bg-blue-700 disabled:opacity-50"
                   disabled={paySaving}
                 >
                   {paySaving ? 'Salvando...' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          portalRoot
+        );
+      })()}
+
+      {/* DRAWER DE ESTORNO */}
+      {(() => {
+        if (!estornoDespesa) return null;
+        const portalRoot = typeof document !== 'undefined' ? document.getElementById('portal-root') : null;
+        if (!portalRoot) return null;
+
+        const handleClose = () => {
+          if (estornoSaving) return;
+          setEstornoDespesa(null);
+          setEstornoError(null);
+          setEstornoJustificativa('');
+        };
+
+        const handleConfirm = async () => {
+          if (estornoSaving) return;
+          if (!selectedLocationId) {
+            setEstornoError('Selecione uma unidade');
+            return;
+          }
+
+          // Validação da justificativa
+          const justificativa = estornoJustificativa.trim();
+          if (!justificativa || justificativa.length < 10) {
+            setEstornoError('A justificativa deve ter no mínimo 10 caracteres');
+            return;
+          }
+          if (justificativa.length > 500) {
+            setEstornoError('A justificativa deve ter no máximo 500 caracteres');
+            return;
+          }
+
+          setEstornoSaving(true);
+          setEstornoError(null);
+          
+          try {
+            // 🔍 DEBUG: Log da URL exata sendo chamada
+            const estornoUrl = `${API_BASE_URL}/financeiro/despesas/${estornoDespesa.id}/estornar`;
+            console.log('[DEBUG FRONTEND] Chamando estorno:', {
+              url: estornoUrl,
+              method: 'POST',
+              despesa_id: estornoDespesa.id,
+              unidade_id: Number(selectedLocationId),
+              justificativa: justificativa.substring(0, 50) + '...'
+            });
+
+            if (!isAuthenticated || !token) {
+              throw new Error('Usuário não autenticado');
+            }
+
+            // Chamada ao endpoint de estorno
+            const response = await fetch(estornoUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                unidade_id: Number(selectedLocationId),
+                justificativa
+              })
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ message: 'Erro ao estornar' }));
+              throw new Error(errorData.message || 'Erro ao estornar despesa');
+            }
+
+            toast.success('Estorno realizado', 'O estorno foi processado com sucesso.');
+            setEstornoDespesa(null);
+            await refetch();
+            // ✅ CORREÇÃO: Atualiza também o Fluxo de Caixa após estorno
+            await refetchFluxo();
+            // 🔔 Atualiza contagem de despesas vencidas (Orange Standard)
+            await refetchCount();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Erro ao estornar despesa';
+            setEstornoError(msg);
+            toast.error('Erro ao estornar', msg);
+          } finally {
+            setEstornoSaving(false);
+          }
+        };
+
+        return createPortal(
+          <div
+            className="fixed inset-0 z-50 bg-black/60 flex justify-end"
+            onClick={handleClose}
+            aria-modal="true"
+            role="dialog"
+            aria-labelledby="drawer-estorno-title"
+          >
+            <div
+              className="relative flex w-full max-w-2xl flex-col bg-gray-50 shadow-xl transform transition-transform duration-300 ease-in-out"
+              onClick={(e) => e.stopPropagation()}
+              style={{ animation: 'slideInFromRight 0.3s forwards' }}
+            >
+              <style>{`
+                @keyframes slideInFromRight {
+                  from { transform: translateX(100%); }
+                  to { transform: translateX(0); }
+                }
+              `}</style>
+
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white flex-shrink-0">
+                <h2 className="text-xl font-bold text-gray-800" id="drawer-estorno-title">Estornar Pagamento</h2>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+                  disabled={estornoSaving}
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {/* ⚠️ Banner de Aviso */}
+                <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div className="ml-3">
+                      <p className="text-sm text-orange-700 font-semibold">Atenção: Operação de Estorno</p>
+                      <p className="text-sm text-orange-600 mt-1">
+                        Esta ação criará um lançamento compensatório que reverterá o pagamento original. 
+                        O histórico completo será mantido para auditoria. Esta operação não pode ser desfeita.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {estornoError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-600 text-sm">{estornoError}</p>
+                  </div>
+                )}
+
+                {/* Informações da Despesa */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                  <div className="font-semibold text-gray-900">{estornoDespesa.descricao}</div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Valor:</span>
+                    <span className="font-semibold text-gray-900">{formatMoneyBR(Number(estornoDespesa.valor) || 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Vencimento:</span>
+                    <span className="text-gray-700">{formatDateBR(estornoDespesa.data_vencimento)}</span>
+                  </div>
+                  {estornoDespesa.data_pagamento && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Pagamento:</span>
+                      <span className="text-gray-700">{formatDateBR(estornoDespesa.data_pagamento)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Campo de Justificativa */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">
+                      Justificativa do Estorno <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={estornoJustificativa}
+                      onChange={(e) => setEstornoJustificativa(e.target.value)}
+                      className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed resize-none"
+                      placeholder="Descreva o motivo do estorno (mínimo 10 caracteres, máximo 500)"
+                      rows={4}
+                      disabled={estornoSaving}
+                      maxLength={500}
+                    />
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-gray-500">
+                        Mínimo 10 caracteres para auditoria
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {estornoJustificativa.length}/500
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 disabled:opacity-50"
+                  disabled={estornoSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#2663EB] border border-[#2663EB] rounded-full hover:bg-[#1e4fb3] disabled:opacity-50"
+                  disabled={estornoSaving}
+                >
+                  {estornoSaving ? 'Processando...' : 'Confirmar Estorno'}
                 </button>
               </div>
             </div>

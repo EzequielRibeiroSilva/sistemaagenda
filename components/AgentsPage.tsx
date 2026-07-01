@@ -668,7 +668,7 @@ const AgentsPage: React.FC<AgentsPageProps> = ({ setActiveView, onEditAgent }) =
                                                     <span className="truncate block">{row.agente_nome}</span>
                                                 </td>
                                                 <td className="p-3 w-[20%] text-right text-gray-900 font-medium whitespace-nowrap">{formatMoney(row.total_pago)}</td>
-                                                <td className={`p-3 w-[20%] text-right whitespace-nowrap ${row.total_pendente > 0 ? 'text-red-700 font-semibold' : 'text-gray-900 font-medium'}`}>{formatMoney(row.total_pendente)}</td>
+                                                <td className={`p-3 w-[20%] text-right whitespace-nowrap ${row.total_pendente > 0 ? 'text-[#F97315] font-semibold' : 'text-gray-900 font-medium'}`}>{formatMoney(row.total_pendente)}</td>
                                                 <td className="p-3 w-[20%] text-right whitespace-nowrap">
                                                     <button
                                                         onClick={() => openExtrato(row)}

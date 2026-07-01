@@ -16,6 +16,7 @@ const waitingListJob = require('./jobs/waitingListJob');
 const reactivateSessionsJob = require('./jobs/ReactivateSessionsJob');
 const tokenCleanupJob = require('./jobs/TokenCleanupJob');
 const pointsExpirationJob = require('./jobs/PointsExpirationJob');
+const despesaOverdueJob = require('./jobs/DespesaOverdueJob');
 const whatsappWorker = require('./workers/WhatsappWorker');
 const logger = require('./utils/logger');
 const { corsMiddleware, corsStaticFiles } = require('./middleware/corsMiddleware');
@@ -301,6 +302,36 @@ async function startServer() {
       logger.log(`📊 Health check: http://${config.app.host}:${config.app.port}/health`);
       logger.log(`📚 API base: http://${config.app.host}:${config.app.port}/api`);
       
+      // 🔍 AUDITORIA DE ROTAS - Executar após servidor iniciado
+      setTimeout(() => {
+        console.log('\n=== 🔍 AUDITORIA COMPLETA DE ROTAS EXPRESS ===\n');
+        let routeCount = 0;
+        
+        function printRoutes(stack, basePath = '') {
+          stack.forEach((middleware) => {
+            if (middleware.route) {
+              // Rota direta
+              const methods = Object.keys(middleware.route.methods).join(',').toUpperCase();
+              const path = basePath + middleware.route.path;
+              console.log(`[AUDITORIA] ${methods.padEnd(7)} ${path}`);
+              routeCount++;
+            } else if (middleware.name === 'router' && middleware.handle.stack) {
+              // Sub-router - extrair base path do regexp
+              let subPath = basePath;
+              const regexpSource = middleware.regexp.source;
+              const match = regexpSource.match(/^\\\/([^\\/?]+)/);
+              if (match) {
+                subPath = basePath + '/' + match[1];
+              }
+              printRoutes(middleware.handle.stack, subPath);
+            }
+          });
+        }
+        
+        printRoutes(app._router.stack);
+        console.log(`\n=== TOTAL: ${routeCount} rotas registradas ===\n`);
+      }, 100);
+      
       if (config.evolutionApi.apiKey) {
         logger.log('📱 Evolution API configurada');
       } else {
@@ -331,6 +362,10 @@ async function startServer() {
       logger.log('\n⏰ Inicializando job de expiração automática de pontos...');
       pointsExpirationJob.start();
 
+      // Iniciar job de atualização de despesas vencidas (Fase 2 - Financeiro)
+      logger.log('\n💰 Inicializando job de atualização de despesas vencidas (OVERDUE)...');
+      despesaOverdueJob.start();
+
       whatsappWorker.start();
     });
     
@@ -343,6 +378,7 @@ async function startServer() {
       reactivateSessionsJob.stop();
       tokenCleanupJob.stop();
       pointsExpirationJob.stop();
+      despesaOverdueJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);
@@ -357,6 +393,7 @@ async function startServer() {
       reactivateSessionsJob.stop();
       tokenCleanupJob.stop();
       pointsExpirationJob.stop();
+      despesaOverdueJob.stop();
       server.close(() => {
         logger.log('✅ Servidor encerrado com sucesso');
         process.exit(0);

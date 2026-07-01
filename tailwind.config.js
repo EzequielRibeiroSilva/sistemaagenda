@@ -13,6 +13,9 @@ export default {
       fontFamily: {
         genty: ['Genty', 'sans-serif'],
       },
+      colors: {
+        saida: '#F97315', // Cor padrão Tally para valores negativos/saídas
+      },
     },
   },
   plugins: [],

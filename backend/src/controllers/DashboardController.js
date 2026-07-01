@@ -1,4 +1,5 @@
 const { db } = require('../config/knex');
+const { startOfDay, endOfDay } = require('../utils/timezone');
 
 class DashboardController {
   async clubIntelligence(req, res) {
@@ -81,8 +82,8 @@ class DashboardController {
         });
       }
 
-      const startTs = new Date(`${data_inicio}T00:00:00-03:00`);
-      const endTs = new Date(`${data_fim}T23:59:59-03:00`);
+      const startTs = startOfDay(data_inicio);
+      const endTs = endOfDay(data_fim);
 
       let mrr = 0;
       try {
@@ -278,8 +279,8 @@ class DashboardController {
 
       let cotas_consumidas = 0;
       try {
-        const startTs = new Date(`${data_inicio}T00:00:00-03:00`);
-        const endTs = new Date(`${data_fim}T23:59:59-03:00`);
+        const startTs = startOfDay(data_inicio);
+        const endTs = endOfDay(data_fim);
         const [{ count: cotasConsumidasRaw }] = await Promise.all([
           db('assinatura_usos')
             .join('clientes', 'assinatura_usos.cliente_id', 'clientes.id')

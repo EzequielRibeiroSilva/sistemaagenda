@@ -10,12 +10,21 @@ export type FluxoCaixaTransacao = {
   data: string;
   metodo: string | null;
   descricao: string;
+  // ✅ Campos de auditoria (retornados via JOIN na API)
+  criado_por_email?: string | null;
 };
 
 export type FluxoCaixaResumo = {
   total_entradas: number;
   total_saidas: number;
   saldo_periodo: number;
+};
+
+export type FluxoCaixaMeta = {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 type FetchState = {
@@ -27,15 +36,24 @@ export const useFluxoCaixa = (params: {
   unidadeId: string;
   dataInicio: string;
   dataFim: string;
+  page?: number;
+  pageSize?: number;
+  origem?: 'ALL' | 'COMANDAS' | 'BALCAO';
 }) => {
   const { token, isAuthenticated } = useAuth();
-  const { unidadeId, dataInicio, dataFim } = params;
+  const { unidadeId, dataInicio, dataFim, page = 1, pageSize = 50, origem = 'ALL' } = params;
 
   const [transacoes, setTransacoes] = useState<FluxoCaixaTransacao[]>([]);
   const [resumo, setResumo] = useState<FluxoCaixaResumo>({
     total_entradas: 0,
     total_saidas: 0,
     saldo_periodo: 0
+  });
+  const [meta, setMeta] = useState<FluxoCaixaMeta>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 0
   });
 
   const [state, setState] = useState<FetchState>({ loading: false, error: null });
@@ -77,8 +95,15 @@ export const useFluxoCaixa = (params: {
       const qs = new URLSearchParams({
         unidade_id: unidadeId,
         data_inicio: dataInicio,
-        data_fim: dataFim
+        data_fim: dataFim,
+        page: String(page),
+        pageSize: String(pageSize)
       });
+
+      // 🎯 FILTRO DE ORIGEM: Apenas envia se diferente de 'ALL'
+      if (origem && origem !== 'ALL') {
+        qs.append('origem', origem);
+      }
 
       try {
         const payload = await makeAuthenticatedRequest(`${API_BASE_URL}/financeiro/extrato?${qs.toString()}`, {
@@ -87,14 +112,22 @@ export const useFluxoCaixa = (params: {
 
         if (opts?.signal?.aborted) return;
 
-        const rows = Array.isArray(payload?.transacoes) ? payload.transacoes : [];
+        // ✅ CORREÇÃO: Backend retorna array na chave "data", não "transacoes"
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
         const resumoPayload = payload?.resumo && typeof payload.resumo === 'object' ? payload.resumo : null;
+        const metaPayload = payload?.meta && typeof payload.meta === 'object' ? payload.meta : null;
 
         setTransacoes(rows);
         setResumo({
           total_entradas: Number(resumoPayload?.total_entradas) || 0,
           total_saidas: Number(resumoPayload?.total_saidas) || 0,
           saldo_periodo: Number(resumoPayload?.saldo_periodo) || 0
+        });
+        setMeta({
+          total: Number(metaPayload?.total) || 0,
+          page: Number(metaPayload?.page) || 1,
+          pageSize: Number(metaPayload?.pageSize) || 50,
+          totalPages: Number(metaPayload?.totalPages) || 0
         });
 
         setState({ loading: false, error: null });
@@ -103,10 +136,11 @@ export const useFluxoCaixa = (params: {
         const msg = e instanceof Error ? e.message : 'Erro ao carregar extrato';
         setTransacoes([]);
         setResumo({ total_entradas: 0, total_saidas: 0, saldo_periodo: 0 });
+        setMeta({ total: 0, page: 1, pageSize: 50, totalPages: 0 });
         setState({ loading: false, error: msg });
       }
     },
-    [API_BASE_URL, dataFim, dataInicio, isAuthenticated, makeAuthenticatedRequest, token, unidadeId]
+    [API_BASE_URL, dataFim, dataInicio, isAuthenticated, makeAuthenticatedRequest, origem, page, pageSize, token, unidadeId]
   );
 
   useEffect(() => {
@@ -122,7 +156,7 @@ export const useFluxoCaixa = (params: {
     return () => {
       ac.abort();
     };
-  }, [fetchExtrato, isAuthenticated, token, unidadeId, dataInicio, dataFim]);
+  }, [fetchExtrato, isAuthenticated, token, unidadeId, dataInicio, dataFim, page, pageSize, origem]);
 
   const refetch = useCallback(async () => {
     abortRef.current?.abort();
@@ -135,10 +169,11 @@ export const useFluxoCaixa = (params: {
     return {
       transacoes,
       resumo,
+      meta,
       loading: state.loading,
       error: state.error
     };
-  }, [resumo, state.error, state.loading, transacoes]);
+  }, [meta, resumo, state.error, state.loading, transacoes]);
 
   return {
     ...computed,

@@ -12,16 +12,36 @@ class RBACMiddleware {
   requireRole(...allowedRoles) {
     return (req, res, next) => {
       try {
-        // Verificar se o usuário está autenticado
+        // ⚠️ SEGURANÇA: Verificar se o usuário está autenticado
         if (!req.user) {
+          logger.warn('🔐 [RBAC] Tentativa de acesso sem autenticação', {
+            endpoint: req.originalUrl || req.url,
+            method: req.method,
+            ip: req.ip || req.connection?.remoteAddress,
+            user_agent: req.get ? req.get('user-agent') : null
+          });
+
           return res.status(401).json({
             error: 'Não autenticado',
             message: 'Token de autenticação é obrigatório'
           });
         }
 
-        // Verificar se o usuário tem uma das roles permitidas
+        // ⚠️ SEGURANÇA: Verificar se o usuário tem uma das roles permitidas
         if (!allowedRoles.includes(req.user.role)) {
+          // 🚨 LOG DE SEGURANÇA - Tentativa de acesso não autorizado
+          logger.warn('🚨 [RBAC] Tentativa de acesso NEGADA - Permissão insuficiente', {
+            usuario_id: req.user.id,
+            usuario_email: req.user.email,
+            usuario_role: req.user.role,
+            roles_requeridas: allowedRoles,
+            endpoint: req.originalUrl || req.url,
+            method: req.method,
+            ip: req.ip || req.connection?.remoteAddress,
+            user_agent: req.get ? req.get('user-agent') : null,
+            timestamp: new Date().toISOString()
+          });
+
           return res.status(403).json({
             error: 'Acesso negado',
             message: `Acesso restrito. Roles permitidas: ${allowedRoles.join(', ')}`,
@@ -29,9 +49,10 @@ class RBACMiddleware {
           });
         }
 
+        // ✅ Acesso autorizado
         next();
       } catch (error) {
-        logger.error('Erro no middleware RBAC:', error);
+        logger.error('❌ [RBAC] Erro no middleware RBAC:', error);
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de permissões'
@@ -177,6 +198,72 @@ class RBACMiddleware {
         return res.status(500).json({
           error: 'Erro interno',
           message: 'Erro na verificação de propriedade de recurso'
+        });
+      }
+    };
+  }
+
+  /**
+   * Middleware especializado para operações financeiras críticas
+   * Adiciona validação extra e logs de segurança para endpoints sensíveis
+   */
+  requireFinancialAccess() {
+    return (req, res, next) => {
+      try {
+        // ⚠️ SEGURANÇA: Verificar autenticação
+        if (!req.user) {
+          logger.warn('🔐 [FINANCIAL] Tentativa de acesso financeiro sem autenticação', {
+            endpoint: req.originalUrl || req.url,
+            method: req.method,
+            ip: req.ip || req.connection?.remoteAddress
+          });
+
+          return res.status(401).json({
+            error: 'Não autenticado',
+            message: 'Acesso financeiro requer autenticação'
+          });
+        }
+
+        // 🔒 Roles permitidas para acesso financeiro (hierarquia)
+        const allowedRoles = ['ADMIN', 'MASTER', 'GERENTE'];
+
+        if (!allowedRoles.includes(req.user.role)) {
+          // 🚨 LOG CRÍTICO - Tentativa de acesso financeiro não autorizado
+          logger.error('🚨 [FINANCIAL] TENTATIVA DE ACESSO FINANCEIRO NÃO AUTORIZADO', {
+            severity: 'CRITICAL',
+            usuario_id: req.user.id,
+            usuario_email: req.user.email,
+            usuario_role: req.user.role,
+            roles_requeridas: allowedRoles,
+            endpoint: req.originalUrl || req.url,
+            method: req.method,
+            ip: req.ip || req.connection?.remoteAddress,
+            user_agent: req.get ? req.get('user-agent') : null,
+            body_data: this.sanitizeLogData(req.body),
+            timestamp: new Date().toISOString()
+          });
+
+          return res.status(403).json({
+            error: 'Acesso financeiro negado',
+            message: 'Você não possui permissão para acessar dados financeiros',
+            userRole: req.user.role
+          });
+        }
+
+        // ✅ Log de acesso autorizado (para auditoria)
+        logger.info('✅ [FINANCIAL] Acesso financeiro autorizado', {
+          usuario_id: req.user.id,
+          usuario_role: req.user.role,
+          endpoint: req.originalUrl || req.url,
+          method: req.method
+        });
+
+        next();
+      } catch (error) {
+        logger.error('❌ [FINANCIAL] Erro no middleware de acesso financeiro:', error);
+        return res.status(500).json({
+          error: 'Erro interno',
+          message: 'Erro na verificação de permissões financeiras'
         });
       }
     };

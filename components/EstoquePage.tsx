@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { API_BASE_URL } from '../utils/api';
 import { useCalendarData } from '../hooks/useCalendarData';
 import { Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash, Package } from './Icons';
@@ -173,6 +174,7 @@ function formatMovementQty(m: MovRow) {
 
 const EstoquePage: React.FC = () => {
   const { token, isAuthenticated } = useAuth();
+  const toast = useToast();
   const { locations: backendLocations } = useCalendarData();
 
   const [activeTab, setActiveTab] = useState<EstoqueTab>('Produtos');
@@ -774,11 +776,14 @@ const EstoquePage: React.FC = () => {
               }
             });
 
+            toast.success('Entrada lançada', 'A movimentação foi registrada com sucesso.');
             setEntradaOpen(false);
             await refetchSnapshot();
             await refetchMovs();
           } catch (e) {
-            setEntradaError(e instanceof Error ? e.message : 'Erro ao lançar entrada');
+            const msg = e instanceof Error ? e.message : 'Erro ao lançar entrada';
+            setEntradaError(msg);
+            toast.error('Erro ao lançar entrada', msg);
           } finally {
             setEntradaSaving(false);
           }
@@ -983,11 +988,14 @@ const EstoquePage: React.FC = () => {
             await makeAuthenticatedRequest(`${API_BASE_URL}/produtos/${deleteProdutoRow.id}`, {
               method: 'DELETE'
             });
+            toast.success('Produto excluído', 'O produto foi removido com sucesso.');
             setDeleteProdutoOpen(false);
             setDeleteProdutoRow(null);
             await fetchProdutos();
           } catch (e) {
-            setDeleteProdutoError(e instanceof Error ? e.message : 'Erro ao excluir produto');
+            const msg = e instanceof Error ? e.message : 'Erro ao excluir produto';
+            setDeleteProdutoError(msg);
+            toast.error('Erro ao excluir produto', msg);
           } finally {
             setDeleteProdutoSaving(false);
           }
@@ -1195,6 +1203,7 @@ const EstoquePage: React.FC = () => {
                   categoria_id: categoriaId
                 }
               });
+              toast.success('Produto atualizado', 'As informações do produto foram atualizadas com sucesso.');
             } else {
               await makeAuthenticatedRequest(`${API_BASE_URL}/produtos`, {
                 method: 'POST',
@@ -1212,13 +1221,16 @@ const EstoquePage: React.FC = () => {
                   categoria_id: categoriaId
                 }
               });
+              toast.success('Produto criado', 'O produto foi cadastrado com sucesso.');
             }
 
             setNovoProdutoOpen(false);
             setEditProdutoId(null);
             await fetchProdutos();
           } catch (e) {
-            setNovoProdutoError(getFriendlySaveErrorMessage(e));
+            const msg = getFriendlySaveErrorMessage(e);
+            setNovoProdutoError(msg);
+            toast.error(editProdutoId ? 'Erro ao atualizar produto' : 'Erro ao criar produto', msg);
           } finally {
             setNovoProdutoSaving(false);
           }
@@ -1543,11 +1555,22 @@ const EstoquePage: React.FC = () => {
               </thead>
               <tbody>
                 {produtosLoading ? (
-                  <tr>
-                    <td colSpan={10} className="p-8 text-center text-gray-500">
-                      Carregando produtos...
-                    </td>
-                  </tr>
+                  <>
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={`skeleton-${idx}`} className="border-t border-gray-200">
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-40"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                        <td className="p-3"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                        <td className="p-3"><div className="flex items-center gap-2"><div className="h-9 bg-gray-200 rounded animate-pulse w-9"></div><div className="h-9 bg-gray-200 rounded animate-pulse w-9"></div></div></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : produtosError ? (
                   <tr>
                     <td colSpan={10} className="p-8 text-center text-red-600">
@@ -1733,11 +1756,19 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : snapshotLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Carregando inventário...
-                    </td>
-                  </tr>
+                  <>
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={`skeleton-${idx}`} className="border-t border-gray-200">
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-12"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-40"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : snapshotError ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-red-600">
@@ -1870,11 +1901,19 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : movsLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Carregando movimentações...
-                    </td>
-                  </tr>
+                  <>
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={`skeleton-${idx}`} className="border-t border-gray-200">
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-12"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-40"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-12"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-28"></div></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : movsError ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-red-600">
@@ -1970,11 +2009,19 @@ const EstoquePage: React.FC = () => {
                     </td>
                   </tr>
                 ) : vendasLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Carregando vendas...
-                    </td>
-                  </tr>
+                  <>
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={`skeleton-${idx}`} className="border-t border-gray-200">
+                        <td className="p-4"><div className="h-9 bg-gray-200 rounded animate-pulse w-9"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-28"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-48"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
+                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                        <td className="p-4"><div className="h-7 bg-gray-200 rounded animate-pulse w-20"></div></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : vendasError ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-red-600">
