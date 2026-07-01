@@ -2,8 +2,15 @@ const express = require('express');
 const router = express.Router();
 const AgendamentoController = require('../controllers/AgendamentoController');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
+const rateLimit = require('express-rate-limit');
 
 const agendamentoController = new AgendamentoController();
+
+const rateLimitBuscarPorNumero = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Muitas tentativas. Tente novamente mais tarde.' }
+});
 
 // Middleware para desabilitar cache em todas as rotas de agendamentos
 router.use((req, res, next) => {
@@ -19,6 +26,7 @@ router.use((req, res, next) => {
 // ✅ CORREÇÃO 1.3: Apenas ADMIN e AGENTE podem listar agendamentos
 router.get('/', 
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rbacMiddleware.auditLog('LISTAR_AGENDAMENTOS'),
   (req, res) => agendamentoController.index(req, res)
 );
 
@@ -26,6 +34,7 @@ router.get('/',
 // ✅ NOVO: Busca pelo numero_agendamento (sequencial por empresa)
 router.get('/numero/:numero',
   rbacMiddleware.requireAnyRole(['ADMIN', 'AGENTE']),
+  rateLimitBuscarPorNumero,
   (req, res) => agendamentoController.showByNumero(req, res)
 );
 

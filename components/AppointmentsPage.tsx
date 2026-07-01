@@ -199,6 +199,12 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
 
     const [filters, setFilters] = useState(initialFilters);
 
+    const [debouncedServerFilters, setDebouncedServerFilters] = useState(() => ({
+        status: initialFilters.status,
+        timeRemainingStatus: initialFilters.timeRemainingStatus,
+        selectedLocationFilter: 'all'
+    }));
+
     const [foundAppointmentByNumero, setFoundAppointmentByNumero] = useState<AppointmentDetail | null>(null);
     const [isSearchingAppointmentByNumero, setIsSearchingAppointmentByNumero] = useState(false);
     const appointmentByNumeroRequestSeqRef = useRef(0);
@@ -271,11 +277,24 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         }
     }, [locations, selectedLocationFilter, isSinglePlan, isMultiPlan, user.unidade_id, user?.role, loggedInAgentId, allAgents.length]);
 
+    // ✅ P1: Debounce inteligente (500ms) para filtros que disparam requisição ao backend
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            setDebouncedServerFilters({
+                status: filters.status,
+                timeRemainingStatus: filters.timeRemainingStatus,
+                selectedLocationFilter,
+            });
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+    }, [filters.status, filters.timeRemainingStatus, selectedLocationFilter]);
+
     // ✅ MODIFICADO: Buscar agendamentos quando filtros, página ou LOCAL mudarem
     useEffect(() => {
         // 🔧 CORREÇÃO FINAL: Não buscar se selectedLocationFilter === 'all' (aguardando auto-seleção)
         // Isso evita a requisição inicial que mostra todos os agendamentos
-        if (selectedLocationFilter === 'all') {
+        if (debouncedServerFilters.selectedLocationFilter === 'all') {
             return;
         }
 
@@ -289,13 +308,13 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
             limit: itemsPerPage,
         };
 
-        if (filters.status !== 'all') {
-            apiFilters.status = filters.status;
+        if (debouncedServerFilters.status !== 'all') {
+            apiFilters.status = debouncedServerFilters.status;
         }
 
         // ✅ NOVO: Adicionar filtro temporal para o backend
-        if (filters.timeRemainingStatus !== 'all') {
-            apiFilters.time_filter = filters.timeRemainingStatus;
+        if (debouncedServerFilters.timeRemainingStatus !== 'all') {
+            apiFilters.time_filter = debouncedServerFilters.timeRemainingStatus;
         }
 
         // Se o usuário logado for um agente, filtrar apenas seus agendamentos
@@ -304,11 +323,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ loggedInAgentId }) 
         }
 
         // ✅ CORREÇÃO: Sempre aplicar filtro de unidade_id quando local específico estiver selecionado
-        if (selectedLocationFilter !== 'all') {
-            apiFilters.unidade_id = parseInt(selectedLocationFilter);
+        if (debouncedServerFilters.selectedLocationFilter !== 'all') {
+            apiFilters.unidade_id = parseInt(debouncedServerFilters.selectedLocationFilter);
         }
         fetchAppointments(apiFilters);
-    }, [currentPage, itemsPerPage, filters.id, filters.status, filters.timeRemainingStatus, selectedLocationFilter, isMultiPlan, fetchAppointments, user]);
+    }, [currentPage, itemsPerPage, filters.id, debouncedServerFilters, isMultiPlan, fetchAppointments, user]);
 
     useEffect(() => {
         const cleanId = (filters.id || '').replace(/#/g, '').trim();

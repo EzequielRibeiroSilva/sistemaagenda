@@ -120,6 +120,49 @@ class AgendamentoController extends BaseController {
         servico_id
       } = req.query;
 
+      // ✅ Blindagem P0: Validar parâmetros numéricos de filtros antes de chegar no Knex
+      if (page !== undefined) {
+        const pageNum = parseInt(page, 10);
+        if (!Number.isFinite(pageNum)) {
+          return res.status(400).json({ error: 'Parâmetro page inválido' });
+        }
+      }
+
+      if (limit !== undefined) {
+        const limitNum = parseInt(limit, 10);
+        if (!Number.isFinite(limitNum)) {
+          return res.status(400).json({ error: 'Parâmetro limit inválido' });
+        }
+      }
+
+      if (agente_id !== undefined) {
+        const agenteIdNum = parseInt(agente_id, 10);
+        if (!Number.isFinite(agenteIdNum)) {
+          return res.status(400).json({ error: 'Parâmetro agente_id inválido' });
+        }
+      }
+
+      if (cliente_id !== undefined) {
+        const clienteIdNum = parseInt(cliente_id, 10);
+        if (!Number.isFinite(clienteIdNum)) {
+          return res.status(400).json({ error: 'Parâmetro cliente_id inválido' });
+        }
+      }
+
+      if (unidade_id !== undefined) {
+        const unidadeIdNum = parseInt(unidade_id, 10);
+        if (!Number.isFinite(unidadeIdNum)) {
+          return res.status(400).json({ error: 'Parâmetro unidade_id inválido' });
+        }
+      }
+
+      if (servico_id !== undefined) {
+        const servicoIdNum = parseInt(servico_id, 10);
+        if (!Number.isFinite(servicoIdNum)) {
+          return res.status(400).json({ error: 'Parâmetro servico_id inválido' });
+        }
+      }
+
       let data;
 
       if (data_agendamento) {
@@ -427,6 +470,11 @@ class AgendamentoController extends BaseController {
               .whereRaw('agendamento_servicos.agendamento_id = agendamentos.id')
               .where('agendamento_servicos.servico_id', parseInt(servico_id));
           });
+        }
+
+        // ✅ Blindagem P0: Limite de segurança para evitar cargas grandes sem paginação
+        if (!page || !limit) {
+          baseQuery = baseQuery.limit(100);
         }
 
         // Executar query
