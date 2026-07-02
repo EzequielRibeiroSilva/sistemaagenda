@@ -2,6 +2,7 @@ const AuthService = require('../services/AuthService');
 const Usuario = require('../models/Usuario');
 const { db } = require('../config/knex');
 const logger = require('./../utils/logger');
+const { resolveIdentity } = require('../utils/identityResolver');
 
 class AuthMiddleware {
   constructor() {
@@ -143,6 +144,8 @@ class AuthMiddleware {
           avatar_url: avatarUrl
         };
         req.token = token;
+
+        req.identity = resolveIdentity(req.user);
 
         next();
 

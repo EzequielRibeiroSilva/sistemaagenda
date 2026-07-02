@@ -11,6 +11,60 @@ class UnidadeService {
     this.usuarioModel = new Usuario();
   }
 
+  async checkIntegrityBeforeRemoval({ trx, unidadeId, removedAgentIds, removedServiceIds }) {
+    const effectiveTrx = trx || db;
+
+    const statusAllowList = ['confirmado', 'pendente', 'Aprovado', 'Confirmado', 'Pendente'];
+
+    const baseAgendamentoQuery = () => effectiveTrx('agendamentos')
+      .where('unidade_id', unidadeId)
+      .where('data_agendamento', '>=', effectiveTrx.raw('CURRENT_DATE'))
+      .whereIn('status', statusAllowList);
+
+    if (Array.isArray(removedAgentIds) && removedAgentIds.length > 0) {
+      for (const agenteId of removedAgentIds) {
+        const row = await baseAgendamentoQuery()
+          .andWhere('agente_id', agenteId)
+          .count('* as count')
+          .first();
+
+        const count = Number(row?.count || 0);
+        if (count > 0) {
+          const err = new Error(
+            `Operação não permitida: Existem ${count} agendamentos futuros vinculados a este Agente nesta unidade. ` +
+            'Por favor, remova ou reagende estes compromissos antes de alterar o catálogo.'
+          );
+          err.code = 'UNIDADE_CATALOGO_GUARD_AGENTE';
+          err.statusCode = 409;
+          err.details = { unidade_id: unidadeId, agente_id: agenteId, count };
+          throw err;
+        }
+      }
+    }
+
+    if (Array.isArray(removedServiceIds) && removedServiceIds.length > 0) {
+      for (const servicoId of removedServiceIds) {
+        const row = await baseAgendamentoQuery()
+          .join('agendamento_servicos', 'agendamentos.id', 'agendamento_servicos.agendamento_id')
+          .andWhere('agendamento_servicos.servico_id', servicoId)
+          .countDistinct('agendamentos.id as count')
+          .first();
+
+        const count = Number(row?.count || 0);
+        if (count > 0) {
+          const err = new Error(
+            `Operação não permitida: Existem ${count} agendamentos futuros vinculados a este Serviço nesta unidade. ` +
+            'Por favor, remova ou reagende estes compromissos antes de alterar o catálogo.'
+          );
+          err.code = 'UNIDADE_CATALOGO_GUARD_SERVICO';
+          err.statusCode = 409;
+          err.details = { unidade_id: unidadeId, servico_id: servicoId, count };
+          throw err;
+        }
+      }
+    }
+  }
+
   /**
    * Verifica se o usuário pode criar uma nova unidade baseado no seu plano
    * @param {number} userId - ID do usuário
@@ -90,10 +144,7 @@ class UnidadeService {
         this.validateHorariosSemanais(unidadeData.horarios_funcionamento);
       }
 
-      const trx = await db.transaction();
-
-      try {
-        // Criar unidade usando transação
+      const result = await db.transaction(async (trx) => {
         const dadosUnidade = {
           nome: unidadeData.nome,
           endereco: unidadeData.endereco,
@@ -106,7 +157,6 @@ class UnidadeService {
 
         const [novaUnidade] = await trx('unidades').insert(dadosUnidade).returning('*');
 
-        // Criar horários de funcionamento
         if (unidadeData.horarios_funcionamento) {
           await HorarioFuncionamentoUnidade.upsertHorariosSemanais(
             novaUnidade.id,
@@ -114,7 +164,6 @@ class UnidadeService {
             trx
           );
         } else {
-          // Criar horários padrão (fechado todos os dias)
           const horariosDefault = this.getDefaultHorarios();
           await HorarioFuncionamentoUnidade.upsertHorariosSemanais(
             novaUnidade.id,
@@ -123,17 +172,13 @@ class UnidadeService {
           );
         }
 
-        // Associar agentes à unidade (se fornecidos)
         if (unidadeData.agentes_ids && Array.isArray(unidadeData.agentes_ids) && unidadeData.agentes_ids.length > 0) {
-
-
-          // Verificar se os agentes pertencem ao usuário (diretamente OU através de unidades)
           const agentesValidos = await trx('agentes')
             .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
             .whereIn('agentes.id', unidadeData.agentes_ids)
             .where(function() {
-              this.where('agentes.usuario_id', userId)  // Agentes diretos do usuário
-                  .orWhere('unidades.usuario_id', userId);  // Agentes através de unidades
+              this.where('agentes.usuario_id', userId)
+                  .orWhere('unidades.usuario_id', userId);
             })
             .select('agentes.id');
 
@@ -141,7 +186,6 @@ class UnidadeService {
             throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');
           }
 
-          // Criar associações na tabela agente_unidades
           const associacoesAgentes = unidadeData.agentes_ids.map(agenteId => ({
             agente_id: agenteId,
             unidade_id: novaUnidade.id,
@@ -149,14 +193,9 @@ class UnidadeService {
           }));
 
           await trx('agente_unidades').insert(associacoesAgentes);
-
         }
 
-        // Associar serviços à unidade (se fornecidos)
         if (unidadeData.servicos_ids && Array.isArray(unidadeData.servicos_ids) && unidadeData.servicos_ids.length > 0) {
-
-
-          // Verificar se os serviços pertencem ao usuário
           const servicosValidos = await trx('servicos')
             .whereIn('id', unidadeData.servicos_ids)
             .where('usuario_id', userId)
@@ -166,7 +205,6 @@ class UnidadeService {
             throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
           }
 
-          // ✅ ARQUITETURA MANY-TO-MANY: Criar associações na tabela unidade_servicos
           const associacoesServicos = unidadeData.servicos_ids.map(servicoId => ({
             unidade_id: novaUnidade.id,
             servico_id: servicoId,
@@ -174,10 +212,8 @@ class UnidadeService {
           }));
 
           await trx('unidade_servicos').insert(associacoesServicos);
-
         }
 
-        // Criar exceções de calendário (se fornecidas)
         if (unidadeData.excecoes_calendario && Array.isArray(unidadeData.excecoes_calendario) && unidadeData.excecoes_calendario.length > 0) {
           logger.log(`📅 [UnidadeService] Criando ${unidadeData.excecoes_calendario.length} exceções de calendário`);
 
@@ -194,7 +230,6 @@ class UnidadeService {
           }
         }
 
-        // ✅ CORREÇÃO: Criar configurações padrão para a nova unidade
         logger.log(`⚙️ [UnidadeService] Criando configurações padrão para unidade ${novaUnidade.id}`);
         await trx('configuracoes_sistema').insert({
           unidade_id: novaUnidade.id,
@@ -212,9 +247,6 @@ class UnidadeService {
         });
         logger.log(`✅ [UnidadeService] Configurações padrão criadas para unidade ${novaUnidade.id}`);
 
-        await trx.commit();
-
-        // Buscar unidade completa com horários
         const unidadeCompleta = await this.getUnidadeWithHorarios(novaUnidade.id);
 
         return {
@@ -224,13 +256,9 @@ class UnidadeService {
             limit: limitCheck.limit
           }
         };
-      } catch (transactionError) {
-        // ✅ CORREÇÃO: Verificar se transação ainda não foi finalizada
-        if (trx && !trx.isCompleted()) {
-          await trx.rollback();
-        }
-        throw transactionError;
-      }
+      });
+
+      return result;
     } catch (error) {
       logger.error('Erro ao criar unidade:', error);
       throw error;
@@ -252,19 +280,35 @@ class UnidadeService {
         throw new Error('Usuário não encontrado');
       }
 
-      // Buscar unidades do usuário
-      const todasUnidades = await this.unidadeModel.findByUsuario(userId);
+      // ========================================
+      // PERFORMANCE (ELITE): filtrar no banco (não no Node)
+      // ========================================
+      const baseQuery = db('unidades')
+        .where('usuario_id', userId)
+        .whereNot('status', 'Excluido');
 
-      // Filtrar unidades excluídas por padrão
-      const unidades = todasUnidades.filter(u => u.status !== 'Excluido');
-
-      // Aplicar filtros adicionais se fornecidos
-      let filteredUnidades = unidades;
       if (filters.status) {
-        filteredUnidades = unidades.filter(u => u.status === filters.status);
+        baseQuery.andWhere('status', filters.status);
       }
 
-      const currentCount = unidades.length;
+      const countRow = await db('unidades')
+        .where('usuario_id', userId)
+        .whereNot('status', 'Excluido')
+        .count('id as count')
+        .first();
+      const currentCount = Number(countRow?.count || 0);
+
+      // Proteção de escala: paginação opcional (quando fornecida)
+      const pageNum = Number.isFinite(Number(filters.page)) ? Math.max(1, parseInt(filters.page, 10)) : null;
+      const limitNumRaw = Number.isFinite(Number(filters.limit)) ? Math.max(1, parseInt(filters.limit, 10)) : null;
+      const limitNum = limitNumRaw !== null ? Math.min(limitNumRaw, 1000) : null;
+
+      if (pageNum !== null && limitNum !== null) {
+        const offset = (pageNum - 1) * limitNum;
+        baseQuery.limit(limitNum).offset(offset);
+      }
+
+      const filteredUnidades = await baseQuery.select('*');
       const limit = usuario.limite_unidades || 1;
 
       return {
@@ -289,10 +333,10 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Object|null>} - Unidade com horários ou null
    */
-  async getUnidadeById(userId, unidadeId, userRole) {
+  async getUnidadeById(identity, unidadeId) {
     try {
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+      const canAccess = await this.canAccessUnidade(identity, unidadeId);
 
       if (!canAccess) {
         return null;
@@ -314,13 +358,15 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<boolean>}
    */
-  async canAccessUnidade(userId, unidadeId, userRole) {
+  async canAccessUnidade(identity, unidadeId) {
     try {
-
+      const role = identity?.role;
+      const userId = identity?.userId;
+      const agenteId = identity?.agenteId;
+      const isAgente = identity?.isAgente === true;
 
       // MASTER pode acessar qualquer unidade
-      if (userRole === 'MASTER') {
-
+      if (role === 'MASTER') {
         return true;
       }
 
@@ -328,34 +374,29 @@ class UnidadeService {
       const unidade = await this.unidadeModel.findById(unidadeId);
 
       if (!unidade) {
-
         return false;
       }
 
       // AGENTE: Verificar se trabalha nesta unidade
-      if (userRole === 'AGENTE') {
-        // Buscar o agente usando o agente_id do req.user (não usuario_id)
-        // req.user.id é o usuario_id, mas precisamos do agente_id que vem no token
-        const agente = await db('agentes').where('id', userId).first();
-
-        if (!agente) {
-          // Se não encontrou pelo ID direto, tentar pelo usuario_id
-          const agenteByUsuario = await db('agentes').where('usuario_id', userId).first();
-          if (!agenteByUsuario) {
-            return false;
-          }
-          // Verificar se a unidade_id do agente corresponde à unidade solicitada
-          return agenteByUsuario.unidade_id === unidadeId;
+      if (isAgente || role === 'AGENTE') {
+        if (!Number.isFinite(agenteId)) {
+          return false;
         }
 
-        // Verificar se a unidade_id do agente corresponde à unidade solicitada
+        const agente = await db('agentes')
+          .where('id', agenteId)
+          .select('id', 'unidade_id')
+          .first();
+
+        if (!agente) {
+          return false;
+        }
+
         return agente.unidade_id === unidadeId;
       }
 
       // ADMIN só pode acessar suas próprias unidades
-      const canAccess = unidade.usuario_id === userId;
-
-      return canAccess;
+      return unidade.usuario_id === userId;
     } catch (error) {
       logger.error('Erro ao verificar acesso à unidade:', error);
       return false;
@@ -370,12 +411,10 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Object>} - Unidade atualizada com horários
    */
-  async updateUnidade(userId, unidadeId, updateData, userRole) {
+  async updateUnidade(identity, unidadeId, updateData) {
     try {
-
-
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+      const canAccess = await this.canAccessUnidade(identity, unidadeId);
 
       if (!canAccess) {
         const error = new Error('Você não tem permissão para editar esta unidade');
@@ -388,10 +427,7 @@ class UnidadeService {
         this.validateHorariosSemanais(updateData.horarios_funcionamento);
       }
 
-      const trx = await db.transaction();
-
-      try {
-        // Atualizar dados básicos da unidade usando transação
+      return await db.transaction(async (trx) => {
         const dadosBasicos = {
           nome: updateData.nome,
           endereco: updateData.endereco,
@@ -400,19 +436,17 @@ class UnidadeService {
           updated_at: new Date()
         };
 
-        // Remover campos undefined para não sobrescrever com null
         Object.keys(dadosBasicos).forEach(key => {
           if (dadosBasicos[key] === undefined) {
             delete dadosBasicos[key];
           }
         });
 
-        const [unidadeAtualizada] = await trx('unidades')
+        await trx('unidades')
           .where('id', unidadeId)
           .update(dadosBasicos)
           .returning('*');
 
-        // Atualizar horários se fornecidos
         if (updateData.horarios_funcionamento) {
           await HorarioFuncionamentoUnidade.upsertHorariosSemanais(
             unidadeId,
@@ -421,21 +455,33 @@ class UnidadeService {
           );
         }
 
-        // Atualizar associações de agentes (se fornecidos)
         if (updateData.agentes_ids !== undefined) {
+          const existingAgentRows = await trx('agente_unidades')
+            .where('unidade_id', unidadeId)
+            .select('agente_id');
+          const existingAgentIds = existingAgentRows.map(r => Number(r.agente_id)).filter(n => Number.isFinite(n));
 
+          const nextAgentIds = Array.isArray(updateData.agentes_ids)
+            ? updateData.agentes_ids.map(n => Number(n)).filter(n => Number.isFinite(n))
+            : [];
+          const removedAgentIds = existingAgentIds.filter(id => !nextAgentIds.includes(id));
 
-          // Remover associações existentes
+          await this.checkIntegrityBeforeRemoval({
+            trx,
+            unidadeId,
+            removedAgentIds,
+            removedServiceIds: []
+          });
+
           await trx('agente_unidades').where('unidade_id', unidadeId).del();
 
           if (Array.isArray(updateData.agentes_ids) && updateData.agentes_ids.length > 0) {
-            // Verificar se os agentes pertencem ao usuário (diretamente OU através de unidades)
             const agentesValidos = await trx('agentes')
               .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
               .whereIn('agentes.id', updateData.agentes_ids)
               .where(function() {
-                this.where('agentes.usuario_id', userId)  // Agentes diretos do usuário
-                    .orWhere('unidades.usuario_id', userId);  // Agentes através de unidades
+                this.where('agentes.usuario_id', identity?.userId)
+                    .orWhere('unidades.usuario_id', identity?.userId);
               })
               .select('agentes.id');
 
@@ -443,7 +489,6 @@ class UnidadeService {
               throw new Error('Um ou mais agentes não pertencem ao usuário ou não existem');
             }
 
-            // Criar novas associações
             const associacoesAgentes = updateData.agentes_ids.map(agenteId => ({
               agente_id: agenteId,
               unidade_id: unidadeId,
@@ -454,24 +499,31 @@ class UnidadeService {
           }
         }
 
-        // Atualizar associações de serviços (se fornecidos)
         if (updateData.servicos_ids !== undefined) {
+          const existingServiceRows = await trx('unidade_servicos')
+            .where('unidade_id', unidadeId)
+            .select('servico_id');
+          const existingServiceIds = existingServiceRows.map(r => Number(r.servico_id)).filter(n => Number.isFinite(n));
 
+          const nextServiceIds = Array.isArray(updateData.servicos_ids)
+            ? updateData.servicos_ids.map(n => Number(n)).filter(n => Number.isFinite(n))
+            : [];
+          const removedServiceIds = existingServiceIds.filter(id => !nextServiceIds.includes(id));
 
-          // ✅ ARQUITETURA MANY-TO-MANY: Remover associações existentes da tabela unidade_servicos
-          const removidos = await trx('unidade_servicos').where('unidade_id', unidadeId).del();
+          await this.checkIntegrityBeforeRemoval({
+            trx,
+            unidadeId,
+            removedAgentIds: [],
+            removedServiceIds
+          });
 
+          await trx('unidade_servicos').where('unidade_id', unidadeId).del();
 
           if (Array.isArray(updateData.servicos_ids) && updateData.servicos_ids.length > 0) {
-
-            
-            // Verificar se os serviços pertencem ao usuário
             const servicosValidos = await trx('servicos')
               .whereIn('id', updateData.servicos_ids)
-              .where('usuario_id', userId)
+              .where('usuario_id', identity?.userId)
               .select('id');
-
-
 
             if (servicosValidos.length !== updateData.servicos_ids.length) {
               const idsValidos = servicosValidos.map(s => s.id);
@@ -480,7 +532,6 @@ class UnidadeService {
               throw new Error('Um ou mais serviços não pertencem ao usuário ou não existem');
             }
 
-            // ✅ ARQUITETURA MANY-TO-MANY: Criar novas associações na tabela unidade_servicos
             const associacoesServicos = updateData.servicos_ids.map(servicoId => ({
               unidade_id: unidadeId,
               servico_id: servicoId,
@@ -491,12 +542,9 @@ class UnidadeService {
           }
         }
 
-        // Atualizar exceções de calendário (se fornecidas)
         if (updateData.excecoes_calendario !== undefined) {
-          // Remover exceções existentes
           await ExcecaoCalendario.deleteByUnidade(unidadeId, trx);
 
-          // Criar novas exceções
           if (Array.isArray(updateData.excecoes_calendario) && updateData.excecoes_calendario.length > 0) {
             for (const excecao of updateData.excecoes_calendario) {
               await ExcecaoCalendario.create({
@@ -512,22 +560,8 @@ class UnidadeService {
           }
         }
 
-        await trx.commit();
-
-        // Buscar unidade completa com horários
-        const unidadeCompleta = await this.getUnidadeWithHorarios(unidadeId);
-        return unidadeCompleta;
-      } catch (transactionError) {
-        // ✅ CORREÇÃO: Verificar se transação ainda não foi finalizada
-        if (trx && !trx.isCompleted()) {
-          await trx.rollback();
-        }
-        logger.error('❌ [UnidadeService] Rollback executado. Erro:', {
-          message: transactionError?.message,
-          stack: transactionError?.stack
-        });
-        throw transactionError;
-      }
+        return await this.getUnidadeWithHorarios(unidadeId);
+      });
     } catch (error) {
       logger.error('❌ [UnidadeService] Erro ao atualizar unidade:', error.message);
       throw error;
@@ -542,7 +576,7 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Object>} - Unidade com status atualizado
    */
-  async changeUnidadeStatus(userId, unidadeId, newStatus, userRole) {
+  async changeUnidadeStatus(identity, unidadeId, newStatus) {
     try {
 
 
@@ -554,7 +588,7 @@ class UnidadeService {
       }
 
       // Atualizar usando o método updateUnidade que já verifica permissões
-      const resultado = await this.updateUnidade(userId, unidadeId, { status: newStatus }, userRole);
+      const resultado = await this.updateUnidade(identity, unidadeId, { status: newStatus });
 
       return resultado;
     } catch (error) {
@@ -658,10 +692,10 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Object>} Exceção criada
    */
-  async createExcecaoCalendario(userId, unidadeId, excecaoData, userRole) {
+  async createExcecaoCalendario(identity, unidadeId, excecaoData) {
     try {
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+      const canAccess = await this.canAccessUnidade(identity, unidadeId);
 
       if (!canAccess) {
         const error = new Error('Você não tem permissão para editar esta unidade');
@@ -691,7 +725,7 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Object>} Exceção atualizada
    */
-  async updateExcecaoCalendario(userId, excecaoId, excecaoData, userRole) {
+  async updateExcecaoCalendario(identity, excecaoId, excecaoData) {
     try {
       // Buscar exceção para verificar unidade_id
       const excecaoExistente = await ExcecaoCalendario.findById(excecaoId);
@@ -703,7 +737,7 @@ class UnidadeService {
       }
 
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, excecaoExistente.unidade_id, userRole);
+      const canAccess = await this.canAccessUnidade(identity, excecaoExistente.unidade_id);
 
       if (!canAccess) {
         const error = new Error('Você não tem permissão para editar esta exceção');
@@ -729,7 +763,7 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<boolean>} True se deletado com sucesso
    */
-  async deleteExcecaoCalendario(userId, excecaoId, userRole) {
+  async deleteExcecaoCalendario(identity, excecaoId) {
     try {
       // Buscar exceção para verificar unidade_id
       const excecaoExistente = await ExcecaoCalendario.findById(excecaoId);
@@ -741,7 +775,7 @@ class UnidadeService {
       }
 
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, excecaoExistente.unidade_id, userRole);
+      const canAccess = await this.canAccessUnidade(identity, excecaoExistente.unidade_id);
 
       if (!canAccess) {
         const error = new Error('Você não tem permissão para deletar esta exceção');
@@ -768,10 +802,10 @@ class UnidadeService {
    * @param {string} userRole - Role do usuário
    * @returns {Promise<Array>} Lista de exceções
    */
-  async listExcecoesCalendario(userId, unidadeId, filters, userRole) {
+  async listExcecoesCalendario(identity, unidadeId, filters) {
     try {
       // Verificar se pode acessar a unidade
-      const canAccess = await this.canAccessUnidade(userId, unidadeId, userRole);
+      const canAccess = await this.canAccessUnidade(identity, unidadeId);
 
       if (!canAccess) {
         const error = new Error('Você não tem permissão para acessar esta unidade');

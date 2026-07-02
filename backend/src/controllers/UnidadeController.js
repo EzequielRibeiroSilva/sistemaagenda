@@ -28,77 +28,62 @@ class UnidadeController extends BaseController {
         });
       }
 
-
+      const envelope = {
+        data: [],
+        limitInfo: null
+      };
 
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, retornar a unidade onde ele trabalha
       if (userRole === 'AGENTE' && userAgenteId) {
-        // Buscar o agente para pegar sua unidade_id
         const agente = await this.model.db('agentes')
           .where('id', userAgenteId)
           .first();
 
         if (!agente || !agente.unidade_id) {
-          return res.json([]);
+          return res.json({ data: [] });
         }
 
-        // Buscar a unidade do agente
         const unidade = await this.model.db('unidades')
           .where('id', agente.unidade_id)
           .where('status', '!=', 'Excluido')
           .first();
 
         if (!unidade) {
-          return res.json([]);
+          return res.json({ data: [] });
         }
 
-        if (includeHorarios) {
-          unidade.horarios_funcionamento = await HorarioFuncionamentoUnidade.findByUnidade(unidade.id);
-        }
-
-        // Aplicar filtros adicionais se fornecidos
         const { status } = req.query;
         if (status && unidade.status !== status) {
-          return res.json([]);
+          return res.json({ data: [] });
         }
 
-        // Retornar no formato esperado pelo frontend (array direto)
-        return res.json([unidade]);
-      }
+        envelope.data = [unidade];
+      } else {
+        const { status } = req.query;
+        const filters = {};
 
-      const { status } = req.query;
-      const filters = {};
+        if (status) {
+          filters.status = status;
+        }
 
-      if (status) {
-        filters.status = status;
-      }
-
-      // Para MASTER, listar todas as unidades; para ADMIN/AGENTE, apenas unidades da empresa
-      let result;
-      if (userRole === 'MASTER') {
-        // MASTER vê todas as unidades do sistema
-        const unidades = await this.model.findAll(filters);
-        result = {
-          data: unidades,
-          limitInfo: {
-            currentCount: unidades.length,
-            limit: null, // MASTER não tem limite
+        if (userRole === 'MASTER') {
+          const unidades = await this.model.findAll(filters);
+          envelope.data = Array.isArray(unidades) ? unidades : [];
+          envelope.limitInfo = {
+            currentCount: envelope.data.length,
+            limit: null,
             canCreateMore: true,
             plano: 'MASTER'
-          }
-        };
-      } else {
-        // ✅ CORREÇÃO: ADMIN e AGENTE veem unidades da empresa (filtradas por usuario_id)
-        // Para AGENTE, req.user.id é o ID do usuário ADMIN que criou o agente
-
-        result = await this.unidadeService.listUnidadesWithLimit(usuarioId, filters);
+          };
+        } else {
+          const result = await this.unidadeService.listUnidadesWithLimit(usuarioId, filters);
+          envelope.data = Array.isArray(result?.data) ? result.data : [];
+          envelope.limitInfo = result?.limitInfo || null;
+        }
       }
 
-      if (includeHorarios) {
-        const unidades = Array.isArray(result)
-          ? result
-          : (Array.isArray(result?.data) ? result.data : []);
-
-        const unidadeIds = unidades
+      if (includeHorarios && Array.isArray(envelope.data) && envelope.data.length > 0) {
+        const unidadeIds = envelope.data
           .map(u => u?.id)
           .filter(id => Number.isFinite(id));
 
@@ -112,14 +97,20 @@ class UnidadeController extends BaseController {
           horariosByUnidadeId.get(id).push(row);
         }
 
-        for (const unidade of unidades) {
+        for (const unidade of envelope.data) {
           unidade.horarios_funcionamento = horariosByUnidadeId.get(unidade.id) || [];
         }
       }
 
+      if (!Array.isArray(envelope.data)) {
+        envelope.data = [];
+      }
 
+      if (envelope.limitInfo === null) {
+        delete envelope.limitInfo;
+      }
 
-      return res.json(result);
+      return res.json(envelope);
     } catch (error) {
       logger.error('❌ [UnidadeController] Erro ao buscar unidades:', error);
       return res.status(500).json({
@@ -202,17 +193,16 @@ class UnidadeController extends BaseController {
   async show(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
       }
 
       // Buscar unidade com horários usando service
-      const unidadeCompleta = await this.unidadeService.getUnidadeById(usuarioId, parseInt(id), userRole);
+      const unidadeCompleta = await this.unidadeService.getUnidadeById(identity, parseInt(id));
 
       if (!unidadeCompleta) {
         return res.status(404).json({
@@ -240,10 +230,9 @@ class UnidadeController extends BaseController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -308,17 +297,16 @@ class UnidadeController extends BaseController {
 
       // Usar service para atualizar com verificação de permissões
       const unidadeAtualizada = await this.unidadeService.updateUnidade(
-        usuarioId,
+        identity,
         parseInt(id),
-        updateData,
-        userRole
+        updateData
       );
 
       // 🗑️ INVALIDAÇÃO DE CACHE FAQ (TASK 3.2)
       // Após atualizar unidade, invalidar cache de conhecimento
       try {
         const kbService = getKnowledgeBaseService();
-        await kbService.invalidateCache(usuarioId, parseInt(id));
+        await kbService.invalidateCache(identity.userId, parseInt(id));
         logger.log(`🗑️ [Cache] FAQ cache invalidado - unidade_id: ${id}`);
       } catch (cacheErr) {
         // Não-crítico: erro no cache não deve impedir a operação
@@ -338,6 +326,16 @@ class UnidadeController extends BaseController {
         message: error?.message,
         stack: error?.stack
       });
+
+      if (Number.isFinite(error?.statusCode)) {
+        return res.status(error.statusCode).json({
+          success: false,
+          error: 'Operação não permitida',
+          message: error.message,
+          code: error.code,
+          details: error.details
+        });
+      }
 
       if (error.code === 'ACCESS_DENIED') {
         return res.status(403).json({
@@ -359,10 +357,9 @@ class UnidadeController extends BaseController {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -377,10 +374,9 @@ class UnidadeController extends BaseController {
 
       // Usar service para alterar status com verificação de permissões
       const unidadeAtualizada = await this.unidadeService.changeUnidadeStatus(
-        usuarioId,
+        identity,
         parseInt(id),
-        status,
-        userRole
+        status
       );
 
       return res.json({
@@ -415,10 +411,9 @@ class UnidadeController extends BaseController {
   async destroy(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -427,10 +422,9 @@ class UnidadeController extends BaseController {
       // ADMIN pode deletar suas próprias unidades, MASTER pode deletar qualquer uma
       // Usar soft delete alterando status para 'Excluido'
       const unidadeAtualizada = await this.unidadeService.changeUnidadeStatus(
-        usuarioId,
+        identity,
         parseInt(id),
-        'Excluido',
-        userRole
+        'Excluido'
       );
 
       return res.json({
@@ -469,10 +463,9 @@ class UnidadeController extends BaseController {
   async createExcecao(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -499,10 +492,9 @@ class UnidadeController extends BaseController {
 
       // Criar exceção usando service
       const excecao = await this.unidadeService.createExcecaoCalendario(
-        usuarioId,
+        identity,
         parseInt(id),
-        excecaoData,
-        userRole
+        excecaoData
       );
 
       return res.status(201).json({
@@ -538,11 +530,9 @@ class UnidadeController extends BaseController {
   async listExcecoes(req, res) {
     try {
       const { id } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
-      const userAgenteId = req.user?.agente_id;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -557,15 +547,11 @@ class UnidadeController extends BaseController {
         filters.dataFim = req.query.dataFim;
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Para AGENTE, passar agente_id ao invés de usuario_id
-      const userIdForService = userRole === 'AGENTE' && userAgenteId ? userAgenteId : usuarioId;
-
       // Buscar exceções usando service
       const excecoes = await this.unidadeService.listExcecoesCalendario(
-        userIdForService,
+        identity,
         parseInt(id),
-        filters,
-        userRole
+        filters
       );
 
       return res.json({
@@ -593,10 +579,9 @@ class UnidadeController extends BaseController {
   async updateExcecao(req, res) {
     try {
       const { excecaoId } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -625,10 +610,9 @@ class UnidadeController extends BaseController {
 
       // Atualizar exceção usando service
       const excecaoAtualizada = await this.unidadeService.updateExcecaoCalendario(
-        usuarioId,
+        identity,
         parseInt(excecaoId),
-        excecaoData,
-        userRole
+        excecaoData
       );
 
       return res.json({
@@ -671,10 +655,9 @@ class UnidadeController extends BaseController {
   async deleteExcecao(req, res) {
     try {
       const { excecaoId } = req.params;
-      const usuarioId = req.user?.id;
-      const userRole = req.user?.role;
+      const identity = req.identity;
 
-      if (!usuarioId) {
+      if (!identity?.userId) {
         return res.status(401).json({
           error: 'Usuário não autenticado'
         });
@@ -682,9 +665,8 @@ class UnidadeController extends BaseController {
 
       // Deletar exceção usando service
       const deleted = await this.unidadeService.deleteExcecaoCalendario(
-        usuarioId,
-        parseInt(excecaoId),
-        userRole
+        identity,
+        parseInt(excecaoId)
       );
 
       if (!deleted) {

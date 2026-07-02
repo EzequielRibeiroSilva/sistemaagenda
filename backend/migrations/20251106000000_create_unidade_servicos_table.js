@@ -4,11 +4,9 @@
  */
 
 exports.up = function(knex) {
-  // Não faz nada - a tabela já foi criada por outra migration
   return Promise.resolve();
 };
 
 exports.down = function(knex) {
-  // Não faz nada
   return Promise.resolve();
 };

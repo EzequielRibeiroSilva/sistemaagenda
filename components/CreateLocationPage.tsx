@@ -169,7 +169,10 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
         setCheckedAgents(prev => ({ ...prev, [agentId]: !prev[agentId] }));
     };
 
-    const allAgentsSelected = useMemo(() => agents.every(agent => checkedAgents[agent.id]), [checkedAgents, agents]);
+    const allAgentsSelected = useMemo(() =>
+        agents.length > 0 && agents.every(agent => checkedAgents[agent.id]),
+        [checkedAgents, agents]
+    );
 
     const handleSelectAllAgents = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
@@ -193,7 +196,10 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
         setCheckedServices(prev => ({ ...prev, [serviceId]: !prev[serviceId] }));
     };
 
-    const allServicesSelected = useMemo(() => services.every(service => checkedServices[service.id]), [checkedServices, services]);
+    const allServicesSelected = useMemo(() =>
+        services.length > 0 && services.every(service => checkedServices[service.id]),
+        [checkedServices, services]
+    );
 
     // Form handlers
     const handleInputChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,15 +359,22 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
             <FormCard 
                 title="Selecione os Agentes para Este Local"
                 rightContent={
-                    <label className="flex items-center cursor-pointer">
-                        <div className="relative flex items-center">
-                             <input type="checkbox" checked={allAgentsSelected} onChange={handleSelectAllAgents} className="sr-only" />
-                             <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allAgentsSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {allAgentsSelected && <Check className="w-3 h-3 text-white" />}
+                    agents.length > 0 ? (
+                        <label className="flex items-center cursor-pointer">
+                            <div className="relative flex items-center">
+                                <input
+                                    type="checkbox"
+                                    checked={allAgentsSelected}
+                                    onChange={handleSelectAllAgents}
+                                    className="sr-only"
+                                />
+                                <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allAgentsSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                    {allAgentsSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
                             </div>
-                        </div>
-                        <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
-                    </label>
+                            <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
+                        </label>
+                    ) : null
                 }
             >
                 <div className="space-y-3">
@@ -387,15 +400,22 @@ const CreateLocationPage: React.FC<CreateLocationPageProps> = ({ setActiveView }
             <FormCard 
                 title="Serviços Oferecidos"
                 rightContent={
-                    <label className="flex items-center cursor-pointer">
-                        <div className="relative flex items-center">
-                             <input type="checkbox" checked={allServicesSelected} onChange={handleSelectAllServices} className="sr-only" />
-                             <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allServicesSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {allServicesSelected && <Check className="w-3 h-3 text-white" />}
+                    services.length > 0 ? (
+                        <label className="flex items-center cursor-pointer">
+                            <div className="relative flex items-center">
+                                <input
+                                    type="checkbox"
+                                    checked={allServicesSelected}
+                                    onChange={handleSelectAllServices}
+                                    className="sr-only"
+                                />
+                                <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allServicesSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                    {allServicesSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
                             </div>
-                        </div>
-                        <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
-                    </label>
+                            <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
+                        </label>
+                    ) : null
                 }
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

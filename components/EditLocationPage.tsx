@@ -242,6 +242,10 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
     const handleSelectAllAgents = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
+        if (agents.length === 0) {
+            setSelectedAgents(new Set());
+            return;
+        }
         if (isChecked) {
             setSelectedAgents(new Set(agents.map(agent => agent.id)));
         } else {
@@ -264,6 +268,10 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
 
     const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
+        if (services.length === 0) {
+            setSelectedServices(new Set());
+            return;
+        }
         if (isChecked) {
             setSelectedServices(new Set(services.map(service => service.id)));
         } else {
@@ -447,55 +455,73 @@ const EditLocationPage: React.FC<EditLocationPageProps> = ({ setActiveView, loca
             <FormCard
                 title="Selecione os Agentes para Este Local"
                 rightContent={
-                    <label className="flex items-center cursor-pointer">
-                        <div className="relative flex items-center">
-                             <input type="checkbox" checked={allAgentsSelected} onChange={handleSelectAllAgents} className="sr-only" />
-                             <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allAgentsSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {allAgentsSelected && <Check className="w-3 h-3 text-white" />}
+                    agents.length > 0 ? (
+                        <label className="flex items-center cursor-pointer">
+                            <div className="relative flex items-center">
+                                <input type="checkbox" checked={allAgentsSelected} onChange={handleSelectAllAgents} className="sr-only" />
+                                <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allAgentsSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                    {allAgentsSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
                             </div>
-                        </div>
-                        <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
-                    </label>
+                            <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
+                        </label>
+                    ) : null
                 }
             >
                 <div className="space-y-3">
-                    {agents.map(agent => (
-                        <AgentSelectItem
-                            key={agent.id}
-                            id={agent.id}
-                            name={agent.nome}
-                            avatar={agent.avatar_url}
-                            checked={selectedAgents.has(agent.id)}
-                            onChange={() => handleAgentToggle(agent.id)}
-                        />
-                    ))}
+                    {agents.length > 0 ? (
+                        agents.map(agent => (
+                            <AgentSelectItem
+                                key={agent.id}
+                                id={agent.id}
+                                name={agent.nome}
+                                avatar={agent.avatar_url}
+                                checked={selectedAgents.has(agent.id)}
+                                onChange={() => handleAgentToggle(agent.id)}
+                            />
+                        ))
+                    ) : (
+                        <div className="text-center py-8 text-gray-500">
+                            <p>Nenhum agente encontrado.</p>
+                            <p className="text-sm">Cadastre agentes primeiro para associá-los a este local.</p>
+                        </div>
+                    )}
                 </div>
             </FormCard>
 
             <FormCard
                 title="Serviços Oferecidos"
                 rightContent={
-                    <label className="flex items-center cursor-pointer">
-                        <div className="relative flex items-center">
-                             <input type="checkbox" checked={allServicesSelected} onChange={handleSelectAllServices} className="sr-only" />
-                             <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allServicesSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-                                {allServicesSelected && <Check className="w-3 h-3 text-white" />}
+                    services.length > 0 ? (
+                        <label className="flex items-center cursor-pointer">
+                            <div className="relative flex items-center">
+                                <input type="checkbox" checked={allServicesSelected} onChange={handleSelectAllServices} className="sr-only" />
+                                <div className={`w-5 h-5 flex items-center justify-center border-2 rounded ${allServicesSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                                    {allServicesSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
                             </div>
-                        </div>
-                        <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
-                    </label>
+                            <span className="ml-2 font-medium text-sm text-gray-700">Selecionar Todos</span>
+                        </label>
+                    ) : null
                 }
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {services.map(service => (
-                        <ServiceCheckbox
-                            key={service.id}
-                            id={service.id}
-                            name={service.nome}
-                            checked={selectedServices.has(service.id)}
-                            onChange={() => handleServiceToggle(service.id)}
-                        />
-                    ))}
+                    {services.length > 0 ? (
+                        services.map(service => (
+                            <ServiceCheckbox
+                                key={service.id}
+                                id={service.id}
+                                name={service.nome}
+                                checked={selectedServices.has(service.id)}
+                                onChange={() => handleServiceToggle(service.id)}
+                            />
+                        ))
+                    ) : (
+                        <div className="text-center py-8 text-gray-500 md:col-span-2">
+                            <p>Nenhum serviço encontrado.</p>
+                            <p className="text-sm">Cadastre serviços primeiro para associá-los a este local.</p>
+                        </div>
+                    )}
                 </div>
             </FormCard>
 

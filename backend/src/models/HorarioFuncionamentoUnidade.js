@@ -102,8 +102,140 @@ class HorarioFuncionamentoUnidade extends BaseModel {
    */
   static async upsertHorariosSemanais(unidadeId, horariosSemanais, trx = null) {
     const query = trx ? trx('horarios_funcionamento_unidade') : db('horarios_funcionamento_unidade');
+    const effectiveTrx = trx || db;
 
     try {
+      // ========================================
+      // TEMPORAL GUARD (ELITE): impedir que atualização de horário
+      // deixe agendamentos futuros fora do novo intervalo.
+      // ========================================
+      const statusAllowList = ['confirmado', 'pendente', 'Aprovado', 'Confirmado', 'Pendente'];
+
+      const normalizePeriods = (periodos) => {
+        if (!Array.isArray(periodos)) return [];
+        return periodos
+          .map(p => ({
+            inicio: typeof p?.inicio === 'string' ? p.inicio : null,
+            fim: typeof p?.fim === 'string' ? p.fim : null
+          }))
+          .filter(p => p.inicio && p.fim);
+      };
+
+      const isAppointmentWithinNewSchedule = (horaInicio, horaFim, newPeriods) => {
+        const startMin = this.timeToMinutes(String(horaInicio).slice(0, 5));
+        const endMin = this.timeToMinutes(String(horaFim).slice(0, 5));
+
+        return (newPeriods || []).some(periodo => {
+          const pStart = this.timeToMinutes(periodo.inicio);
+          const pEnd = this.timeToMinutes(periodo.fim);
+          return startMin >= pStart && endMin <= pEnd;
+        });
+      };
+
+      // Buscar horários atuais ANTES do delete (dentro da mesma trx quando possível)
+      const existingRows = await effectiveTrx('horarios_funcionamento_unidade')
+        .where('unidade_id', unidadeId)
+        .select('dia_semana', 'is_aberto', 'horarios_json');
+
+      const existingByDay = new Map();
+      for (const row of existingRows) {
+        let parsed = row.horarios_json;
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed);
+          } catch (e) {
+            parsed = [];
+          }
+        }
+        existingByDay.set(Number(row.dia_semana), {
+          is_aberto: !!row.is_aberto,
+          periodos: Array.isArray(parsed) ? parsed : []
+        });
+      }
+
+      // Identificar dias que estão sendo fechados ou restritos
+      const affectedDays = [];
+      for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        const existing = existingByDay.get(dayIndex) || { is_aberto: false, periodos: [] };
+        const incoming = horariosSemanais?.[dayIndex] || { is_aberto: false, periodos: [] };
+
+        const oldOpen = !!existing.is_aberto;
+        const newOpen = !!incoming.is_aberto;
+
+        const oldPeriods = normalizePeriods(existing.periodos);
+        const newPeriods = normalizePeriods(incoming.periodos);
+
+        // Se estava aberto e vai fechar => afetado
+        if (oldOpen && !newOpen) {
+          affectedDays.push({ dia_semana: dayIndex, newOpen, newPeriods });
+          continue;
+        }
+
+        // Se continua aberto, mas pode ter sido encurtado
+        if (oldOpen && newOpen) {
+          // Se novo não tem períodos válidos, é efetivamente fechado para agenda
+          if (newPeriods.length === 0) {
+            affectedDays.push({ dia_semana: dayIndex, newOpen: false, newPeriods: [] });
+            continue;
+          }
+
+          const oldStart = oldPeriods.length > 0
+            ? Math.min(...oldPeriods.map(p => this.timeToMinutes(p.inicio)))
+            : null;
+          const oldEnd = oldPeriods.length > 0
+            ? Math.max(...oldPeriods.map(p => this.timeToMinutes(p.fim)))
+            : null;
+
+          const newStart = Math.min(...newPeriods.map(p => this.timeToMinutes(p.inicio)));
+          const newEnd = Math.max(...newPeriods.map(p => this.timeToMinutes(p.fim)));
+
+          const isRestricted =
+            (oldStart !== null && newStart > oldStart) ||
+            (oldEnd !== null && newEnd < oldEnd);
+
+          if (isRestricted) {
+            affectedDays.push({ dia_semana: dayIndex, newOpen, newPeriods });
+          }
+        }
+      }
+
+      // Para cada dia afetado, verificar se haverá agendamentos futuros fora do novo intervalo
+      if (affectedDays.length > 0) {
+        for (const day of affectedDays) {
+          const diaSemana = Number(day.dia_semana);
+
+          const rows = await effectiveTrx('agendamentos')
+            .where('unidade_id', unidadeId)
+            .where('data_agendamento', '>=', effectiveTrx.raw('CURRENT_DATE'))
+            .whereIn('status', statusAllowList)
+            .andWhereRaw('EXTRACT(DOW FROM data_agendamento) = ?', [diaSemana])
+            .select('id', 'hora_inicio', 'hora_fim');
+
+          if (!Array.isArray(rows) || rows.length === 0) continue;
+
+          let outOfBounds = 0;
+          if (!day.newOpen || !Array.isArray(day.newPeriods) || day.newPeriods.length === 0) {
+            outOfBounds = rows.length;
+          } else {
+            for (const app of rows) {
+              const ok = isAppointmentWithinNewSchedule(app.hora_inicio, app.hora_fim, day.newPeriods);
+              if (!ok) outOfBounds++;
+            }
+          }
+
+          if (outOfBounds > 0) {
+            const err = new Error(
+              `Alteração de horário não permitida: Existem ${outOfBounds} agendamentos confirmados em horários que não estarão mais disponíveis com essa configuração. ` +
+              'Remova ou reagende os compromissos afetados antes de salvar.'
+            );
+            err.code = 'UNIDADE_HORARIO_TEMPORAL_GUARD';
+            err.statusCode = 409;
+            err.details = { unidade_id: unidadeId, dia_semana: diaSemana, count: outOfBounds };
+            throw err;
+          }
+        }
+      }
+
       // Primeiro, deletar horários existentes
       await query.clone().delete().where('unidade_id', unidadeId);
 
