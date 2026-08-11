@@ -377,8 +377,10 @@ class PublicBookingController {
 
       // ✅ CORREÇÃO CRÍTICA: Buscar agentes que trabalham na unidade
       // Verificar TANTO na tabela agente_unidades (multi-local) QUANTO no campo agentes.unidade_id (single/legado)
+      // ✅ ELITE SECURITY FIX: Adicionar filtro whereNull('deleted_at') para prevenir "Ghost Barber"
       const agentes = await db('agentes')
         .where('agentes.status', 'Ativo')
+        .whereNull('agentes.deleted_at') // ✅ CORREÇÃO CRÍTICA: Bloquear agentes excluídos (soft delete)
         .where(function() {
           // Condição 1: Agente tem a unidade como unidade_id principal
           this.where('agentes.unidade_id', unidadeId)
