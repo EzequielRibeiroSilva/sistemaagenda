@@ -2,6 +2,8 @@ const BaseController = require('./BaseController');
 const Servico = require('../models/Servico');
 const { getInstance: getKnowledgeBaseService } = require('../services/KnowledgeBaseService');
 const logger = require('../utils/logger');
+const { validateComissaoValue } = require('../middleware/comissaoValidation');
+const { logComissaoChange } = require('../utils/auditLogger');
 
 class ServicoController extends BaseController {
   constructor() {
@@ -542,13 +544,15 @@ class ServicoController extends BaseController {
         });
       }
 
+      // [ELITE-PHASE-1] Validação estrita de comissão via helper (0-100)
       if (comissao_percentual !== undefined && comissao_percentual !== null) {
         const comissaoNumero = Number(comissao_percentual);
-        if (Number.isNaN(comissaoNumero) || comissaoNumero < 0 || comissaoNumero > 100) {
-          return res.status(400).json({
+        const comissaoValidationError = validateComissaoValue(comissaoNumero);
+        if (comissaoValidationError) {
+          return res.status(422).json({
             success: false,
-            error: 'Comissão inválida',
-            message: 'Comissão deve ser um número entre 0 e 100'
+            error: '[VALOR_INVALIDO] Comissão inválida',
+            message: comissaoValidationError
           });
         }
       }
@@ -819,13 +823,32 @@ class ServicoController extends BaseController {
         });
       }
 
+      // [ELITE-PHASE-1] Validação estrita de comissão via helper (0-100)
       if (comissao_percentual !== undefined && comissao_percentual !== null) {
         const comissaoNumero = Number(comissao_percentual);
-        if (Number.isNaN(comissaoNumero) || comissaoNumero < 0 || comissaoNumero > 100) {
-          return res.status(400).json({
+        const comissaoValidationError = validateComissaoValue(comissaoNumero);
+        if (comissaoValidationError) {
+          return res.status(422).json({
             success: false,
-            error: 'Comissão inválida',
-            message: 'Comissão deve ser um número entre 0 e 100'
+            error: '[VALOR_INVALIDO] Comissão inválida',
+            message: comissaoValidationError
+          });
+        }
+        
+        // [ELITE-PHASE-1] Auditoria forense: registrar alteração de comissão
+        if (comissaoNumero !== servico.comissao_percentual) {
+          await logComissaoChange({
+            usuario_id: usuarioId,
+            usuario_email: req.user?.email || 'N/A',
+            usuario_nome: req.user?.nome || 'N/A',
+            usuario_role: req.user?.role || 'N/A',
+            resource_type: 'servico',
+            resource_id: parseInt(id),
+            comissao_anterior: servico.comissao_percentual,
+            comissao_nova: comissaoNumero,
+            ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+            method: 'PUT',
+            endpoint: req.originalUrl
           });
         }
       }

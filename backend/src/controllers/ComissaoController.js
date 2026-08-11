@@ -64,10 +64,11 @@ class ComissaoController {
         return res.status(404).json({ success: false, error: 'Unidade não encontrada ou acesso negado' });
       }
 
+      // ✅ BLINDAGEM ELITE: Remover fallback dinâmico - usar APENAS snapshot
+      // Se comissao_percentual_aplicada for NULL, considerar comissão = 0
       const servicoRows = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .join('agentes as ag', 'ag.id', 'a.agente_id')
-        .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
         .whereNull('a.deleted_at')
         .where('a.data_agendamento', '>=', data_inicio)
@@ -81,14 +82,14 @@ class ComissaoController {
           db.raw(`
             COALESCE(SUM(
               CASE WHEN asv.comissao_paga = false THEN
-                COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)
+                COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, 0) / 100.0)
               ELSE 0 END
             ), 0) as total_pendente
           `),
           db.raw(`
             COALESCE(SUM(
               CASE WHEN asv.comissao_paga = true THEN
-                COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)
+                COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, 0) / 100.0)
               ELSE 0 END
             ), 0) as total_pago
           `)
@@ -121,10 +122,11 @@ class ComissaoController {
           `)
         );
 
+      // ✅ BLINDAGEM ELITE: Remover fallback dinâmico - usar APENAS snapshot
+      // Se comissao_valor_snapshot for NULL, considerar comissão = 0
       const produtoRows = await db('agendamento_produtos as ap')
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
         .join('agentes as ag', 'ag.id', 'ap.agente_id')
-        .join('produtos as p', 'p.id', 'ap.produto_id')
         .where('a.unidade_id', unidadeId)
         .whereNull('a.deleted_at')
         .where('a.data_agendamento', '>=', data_inicio)
@@ -132,7 +134,7 @@ class ComissaoController {
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
         .whereNotNull('ap.agente_id')
-        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
+        .where(db.raw('COALESCE(ap.comissao_valor_snapshot, 0) > 0'))
         .groupBy('ap.agente_id', 'ag.nome', 'ag.sobrenome', 'ag.nome_exibicao', 'ag.deleted_at')
         .select(
           'ap.agente_id',
@@ -140,22 +142,14 @@ class ComissaoController {
           db.raw(`
             COALESCE(SUM(
               CASE WHEN COALESCE(ap.comissao_paga, false) = false THEN
-                COALESCE(
-                  ap.comissao_valor_snapshot,
-                  (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
-                  0
-                )
+                COALESCE(ap.comissao_valor_snapshot, 0)
               ELSE 0 END
             ), 0) as total_pendente
           `),
           db.raw(`
             COALESCE(SUM(
               CASE WHEN COALESCE(ap.comissao_paga, false) = true THEN
-                COALESCE(
-                  ap.comissao_valor_snapshot,
-                  (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
-                  0
-                )
+                COALESCE(ap.comissao_valor_snapshot, 0)
               ELSE 0 END
             ), 0) as total_pago
           `)
@@ -265,7 +259,7 @@ class ComissaoController {
         return res.status(404).json({ success: false, error: 'Unidade não encontrada ou acesso negado' });
       }
 
-      // ✅ Extrato: serviços em agendamentos concluídos e pagos
+      // ✅ BLINDAGEM ELITE: Remover fallback dinâmico para SERVIÇOS (extrato detalhado)
       const servicoRows = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
         .leftJoin('servicos as s', 's.id', 'asv.servico_id')
@@ -289,9 +283,9 @@ class ComissaoController {
           'asv.servico_id',
           db.raw("COALESCE(s.nome, '') as servico_nome"),
           'asv.preco_aplicado',
-          db.raw('COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) as comissao_percentual'),
+          db.raw('COALESCE(asv.comissao_percentual_aplicada, 0) as comissao_percentual'),
           db.raw(
-            'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0) as comissao_valor'
+            'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, 0) / 100.0) as comissao_valor'
           ),
           'asv.data_pagamento_comissao',
           'asv.observacao_pagamento'
@@ -332,7 +326,7 @@ class ComissaoController {
         )
         .orderBy('v.created_at', statusComissao === 'pago' ? 'desc' : 'asc');
 
-      // ✅ Extrato: produtos com comissão > 0 (ignorar comissão 0)
+      // ✅ BLINDAGEM ELITE: Remover fallback dinâmico para PRODUTOS (extrato detalhado)
       const produtoRows = await db('agendamento_produtos as ap')
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
         .join('produtos as p', 'p.id', 'ap.produto_id')
@@ -344,7 +338,7 @@ class ComissaoController {
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
-        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
+        .where(db.raw('COALESCE(ap.comissao_valor_snapshot, 0) > 0'))
         .where('ap.comissao_paga', statusComissao === 'pago')
         .select(
           'ap.id as agendamento_servico_id',
@@ -355,16 +349,10 @@ class ComissaoController {
           'a.cliente_id',
           db.raw("(TRIM(CONCAT(COALESCE(c.primeiro_nome, ''), ' ', COALESCE(c.ultimo_nome, ''))) || CASE WHEN c.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) as cliente_nome"),
           db.raw('NULL::integer as servico_id'),
-          db.raw("('Produto: ' || (COALESCE(p.nome, '') || CASE WHEN p.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) || ' - R$ ' || REPLACE(TO_CHAR(COALESCE(ap.preco_aplicado, 0), 'FM999999990D00'), '.', ',') || ' (' || REPLACE(TO_CHAR(COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
+          db.raw("('Produto: ' || (COALESCE(p.nome, '') || CASE WHEN p.deleted_at IS NOT NULL THEN ' [Excluído]' ELSE '' END) || ' - R$ ' || REPLACE(TO_CHAR(COALESCE(ap.preco_aplicado, 0), 'FM999999990D00'), '.', ',') || ' (' || REPLACE(TO_CHAR(COALESCE(ap.comissao_percentual_snapshot, 0), 'FM999999990D00'), '.', ',') || '%)') as servico_nome"),
           db.raw('COALESCE(ap.preco_aplicado, 0) as preco_aplicado'),
-          db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) as comissao_percentual'),
-          db.raw(
-            `COALESCE(
-              ap.comissao_valor_snapshot,
-              (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
-              0
-            ) as comissao_valor`
-          ),
+          db.raw('COALESCE(ap.comissao_percentual_snapshot, 0) as comissao_percentual'),
+          db.raw('COALESCE(ap.comissao_valor_snapshot, 0) as comissao_valor'),
           'ap.data_pagamento_comissao',
           'ap.observacao_pagamento'
         )
@@ -385,9 +373,9 @@ class ComissaoController {
         return ha > hb ? 1 : ha < hb ? -1 : 0;
       });
 
+      // ✅ BLINDAGEM ELITE: Totalizador de SERVIÇOS - usar APENAS snapshot
       const totalServicoRow = await db('agendamento_servicos as asv')
         .join('agendamentos as a', 'a.id', 'asv.agendamento_id')
-        .leftJoin('servicos as s', 's.id', 'asv.servico_id')
         .where('a.unidade_id', unidadeId)
         .whereNull('a.deleted_at')
         .where('a.agente_id', agenteId)
@@ -398,14 +386,14 @@ class ComissaoController {
         .where('asv.comissao_paga', statusComissao === 'pago')
         .sum({
           total: db.raw(
-            'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)'
+            'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, 0) / 100.0)'
           )
         })
         .first();
 
+      // ✅ BLINDAGEM ELITE: Totalizador de PRODUTOS - usar APENAS snapshot
       const totalProdutoRow = await db('agendamento_produtos as ap')
         .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
-        .join('produtos as p', 'p.id', 'ap.produto_id')
         .where('a.unidade_id', unidadeId)
         .whereNull('a.deleted_at')
         .where('ap.agente_id', agenteId)
@@ -413,16 +401,10 @@ class ComissaoController {
         .where('a.data_agendamento', '<=', data_fim)
         .where('a.status', 'Concluído')
         .where('a.status_pagamento', 'Pago')
-        .where(db.raw('COALESCE(ap.comissao_percentual_snapshot, p.comissao_percentual, 0) > 0'))
+        .where(db.raw('COALESCE(ap.comissao_valor_snapshot, 0) > 0'))
         .where('ap.comissao_paga', statusComissao === 'pago')
         .sum({
-          total: db.raw(
-            `COALESCE(
-              ap.comissao_valor_snapshot,
-              (COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0),
-              0
-            )`
-          )
+          total: db.raw('COALESCE(ap.comissao_valor_snapshot, 0)')
         })
         .first();
 
@@ -605,13 +587,12 @@ class ComissaoController {
 
         let targetProdutosByPeriodo = trx('agendamento_produtos as ap')
           .join('agendamentos as a', 'a.id', 'ap.agendamento_id')
-          .join('produtos as p', 'p.id', 'ap.produto_id')
           .where('a.unidade_id', unidadeId)
           .whereNull('a.deleted_at')
           .where('ap.agente_id', agenteId)
           .where('a.status', 'Concluído')
           .where('a.status_pagamento', 'Pago')
-          .where('p.comissao_percentual', '>', 0)
+          .where(trx.raw('COALESCE(ap.comissao_valor_snapshot, 0) > 0'))
           .where('ap.comissao_paga', false);
 
         if (hasIds) {
@@ -630,13 +611,12 @@ class ComissaoController {
             .where('a.data_agendamento', '<=', data_fim);
         }
 
-        // Total a pagar (antes de marcar pago)
+        // ✅ BLINDAGEM ELITE: Total a pagar - usar APENAS snapshot
         const totalServicoRow = await targetQuery
           .clone()
-          .leftJoin('servicos as s', 's.id', 'asv.servico_id')
           .sum({
             total: trx.raw(
-              'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, s.comissao_percentual, 0) / 100.0)'
+              'COALESCE(asv.preco_aplicado, 0) * (COALESCE(asv.comissao_percentual_aplicada, 0) / 100.0)'
             )
           })
           .first();
@@ -645,9 +625,7 @@ class ComissaoController {
           ? await targetProdutosByPeriodo
             .clone()
             .sum({
-              total: trx.raw(
-                '(COALESCE(ap.preco_aplicado, 0) * COALESCE(ap.quantidade, 0)) * (COALESCE(p.comissao_percentual, 0) / 100.0)'
-              )
+              total: trx.raw('COALESCE(ap.comissao_valor_snapshot, 0)')
             })
             .first()
           : { total: 0 };
@@ -707,13 +685,12 @@ class ComissaoController {
               this.select('ap.id')
                 .from('agendamento_produtos as ap')
                 .innerJoin('agendamentos as a', 'a.id', 'ap.agendamento_id')
-                .innerJoin('produtos as p', 'p.id', 'ap.produto_id')
                 .where('a.unidade_id', unidadeId)
                 .whereNull('a.deleted_at')
                 .andWhere('ap.agente_id', agenteId)
                 .andWhere('a.status', 'Concluído')
                 .andWhere('a.status_pagamento', 'Pago')
-                .andWhere('p.comissao_percentual', '>', 0)
+                .andWhere(this.raw('COALESCE(ap.comissao_valor_snapshot, 0) > 0'))
                 .andWhere('ap.comissao_paga', false)
                 .andWhere('a.data_agendamento', '>=', data_inicio)
                 .andWhere('a.data_agendamento', '<=', data_fim);

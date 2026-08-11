@@ -3,6 +3,7 @@ const router = express.Router();
 const ProdutoController = require('../controllers/ProdutoController');
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
+const { validateComissaoRequired, validateComissaoOptional } = require('../middleware/comissaoValidation');
 
 const produtoController = new ProdutoController();
 
@@ -30,11 +31,13 @@ router.post('/:id/ajuste',
 );
 
 router.post('/',
+  validateComissaoRequired,
   rbacMiddleware.auditLog('CRIAR_PRODUTO'),
   (req, res) => produtoController.store(req, res)
 );
 
 router.put('/:id',
+  validateComissaoOptional,
   rbacMiddleware.auditLog('ATUALIZAR_PRODUTO'),
   (req, res) => produtoController.update(req, res)
 );

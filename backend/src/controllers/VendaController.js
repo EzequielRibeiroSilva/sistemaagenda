@@ -199,6 +199,13 @@ class VendaController {
           const comissaoValorSnapshot = Number((totalLinha * (comissaoPercentualSnapshot / 100)).toFixed(2));
           const precoCustoMedioSnapshot = Number(produto?.preco_custo_medio) || 0;
 
+          // ✅ BLINDAGEM ELITE: Validação de snapshot obrigatório
+          if (comissaoPercentualSnapshot < 0 || !Number.isFinite(comissaoPercentualSnapshot)) {
+            const err = new Error(`[INTEGRIDADE] Comissão inválida para produto ${produtoId}: ${produto?.comissao_percentual}`);
+            err.code = 'INVALID_COMISSAO';
+            throw err;
+          }
+
           itensInsert.push({
             item_type: 'PRODUTO',
             reference_id: produtoId,

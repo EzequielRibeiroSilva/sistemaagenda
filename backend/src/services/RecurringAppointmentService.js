@@ -1,11 +1,13 @@
 const crypto = require('crypto');
 const { db } = require('../config/knex');
 const BookingAvailabilityService = require('./BookingAvailabilityService');
+const AgenteServicoComissao = require('../models/AgenteServicoComissao');
 
 class RecurringAppointmentService {
   constructor({ agendamentoModel }) {
     this.agendamentoModel = agendamentoModel;
     this.bookingAvailabilityService = new BookingAvailabilityService();
+    this.agenteServicoComissaoModel = new AgenteServicoComissao();
   }
 
   normalizeDateStr(dateStr) {
@@ -214,12 +216,28 @@ class RecurringAppointmentService {
         }
 
         if (Array.isArray(servicosData) && servicosData.length > 0) {
-          const agendamentoServicos = servicosData.map(servico => ({
-            agendamento_id: agendamento.id,
-            servico_id: servico.id,
-            preco_aplicado: servico.preco,
-            comissao_percentual_aplicada: servico.comissao_percentual
-          }));
+          const agendamentoServicos = await Promise.all(
+            servicosData.map(async (servico) => {
+              const comissaoResolvida = await this.agenteServicoComissaoModel.resolveComissao(
+                dadosAgendamento.agente_id,
+                servico.id,
+                trx
+              );
+
+              return {
+                agendamento_id: agendamento.id,
+                servico_id: servico.id,
+                preco_aplicado: servico.preco,
+                comissao_percentual_aplicada: comissaoResolvida
+              };
+            })
+          );
+
+          for (const item of agendamentoServicos) {
+            if (item.comissao_percentual_aplicada < 0 || !Number.isFinite(item.comissao_percentual_aplicada)) {
+              throw new Error(`[INTEGRIDADE] Comissão inválida para serviço ${item.servico_id}: ${item.comissao_percentual_aplicada}`);
+            }
+          }
           await trx('agendamento_servicos').insert(agendamentoServicos);
         }
 

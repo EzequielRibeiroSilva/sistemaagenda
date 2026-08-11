@@ -3,6 +3,7 @@ const router = express.Router();
 const ServicoController = require('../controllers/ServicoController');
 const { authenticate } = require('../middleware/authMiddleware');
 const rbacMiddleware = require('../middleware/rbacMiddleware');
+const { validateComissaoRequired, validateComissaoOptional } = require('../middleware/comissaoValidation');
 
 const servicoController = new ServicoController();
 
@@ -78,6 +79,7 @@ router.put('/:id/insumos',
  * Acesso: ADMIN, MASTER
  */
 router.post('/', 
+  validateComissaoRequired,
   rbacMiddleware.auditLog('CRIAR_SERVICO'),
   (req, res) => servicoController.store(req, res)
 );
@@ -88,6 +90,7 @@ router.post('/',
  * Acesso: ADMIN, MASTER
  */
 router.put('/:id', 
+  validateComissaoOptional,
   rbacMiddleware.auditLog('ATUALIZAR_SERVICO'),
   (req, res) => servicoController.update(req, res)
 );

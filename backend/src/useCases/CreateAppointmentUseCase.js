@@ -9,6 +9,7 @@ const ScheduledReminderService = require('../services/ScheduledReminderService')
 const logger = require('../utils/logger');
 const { decrypt } = require('../utils/encryption');
 const { getInstance: getRedisService } = require('../services/RedisService');
+const AgenteServicoComissao = require('../models/AgenteServicoComissao');
 
 function makeError(message, code, httpStatus, details) {
   const err = new Error(message);
@@ -788,12 +789,29 @@ async function execute(data, context) {
       observacoes: observacoes || null
     });
 
-    const agendamentoServicos = servicosRows.map((s) => ({
-      agendamento_id: agendamento.id,
-      servico_id: s.id,
-      preco_aplicado: s.preco,
-      comissao_percentual_aplicada: s.comissao_percentual
-    }));
+    const agenteServicoComissaoModel = new AgenteServicoComissao();
+    const agendamentoServicos = await Promise.all(
+      servicosRows.map(async (s) => {
+        const comissaoResolvida = await agenteServicoComissaoModel.resolveComissao(
+          agenteIdInt,
+          s.id,
+          trx
+        );
+
+        return {
+          agendamento_id: agendamento.id,
+          servico_id: s.id,
+          preco_aplicado: s.preco,
+          comissao_percentual_aplicada: comissaoResolvida
+        };
+      })
+    );
+
+    for (const item of agendamentoServicos) {
+      if (item.comissao_percentual_aplicada < 0 || !Number.isFinite(item.comissao_percentual_aplicada)) {
+        throw new Error(`[INTEGRIDADE] Comissão inválida para serviço ${item.servico_id}: ${item.comissao_percentual_aplicada}`);
+      }
+    }
 
     if (agendamentoServicos.length > 0) {
       await trx('agendamento_servicos').insert(agendamentoServicos);

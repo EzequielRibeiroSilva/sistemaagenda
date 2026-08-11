@@ -184,6 +184,14 @@ class AgendamentoConclusaoService {
               const comissaoPercentualSnapshot = Number(p?.comissao_percentual) || 0;
               const comissaoValorSnapshot = Number((totalDecimal * (comissaoPercentualSnapshot / 100)).toFixed(2));
               const precoCustoMedioSnapshot = Number(p?.preco_custo_medio) || 0;
+
+              // ✅ BLINDAGEM ELITE: Validação de snapshot obrigatório
+              if (comissaoPercentualSnapshot < 0 || !Number.isFinite(comissaoPercentualSnapshot)) {
+                const err = new Error(`[INTEGRIDADE] Comissão inválida para produto ${p.produto_id}: ${p?.comissao_percentual}`);
+                err.code = 'INVALID_COMISSAO_SNAPSHOT';
+                throw err;
+              }
+
               itens.push({
                 item_type: 'PRODUTO',
                 reference_id: Number(p.produto_id),

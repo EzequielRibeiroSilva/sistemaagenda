@@ -9,6 +9,7 @@ const Agente = require('../models/Agente');
 const Servico = require('../models/Servico');
 const Cliente = require('../models/Cliente');
 const Agendamento = require('../models/Agendamento');
+const AgenteServicoComissao = require('../models/AgenteServicoComissao');
 const ConfiguracaoSistema = require('../models/ConfiguracaoSistema');
 const HorarioFuncionamentoUnidade = require('../models/HorarioFuncionamentoUnidade');
 const ExcecaoCalendario = require('../models/ExcecaoCalendario');
@@ -2170,13 +2171,23 @@ class PublicBookingController {
 
 
 
-      // Criar relacionamentos com serviços
-      const agendamentoServicos = servicos.map(servico => ({
-        agendamento_id: agendamento.id,
-        servico_id: servico.id,
-        preco_aplicado: servicosCobertos.has(parseInt(servico.id, 10)) ? 0 : servico.preco,
-        comissao_percentual_aplicada: servico.comissao_percentual
-      }));
+      // [ELITE-PHASE-2] Criar relacionamentos com serviços usando hierarquia de comissões
+      const agenteServicoComissaoModel = new AgenteServicoComissao();
+      const agendamentoServicos = await Promise.all(
+        servicos.map(async (servico) => {
+          const comissaoResolvida = await agenteServicoComissaoModel.resolveComissao(
+            agente_id,
+            servico.id
+          );
+          
+          return {
+            agendamento_id: agendamento.id,
+            servico_id: servico.id,
+            preco_aplicado: servicosCobertos.has(parseInt(servico.id, 10)) ? 0 : servico.preco,
+            comissao_percentual_aplicada: comissaoResolvida
+          };
+        })
+      );
 
       await trx('agendamento_servicos').insert(agendamentoServicos);
 

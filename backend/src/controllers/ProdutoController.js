@@ -2,6 +2,8 @@ const BaseController = require('./BaseController');
 const Produto = require('../models/Produto');
 const logger = require('../utils/logger');
 const InventoryService = require('../services/InventoryService');
+const { validateComissaoValue } = require('../middleware/comissaoValidation');
+const { logComissaoChange } = require('../utils/auditLogger');
 
 class ProdutoController extends BaseController {
   constructor() {
@@ -303,11 +305,13 @@ class ProdutoController extends BaseController {
         });
       }
 
-      if (Number.isNaN(comissaoPercentualFinal) || comissaoPercentualFinal < 0) {
-        return res.status(400).json({
+      // [ELITE-PHASE-1] Validação estrita de comissão via helper (0-100)
+      const comissaoValidationError = validateComissaoValue(comissaoPercentualFinal);
+      if (comissaoValidationError) {
+        return res.status(422).json({
           success: false,
-          error: 'Comissão inválida',
-          message: 'comissao_percentual deve ser um número >= 0'
+          error: '[VALOR_INVALIDO] Comissão inválida',
+          message: comissaoValidationError
         });
       }
 
@@ -626,13 +630,34 @@ class ProdutoController extends BaseController {
 
       if (comissao_percentual !== undefined) {
         const comissao = Number(comissao_percentual);
-        if (Number.isNaN(comissao) || comissao < 0) {
-          return res.status(400).json({
+        
+        // [ELITE-PHASE-1] Validação estrita de comissão via helper (0-100)
+        const comissaoValidationError = validateComissaoValue(comissao);
+        if (comissaoValidationError) {
+          return res.status(422).json({
             success: false,
-            error: 'Comissão inválida',
-            message: 'comissao_percentual deve ser um número >= 0'
+            error: '[VALOR_INVALIDO] Comissão inválida',
+            message: comissaoValidationError
           });
         }
+        
+        // [ELITE-PHASE-1] Auditoria forense: registrar alteração de comissão
+        if (comissao !== produto.comissao_percentual) {
+          await logComissaoChange({
+            usuario_id: usuarioId,
+            usuario_email: req.user?.email || 'N/A',
+            usuario_nome: req.user?.nome || 'N/A',
+            usuario_role: req.user?.role || 'N/A',
+            resource_type: 'produto',
+            resource_id: parseInt(id),
+            comissao_anterior: produto.comissao_percentual,
+            comissao_nova: comissao,
+            ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+            method: 'PUT',
+            endpoint: req.originalUrl
+          });
+        }
+        
         patch.comissao_percentual = comissao;
       }
 

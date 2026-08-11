@@ -3,12 +3,14 @@ const Agendamento = require('../models/Agendamento');
 const EvolutionApiService = require('../services/EvolutionApiService');
 const AuthService = require('../services/AuthService');
 const logger = require('./../utils/logger');
+const AgenteServicoComissao = require('../models/AgenteServicoComissao');
 
 class RBACAgendamentoController extends BaseController {
   constructor() {
     super(new Agendamento());
     this.evolutionApi = new EvolutionApiService();
     this.authService = new AuthService();
+    this.agenteServicoComissaoModel = new AgenteServicoComissao();
   }
 
   // GET /api/agendamentos - Buscar agendamentos com filtros RBAC
@@ -62,7 +64,30 @@ class RBACAgendamentoController extends BaseController {
               .limit(parseInt(limit))
               .offset(offset);
           } else {
-            data = await this.model.findAll();
+            // ✅ FASE 3: Forçar paginação mesmo quando não especificada
+            const defaultLimit = 50;
+            const defaultPage = 1;
+            const offset = (defaultPage - 1) * defaultLimit;
+            
+            const { db } = require('../config/knex');
+            data = await this.model.db(this.model.tableName)
+              .join('clientes', 'agendamentos.cliente_id', 'clientes.id')
+              .join('agentes', 'agendamentos.agente_id', 'agentes.id')
+              .join('unidades', 'agendamentos.unidade_id', 'unidades.id')
+              .whereNull('agendamentos.deleted_at')
+              .modify(function(queryBuilder) {
+                if (status) queryBuilder.where('agendamentos.status', status);
+              })
+              .select([
+                'agendamentos.*',
+                db.raw("CONCAT(clientes.primeiro_nome, ' ', clientes.ultimo_nome) as cliente_nome"),
+                'clientes.telefone as cliente_telefone',
+                'agentes.nome as agente_nome',
+                'unidades.nome as unidade_nome'
+              ])
+              .orderBy('agendamentos.data_agendamento', 'desc')
+              .limit(defaultLimit)
+              .offset(offset);
           }
           break;
 
@@ -302,11 +327,20 @@ class RBACAgendamentoController extends BaseController {
 
       // Associar serviços ao agendamento
       for (const servico of servicos) {
+        const comissaoResolvida = await this.agenteServicoComissaoModel.resolveComissao(
+          parseInt(agente_id),
+          parseInt(servico.servico_id)
+        );
+
+        if (comissaoResolvida < 0 || !Number.isFinite(comissaoResolvida)) {
+          throw new Error(`[INTEGRIDADE] Comissão inválida para serviço ${servico.servico_id}: ${comissaoResolvida}`);
+        }
+
         await this.model.db('agendamento_servicos').insert({
           agendamento_id: agendamento.id,
           servico_id: parseInt(servico.servico_id),
           preco_aplicado: parseFloat(servico.preco_aplicado),
-          comissao_percentual_aplicada: percentByServicoId[String(servico.servico_id)]
+          comissao_percentual_aplicada: comissaoResolvida
         });
       }
 

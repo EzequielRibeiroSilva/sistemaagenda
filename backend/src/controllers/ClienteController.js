@@ -475,6 +475,28 @@ class ClienteController {
         });
       }
 
+      // [ELITE-PHASE-1] Trava de integridade: verificar agendamentos futuros ativos
+      const agendamentosFuturos = await this.clienteModel.db('agendamentos')
+        .where('cliente_id', clienteId)
+        .where('data_agendamento', '>=', this.clienteModel.db.fn.now())
+        .whereIn('status', ['Aprovado', 'confirmado', 'pendente'])
+        .whereNull('deleted_at')
+        .count('id as total')
+        .first();
+
+      const totalAgendamentosFuturos = parseInt(agendamentosFuturos?.total || 0);
+
+      if (totalAgendamentosFuturos > 0) {
+        return res.status(409).json({
+          success: false,
+          error: '[INTEGRIDADE] Não é possível excluir cliente com agendamentos futuros confirmados',
+          message: `Este cliente possui ${totalAgendamentosFuturos} agendamento(s) futuro(s) confirmado(s). Cancele os agendamentos antes de excluir.`,
+          data: {
+            agendamentos_futuros: totalAgendamentosFuturos
+          }
+        });
+      }
+
       const sucesso = await this.clienteModel.delete(clienteId, unidadeId);
 
       if (!sucesso) {

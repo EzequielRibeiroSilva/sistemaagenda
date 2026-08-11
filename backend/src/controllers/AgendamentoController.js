@@ -12,6 +12,7 @@ const AgendamentoConclusaoService = require('../services/AgendamentoConclusaoSer
 const InventoryService = require('../services/InventoryService');
 const { assertPeriodoAberto, parseYmdToLocalDate } = require('../utils/periodLock');
 const CreateAppointmentUseCase = require('../useCases/CreateAppointmentUseCase');
+const AgenteServicoComissao = require('../models/AgenteServicoComissao');
 
 const toCents = (n) => {
   const num = Number(n);
@@ -28,6 +29,7 @@ class AgendamentoController extends BaseController {
     this.bookingAvailabilityService = new BookingAvailabilityService();
     this.assinaturaEstornoService = new AssinaturaEstornoService();
     this.agendamentoConclusaoService = new AgendamentoConclusaoService({ db: this.model.db });
+    this.agenteServicoComissaoModel = new AgenteServicoComissao(); // [ELITE-PHASE-2] Resolver hierarquia de comissões
   }
 
   // GET /api/agendamentos/numero/:numero - Buscar agendamento pelo número visível (com RBAC)
@@ -1144,12 +1146,31 @@ class AgendamentoController extends BaseController {
             .del();
 
           if (servicosData && servicosData.length > 0) {
-            const agendamentoServicos = servicosData.map(servico => ({
-              agendamento_id: parseInt(id),
-              servico_id: servico.id,
-              preco_aplicado: servico.preco,
-              comissao_percentual_aplicada: servico.comissao_percentual
-            }));
+            // [ELITE-PHASE-2] Resolver comissão usando hierarquia (exceção → serviço → 0%)
+            const agenteIdFinal = dadosParaAtualizar.agente_id || agendamento.agente_id;
+            
+            const agendamentoServicos = await Promise.all(
+              servicosData.map(async (servico) => {
+                const comissaoResolvida = await this.agenteServicoComissaoModel.resolveComissao(
+                  agenteIdFinal,
+                  servico.id
+                );
+                
+                return {
+                  agendamento_id: parseInt(id),
+                  servico_id: servico.id,
+                  preco_aplicado: servico.preco,
+                  comissao_percentual_aplicada: comissaoResolvida
+                };
+              })
+            );
+
+            // ✅ BLINDAGEM ELITE: Validar snapshot obrigatório de comissão
+            for (const item of agendamentoServicos) {
+              if (item.comissao_percentual_aplicada < 0 || !Number.isFinite(item.comissao_percentual_aplicada)) {
+                throw new Error(`[INTEGRIDADE] Comissão inválida para serviço ${item.servico_id}: ${item.comissao_percentual_aplicada}`);
+              }
+            }
 
             await trx('agendamento_servicos').insert(agendamentoServicos);
           }
@@ -1200,6 +1221,24 @@ class AgendamentoController extends BaseController {
                 const produto = produtoById.get(produtoId);
                 const comissaoPercentualSnapshot = Number(produto?.comissao_percentual) || 0;
                 const comissaoValorSnapshot = Number((totalLinha * (comissaoPercentualSnapshot / 100)).toFixed(2));
+
+                // ✅ BLINDAGEM ELITE: Validação de snapshot obrigatório
+                // Se comissao_percentual do produto não existir (NULL/0), registrar 0 explicitamente
+                // Nunca permitir NULL em comissao_percentual_snapshot ou comissao_valor_snapshot
+                if (comissaoPercentualSnapshot < 0 || !Number.isFinite(comissaoPercentualSnapshot)) {
+                  throw new Error(`[INTEGRIDADE] Comissão inválida para produto ${produtoId}: ${produto?.comissao_percentual}`);
+                }
+
+                return {
+                  agendamento_id: parseInt(id, 10),
+                  produto_id: produtoId,
+                  quantidade,
+                  preco_aplicado: precoAplicado,
+                  comissao_percentual_snapshot: comissaoPercentualSnapshot,
+                  comissao_valor_snapshot: comissaoValorSnapshot,
+                  agente_id: Number.isFinite(p.agente_id) ? p.agente_id : null,
+                  created_at: trx.fn.now()
+                };
 
                 return {
                   agendamento_id: parseInt(id, 10),

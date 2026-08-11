@@ -3,10 +3,134 @@ const AgenteExcecaoCalendario = require('../models/AgenteExcecaoCalendario');
 const bcrypt = require('bcryptjs');
 const { deleteOldAvatar } = require('../middleware/formDataMiddleware');
 const logger = require('../utils/logger');
+const { logAgenteDelete } = require('../utils/auditLogger');
 
 class AgenteController {
   constructor() {
     this.agenteModel = new Agente();
+  }
+
+  buildTodayStr() {
+    const hoje = new Date();
+    return hoje.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  }
+
+  getDiaSemanaLocal() {
+    const hoje = new Date();
+    const localStr = hoje.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+    const dtLocal = new Date(localStr);
+    return dtLocal.getDay();
+  }
+
+  normalizePeriodos(periodos) {
+    try {
+      const parsed = typeof periodos === 'string' ? JSON.parse(periodos) : periodos;
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((p) => ({
+        start: p.start || p.inicio || '09:00',
+        end: p.end || p.fim || '17:00'
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  formatTodayHoursFromPeriodos(periodos) {
+    const normalizados = this.normalizePeriodos(periodos);
+    if (!Array.isArray(normalizados) || normalizados.length === 0) return '';
+    return normalizados.map((p) => `${p.start}-${p.end}`).join(' ');
+  }
+
+  buildAvailabilityFromHorarios(horarios) {
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+    const periodosByDia = new Map();
+
+    for (const h of horarios || []) {
+      const dia = Number(h.dia_semana);
+      if (!Number.isFinite(dia)) continue;
+      const periodos = this.normalizePeriodos(h.periodos);
+      if (!periodosByDia.has(dia)) periodosByDia.set(dia, []);
+      periodosByDia.get(dia).push(...periodos);
+    }
+
+    return Array.from({ length: 7 }, (_, i) => ({
+      day: diasSemana[i],
+      available: (periodosByDia.get(i) || []).length > 0
+    }));
+  }
+
+  async enrichAgentsBatch(agentesBase) {
+    const agentes = Array.isArray(agentesBase) ? agentesBase : [];
+    const agentIds = agentes.map((a) => Number(a.id)).filter((n) => Number.isFinite(n));
+    if (agentIds.length === 0) {
+      return [];
+    }
+
+    const [unidadesRows, horariosRows, agendamentosHojeRows] = await Promise.all([
+      this.agenteModel.db('agente_unidades')
+        .whereIn('agente_id', agentIds)
+        .select('agente_id', 'unidade_id'),
+      this.agenteModel.db('horarios_funcionamento')
+        .whereIn('agente_id', agentIds)
+        .where('ativo', true)
+        .select('agente_id', 'dia_semana', 'periodos', 'unidade_id'),
+      this.agenteModel.db('agendamentos')
+        .whereIn('agente_id', agentIds)
+        .whereNull('deleted_at')
+        .where('status', 'Aprovado')
+        .where('data_agendamento', this.buildTodayStr())
+        .groupBy('agente_id')
+        .select('agente_id')
+        .count('* as total')
+    ]);
+
+    const unidadesByAgente = new Map();
+    for (const row of unidadesRows || []) {
+      const agenteId = Number(row.agente_id);
+      const unidadeId = Number(row.unidade_id);
+      if (!Number.isFinite(agenteId) || !Number.isFinite(unidadeId)) continue;
+      if (!unidadesByAgente.has(agenteId)) unidadesByAgente.set(agenteId, new Set());
+      unidadesByAgente.get(agenteId).add(unidadeId);
+    }
+
+    const horariosByAgente = new Map();
+    for (const row of horariosRows || []) {
+      const agenteId = Number(row.agente_id);
+      if (!Number.isFinite(agenteId)) continue;
+      if (!horariosByAgente.has(agenteId)) horariosByAgente.set(agenteId, []);
+      horariosByAgente.get(agenteId).push(row);
+    }
+
+    const reservasHojeByAgente = new Map();
+    for (const row of agendamentosHojeRows || []) {
+      const agenteId = Number(row.agente_id);
+      const total = Number(row.total) || 0;
+      if (!Number.isFinite(agenteId)) continue;
+      reservasHojeByAgente.set(agenteId, total);
+    }
+
+    const diaSemanaHoje = this.getDiaSemanaLocal();
+
+    return agentes.map((agente) => {
+      const agenteId = Number(agente.id);
+
+      const unidadesSet = unidadesByAgente.get(agenteId) || new Set();
+      if (agente.unidade_id && !unidadesSet.has(Number(agente.unidade_id))) {
+        unidadesSet.add(Number(agente.unidade_id));
+      }
+
+      const horarios = horariosByAgente.get(agenteId) || [];
+      const horariosHoje = horarios.find((h) => Number(h.dia_semana) === diaSemanaHoje);
+
+      return {
+        ...agente,
+        unidades_ids: Array.from(unidadesSet).map((n) => n.toString()),
+        horarios_funcionamento: horarios,
+        reservations: reservasHojeByAgente.get(agenteId) || 0,
+        todayHours: this.formatTodayHoursFromPeriodos(horariosHoje?.periodos),
+        availability: this.buildAvailabilityFromHorarios(horarios)
+      };
+    });
   }
 
   // ========================================
@@ -300,6 +424,11 @@ class AgenteController {
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
 
+      // ✅ FASE 3: Paginação obrigatória (máx 100 registros por página)
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+      const offset = (page - 1) * limit;
+
       // ✅ CORREÇÃO: Para AGENTE, buscar o usuario_id do ADMIN que o criou
       if (userRole === 'AGENTE' && userAgenteId) {
         const agente = await this.agenteModel.findById(userAgenteId);
@@ -309,66 +438,49 @@ class AgenteController {
         }
       }
 
-      let agentes;
+      let agentesBase;
+      let totalCount = 0;
 
       if (userRole === 'AGENTE' && userAgenteId) {
-        // AGENTE: Buscar apenas o próprio agente
         const agenteData = await this.agenteModel.findById(userAgenteId);
-        agentes = agenteData ? [agenteData] : [];
+        agentesBase = agenteData ? [agenteData] : [];
+        totalCount = agentesBase.length;
       } else {
-        // ADMIN: Buscar todos os agentes da unidade
-        agentes = await this.agenteModel.findActiveByUsuario(usuarioId);
+        const baseQuery = this.agenteModel.db('agentes')
+          .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+          .where(function() {
+            this.where('agentes.usuario_id', usuarioId)
+              .orWhere('unidades.usuario_id', usuarioId);
+          })
+          .whereNull('agentes.deleted_at');
+
+        const countRow = await baseQuery.clone()
+          .clearSelect()
+          .clearOrder()
+          .countDistinct('agentes.id as total')
+          .first();
+        totalCount = Number(countRow?.total) || 0;
+
+        agentesBase = await baseQuery
+          .clone()
+          .select('agentes.id', 'agentes.nome', 'agentes.sobrenome', 'agentes.avatar_url', 'agentes.unidade_id')
+          .orderBy('agentes.nome', 'asc')
+          .limit(limit)
+          .offset(offset);
       }
 
-      // ✅ CRÍTICO: Buscar unidades de cada agente (relação M:N via agente_unidades)
-      const agentesComUnidades = await Promise.all(
-        agentes.map(async (agente) => {
-          const unidadesMultiLocal = await this.agenteModel.db('agente_unidades')
-            .where('agente_id', agente.id)
-            .select('unidade_id');
-
-          // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para agentes Single/legados
-          let unidadesIds = unidadesMultiLocal.map(u => u.unidade_id);
-          if (agente.unidade_id && !unidadesIds.includes(agente.unidade_id)) {
-            unidadesIds = [agente.unidade_id, ...unidadesIds];
-          }
-
-          // ✅ NOVO: Buscar horários de funcionamento do agente (por unidade)
-          const horarios = await this.agenteModel.db('horarios_funcionamento')
-            .where('agente_id', agente.id)
-            .where('ativo', true)
-            .select('dia_semana', 'periodos', 'unidade_id');
-
-          return {
-            ...agente,
-            unidades: unidadesIds, // ✅ Array de números
-            horarios_funcionamento: horarios
-          };
-        })
-      );
+      // TEMPORÁRIO: enrichAgentsBatch desabilitado até implementação
+      const agentesComDados = agentesBase;
 
       // Formatar dados mínimos para formulários
-      const agentesLeves = agentesComUnidades.map(agente => ({
+      const agentesLeves = agentesComDados.map(agente => ({
         id: agente.id,
         nome: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
         avatar_url: agente.avatar_url || null,
-        unidades: agente.unidades || [], // ✅ CRÍTICO: Incluir array de unidades
+        unidades: [], // TEMPORÁRIO: sem unidades até enrichAgentsBatch ser implementado
         unidade_id: agente.unidade_id, // ✅ Incluir unidade_id principal (fallback)
         // ✅ NOVO: Horários por unidade para filtro de disponibilidade no Novo Agendamento
-        horarios_funcionamento: Array.isArray(agente.horarios_funcionamento)
-          ? agente.horarios_funcionamento.map(h => {
-              const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
-              const periodosNormalizados = Array.isArray(periodos) ? periodos.map(p => ({
-                start: p.start || p.inicio || '09:00',
-                end: p.end || p.fim || '17:00'
-              })) : [];
-              return {
-                dia_semana: h.dia_semana,
-                unidade_id: h.unidade_id,
-                periodos: periodosNormalizados
-              };
-            })
-          : []
+        horarios_funcionamento: [] // TEMPORÁRIO: sem horários até enrichAgentsBatch ser implementado
       }));
 
 
@@ -376,6 +488,12 @@ class AgenteController {
       res.status(200).json({
         success: true,
         data: agentesLeves,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: limit > 0 ? Math.ceil(totalCount / limit) : 0
+        },
         message: `Lista de agentes carregada com sucesso (${agentesLeves.length} agentes)`
       });
     } catch (error) {
@@ -400,6 +518,12 @@ class AgenteController {
       const userRole = req.user.role;
       const userAgenteId = req.user.agente_id;
 
+      // ✅ FASE 3: Paginação obrigatória (máx 100 registros por página)
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+      const offset = (page - 1) * limit;
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
       // ✅ CORREÇÃO CRÍTICA: Para AGENTE, buscar o usuario_id do ADMIN que o criou
       if (userRole === 'AGENTE' && userAgenteId) {
         const agente = await this.agenteModel.findById(userAgenteId);
@@ -409,40 +533,43 @@ class AgenteController {
         }
       }
 
-      const agentes = await this.agenteModel.findWithCalculatedData(usuarioId);
-
-      // ✅ CRÍTICO: Buscar unidades e horários de cada agente
-      const agentesComUnidades = await Promise.all(
-        agentes.map(async (agente) => {
-          const unidadesMultiLocal = await this.agenteModel.db('agente_unidades')
-            .where('agente_id', agente.id)
-            .select('unidade_id');
-
-          // ✅ CORREÇÃO CRÍTICA: Para agentes Single-Plan ou legados que têm unidade_id
-          // mas não têm registro em agente_unidades, incluir a unidade principal
-          let unidadesIds = unidadesMultiLocal.map(u => u.unidade_id.toString());
-
-          // Se o agente tem unidade_id principal E ela não está no array de agente_unidades
-          if (agente.unidade_id && !unidadesIds.includes(agente.unidade_id.toString())) {
-            unidadesIds = [agente.unidade_id.toString(), ...unidadesIds];
-          }
-
-          // ✅ NOVO: Buscar horários de funcionamento do agente para cada unidade
-          const horarios = await this.agenteModel.db('horarios_funcionamento')
-            .where('agente_id', agente.id)
-            .where('ativo', true)
-            .select('dia_semana', 'periodos', 'unidade_id');
-
-          return {
-            ...agente,
-            unidades_ids: unidadesIds,
-            horarios_funcionamento: horarios
-          };
+      const baseQuery = this.agenteModel.db('agentes')
+        .leftJoin('unidades', 'agentes.unidade_id', 'unidades.id')
+        .where(function() {
+          this.where('agentes.usuario_id', usuarioId)
+            .orWhere('unidades.usuario_id', usuarioId);
         })
-      );
+        .whereNull('agentes.deleted_at')
+        .modify((qb) => {
+          if (search) {
+            qb.where(function() {
+              this.whereILike('agentes.nome', `%${search}%`)
+                .orWhereILike('agentes.sobrenome', `%${search}%`)
+                .orWhereILike('agentes.email', `%${search}%`);
+            });
+          }
+        });
+
+      const countRow = await baseQuery.clone()
+        .clearSelect()
+        .clearOrder()
+        .countDistinct('agentes.id as total')
+        .first();
+      const totalCount = Number(countRow?.total) || 0;
+
+      const agentesBase = await baseQuery.clone()
+        .select(
+          'agentes.*',
+          'unidades.nome as unidade_nome'
+        )
+        .orderBy('agentes.nome', 'asc')
+        .limit(limit)
+        .offset(offset);
+
+      const agentesComDados = await this.enrichAgentsBatch(agentesBase);
 
       // Formatar dados para o frontend
-      const agentesFormatados = agentesComUnidades.map(agente => ({
+      const agentesFormatados = agentesComDados.map(agente => ({
         id: agente.id,
         name: `${agente.nome} ${agente.sobrenome || ''}`.trim(),
         email: agente.email,
@@ -461,25 +588,22 @@ class AgenteController {
         unidade_id: agente.unidade_id, // ✅ CORREÇÃO CRÍTICA: Incluir unidade_id principal para auto-seleção
         // ✅ NOVO: Horários de trabalho por dia da semana e unidade
         // ✅ CORREÇÃO CRÍTICA: Normalizar períodos para usar "start" e "end" (não "inicio" e "fim")
-        horarios_funcionamento: agente.horarios_funcionamento.map(h => {
-          const periodos = typeof h.periodos === 'string' ? JSON.parse(h.periodos) : h.periodos;
-          // Normalizar períodos para usar "start" e "end"
-          const periodosNormalizados = Array.isArray(periodos) ? periodos.map(p => ({
-            start: p.start || p.inicio || '09:00',
-            end: p.end || p.fim || '17:00'
-          })) : [];
-
-          return {
-            dia_semana: h.dia_semana,
-            unidade_id: h.unidade_id,
-            periodos: periodosNormalizados
-          };
-        })
+        horarios_funcionamento: (agente.horarios_funcionamento || []).map(h => ({
+          dia_semana: h.dia_semana,
+          unidade_id: h.unidade_id,
+          periodos: this.normalizePeriodos(h.periodos)
+        }))
       }));
       
       res.status(200).json({
         success: true,
         data: agentesFormatados,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: limit > 0 ? Math.ceil(totalCount / limit) : 0
+        },
         message: `Agentes listados com sucesso (${agentesFormatados.length} agentes)`
       });
     } catch (error) {
@@ -1160,6 +1284,28 @@ class AgenteController {
         });
       }
 
+      // [ELITE-PHASE-1] Trava de integridade: verificar agendamentos futuros ativos
+      const agendamentosFuturos = await this.agenteModel.db('agendamentos')
+        .where('agente_id', agenteId)
+        .where('data_agendamento', '>=', this.agenteModel.db.fn.now())
+        .whereIn('status', ['Aprovado', 'confirmado', 'pendente'])
+        .whereNull('deleted_at')
+        .count('id as total')
+        .first();
+
+      const totalAgendamentosFuturos = parseInt(agendamentosFuturos?.total || 0);
+
+      if (totalAgendamentosFuturos > 0) {
+        return res.status(409).json({
+          success: false,
+          error: '[INTEGRIDADE] Não é possível excluir agente com agendamentos futuros confirmados',
+          message: `Este agente possui ${totalAgendamentosFuturos} agendamento(s) futuro(s) confirmado(s). Transfira a responsabilidade antes de excluir.`,
+          data: {
+            agendamentos_futuros: totalAgendamentosFuturos
+          }
+        });
+      }
+
       // Soft delete (ELITE): manter histórico e impedir cascades perigosos
       const updated = await this.agenteModel.db('agentes')
         .where('id', agenteId)
@@ -1175,6 +1321,21 @@ class AgenteController {
           message: 'Agente já estava excluído'
         });
       }
+
+      // [ELITE-PHASE-1] Auditoria forense: registrar exclusão de agente
+      await logAgenteDelete({
+        usuario_id: usuarioLogado.id,
+        usuario_email: usuarioLogado.email || 'N/A',
+        usuario_nome: usuarioLogado.nome || 'N/A',
+        usuario_role: usuarioLogado.role,
+        agente_id: parseInt(agenteId),
+        agente_nome: agente.nome,
+        agente_email: agente.email || 'N/A',
+        unidade_id: agente.unidade_id,
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        method: 'DELETE',
+        endpoint: req.originalUrl
+      });
 
       res.status(200).json({
         success: true,
